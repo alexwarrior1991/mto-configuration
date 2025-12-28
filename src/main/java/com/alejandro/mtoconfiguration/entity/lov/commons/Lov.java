@@ -32,8 +32,8 @@ public abstract class Lov extends BaseEntity implements ILov {
     private boolean enabled;
 
     @NotNull(message = ErrorCodes.VALIDATION_REQUIRED_FIELD)
-    @Size(max = 5)
-    @Column(length = 5, nullable = false)
+    @Size(max = 10)
+    @Column(length = 10, nullable = false)
     @Override
     public String getCode() {
         return code;
@@ -64,5 +64,9 @@ public abstract class Lov extends BaseEntity implements ILov {
 
     public static boolean isEnabled(Lov e) {
         return e != null && e.isEnabled();
+    }
+
+    public static Long getId(Lov entity) {
+        return entity != null ? entity.getId() : null;
     }
 }

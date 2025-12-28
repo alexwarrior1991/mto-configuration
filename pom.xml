@@ -31,6 +31,7 @@
         <spring-cloud.version>2025.1.0</spring-cloud.version>
         <hibernate.version>6.6.1.Final</hibernate.version>
         <org.mapstruct.version>1.6.3</org.mapstruct.version>
+        <commons-collections4.version>4.4</commons-collections4.version>
     </properties>
     <dependencies>
         <dependency>
@@ -115,6 +116,11 @@
             <groupId>org.mapstruct</groupId>
             <artifactId>mapstruct</artifactId>
             <version>${org.mapstruct.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-collections4</artifactId>
+            <version>${commons-collections4.version}</version>
         </dependency>
     </dependencies>
     <dependencyManagement>
