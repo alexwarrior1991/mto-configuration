@@ -15,6 +15,7 @@ import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.Objects;
@@ -26,6 +27,7 @@ import java.util.Objects;
 @EntityListeners(value = {AuditingEntityListener.class, EntityListener.class})
 public abstract class BaseEntity implements IEntity, Comparable<BaseEntity>, Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     protected Long id;
