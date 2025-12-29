@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.core.exception;
 import com.alejandro.mtoconfiguration.core.model.exception.DefaultErrorResponse;
 import feign.FeignException;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +26,10 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import java.nio.file.AccessDeniedException;
+import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -96,19 +100,33 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
         return new ResponseEntity<>(getErrorResponse("unauthorized", HttpStatus.UNAUTHORIZED), HttpStatus.UNAUTHORIZED);
     }
 
+
     /**
      * Handles exceptions of type {@link GenericException}.
-     * Logs the exception's error message and builds a {@link DefaultErrorResponse} instance
-     * containing the error details and an HTTP 400 Bad Request status.
+     * Logs the exception's error message and constructs a {@link ResponseEntity}
+     * containing a {@link DefaultErrorResponse} with an HTTP 400 Bad Request status.
      *
-     * @param e        the {@link GenericException} instance containing details of the exception
-     * @param response the {@link HttpServletResponse} associated with the current request
+     * @param e       the {@link GenericException} instance containing details of the exception
+     * @param request the {@link HttpServletRequest} associated with the current request
      * @return a {@link ResponseEntity} containing a {@link DefaultErrorResponse} with an HTTP status of 400 Bad Request
      */
     @ExceptionHandler(GenericException.class)
-    public ResponseEntity<DefaultErrorResponse> handleGenericException(GenericException e, HttpServletResponse response) {
+    public ResponseEntity<Notification> handleGenericException(GenericException e, HttpServletRequest request) {
         log.error(e.getMessage(), e);
-        return new ResponseEntity<>(getErrorResponse(e.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
+
+        Notification notification = getNotification(
+                e.getAction(),
+                e.getCode(),
+                e.getMessage(),
+                e.getSeverity(),
+                request.getRequestURI(),   // mejor que getPathInfo()
+                e.getCategory(),
+                request
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(notification);
     }
 
     @ExceptionHandler(TransactionSystemException.class)
@@ -223,5 +241,28 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
         error.setErrors(message);
         error.setStatus(status.value());
         return error;
+    }
+
+
+    private Notification getNotification(String action,
+                                         String code,
+                                         String description,
+                                         String severity,
+                                         String path,
+                                         String category, HttpServletRequest s) {
+        return Optional.of(new Notification())
+                .map(notification -> {
+                    notification.setTimestamp(DateTimeFormatter
+                            .ofPattern("yyyy-MM-dd hh:mm:ss")
+                            .format(java.time.LocalDateTime.now()));
+                    notification.setAction(action);
+                    notification.setCode(code);
+                    notification.setDescription(description);
+                    notification.setSeverity(severity);
+                    notification.setPath(s.getRequestURI());
+                    notification.setCategory(category);
+                    return notification;
+                })
+                .orElseThrow();
     }
 }
