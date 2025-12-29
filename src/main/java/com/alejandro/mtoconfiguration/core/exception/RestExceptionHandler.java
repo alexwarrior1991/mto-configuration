@@ -4,6 +4,7 @@ import com.alejandro.mtoconfiguration.core.model.exception.DefaultErrorResponse;
 import feign.FeignException;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -14,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
+import org.springframework.transaction.TransactionSystemException;
 import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -24,8 +26,9 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 
 import java.nio.file.AccessDeniedException;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -108,6 +111,38 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
         return new ResponseEntity<>(getErrorResponse(e.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
     }
 
+    @ExceptionHandler(TransactionSystemException.class)
+    public ResponseEntity<Object> handleJPAViolations(TransactionSystemException e) {
+        log.error(e.getMessage(), e);
+
+        var maybeConstraintViolation = Stream
+                .iterate(e.getCause(), Objects::nonNull, Throwable::getCause)
+                .filter(ConstraintViolationException.class::isInstance)
+                .map(ConstraintViolationException.class::cast)
+                .findFirst();
+
+        if (maybeConstraintViolation.isPresent()) {
+            ConstraintViolationException ve = maybeConstraintViolation.get();
+
+            // Lista de mapas {campo -> mensaje}
+            var errors = ve.getConstraintViolations().stream()
+                    .map(constraintViolation -> {
+                        Map<String, String> errMap = new HashMap<>();
+                        errMap.put(
+                                constraintViolation.getPropertyPath().toString(),
+                                constraintViolation.getMessage()
+                        );
+                        return errMap;
+                    })
+                    .distinct()
+                    .toList();
+
+            return ResponseEntity.badRequest().body(errors);
+        }
+
+        return ResponseEntity.badRequest().build();
+    }
+
     /**
      * Handles exceptions of type {@link MethodArgumentNotValidException} triggered when method argument validation fails.
      * Logs the exception's error message and returns a {@link ResponseEntity} containing a {@link DefaultErrorResponse}
@@ -118,7 +153,7 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
      * @param status  the HTTP status code corresponding to the error
      * @param request the {@link WebRequest} associated with the current request
      * @return a {@link ResponseEntity} containing a {@link DefaultErrorResponse} with a list of validation error messages
-     *         and an HTTP status of 400 Bad Request, or {@code null} if no response is to be returned
+     * and an HTTP status of 400 Bad Request, or {@code null} if no response is to be returned
      */
     @Override
     protected @Nullable ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException e, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
@@ -138,12 +173,12 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
      * @param e        the {@link ServletException} instance containing details of the exception
      * @param response the {@link HttpServletResponse} associated with the current request
      * @return a {@link ResponseEntity} containing a {@link DefaultErrorResponse}
-     *         with an HTTP status of 400 Bad Request
+     * with an HTTP status of 400 Bad Request
      */
     @ExceptionHandler(ServletException.class)
-    public ResponseEntity<DefaultErrorResponse> handleServletException(ServletException  e, HttpServletResponse response) {
+    public ResponseEntity<DefaultErrorResponse> handleServletException(ServletException e, HttpServletResponse response) {
         log.error(e.getMessage(), e);
-        return new ResponseEntity<>(getErrorResponse(e.getMessage(),HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
+        return new ResponseEntity<>(getErrorResponse(e.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
     }
 
     /**
@@ -154,12 +189,12 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
      * @param e        the {@link Exception} instance that was thrown
      * @param response the {@link HttpServletResponse} associated with the current request
      * @return a {@link ResponseEntity} containing a {@link DefaultErrorResponse} with an
-     *         HTTP status of 400 Bad Request
+     * HTTP status of 400 Bad Request
      */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<DefaultErrorResponse> handleRuntimeException(Exception  e, HttpServletResponse response) {
+    public ResponseEntity<DefaultErrorResponse> handleRuntimeException(Exception e, HttpServletResponse response) {
         log.error(e.getMessage(), e);
-        return new ResponseEntity<>(getErrorResponse(e.getMessage(),HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
+        return new ResponseEntity<>(getErrorResponse(e.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
     }
 
     /**
