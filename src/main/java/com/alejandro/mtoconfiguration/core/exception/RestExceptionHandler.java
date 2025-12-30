@@ -26,12 +26,9 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import java.nio.file.AccessDeniedException;
-import java.sql.Timestamp;
-import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -129,6 +126,17 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
                 .body(notification);
     }
 
+    /**
+     * Handles exceptions of type {@code RailwayInfrastructureException} and constructs an appropriate
+     * response indicating the issue details.
+     *
+     * @param e the {@code RailwayInfrastructureException} that was thrown, containing details about
+     *          the error such as action, code, message, severity, and category.
+     * @param request the {@code HttpServletRequest} object that contains the HTTP request information,
+     *                including the URI of the request.
+     * @return a {@code ResponseEntity<Notification>} containing a notification object with information
+     *         about the error and an HTTP status of {@code BAD_REQUEST}.
+     */
     @ExceptionHandler({RailwayInfrastructureException.class})
     public ResponseEntity<Notification> handleRailwayInfrastructureException(RailwayInfrastructureException e, HttpServletRequest request) {
 
@@ -148,6 +156,16 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
 
     }
 
+    /**
+     * Handles JPA constraint violation exceptions encountered during a transaction.
+     * This method captures and processes {@link ConstraintViolationException} instances,
+     * extracting details of the constraint violations and formatting them into a user-friendly response.
+     * If no constraint violations are found, a generic bad request response is returned.
+     *
+     * @param e the {@link TransactionSystemException} that encapsulates the root cause of the JPA constraint violations.
+     * @return a {@link ResponseEntity} containing a list of constraint violation messages if violations are present,
+     * or a generic bad request response if none are found.
+     */
     @ExceptionHandler(TransactionSystemException.class)
     public ResponseEntity<Object> handleJPAViolations(TransactionSystemException e) {
         log.error(e.getMessage(), e);
