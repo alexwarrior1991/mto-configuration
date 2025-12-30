@@ -129,6 +129,25 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
                 .body(notification);
     }
 
+    @ExceptionHandler({RailwayInfrastructureException.class})
+    public ResponseEntity<Notification> handleRailwayInfrastructureException(RailwayInfrastructureException e, HttpServletRequest request) {
+
+        Notification notification = getNotification(
+                e.getAction(),
+                e.getCode(),
+                e.getMessage(),
+                e.getSeverity(),
+                request.getRequestURI(),   // mejor que getPathInfo()
+                e.getCategory(),
+                request
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(notification);
+
+    }
+
     @ExceptionHandler(TransactionSystemException.class)
     public ResponseEntity<Object> handleJPAViolations(TransactionSystemException e) {
         log.error(e.getMessage(), e);
