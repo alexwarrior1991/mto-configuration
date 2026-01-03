@@ -525,6 +525,7 @@ public class PredicateBuilder<E1 extends BaseEntity, E2 extends BaseEntity> {
             searchValue = MapUtils.getString(filters, SEARCH_TEXT);
         }
 
+        // Builds disjunction of date predicates when search provided
         if (StringUtils.isNotBlank(searchValue)) {
             List<Predicate> predicates = new ArrayList<>();
 
