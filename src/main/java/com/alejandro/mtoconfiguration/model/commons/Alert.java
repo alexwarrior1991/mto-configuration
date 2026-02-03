@@ -107,4 +107,8 @@ public class Alert implements Serializable {
         return this;
     }
 
+    public Alert addStacktrace(Exception e) {
+        this.details = ExceptionUtils.getStackTrace(e);
+        return this;
+    }
 }

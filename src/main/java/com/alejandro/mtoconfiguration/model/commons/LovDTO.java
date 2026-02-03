@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.FieldDefaults;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.Optional;
 
@@ -46,5 +47,9 @@ public class LovDTO extends BaseDTO {
 
     public static String getLovDescription(LovDTO lovDTO) {
         return Optional.ofNullable(lovDTO).map(LovDTO::getDescription).orElse("");
+    }
+
+    public static boolean validLovDTO(LovDTO dto) {
+        return dto != null && (dto.getId() != null || !StringUtils.isBlank(dto.getCode()));
     }
 }

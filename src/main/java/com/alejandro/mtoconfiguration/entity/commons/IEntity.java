@@ -8,7 +8,7 @@ public interface IEntity {
 
     Long getId();
 
-    void setId();
+    void setId(Long id);
 
     LocalDateTime getCreateDate();
 
