@@ -1,1 +1,7 @@
-spring.application.name=mto-configuration
+spring:
+  application:
+    name: mto-configuration
+  cache:
+    application: "semi.mto.configuration"
+
+

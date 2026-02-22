@@ -11,7 +11,7 @@ import java.util.function.Predicate;
 import java.util.logging.Logger;
 
 @Slf4j
-public class BaseException extends Exception {
+public class BaseException extends RuntimeException {
 
     @Serial
     private static final long serialVersionUID = 1L;

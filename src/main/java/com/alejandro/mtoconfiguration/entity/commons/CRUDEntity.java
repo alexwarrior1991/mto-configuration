@@ -12,7 +12,7 @@ import org.hibernate.envers.Audited;
 @DynamicInsert
 @MappedSuperclass
 @Audited
-@SoftDelete(columnName = "deleted", strategy = SoftDeleteType.ACTIVE)
+@SoftDelete(columnName = "deleted", strategy = SoftDeleteType.DELETED)
 public abstract class CRUDEntity extends BaseEntity {
 
     @Column(name = "deleted", nullable = false)
