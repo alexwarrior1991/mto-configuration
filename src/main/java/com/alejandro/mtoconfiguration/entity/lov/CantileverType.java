@@ -11,19 +11,20 @@ import java.io.Serial;
 @Entity
 @Audited
 @Table(indexes = {@Index(columnList = "code, description")})
-public class PoleType extends Lov {
+public class CantileverType extends Lov {
 
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private static final String POLETYPE_GENERATOR = "PoleType_gen";
-    private static final String POLETYPE_SEQUENCE = "PoleType_seq";
+    private static final String CANTILEVER_TYPE_GENERATOR = "CantileverType_gen";
+    private static final String CANTILEVER_TYPE_SEQUENCE = "CantileverType_seq";
 
+    @Column(name = "DRAWING_NUMBER")
     private Long drawingNumber;
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO, generator = POLETYPE_GENERATOR)
-    @SequenceGenerator(name = POLETYPE_GENERATOR, sequenceName = POLETYPE_SEQUENCE, allocationSize = 1)
+    @GeneratedValue(strategy = GenerationType.AUTO, generator = CANTILEVER_TYPE_GENERATOR)
+    @SequenceGenerator(name = CANTILEVER_TYPE_GENERATOR, sequenceName = CANTILEVER_TYPE_SEQUENCE, allocationSize = 1)
     @Override
     public Long getId() {
         return id;

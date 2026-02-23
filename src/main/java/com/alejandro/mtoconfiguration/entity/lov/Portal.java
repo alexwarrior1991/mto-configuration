@@ -11,19 +11,21 @@ import java.io.Serial;
 @Entity
 @Audited
 @Table(indexes = {@Index(columnList = "code, description")})
-public class PoleType extends Lov {
+public class Portal extends Lov {
 
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private static final String POLETYPE_GENERATOR = "PoleType_gen";
-    private static final String POLETYPE_SEQUENCE = "PoleType_seq";
+    private static final String PORTAL_GENERATOR = "Portal_gen";
+    private static final String PORTAL_SEQUENCE = "Portal_seq";
 
     private Long drawingNumber;
+    private PortalType portalType;
+
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO, generator = POLETYPE_GENERATOR)
-    @SequenceGenerator(name = POLETYPE_GENERATOR, sequenceName = POLETYPE_SEQUENCE, allocationSize = 1)
+    @GeneratedValue(strategy = GenerationType.AUTO, generator = PORTAL_GENERATOR)
+    @SequenceGenerator(name = PORTAL_GENERATOR, sequenceName = PORTAL_SEQUENCE, allocationSize = 1)
     @Override
     public Long getId() {
         return id;
@@ -37,5 +39,11 @@ public class PoleType extends Lov {
     @Column(name = "DRAWING_NUMBER")
     public Long getDrawingNumber() {
         return drawingNumber;
+    }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "PORTAL_TYPE_ID")
+    public PortalType getPortalType() {
+        return portalType;
     }
 }
