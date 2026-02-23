@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.core.audit.envers;
 
+import com.querydsl.core.annotations.QueryExclude;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -8,6 +9,7 @@ import lombok.Setter;
 @Getter
 @Entity
 @Table(name = "audit_modified_entity", indexes = {@Index(columnList = "revision_id")})
+@QueryExclude
 public class AuditModifiedEntity {
 
     @Id

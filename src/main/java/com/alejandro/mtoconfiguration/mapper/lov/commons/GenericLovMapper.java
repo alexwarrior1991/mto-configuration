@@ -1,4 +1,4 @@
-package com.alejandro.mtoconfiguration.mapper.lov;
+package com.alejandro.mtoconfiguration.mapper.lov.commons;
 
 import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;

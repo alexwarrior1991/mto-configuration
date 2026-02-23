@@ -11,10 +11,12 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
 
     T toDTO(E entity);
 
+    @ToEntityIgnoreAudit
     E toEntity(T dto);
 
     List<T> toListDTO(List<E> entities);
 
+    @ToEntityIgnoreAudit
     List<E> toListEntity(List<T> dtos);
 
     void mapToDTOs(List<E> entities, @MappingTarget List<T> dtos);
@@ -23,6 +25,7 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
         return entities.map(this::toDTO);
     }
 
+    @ToEntityIgnoreAudit
     void updateEntityFromDTO(T dto, @MappingTarget E entity);
 
     void updateDTOFromEntity(E entity, @MappingTarget T dto);

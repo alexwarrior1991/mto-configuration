@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.repository.jpa.commons;
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity_;
 import com.alejandro.mtoconfiguration.entity.commons.IEntity;
+import com.alejandro.mtoconfiguration.entity.lov.PoleType_;
 import com.alejandro.mtoconfiguration.model.commons.PageableDTO;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import jakarta.persistence.EntityManager;
@@ -128,8 +129,8 @@ public interface CriteriaSearchRepository<E extends IEntity> {
         // Applies predicate to ID query or selects all IDs
         Optional.ofNullable(predicate)
                 .ifPresentOrElse(
-                        p -> idQuery.select(entityIdRoot.get(BaseEntity_.ID)).distinct(true).where(p),
-                        () -> idQuery.select(entityIdRoot.get(BaseEntity_.ID)).distinct(true)
+                        p -> idQuery.select(entityIdRoot.get(PoleType_.ID)).distinct(true).where(p),
+                        () -> idQuery.select(entityIdRoot.get(PoleType_.ID)).distinct(true)
                 );
 
         // Executes ID query; applies pagination; returns distinct IDs

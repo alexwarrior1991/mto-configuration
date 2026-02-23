@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.core.audit.envers;
 
+import com.querydsl.core.annotations.QueryExclude;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -14,6 +15,7 @@ import java.util.Set;
 @Getter
 @Entity
 @RevisionEntity(RevisionEntityListener.class)
+@QueryExclude
 public class ExtendedRevisionEntity extends DefaultRevisionEntity {
 
     @Serial
