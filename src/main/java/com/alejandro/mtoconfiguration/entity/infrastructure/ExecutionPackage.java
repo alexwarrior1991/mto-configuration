@@ -1,15 +1,23 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
+import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
+import lombok.Setter;
 import org.hibernate.envers.Audited;
+
 import java.io.Serial;
 import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Objects;
+import java.util.Set;
 
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
+@Setter
 @Entity
 @Audited
 @Table(name = "EXECUTION_PACKAGE")
@@ -23,11 +31,11 @@ public class ExecutionPackage extends CRUDEntity {
 
     private String name;
     private Boolean initialPackage;
-    private Boolean enabled = true;
     private Long length;
     private LocalDate startDate;
     private LocalDate endDate;
     private BusinessEntity company;
+    private Set<Track> tracks = new HashSet<>();
 
 
     @Id
@@ -54,12 +62,6 @@ public class ExecutionPackage extends CRUDEntity {
         return initialPackage;
     }
 
-    @NotNull
-    @Column(name = "STATUS", nullable = false)
-    public Boolean getEnabled() {
-        return enabled;
-    }
-
     @Column(name = "LENGTH", nullable = false, columnDefinition = "bigint")
     public Long getLength() {
         return length;
@@ -80,5 +82,66 @@ public class ExecutionPackage extends CRUDEntity {
     @Audited(targetAuditMode = NOT_AUDITED)
     public BusinessEntity getCompany() {
         return company;
+    }
+
+    @OneToMany(mappedBy = "executionPackage", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Set<Track> getTracks() {
+        return tracks;
+    }
+
+    public void addTrack(Track track) {
+        if (track != null && !containsTrack(track)) {
+            getTracks().add(track);
+            track.setExecutionPackage(this);
+        }
+    }
+
+    public void removeTrack(Track track) {
+        if (track != null && containsTrack(track)) {
+            getTracks().remove(track);
+            track.setExecutionPackage(null);
+        }
+    }
+
+    public boolean containsTrack(Track track) {
+        return getTracks().contains(track);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof ExecutionPackage that)) return false;
+
+        // Si el ID existe, lo usamos como identificador único (Business Key recomendada)
+        if (this.getId() != null && that.getId() != null) {
+            return Objects.equals(this.getId(), that.getId());
+        }
+
+        // Si no hay ID (entidad nueva), comparamos por campos únicos de negocio
+        return Objects.equals(getName(), that.getName()) &&
+                Objects.equals(getStartDate(), that.getStartDate()) &&
+                Objects.equals(getCompany(), that.getCompany());
+    }
+
+    @Override
+    public int hashCode() {
+        // Si el ID es nulo, usamos campos de negocio.
+        // Si no es nulo, lo ideal es que el hashcode sea consistente.
+        if (getId() == null) {
+            return Objects.hash(name, startDate, company);
+        }
+        return Objects.hash(getId());
+    }
+
+    @Override
+    public int compareTo(BaseEntity o) {
+        if (!(o instanceof ExecutionPackage other)) {
+            return super.compareTo(o);
+        }
+
+        return Comparator.comparing(ExecutionPackage::getStartDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ExecutionPackage::getName, Comparator.nullsLast(Comparator.naturalOrder()))
+                .compare(this, other);
     }
 }
