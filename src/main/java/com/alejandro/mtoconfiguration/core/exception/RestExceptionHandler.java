@@ -233,7 +233,7 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ServletException.class)
     public ResponseEntity<DefaultErrorResponse> handleServletException(ServletException e, HttpServletResponse response) {
         log.error(e.getMessage(), e);
-        return new ResponseEntity<>(getErrorResponse(e.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
+        return new ResponseEntity<>(getErrorResponse(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR), HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     /**
@@ -249,7 +249,32 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<DefaultErrorResponse> handleRuntimeException(Exception e, HttpServletResponse response) {
         log.error(e.getMessage(), e);
-        return new ResponseEntity<>(getErrorResponse(e.getMessage(), HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
+        return new ResponseEntity<>(getErrorResponse(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    /**
+     * Handles exceptions of type ValidationException and returns an appropriate HTTP response.
+     *
+     * @param e the ValidationException that was thrown, containing error details.
+     * @return a ResponseEntity containing the error details and a BAD_REQUEST (400) HTTP status.
+     */
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<Object> handleValidationException(ValidationException e) {
+        log.error("Validation Error: {}", e.getMessage());
+        return new ResponseEntity<>(e.getErrors(), HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Handles exceptions of type {@code BaseException} and returns an appropriate HTTP response.
+     *
+     * @param e the exception of type {@code BaseException} that was thrown
+     * @return a {@code ResponseEntity} object containing the error message and status code
+     *         {@code INTERNAL_SERVER_ERROR}
+     */
+    @ExceptionHandler(BaseException.class)
+    public ResponseEntity<Object> handleBaseException(BaseException e){
+        log.error("Service error: {}", e.getMessage());
+        return new ResponseEntity<>(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     /**
@@ -291,7 +316,7 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
                 .map(notification -> {
                     notification.setTimestamp(DateTimeFormatter
                             .ofPattern("yyyy-MM-dd hh:mm:ss")
-                            .format(java.time.LocalDateTime.now()));
+                            .format(LocalDateTime.now()));
                     notification.setAction(action);
                     notification.setCode(code);
                     notification.setDescription(description);
