@@ -5,10 +5,13 @@ import com.alejandro.mtoconfiguration.entity.lov.AnchorageFoundation;
 import com.alejandro.mtoconfiguration.entity.lov.Foundation;
 import com.alejandro.mtoconfiguration.entity.lov.ProfileStatus;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Size;
 import lombok.Setter;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
@@ -25,6 +28,8 @@ public class Profile extends CRUDEntity {
     private static final String PROFILE_SEQUENCE = "Profile_seq";
 
     private Track track;
+    private Disconnector disconnector;
+    private List<Cantilever> cantilevers = new ArrayList<>();
     private ProfileStatus profileStatus;
     private Foundation foundation;
     private AnchorageFoundation anchorageFoundation;
@@ -49,6 +54,32 @@ public class Profile extends CRUDEntity {
         return track;
     }
 
+    @Size(max = 3, message = "The profile must have between 0 and 3 cantilevers")
+    @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderColumn(name = "insertion_order") // Crea una columna física para guardar el índice [0, 1, 2...]
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public List<Cantilever> getCantilevers() {
+        return cantilevers;
+    }
+
+    public void addCantilever(Cantilever cantilever) {
+        if (cantilever != null && !containsCantilever(cantilever)) {
+            getCantilevers().add(cantilever);
+            cantilever.setProfile(this);
+        }
+    }
+
+    public void removeCantilever(Cantilever cantilever) {
+        if (cantilever != null && containsCantilever(cantilever)) {
+            getCantilevers().remove(cantilever);
+            cantilever.setProfile(null);
+        }
+    }
+
+    public boolean containsCantilever(Cantilever cantilever) {
+        return getCantilevers().contains(cantilever);
+    }
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "PROFILE_STATUS_ID")
     @Audited(targetAuditMode = NOT_AUDITED)
@@ -68,5 +99,40 @@ public class Profile extends CRUDEntity {
     @Audited(targetAuditMode = NOT_AUDITED)
     public AnchorageFoundation getAnchorageFoundation() {
         return anchorageFoundation;
+    }
+
+    @OneToOne(
+            mappedBy = "profile",
+            cascade = {CascadeType.PERSIST, CascadeType.MERGE},
+            fetch = FetchType.LAZY,
+            orphanRemoval = false
+    )
+    public Disconnector getDisconnector() {
+        return disconnector;
+    }
+
+    @PreRemove
+    private void preRemove() {
+        if (disconnector != null) {
+            disconnector.setProfile(null);
+        }
+    }
+
+    public void addDisconnector(Disconnector disconnector) {
+        if (disconnector != null) {
+            this.setDisconnector(disconnector);
+            disconnector.setProfile(this);
+        }
+    }
+
+    public void removeDisconnector() {
+        if (this.disconnector != null) {
+            this.disconnector.setProfile(null);
+            this.setDisconnector(null);
+        }
+    }
+
+    public boolean containsDisconnector() {
+        return this.disconnector != null;
     }
 }

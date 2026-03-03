@@ -30,6 +30,7 @@ public class Track extends CRUDEntity {
     private String name;
     private Boolean enabled = true;
     private ExecutionPackage executionPackage;
+    private Station station;
     private Set<Profile> profiles = new HashSet<>();
 
     @Id
@@ -61,6 +62,13 @@ public class Track extends CRUDEntity {
     @Audited(targetAuditMode = NOT_AUDITED)
     public ExecutionPackage getExecutionPackage() {
         return executionPackage;
+    }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "STATION_ID", nullable = true) // nullable = true permite que sea opcional
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Station getStation() {
+        return station;
     }
 
     @OneToMany(mappedBy = "track", cascade = CascadeType.ALL, orphanRemoval = true)

@@ -36,6 +36,7 @@ public class ExecutionPackage extends CRUDEntity {
     private LocalDate endDate;
     private BusinessEntity company;
     private Set<Track> tracks = new HashSet<>();
+    private Set<Station> stations = new HashSet<>();
 
 
     @Id
@@ -106,6 +107,30 @@ public class ExecutionPackage extends CRUDEntity {
 
     public boolean containsTrack(Track track) {
         return getTracks().contains(track);
+    }
+
+    @OneToMany(mappedBy = "executionPackage", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Set<Station> getStations() {
+        return stations;
+    }
+
+    public void addStation(Station station) {
+        if (station != null && !containsStation(station)) {
+            getStations().add(station);
+            station.setExecutionPackage(this);
+        }
+    }
+
+    public void removeStation(Station station) {
+        if (station != null && containsStation(station)) {
+            getStations().remove(station);
+            station.setExecutionPackage(null);
+        }
+    }
+
+    public boolean containsStation(Station station) {
+        return getStations().contains(station);
     }
 
     @Override
