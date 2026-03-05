@@ -8,10 +8,7 @@ import lombok.Setter;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
@@ -31,7 +28,7 @@ public class Track extends CRUDEntity {
     private Boolean enabled = true;
     private ExecutionPackage executionPackage;
     private Station station;
-    private Set<Profile> profiles = new HashSet<>();
+    private List<Profile> profiles = new ArrayList<>();
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO, generator = TRACK_GENERATOR)
@@ -72,8 +69,9 @@ public class Track extends CRUDEntity {
     }
 
     @OneToMany(mappedBy = "track", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderColumn(name = "insertion_order") // Columna para persistir el orden de la lista
     @Audited(targetAuditMode = NOT_AUDITED)
-    public Set<Profile> getProfiles() {
+    public List<Profile> getProfiles() {
         return profiles;
     }
 

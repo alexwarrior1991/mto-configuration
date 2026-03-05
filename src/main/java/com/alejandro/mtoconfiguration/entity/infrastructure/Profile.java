@@ -1,15 +1,17 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
-import com.alejandro.mtoconfiguration.entity.lov.AnchorageFoundation;
-import com.alejandro.mtoconfiguration.entity.lov.Foundation;
-import com.alejandro.mtoconfiguration.entity.lov.ProfileStatus;
+import com.alejandro.mtoconfiguration.entity.lov.*;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import lombok.Setter;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,12 +29,21 @@ public class Profile extends CRUDEntity {
     private static final String PROFILE_GENERATOR = "Profile_gen";
     private static final String PROFILE_SEQUENCE = "Profile_seq";
 
+    private String profileId;
+    private BigDecimal kp;
+
     private Track track;
     private Disconnector disconnector;
     private List<Cantilever> cantilevers = new ArrayList<>();
-    private ProfileStatus profileStatus;
-    private Foundation foundation;
+
+    private Anchorage anchorage;
     private AnchorageFoundation anchorageFoundation;
+    private Foundation foundation;
+    private PoleType poleType;
+    private Portal portal;
+    private ProfileStatus profileStatus;
+    private ReturnSupport returnSupport;
+    private Sectioning sectioning;
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO, generator = PROFILE_GENERATOR)
@@ -45,6 +56,76 @@ public class Profile extends CRUDEntity {
     @Override
     public void setId(Long id) {
         this.id = id;
+    }
+
+    @NotNull
+    @Column(name = "PROFILE_ID", length = 50, nullable = false)
+    public String getProfileId() {
+        return profileId;
+    }
+
+    @NotNull
+    @PositiveOrZero
+    @Digits(integer = 9, fraction = 3)
+    @Column(name = "KILOMETRIC_POINT", precision = 12, scale = 3, nullable = false)
+    public BigDecimal getKp() {
+        return kp;
+    }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ANCHORAGE_ID")
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Anchorage getAnchorage() {
+        return anchorage;
+    }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ANCHORAGE_FOUNDATION_ID")
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public AnchorageFoundation getAnchorageFoundation() {
+        return anchorageFoundation;
+    }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "FOUNDATION_ID")
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Foundation getFoundation() {
+        return foundation;
+    }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "POLE_TYPE_ID")
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public PoleType getPoleType() {
+        return poleType;
+    }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "PORTAL_ID")
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Portal getPortal() {
+        return portal;
+    }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "PROFILE_STATUS_ID")
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public ProfileStatus getProfileStatus() {
+        return profileStatus;
+    }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "RETURN_SUPPORT_ID")
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public ReturnSupport getReturnSupport() {
+        return returnSupport;
+    }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "SECTIONING_ID")
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Sectioning getSectioning() {
+        return sectioning;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -80,26 +161,7 @@ public class Profile extends CRUDEntity {
         return getCantilevers().contains(cantilever);
     }
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "PROFILE_STATUS_ID")
-    @Audited(targetAuditMode = NOT_AUDITED)
-    public ProfileStatus getProfileStatus() {
-        return profileStatus;
-    }
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "FOUNDATION_ID")
-    @Audited(targetAuditMode = NOT_AUDITED)
-    public Foundation getFoundation() {
-        return foundation;
-    }
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ANCHORAGE_FOUNDATION_ID")
-    @Audited(targetAuditMode = NOT_AUDITED)
-    public AnchorageFoundation getAnchorageFoundation() {
-        return anchorageFoundation;
-    }
 
     @OneToOne(
             mappedBy = "profile",

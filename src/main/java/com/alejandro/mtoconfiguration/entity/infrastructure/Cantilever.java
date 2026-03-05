@@ -36,6 +36,7 @@ public class Cantilever extends CRUDEntity {
 
     private CantileverType cantileverType;
     private Profile profile;
+    private SteadyArm steadyArm;
 
 
     @Id
@@ -91,7 +92,7 @@ public class Cantilever extends CRUDEntity {
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "PROFILE_ID")
+    @JoinColumn(name = "PROFILE_ID", nullable = false)
     @Audited(targetAuditMode = NOT_AUDITED)
     public Profile getProfile() {
         return profile;
@@ -102,5 +103,10 @@ public class Cantilever extends CRUDEntity {
     @Audited(targetAuditMode = NOT_AUDITED)
     public CantileverType getCantileverType() {
         return cantileverType;
+    }
+
+    @OneToOne(mappedBy = "cantilever", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    public SteadyArm getSteadyArm() {
+        return steadyArm;
     }
 }
