@@ -109,4 +109,22 @@ public class Cantilever extends CRUDEntity {
     public SteadyArm getSteadyArm() {
         return steadyArm;
     }
+
+    public void addSteadyArm(SteadyArm steadyArm) {
+        if (steadyArm != null) {
+            this.setSteadyArm(steadyArm);
+            steadyArm.setCantilever(this);
+        }
+    }
+
+    public void removeSteadyArm() {
+        if (this.steadyArm != null) {
+            this.steadyArm.setCantilever(null);
+            this.setSteadyArm(null);
+        }
+    }
+
+    public boolean containsSteadyArm(SteadyArm steadyArm) {
+        return this.steadyArm != null;
+    }
 }

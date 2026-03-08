@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
+import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.lov.*;
 import jakarta.persistence.*;
@@ -13,7 +14,9 @@ import org.hibernate.envers.Audited;
 import java.io.Serial;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
@@ -196,5 +199,46 @@ public class Profile extends CRUDEntity {
 
     public boolean containsDisconnector() {
         return this.disconnector != null;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        // Uso de instanceof para soportar proxies de Hibernate
+        if (!(o instanceof Profile that)) return false;
+
+        // 1. Identidad por base de datos si el ID existe
+        if (this.getId() != null && that.getId() != null) {
+            return Objects.equals(this.getId(), that.getId());
+        }
+
+        // 2. Business Key: El identificador del perfil y la vía a la que pertenece
+        return Objects.equals(getProfileId(), that.getProfileId()) &&
+                Objects.equals(getTrack(), that.getTrack());
+    }
+
+    @Override
+    public int hashCode() {
+        // Consistencia con equals: ID o Business Key
+        if (getId() == null) {
+            return Objects.hash(getProfileId(), getTrack());
+        }
+        return Objects.hash(getId());
+    }
+
+    @Override
+    public int compareTo(BaseEntity o) {
+        if (!(o instanceof Profile other)) {
+            return super.compareTo(o);
+        }
+
+        // Ordenación funcional:
+        // 1. Por el orden natural de la vía (Track)
+        // 2. Por el punto kilométrico (KP) para asegurar orden geográfico/lineal
+        // 3. Por el profileId como desempate final
+        return Comparator.comparing(Profile::getTrack, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(Profile::getKp, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(Profile::getProfileId, Comparator.nullsLast(Comparator.naturalOrder()))
+                .compare(this, other);
     }
 }

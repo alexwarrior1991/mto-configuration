@@ -1,14 +1,13 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
+import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import jakarta.persistence.*;
 import lombok.Setter;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
@@ -28,6 +27,7 @@ public class Station extends CRUDEntity {
     private ExecutionPackage executionPackage;
     private Set<Track> tracks = new HashSet<>();
     private Set<Disconnector> disconnectors = new HashSet<>();
+    private Set<SectionInsulator> sectionInsulators = new HashSet<>();
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO, generator = STATION_GENERATOR)
@@ -103,4 +103,64 @@ public class Station extends CRUDEntity {
         return getDisconnectors().contains(disconnector);
     }
 
+    @OneToMany(mappedBy = "station", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Set<SectionInsulator> getSectionInsulators() {
+        return sectionInsulators == null ? Collections.emptySet() : sectionInsulators;
+    }
+
+    public void addSectionInsulator(SectionInsulator sectionInsulator) {
+        if (sectionInsulator != null && !containsSectionInsulator(sectionInsulator)) {
+            getSectionInsulators().add(sectionInsulator);
+            sectionInsulator.setStation(this);
+        }
+    }
+
+    public void removeSectionInsulator(SectionInsulator sectionInsulator) {
+        if (sectionInsulator != null && containsSectionInsulator(sectionInsulator)) {
+            getSectionInsulators().remove(sectionInsulator);
+            sectionInsulator.setStation(null);
+        }
+    }
+
+    public boolean containsSectionInsulator(SectionInsulator sectionInsulator) {
+        return getSectionInsulators().contains(sectionInsulator);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        // Uso de instanceof para soportar correctamente los proxies de Hibernate (Lazy Loading)
+        if (!(o instanceof Station that)) return false;
+
+        // 1. Si el ID existe en ambos, usamos identidad de base de datos
+        if (this.getId() != null && that.getId() != null) {
+            return Objects.equals(this.getId(), that.getId());
+        }
+
+        // 2. Business Key: Una estación se identifica por su nombre y el paquete de ejecución al que pertenece
+        return Objects.equals(getName(), that.getName()) &&
+                Objects.equals(getExecutionPackage(), that.getExecutionPackage());
+    }
+
+    @Override
+    public int hashCode() {
+        // Consistencia con equals: si no hay ID, usamos la Business Key
+        if (getId() == null) {
+            return Objects.hash(getName(), getExecutionPackage());
+        }
+        return Objects.hash(getId());
+    }
+
+    @Override
+    public int compareTo(BaseEntity o) {
+        if (!(o instanceof Station other)) {
+            return super.compareTo(o);
+        }
+
+        // Ordenación funcional: primero por el orden natural del paquete de ejecución y luego por el nombre de la estación
+        return Comparator.comparing(Station::getExecutionPackage, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(Station::getName, Comparator.nullsLast(Comparator.naturalOrder()))
+                .compare(this, other);
+    }
 }

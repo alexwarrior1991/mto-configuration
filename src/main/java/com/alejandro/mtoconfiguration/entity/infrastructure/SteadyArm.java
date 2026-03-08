@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
+import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.lov.SteadyArmType;
 import jakarta.persistence.*;
@@ -10,6 +11,8 @@ import lombok.Setter;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
+import java.util.Comparator;
+import java.util.Objects;
 
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
@@ -61,5 +64,44 @@ public class SteadyArm extends CRUDEntity {
     @JoinColumn(name = "CANTILEVER_ID", unique = true) // unique=true asegura que sea 1 a 1
     public Cantilever getCantilever() {
         return cantilever;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        // Uso de instanceof para soportar correctamente los proxies de Hibernate (Lazy Loading)
+        if (!(o instanceof SteadyArm that)) return false;
+
+        // 1. Identidad por base de datos si el ID existe en ambos
+        if (this.getId() != null && that.getId() != null) {
+            return Objects.equals(this.getId(), that.getId());
+        }
+
+        // 2. Business Key: Relación con Cantilever (relación 1:1)
+        // Usamos los getters para asegurar la inicialización de Proxies si es necesario
+        return Objects.equals(getCantilever(), that.getCantilever());
+    }
+
+    @Override
+    public int hashCode() {
+        // Consistencia con equals: si no hay ID, usamos la Business Key
+        if (getId() == null) {
+            return Objects.hash(getCantilever());
+        }
+        return Objects.hash(getId());
+    }
+
+    @Override
+    public int compareTo(BaseEntity o) {
+        if (!(o instanceof SteadyArm other)) {
+            return super.compareTo(o);
+        }
+
+        // Ordenación funcional:
+        // 1. Por el orden natural del Cantilever (que a su vez ordena por Profile/Track)
+        // 2. Por la longitud como desempate técnico
+        return Comparator.comparing(SteadyArm::getCantilever, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(SteadyArm::getLength, Comparator.nullsLast(Comparator.naturalOrder()))
+                .compare(this, other);
     }
 }
