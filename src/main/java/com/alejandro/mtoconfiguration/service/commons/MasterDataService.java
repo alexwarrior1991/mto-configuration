@@ -71,6 +71,13 @@ public class MasterDataService {
         return entity;
     }
 
+    private <E extends Lov> E getEntityById(Long id, LovRepository<E> repository) {
+        if (id == null) {
+            return null;
+        }
+        return repository.findById(id).orElse(null);
+    }
+
     private <E extends Lov, D extends LovDTO> D getEntityByIdAndMap(Long id, LovRepository<E> repository, LovMapper<D, E> mapper) {
         if (id == null) {
             return null;
@@ -79,7 +86,6 @@ public class MasterDataService {
                 .map(mapper::toDTO)
                 .orElse(null);
     }
-
 
 
     @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")

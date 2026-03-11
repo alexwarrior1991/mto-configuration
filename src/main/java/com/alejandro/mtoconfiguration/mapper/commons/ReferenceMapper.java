@@ -6,7 +6,7 @@ import org.mapstruct.TargetType;
 import org.springframework.stereotype.Component;
 
 @Component
-class ReferenceMapper {
+public class ReferenceMapper {
 
     @PersistenceContext
     private EntityManager entityManager;
