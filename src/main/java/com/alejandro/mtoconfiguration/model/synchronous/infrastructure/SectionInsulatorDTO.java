@@ -7,4 +7,7 @@ import lombok.Setter;
 @Getter
 @Setter
 public class SectionInsulatorDTO extends BaseDTO {
+
+    private String name;
+    private Long stationId;
 }
