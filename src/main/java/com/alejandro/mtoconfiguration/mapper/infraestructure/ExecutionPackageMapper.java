@@ -6,6 +6,7 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
+import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
@@ -29,10 +30,12 @@ public abstract class ExecutionPackageMapper implements BaseMapper<ExecutionPack
 
     @Override
     @Mapping(target = "company", source = "companyId")
+    @ToEntityIgnoreAudit
     public abstract ExecutionPackage toEntity(ExecutionPackageDTO dto);
 
     @Override
     @Mapping(target = "company", source = "companyId")
+    @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(ExecutionPackageDTO dto, @MappingTarget ExecutionPackage entity);
 
     @AfterMapping

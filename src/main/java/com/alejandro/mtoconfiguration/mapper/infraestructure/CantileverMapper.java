@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.SteadyArm;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
+import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
@@ -34,11 +35,13 @@ public abstract class CantileverMapper implements BaseMapper<CantileverDTO, Cant
     @Override
     @Mapping(target = "profile", source = "profileId")
     @Mapping(target = "cantileverType", ignore = true) // Gestionado en AfterMapping
+    @ToEntityIgnoreAudit
     public abstract Cantilever toEntity(CantileverDTO dto);
 
     @Override
     @Mapping(target = "profile", source = "profileId")
     @Mapping(target = "cantileverType", ignore = true) // Gestionado en AfterMapping
+    @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(CantileverDTO dto, @MappingTarget Cantilever entity);
 
     @AfterMapping

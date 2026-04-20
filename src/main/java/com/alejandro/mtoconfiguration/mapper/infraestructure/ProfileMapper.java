@@ -6,6 +6,7 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
+import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
@@ -49,6 +50,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
     @Mapping(target = "sectioning", ignore = true)
+    @ToEntityIgnoreAudit
     public abstract Profile toEntity(ProfileDTO dto);
 
     @Override
@@ -61,6 +63,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
     @Mapping(target = "sectioning", ignore = true)
+    @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(ProfileDTO dto, @MappingTarget Profile entity);
 
     @AfterMapping

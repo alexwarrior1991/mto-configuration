@@ -7,6 +7,7 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
+import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
@@ -32,10 +33,12 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
 
     @Override
     @Mapping(target = "executionPackage", source = "executionPackageId")
+    @ToEntityIgnoreAudit
     public abstract Station toEntity(StationDTO dto);
 
     @Override
     @Mapping(target = "executionPackage", source = "executionPackageId")
+    @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(StationDTO dto, @MappingTarget Station entity);
 
     @AfterMapping

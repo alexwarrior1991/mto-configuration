@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
+import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
@@ -33,11 +34,13 @@ public abstract class TrackMapper implements BaseMapper<TrackDTO, Track> {
     @Override
     @Mapping(target = "executionPackage", source = "executionPackageId")
     @Mapping(target = "station", source = "stationId")
+    @ToEntityIgnoreAudit
     public abstract Track toEntity(TrackDTO dto);
 
     @Override
     @Mapping(target = "executionPackage", source = "executionPackageId")
     @Mapping(target = "station", source = "stationId")
+    @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(TrackDTO dto, @MappingTarget Track entity);
 
 

@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.SteadyArm;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
+import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SteadyArmDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
@@ -32,11 +33,13 @@ public abstract class SteadyArmMapper implements BaseMapper<SteadyArmDTO, Steady
     @Override
     @Mapping(target = "cantilever", source = "cantileverId")
     @Mapping(target = "steadyArmType", ignore = true) // Gestionado en AfterMapping
+    @ToEntityIgnoreAudit
     public abstract SteadyArm toEntity(SteadyArmDTO dto);
 
     @Override
     @Mapping(target = "cantilever", source = "cantileverId")
     @Mapping(target = "steadyArmType", ignore = true) // Gestionado en AfterMapping
+    @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(SteadyArmDTO dto, @MappingTarget SteadyArm entity);
 
     @AfterMapping

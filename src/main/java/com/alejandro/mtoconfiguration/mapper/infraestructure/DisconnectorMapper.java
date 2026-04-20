@@ -4,6 +4,7 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
+import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
@@ -33,12 +34,14 @@ public abstract class DisconnectorMapper implements BaseMapper<DisconnectorDTO, 
     @Mapping(target = "station", source = "stationId")
     @Mapping(target = "profile", source = "profileId")
     @Mapping(target = "disconnectorFunction", ignore = true)
+    @ToEntityIgnoreAudit
     public abstract Disconnector toEntity(DisconnectorDTO dto);
 
     @Override
     @Mapping(target = "station", source = "stationId")
     @Mapping(target = "profile", source = "profileId")
     @Mapping(target = "disconnectorFunction", ignore = true)
+    @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(DisconnectorDTO dto, @MappingTarget Disconnector entity);
 
     @AfterMapping

@@ -4,6 +4,7 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
+import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
@@ -29,10 +30,12 @@ public abstract class SectionInsulatorMapper implements BaseMapper<SectionInsula
 
     @Override
     @Mapping(target = "station", source = "stationId")
+    @ToEntityIgnoreAudit
     public abstract SectionInsulator toEntity(SectionInsulatorDTO dto);
 
     @Override
     @Mapping(target = "station", source = "stationId")
+    @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(SectionInsulatorDTO dto, @MappingTarget SectionInsulator entity);
 
     @AfterMapping
