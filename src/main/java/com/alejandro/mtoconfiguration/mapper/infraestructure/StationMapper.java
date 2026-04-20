@@ -1,6 +1,5 @@
 package com.alejandro.mtoconfiguration.mapper.infraestructure;
 
-
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
@@ -9,10 +8,12 @@ import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
+import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Mapper(config = CentralConfigMapper.class, uses = {
         ReferenceMapper.class,
@@ -20,22 +21,25 @@ import org.mapstruct.MappingTarget;
         DisconnectorMapper.class,
         SectionInsulatorMapper.class
 })
-public interface StationMapper extends BaseMapper<StationDTO, Station> {
+public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
+
+    @Autowired
+    protected MasterDataService masterDataService;
 
     @Override
     @Mapping(target = "executionPackageId", source = "executionPackage.id")
-    StationDTO toDTO(Station entity);
+    public abstract StationDTO toDTO(Station entity);
 
     @Override
     @Mapping(target = "executionPackage", source = "executionPackageId")
-    Station toEntity(StationDTO dto);
+    public abstract Station toEntity(StationDTO dto);
 
     @Override
     @Mapping(target = "executionPackage", source = "executionPackageId")
-    void updateEntityFromDTO(StationDTO dto, Station entity);
+    public abstract void updateEntityFromDTO(StationDTO dto, @MappingTarget Station entity);
 
     @AfterMapping
-    default void linkRelations(StationDTO dto, @MappingTarget Station entity) {
+    protected void mapDtoToEntity(StationDTO dto, @MappingTarget Station entity) {
         // 1. Sincronización de Tracks (Bidireccional + Borrado de huérfanos)
         linkCollection(
                 dto.getTracks(),           // DTOs origen
@@ -62,5 +66,12 @@ public interface StationMapper extends BaseMapper<StationDTO, Station> {
                 SectionInsulator::setStation,  // Linker
                 true                           // Sincronización total
         );
+
+        // 4. Resolución de LOVs (Si Station tuviera alguno en el futuro)
+    }
+
+    @AfterMapping
+    protected void mapEntityToDto(Station entity, @MappingTarget StationDTO dto) {
+        // Reservado para resolución de LOVs si se añaden en el futuro
     }
 }

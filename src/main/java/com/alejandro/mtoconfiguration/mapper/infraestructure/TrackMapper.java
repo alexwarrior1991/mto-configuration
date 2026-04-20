@@ -6,40 +6,59 @@ import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
+import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
+import org.springframework.beans.factory.annotation.Autowired;
 
-@Mapper(config = CentralConfigMapper.class, uses = {ReferenceMapper.class, ProfileMapper.class})
-public interface TrackMapper extends BaseMapper<TrackDTO, Track> {
+@Mapper(
+        config = CentralConfigMapper.class,
+        uses = {
+                ReferenceMapper.class,
+                ProfileMapper.class
+        }
+)
+public abstract class TrackMapper implements BaseMapper<TrackDTO, Track> {
+
+    @Autowired
+    protected MasterDataService masterDataService;
 
     @Override
     @Mapping(target = "executionPackageId", source = "executionPackage.id")
     @Mapping(target = "stationId", source = "station.id")
-    TrackDTO toDTO(Track entity);
-
-
-    @Override
-    @Mapping(target = "executionPackage", source = "executionPackageId")
-    @Mapping(target = "station", source = "stationId")
-    Track toEntity(TrackDTO dto);
+    public abstract TrackDTO toDTO(Track entity);
 
     @Override
     @Mapping(target = "executionPackage", source = "executionPackageId")
     @Mapping(target = "station", source = "stationId")
-    void updateEntityFromDTO(TrackDTO dto, @MappingTarget Track entity);
+    public abstract Track toEntity(TrackDTO dto);
+
+    @Override
+    @Mapping(target = "executionPackage", source = "executionPackageId")
+    @Mapping(target = "station", source = "stationId")
+    public abstract void updateEntityFromDTO(TrackDTO dto, @MappingTarget Track entity);
+
 
     @AfterMapping
-    default void linkRelations(TrackDTO dto, @MappingTarget Track entity) {
+    protected void mapDtoToEntity(TrackDTO dto, @MappingTarget Track entity) {
+
         // Sincronización de Profiles (Bidireccional + Borrado de huérfanos)
         // Se asegura de que cada Profile apunte a la vía (Track) correspondiente.
         linkCollection(
-                dto.getProfiles(),      // DTOs origen (fuente de verdad)
-                entity.getProfiles(),   // Colección actual en la base de datos
-                entity,                 // La entidad padre (Track)
-                Profile::setTrack,      // Referencia al método para establecer el padre
-                true                    // deleteEntitiesNotInDtoList = true (Sincronización total)
+                dto.getProfiles(),      // DTOs origen
+                entity.getProfiles(),   // Colección actual en BD
+                entity,                 // Padre (Track)
+                Profile::setTrack,      // Linker
+                true                    // Sincronización total
         );
+
+        // Añadir aqui resolución de LOVs si Track tuviera alguno
+    }
+
+    @AfterMapping
+    protected void mapEntityToDto(Track entity, @MappingTarget TrackDTO dto) {
+        // Reservado para resolución de LOVs si se añaden en el futuro
     }
 }
