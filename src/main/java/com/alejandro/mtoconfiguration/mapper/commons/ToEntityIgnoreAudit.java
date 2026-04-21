@@ -6,6 +6,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
 @Retention(RetentionPolicy.CLASS)
+@Mapping(target = "id", ignore = true)
 @Mapping(target = "createDate", ignore = true)
 @Mapping(target = "createUser", ignore = true)
 @Mapping(target = "versionDate", ignore = true)

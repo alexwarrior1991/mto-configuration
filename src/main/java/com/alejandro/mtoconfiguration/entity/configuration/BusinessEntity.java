@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.entity.configuration;
 
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
+import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.lov.ComercialEntityType;
 import jakarta.persistence.*;
 import lombok.Setter;
@@ -13,7 +14,7 @@ import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 @Setter
 @Entity
 @Audited
-public class BusinessEntity extends BaseEntity {
+public class BusinessEntity extends CRUDEntity {
 
     @Serial
     private static final long serialVersionUID = 1L;
