@@ -4,6 +4,7 @@ package com.alejandro.mtoconfiguration.service.commons;
 import com.alejandro.mtoconfiguration.entity.commons.IEntity;
 import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.data.domain.Page;
 import org.springframework.scheduling.annotation.Async;
 
@@ -24,46 +25,70 @@ public abstract class AsyncBaseService<T extends BaseDTO, E extends IEntity> ext
     }
 
     @Async
+    public CompletableFuture<T> getByIdAsync(Long id) {
+        return CompletableFuture.completedFuture(getSelfProxy().getById(id));
+    }
+
+    @Async
+    public CompletableFuture<T> createAsync(T dto) {
+        return CompletableFuture.completedFuture(getSelfProxy().create(dto));
+    }
+
+    @Async
+    public CompletableFuture<List<T>> findAllAsync() {
+        return CompletableFuture.completedFuture(getSelfProxy().findAll());
+    }
+
+    @Async
     public CompletableFuture<Page<T>> searchAsync(SearchRequestDTO searchRequestDTO) {
-        return CompletableFuture.supplyAsync(() -> getSelfProxy().search(searchRequestDTO));
+        return CompletableFuture.completedFuture(getSelfProxy().search(searchRequestDTO));
     }
 
     @Async
     public CompletableFuture<List<T>> fetchAndProcessParallel(List<Long> ids, UnaryOperator<T> processor) {
-        return CompletableFuture.supplyAsync(() ->
-                ids.parallelStream()
-                        .map(id -> {
-                            try {
-                                T dto = getSelfProxy().getById(id);
-                                return processor.apply(dto);
-                            } catch (Exception e) {
-                                log.error("Error procesando entidad con ID {}: {}", id, e.getMessage());
-                                return null;
-                            }
-                        })
+
+        // En lugar de parallelStream, creamos una lista de CompletableFutures.
+        // Cada uno se ejecutará en su propio Virtual Thread gracias al executor de Spring.
+        List<CompletableFuture<T>> futures = ids.stream()
+                .map(id -> CompletableFuture.supplyAsync(() -> {
+                    try {
+                        T dto = getSelfProxy().getById(id);
+                        return processor.apply(dto);
+                    } catch (Exception e) {
+                        log.error("Error procesando entidad con ID {}: {}", id, e.getMessage());
+                        return null;
+                    }
+                }, applicationContext.getBean("applicationTaskExecutor", AsyncTaskExecutor.class)))
+                .toList();
+
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                .thenApply(v -> futures.stream()
+                        .map(CompletableFuture::join)
                         .filter(Objects::nonNull)
-                        .toList()
-        );
+                        .toList());
+
     }
 
     @Async
     public CompletableFuture<Map<String, List<Object>>> safeBulkUpdateAsync(List<T> dtoList) {
-        return CompletableFuture.supplyAsync(() -> {
-            List<Object> success = new CopyOnWriteArrayList<>();
-            List<Object> errors = new CopyOnWriteArrayList<>();
+        List<Object> success = new CopyOnWriteArrayList<>();
+        List<Object> errors = new CopyOnWriteArrayList<>();
 
-            dtoList.parallelStream().forEach(dto -> {
-                try {
-                    success.add(getSelfProxy().update(dto));
-                } catch (Exception e) {
-                    String identifier = (dto != null && dto.getId() != null) ? dto.getId().toString() : "nuevo/nulo";
-                    log.error("Fallo en actualización masiva para DTO {}: {}", identifier, e.getMessage());
-                    errors.add("ID " + identifier + ": " + e.getMessage());
-                }
-            });
+        // Para Virtual Threads, es mejor lanzar muchas tareas independientes
+        List<CompletableFuture<Void>> futures = dtoList.stream()
+                .map(dto -> CompletableFuture.runAsync(() -> {
+                    try {
+                        success.add(getSelfProxy().update(dto));
+                    } catch (Exception e) {
+                        String identifier = (dto != null && dto.getId() != null) ? dto.getId().toString() : "nuevo/nulo";
+                        log.error("Fallo en actualización masiva para DTO {}: {}", identifier, e.getMessage());
+                        errors.add("ID " + identifier + ": " + e.getMessage());
+                    }
+                }, applicationContext.getBean("applicationTaskExecutor", AsyncTaskExecutor.class)))
+                .toList();
 
-            return Map.of("success", success, "errors", errors);
-        });
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                .thenApply(v -> Map.of("success", success, "errors", errors));
     }
 
     @Async
