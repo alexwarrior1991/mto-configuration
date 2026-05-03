@@ -11,6 +11,8 @@ import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.CriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.utils.Utils;
 import com.alejandro.mtoconfiguration.validator.commons.Validator;
+import com.querydsl.core.BooleanBuilder;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,6 +30,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.*;
+import java.util.function.Function;
 
 public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
 
@@ -271,6 +274,13 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .ifPresent(alerts -> {
                     throw new ValidationException(alerts);
                 });
+    }
+    
+    protected <V> void applyCondition(BooleanBuilder builder, V value, Function<V, BooleanExpression> function) {
+        Optional.ofNullable(value)
+                .filter(v -> !(v instanceof String s) || !s.isBlank())
+                .map(function)
+                .ifPresent(builder::and);
     }
 
     @Caching(evict = {

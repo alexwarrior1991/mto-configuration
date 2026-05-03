@@ -25,6 +25,7 @@ public class ExecutionPackageDTO extends BaseDTO {
     private LocalDate startDate;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     private LocalDate endDate;
+    private boolean enabled;
     private Long companyId;
     private List<TrackDTO> tracks = new ArrayList<>();
     private List<StationDTO> stations = new ArrayList<>();

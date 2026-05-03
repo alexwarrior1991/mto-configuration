@@ -34,6 +34,7 @@ public class ExecutionPackage extends CRUDEntity {
     private Long length;
     private LocalDate startDate;
     private LocalDate endDate;
+    private Boolean enabled = true;
     private BusinessEntity company;
     private Set<Track> tracks = new HashSet<>();
     private Set<Station> stations = new HashSet<>();
@@ -76,6 +77,11 @@ public class ExecutionPackage extends CRUDEntity {
     @Column(name = "END_DATE", nullable = false)
     public LocalDate getEndDate() {
         return endDate;
+    }
+
+    @Column(name = "ENABLED", nullable = false)
+    public boolean isEnabled() {
+        return enabled;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
