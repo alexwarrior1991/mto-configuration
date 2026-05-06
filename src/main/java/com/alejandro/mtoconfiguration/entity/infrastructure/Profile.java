@@ -23,7 +23,34 @@ import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 @Setter
 @Entity
 @Audited
-@Table(name = "PROFILE")
+@Table(name = "PROFILE", indexes = {
+        @Index(name = "IDX_PROFILE_TRACK_KP_ID", columnList = "TRACK_ID, KILOMETRIC_POINT, id")
+})
+@NamedEntityGraph(
+        name = "Profile.export",
+        attributeNodes = {
+                @NamedAttributeNode("track"),
+                @NamedAttributeNode("foundation"),
+                @NamedAttributeNode("poleType"),
+                @NamedAttributeNode("profileStatus"),
+                @NamedAttributeNode(value = "cantilevers", subgraph = "cantilevers-subgraph")
+        },
+        subgraphs = {
+                @NamedSubgraph(
+                        name = "cantilevers-subgraph",
+                        attributeNodes = {
+                                @NamedAttributeNode("cantileverType"),
+                                @NamedAttributeNode(value = "steadyArm", subgraph = "steadyarm-subgraph")
+                        }
+                ),
+                @NamedSubgraph(
+                        name = "steadyarm-subgraph",
+                        attributeNodes = {
+                                @NamedAttributeNode("steadyArmType")
+                        }
+                )
+        }
+)
 public class Profile extends CRUDEntity {
 
     @Serial
@@ -163,7 +190,6 @@ public class Profile extends CRUDEntity {
     public boolean containsCantilever(Cantilever cantilever) {
         return getCantilevers().contains(cantilever);
     }
-
 
 
     @OneToOne(

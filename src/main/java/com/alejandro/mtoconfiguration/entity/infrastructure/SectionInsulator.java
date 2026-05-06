@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.entity.infrastructure;
 
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 import lombok.Setter;
 import org.hibernate.envers.Audited;
 
@@ -24,6 +25,7 @@ public class SectionInsulator extends CRUDEntity {
 
     private String name;
     private Station station;
+    private Boolean enabled = true;
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO, generator = SECTION_INSULATOR_GENERATOR)
@@ -41,6 +43,12 @@ public class SectionInsulator extends CRUDEntity {
     @Column(name = "NAME", length = 200, nullable = false)
     public String getName() {
         return name;
+    }
+
+    @NotNull
+    @Column(name = "STATUS", nullable = false)
+    public Boolean getEnabled() {
+        return enabled;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)

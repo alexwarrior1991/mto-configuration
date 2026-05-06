@@ -9,5 +9,6 @@ import lombok.Setter;
 public class SectionInsulatorDTO extends BaseDTO {
 
     private String name;
+    private Boolean enabled;
     private Long stationId;
 }

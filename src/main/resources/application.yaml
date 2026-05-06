@@ -4,4 +4,9 @@ spring:
   cache:
     application: "semi.mto.configuration"
 
+  jpa:
+    properties:
+      hibernate:
+        default_batch_fetch_size: 20
+
 
