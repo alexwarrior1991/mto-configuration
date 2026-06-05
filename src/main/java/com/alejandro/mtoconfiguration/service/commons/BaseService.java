@@ -64,7 +64,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
 
     @Cacheable(
             value = "${cache.application}" + ".list",
-            unless = "#result.size() < 1",
+            unless = "#result.isEmpty()",
             key = "#root.targetClass.getSimpleName()"
     )
     public List<T> findAll() throws BaseException {
@@ -76,7 +76,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
 
     @Cacheable(
             value = "${cache.application}" + ".page",
-            unless = "#result.getSize() < 1",
+            unless = "#result.isEmpty()",
             key = "#root.targetClass.getSimpleName() + '::' + #pageable"
     )
     public Page<T> findAll(Pageable pageable) throws BaseException {
