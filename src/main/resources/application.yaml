@@ -1,12 +1,39 @@
 spring:
   application:
     name: mto-configuration
+
   cache:
-    application: "semi.mto.configuration"
+    type: redis
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+          max-wait: 2s
 
   jpa:
     properties:
       hibernate:
         default_batch_fetch_size: 20
 
-
+cache:
+  application: mto-configuration
+  redis:
+    default-ttl: 30m
+    normal-item-ttl: 6h
+    normal-list-ttl: 30m
+    normal-page-ttl: 10m
+    normal-search-ttl: 10m
+    lov-item-ttl: 24h
+    lov-list-ttl: 24h
+    allowed-subtypes:
+      - com.alejandro.mtoconfiguration
+      - java.util
+      - java.time
+      - org.springframework.data.domain

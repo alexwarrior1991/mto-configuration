@@ -1,6 +1,8 @@
 package com.alejandro.mtoconfiguration.service.commons;
 
 import com.alejandro.mtoconfiguration.business.commons.Business;
+import com.alejandro.mtoconfiguration.configuration.cache.CacheEvictionEvent;
+import com.alejandro.mtoconfiguration.configuration.cache.CacheNames;
 import com.alejandro.mtoconfiguration.core.exception.BaseException;
 import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
@@ -20,11 +22,12 @@ import jakarta.transaction.Transactional;
 import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
-import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -40,10 +43,10 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
     protected EntityManager em;
 
     @Autowired
-    protected ApplicationContext applicationContext;
+    protected HttpServletRequest request;
 
     @Autowired
-    protected HttpServletRequest request;
+    private ApplicationEventPublisher applicationEventPublisher;
 
     // Abstract methods to be implemented in concrete subclasses
     protected abstract BaseMapper<T, E> getMapper();
@@ -63,9 +66,9 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
     protected abstract Business<T, E> getBusiness();
 
     @Cacheable(
-            value = "${cache.application}" + ".list",
-            unless = "#result.isEmpty()",
-            key = "#root.targetClass.getSimpleName()"
+            cacheNames = CacheNames.NORMAL_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
     )
     public List<T> findAll() throws BaseException {
         return Optional.of(getRepository().findAll())
@@ -75,9 +78,9 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
     }
 
     @Cacheable(
-            value = "${cache.application}" + ".page",
-            unless = "#result.isEmpty()",
-            key = "#root.targetClass.getSimpleName() + '::' + #pageable"
+            cacheNames = CacheNames.NORMAL_PAGE,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
     )
     public Page<T> findAll(Pageable pageable) throws BaseException {
         return Optional.of(getRepository().findAll(pageable))
@@ -87,8 +90,9 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
     }
 
     @Cacheable(
-            value = "${cache.application}.page",
-            key = "#root.targetClass.getSimpleName() + '::search::' + #searchRequestDTO"
+            cacheNames = CacheNames.NORMAL_SEARCH,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
     )
     public Page<T> search(SearchRequestDTO searchRequestDTO) throws BaseException {
 
@@ -117,9 +121,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
         return Optional.of(getEntity())
                 .map(entity -> {
                     Optional.ofNullable(getBusiness()).ifPresent(b -> b.preMapperDTOToEntity(dto, entity));
-
                     getMapper().updateEntityFromDTO(dto, entity);
-
                     Optional.ofNullable(getBusiness()).ifPresent(b -> b.postValidationDTOToEntity(dto, entity));
 
                     return entity;
@@ -128,7 +130,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(e -> {
                     getMapper().updateDTOFromEntity(e, dto);
 
-                    applicationContext.getBean(this.getClass()).cacheClean(true);
+                    publishCacheEvictionEvent();
 
                     return dto;
                 })
@@ -154,8 +156,8 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(savedEntities -> {
                     getRepository().flush();
 
-                    // 4. Limpieza de caché (usando el bean del contexto para respetar AOP)
-                    applicationContext.getBean(this.getClass()).cacheClean(true);
+                    // 4. Limpieza de caché
+                    publishCacheEvictionEvent();
 
                     // 5. Mapeo de vuelta para retornar DTOs con IDs y auditoría
                     return getMapper().toListDTO(savedEntities);
@@ -190,7 +192,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(savedEntity -> {
                     // Refresco de DTO y limpieza de caché
                     getMapper().updateDTOFromEntity(savedEntity, dto);
-                    applicationContext.getBean(this.getClass()).cacheClean(true);
+                    publishCacheEvictionEvent();
                     return dto;
                 })
                 .orElseThrow(() -> new BaseException("No se puede actualizar un objeto nulo o sin ID"));
@@ -222,15 +224,16 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
                     getMapper().updateDTOFromEntity(savedEntity, dto);
-                    applicationContext.getBean(this.getClass()).cacheClean(true);
+                    publishCacheEvictionEvent();
                     return dto;
                 })
                 .orElseThrow(() -> new BaseException("No se puede cancelar un objeto nulo o sin ID"));
     }
 
     @Cacheable(
-            value = "${cache.application}" + ".item",
-            key = "#root.targetClass.getSimpleName() + '::' + #id"
+            cacheNames = CacheNames.NORMAL_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
     )
     public T getById(Long id) throws BaseException {
         return Optional.ofNullable(id)
@@ -281,6 +284,16 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .filter(v -> !(v instanceof String s) || !s.isBlank())
                 .map(function)
                 .ifPresent(builder::and);
+    }
+
+    protected void publishCacheEvictionEvent() {
+        String serviceName = getCurrentServiceName();
+        applicationEventPublisher.publishEvent(new CacheEvictionEvent(serviceName));
+        log.info("Cache eviction event published for service: {}", serviceName);
+    }
+
+    private String getCurrentServiceName() {
+        return AopUtils.getTargetClass(this).getSimpleName();
     }
 
     @Caching(evict = {

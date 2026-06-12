@@ -1,6 +1,6 @@
 package com.alejandro.mtoconfiguration.service.commons;
 
-import com.alejandro.mtoconfiguration.core.exception.BaseException;
+import com.alejandro.mtoconfiguration.configuration.cache.CacheNames;
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.lov.*;
 import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
@@ -14,15 +14,19 @@ import com.alejandro.mtoconfiguration.utils.Utils;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.hibernate.Hibernate;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class MasterDataService {
 
-    private static final String CACHE_ITEM = "mto.semi.configuration.item";
+
+    private static final String CACHE_ITEM = CacheNames.LOV_ITEM;
+    private static final String CACHE_LIST = CacheNames.LOV_LIST;
 
     // Repositories
     private final AnchorageFoundationRepository anchorageFoundationRepository;
@@ -61,223 +65,679 @@ public class MasterDataService {
     private final SupportTypeMapper supportTypeMapper;
 
     private <E extends Lov> E getEntityByCode(String code, LovRepository<E> repository) {
-        if (StringUtils.isBlank(code)) {
-            return null;
-        }
-        E entity = repository.findByCode(code);
-        if (entity != null) {
-            Hibernate.initialize(entity);
-        }
-        return entity;
+        return Optional.ofNullable(code)
+                .filter(StringUtils::isNotBlank)
+                .map(repository::findByCode)
+                .map(this::initialize)
+                .orElse(null);
     }
 
     private <E extends Lov> E getEntityById(Long id, LovRepository<E> repository) {
-        if (id == null) {
-            return null;
-        }
-        return repository.findById(id).orElse(null);
+        return Optional.ofNullable(id)
+                .flatMap(repository::findById)
+                .map(this::initialize)
+                .orElse(null);
     }
 
     private <E extends Lov, D extends LovDTO> D getEntityByIdAndMap(Long id, LovRepository<E> repository, LovMapper<D, E> mapper) {
         if (id == null) {
             return null;
         }
-        return repository.findById(id)
+        return Optional.of(id)
+                .flatMap(repository::findById)
+                .map(this::initialize)
                 .map(mapper::toDTO)
                 .orElse(null);
     }
 
+    private <E extends Lov, D extends LovDTO> D getEntityByCodeAndMap(
+            String code,
+            LovRepository<E> repository,
+            LovMapper<D, E> mapper
+    ) {
+        return Optional.ofNullable(code)
+                .filter(StringUtils::isNotBlank)
+                .map(repository::findByCode)
+                .map(this::initialize)
+                .map(mapper::toDTO)
+                .orElse(null);
+    }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    private <E extends Lov, D extends LovDTO> List<D> getListAndMap(
+            LovRepository<E> repository,
+            LovMapper<D, E> mapper
+    ) {
+        return repository.findAll()
+                .stream()
+                .map(this::initialize)
+                .map(mapper::toDTO)
+                .toList();
+    }
+
+
+    private <E extends Lov> E initialize(E entity) {
+        Hibernate.initialize(entity);
+        return entity;
+    }
+
+    // --- Anchorage Foundation ---
+
+
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public AnchorageFoundation getAnchorageFoundationByCode(String code) {
         return getEntityByCode(code, anchorageFoundationRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public AnchorageFoundationDTO getAnchorageFoundationByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, anchorageFoundationRepository, anchorageFoundationMapper);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public AnchorageFoundationDTO getAnchorageFoundationByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, anchorageFoundationRepository, anchorageFoundationMapper);
+    }
+
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<AnchorageFoundationDTO> getAnchorageFoundationList() {
+        return getListAndMap(anchorageFoundationRepository, anchorageFoundationMapper);
+    }
+
+    // --- Anchorage Foundation Type ---
+
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public AnchorageFoundationType getAnchorageFoundationTypeByCode(String code) {
         return getEntityByCode(code, anchorageFoundationTypeRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public AnchorageFoundationTypeDTO getAnchorageFoundationTypeByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, anchorageFoundationTypeRepository, anchorageFoundationTypeMapper);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public AnchorageFoundationTypeDTO getAnchorageFoundationTypeByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, anchorageFoundationTypeRepository, anchorageFoundationTypeMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<AnchorageFoundationTypeDTO> getAnchorageFoundationTypeList() {
+        return getListAndMap(anchorageFoundationTypeRepository, anchorageFoundationTypeMapper);
+    }
+
+    // --- Anchorage ---
+
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public Anchorage getAnchorageByCode(String code) {
         return getEntityByCode(code, anchorageRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public AnchorageDTO getAnchorageByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, anchorageRepository, anchorageMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public AnchorageDTO getAnchorageByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, anchorageRepository, anchorageMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<AnchorageDTO> getAnchorageList() {
+        return getListAndMap(anchorageRepository, anchorageMapper);
+    }
+
     // --- Cantilever Type ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public CantileverType getCantileverTypeByCode(String code) {
         return getEntityByCode(code, cantileverTypeRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public CantileverTypeDTO getCantileverTypeByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, cantileverTypeRepository, cantileverTypeMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public CantileverTypeDTO getCantileverTypeByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, cantileverTypeRepository, cantileverTypeMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<CantileverTypeDTO> getCantileverTypeList() {
+        return getListAndMap(cantileverTypeRepository, cantileverTypeMapper);
+    }
+
     // --- Comercial Entity Type ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public ComercialEntityType getComercialEntityTypeByCode(String code) {
         return getEntityByCode(code, comercialEntityTypeRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public ComercialEntityTypeDTO getComercialEntityTypeByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, comercialEntityTypeRepository, comercialEntityTypeMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public ComercialEntityTypeDTO getComercialEntityTypeByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, comercialEntityTypeRepository, comercialEntityTypeMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<ComercialEntityTypeDTO> getComercialEntityTypeList() {
+        return getListAndMap(comercialEntityTypeRepository, comercialEntityTypeMapper);
+    }
+
+
     // --- Disconnector Function ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public DisconnectorFunction getDisconnectorFunctionByCode(String code) {
         return getEntityByCode(code, disconnectorFunctionRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public DisconnectorFunctionDTO getDisconnectorFunctionByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, disconnectorFunctionRepository, disconnectorFunctionMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public DisconnectorFunctionDTO getDisconnectorFunctionByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, disconnectorFunctionRepository, disconnectorFunctionMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<DisconnectorFunctionDTO> getDisconnectorFunctionList() {
+        return getListAndMap(disconnectorFunctionRepository, disconnectorFunctionMapper);
+    }
+
     // --- Foundation ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public Foundation getFoundationByCode(String code) {
         return getEntityByCode(code, foundationRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public FoundationDTO getFoundationByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, foundationRepository, foundationMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public FoundationDTO getFoundationByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, foundationRepository, foundationMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<FoundationDTO> getFoundationList() {
+        return getListAndMap(foundationRepository, foundationMapper);
+    }
+
     // --- Foundation Type ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public FoundationType getFoundationTypeByCode(String code) {
         return getEntityByCode(code, foundationTypeRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public FoundationTypeDTO getFoundationTypeByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, foundationTypeRepository, foundationTypeMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public FoundationTypeDTO getFoundationTypeByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, foundationTypeRepository, foundationTypeMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<FoundationTypeDTO> getFoundationTypeList() {
+        return getListAndMap(foundationTypeRepository, foundationTypeMapper);
+    }
+
     // --- Pole Type ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public PoleType getPoleTypeByCode(String code) {
         return getEntityByCode(code, poleTypeRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public PoleTypeDTO getPoleTypeByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, poleTypeRepository, poleTypeMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public PoleTypeDTO getPoleTypeByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, poleTypeRepository, poleTypeMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<PoleTypeDTO> getPoleTypeList() {
+        return getListAndMap(poleTypeRepository, poleTypeMapper);
+    }
+
     // --- Portal ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public Portal getPortalByCode(String code) {
         return getEntityByCode(code, portalRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public PortalDTO getPortalByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, portalRepository, portalMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public PortalDTO getPortalByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, portalRepository, portalMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<PortalDTO> getPortalList() {
+        return getListAndMap(portalRepository, portalMapper);
+    }
+
     // --- Portal Type ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public PortalType getPortalTypeByCode(String code) {
         return getEntityByCode(code, portalTypeRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public PortalTypeDTO getPortalTypeByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, portalTypeRepository, portalTypeMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public PortalTypeDTO getPortalTypeByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, portalTypeRepository, portalTypeMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<PortalTypeDTO> getPortalTypeList() {
+        return getListAndMap(portalTypeRepository, portalTypeMapper);
+    }
+
     // --- Profile Status ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public ProfileStatus getProfileStatusByCode(String code) {
         return getEntityByCode(code, profileStatusRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public ProfileStatusDTO getProfileStatusByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, profileStatusRepository, profileStatusMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public ProfileStatusDTO getProfileStatusByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, profileStatusRepository, profileStatusMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<ProfileStatusDTO> getProfileStatusList() {
+        return getListAndMap(profileStatusRepository, profileStatusMapper);
+    }
+
     // --- Return Support ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public ReturnSupport getReturnSupportByCode(String code) {
         return getEntityByCode(code, returnSupportRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public ReturnSupportDTO getReturnSupportByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, returnSupportRepository, returnSupportMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public ReturnSupportDTO getReturnSupportByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, returnSupportRepository, returnSupportMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<ReturnSupportDTO> getReturnSupportList() {
+        return getListAndMap(returnSupportRepository, returnSupportMapper);
+    }
+
+
     // --- Sectioning ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public Sectioning getSectioningByCode(String code) {
         return getEntityByCode(code, sectioningRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public SectioningDTO getSectioningByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, sectioningRepository, sectioningMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public SectioningDTO getSectioningByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, sectioningRepository, sectioningMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<SectioningDTO> getSectioningList() {
+        return getListAndMap(sectioningRepository, sectioningMapper);
+    }
+
+
     // --- Steady Arm Type ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public SteadyArmType getSteadyArmTypeByCode(String code) {
         return getEntityByCode(code, steadyArmTypeRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public SteadyArmTypeDTO getSteadyArmTypeByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, steadyArmTypeRepository, steadyArmTypeMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public SteadyArmTypeDTO getSteadyArmTypeByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, steadyArmTypeRepository, steadyArmTypeMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<SteadyArmTypeDTO> getSteadyArmTypeList() {
+        return getListAndMap(steadyArmTypeRepository, steadyArmTypeMapper);
+    }
+
     // --- Support Type ---
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public SupportType getSupportTypeByCode(String code) {
         return getEntityByCode(code, supportTypeRepository);
     }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyGenerator", unless = "#result == null ")
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public SupportTypeDTO getSupportTypeByIdAndMapToDTO(Long id) {
         return getEntityByIdAndMap(id, supportTypeRepository, supportTypeMapper);
     }
 
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public SupportTypeDTO getSupportTypeByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, supportTypeRepository, supportTypeMapper);
+    }
 
-    @Cacheable(value = CACHE_ITEM, keyGenerator = "cacheCustomKeyDTOGenerator", unless = "#result == null ")
-    public <E extends BaseEntity, T extends LovDTO> E getByIdOrByCode(T dto, SerializableLongFunction<E> byId, SerializableFunction<String, E> byCode) {
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<SupportTypeDTO> getSupportTypeList() {
+        return getListAndMap(supportTypeRepository, supportTypeMapper);
+    }
 
+    public <E extends BaseEntity, T extends LovDTO> E getByIdOrByCode(
+            T dto,
+            SerializableLongFunction<E> byId,
+            SerializableFunction<String, E> byCode
+    ) {
         if (dto == null) {
             return null;
         }
