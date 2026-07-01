@@ -22,6 +22,90 @@ spring:
       hibernate:
         default_batch_fetch_size: 20
 
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: auto
+        retry:
+          enabled: true
+          initial-interval: 1000ms
+          max-retries: 3
+          max-interval: 10000ms
+          multiplier: 2
+
+
+app:
+  rabbitmq:
+    enabled: true
+
+    defaults:
+      durable: true
+      exclusive: false
+      auto-delete: false
+      dead-letter-enabled: true
+      dead-letter-exchange-suffix: .dlx
+      dead-letter-queue-suffix: .dlq
+      dead-letter-routing-key-suffix: .dlq
+
+    listener:
+      concurrent-consumers: 1
+      max-concurrent-consumers: 5
+      prefetch-count: 10
+      default-requeue-rejected: false
+      receive-timeout: 1000
+
+    publisher:
+      mandatory: true
+
+#    exchanges:
+#      - name: mto.orders.exchange
+#        type: topic
+#        durable: true
+#        auto-delete: false
+#
+#      - name: mto.notifications.exchange
+#        type: direct
+#        durable: true
+#        auto-delete: false
+#
+#    queues:
+#      - name: mto.orders.created.queue
+#        durable: true
+#        dead-letter-enabled: true
+#        message-ttl: 60000
+#        lazy: false
+#
+#      - name: mto.orders.updated.queue
+#        durable: true
+#        dead-letter-enabled: true
+#
+#      - name: mto.notifications.email.queue
+#        durable: true
+#        dead-letter-enabled: true
+#        dead-letter-exchange: mto.notifications.dlx
+#        dead-letter-queue: mto.notifications.email.dlq
+#        dead-letter-routing-key: notifications.email.dlq
+#
+#    bindings:
+#      - queue: mto.orders.created.queue
+#        exchange: mto.orders.exchange
+#        routing-key: orders.created
+#
+#      - queue: mto.orders.updated.queue
+#        exchange: mto.orders.exchange
+#        routing-key: orders.updated
+#
+#      - queue: mto.notifications.email.queue
+#        exchange: mto.notifications.exchange
+#        routing-key: notifications.email
+
 cache:
   application: mto-configuration
   redis:
