@@ -1,6 +1,6 @@
 package com.alejandro.mtoconfiguration.core.rabbitmq;
 
-public class RabbitMqConstants {
+public final class RabbitMqConstants {
 
     public static final String RABBIT_LISTENER_CONTAINER_FACTORY = "rabbitListenerContainerFactory";
 

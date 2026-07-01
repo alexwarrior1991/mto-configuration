@@ -36,9 +36,9 @@ spring:
         retry:
           enabled: true
           initial-interval: 1000ms
-          max-retries: 3
           max-interval: 10000ms
           multiplier: 2
+          max-retries: 3
 
 
 app:
@@ -64,47 +64,45 @@ app:
     publisher:
       mandatory: true
 
-#    exchanges:
-#      - name: mto.orders.exchange
-#        type: topic
-#        durable: true
-#        auto-delete: false
-#
-#      - name: mto.notifications.exchange
-#        type: direct
-#        durable: true
-#        auto-delete: false
-#
-#    queues:
-#      - name: mto.orders.created.queue
-#        durable: true
-#        dead-letter-enabled: true
-#        message-ttl: 60000
-#        lazy: false
-#
-#      - name: mto.orders.updated.queue
-#        durable: true
-#        dead-letter-enabled: true
-#
-#      - name: mto.notifications.email.queue
-#        durable: true
-#        dead-letter-enabled: true
-#        dead-letter-exchange: mto.notifications.dlx
-#        dead-letter-queue: mto.notifications.email.dlq
-#        dead-letter-routing-key: notifications.email.dlq
-#
-#    bindings:
-#      - queue: mto.orders.created.queue
-#        exchange: mto.orders.exchange
-#        routing-key: orders.created
-#
-#      - queue: mto.orders.updated.queue
-#        exchange: mto.orders.exchange
-#        routing-key: orders.updated
-#
-#      - queue: mto.notifications.email.queue
-#        exchange: mto.notifications.exchange
-#        routing-key: notifications.email
+    exchanges:
+      - name: mto.master-data.exchange
+        type: topic
+        durable: true
+        auto-delete: false
+
+    queues:
+      - name: mto.master-data.events.queue
+        durable: true
+        dead-letter-enabled: true
+
+      - name: mto.master-data.cache.queue
+        durable: true
+        dead-letter-enabled: true
+
+      - name: mto.master-data.audit.queue
+        durable: true
+        dead-letter-enabled: true
+
+      - name: mto.master-data.deleted.queue
+        durable: true
+        dead-letter-enabled: true
+
+    bindings:
+      - queue: mto.master-data.events.queue
+        exchange: mto.master-data.exchange
+        routing-key: mto.master-data.#
+
+      - queue: mto.master-data.cache.queue
+        exchange: mto.master-data.exchange
+        routing-key: mto.master-data.#
+
+      - queue: mto.master-data.audit.queue
+        exchange: mto.master-data.exchange
+        routing-key: mto.master-data.#
+
+      - queue: mto.master-data.deleted.queue
+        exchange: mto.master-data.exchange
+        routing-key: mto.master-data.*.deleted
 
 cache:
   application: mto-configuration

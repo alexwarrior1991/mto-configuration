@@ -68,7 +68,7 @@ public class RabbitMqConfiguration {
 
     @Bean
     public Declarables rabbitDeclarables() {
-        List<Object> declarables = new ArrayList<>();
+        List<Declarable> declarables = new ArrayList<>();
 
         declarables.addAll(buildExchanges());
         declarables.addAll(buildQueues());
@@ -77,7 +77,7 @@ public class RabbitMqConfiguration {
         declarables.addAll(buildBindings());
         declarables.addAll(buildDeadLetterBindings());
 
-        return new Declarables((Declarable) declarables);
+        return new Declarables(declarables);
     }
 
     private List<Exchange> buildExchanges() {
