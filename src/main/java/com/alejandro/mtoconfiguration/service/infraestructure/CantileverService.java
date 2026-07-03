@@ -8,7 +8,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.Cantileve
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.CantileverFilter;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.CantileverCriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.CantileverRepository;
-import com.alejandro.mtoconfiguration.service.commons.AsyncBaseService;
+import com.alejandro.mtoconfiguration.service.commons.CRUDService;
 import com.alejandro.mtoconfiguration.utils.InfrastructureUtils;
 import com.alejandro.mtoconfiguration.utils.PermissionUtils;
 import com.alejandro.mtoconfiguration.validator.infrastructure.CantileverValidator;
@@ -22,7 +22,7 @@ import java.util.*;
 
 @Service
 @RequiredArgsConstructor
-public class CantileverService extends AsyncBaseService<CantileverDTO, Cantilever> implements ICantileverService {
+public class CantileverService extends CRUDService<CantileverDTO, Cantilever> implements ICantileverService {
 
     private final CantileverRepository repository;
     private final CantileverMapper mapper;

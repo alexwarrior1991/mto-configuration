@@ -6,6 +6,7 @@ import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public interface Validator<T extends BaseDTO> extends Serializable {
@@ -26,5 +27,9 @@ public interface Validator<T extends BaseDTO> extends Serializable {
 
     default List<Alert> validateBeforeBulkSave(List<T> dto) {
         return new ArrayList<>();
+    }
+
+    default List<Alert> validateBeforeBulkUpdate(List<T> dto){
+        return Collections.emptyList();
     }
 }

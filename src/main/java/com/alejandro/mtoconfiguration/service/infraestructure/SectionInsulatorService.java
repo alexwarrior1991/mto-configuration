@@ -8,7 +8,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionIn
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.SectionInsulatorFilter;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorCriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorRepository;
-import com.alejandro.mtoconfiguration.service.commons.AsyncBaseService;
+import com.alejandro.mtoconfiguration.service.commons.CRUDService;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.utils.InfrastructureUtils;
 import com.alejandro.mtoconfiguration.utils.PermissionUtils;
@@ -23,7 +23,7 @@ import java.util.*;
 
 @Service
 @RequiredArgsConstructor
-public class SectionInsulatorService extends AsyncBaseService<SectionInsulatorDTO, SectionInsulator>
+public class SectionInsulatorService extends CRUDService<SectionInsulatorDTO, SectionInsulator>
         implements ISectionInsulatorService {
 
     private final SectionInsulatorRepository repository;

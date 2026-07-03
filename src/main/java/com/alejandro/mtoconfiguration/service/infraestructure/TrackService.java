@@ -8,7 +8,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.TrackFilter;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackCriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackRepository;
-import com.alejandro.mtoconfiguration.service.commons.AsyncBaseService;
+import com.alejandro.mtoconfiguration.service.commons.CRUDService;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.utils.InfrastructureUtils;
 import com.alejandro.mtoconfiguration.utils.PermissionUtils;
@@ -27,7 +27,7 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-public class TrackService extends AsyncBaseService<TrackDTO, Track>
+public class TrackService extends CRUDService<TrackDTO, Track>
         implements ITrackService {
 
     private final TrackRepository repository;

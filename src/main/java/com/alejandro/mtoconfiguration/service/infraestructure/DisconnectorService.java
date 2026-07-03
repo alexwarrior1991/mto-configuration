@@ -1,26 +1,21 @@
 package com.alejandro.mtoconfiguration.service.infraestructure;
 
-import com.alejandro.mtoconfiguration.business.commons.Business;
 import com.alejandro.mtoconfiguration.business.infrastructure.DisconnectorBusiness;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.QDisconnector;
-import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.infraestructure.DisconnectorMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.DisconnectorFilter;
-import com.alejandro.mtoconfiguration.repository.jpa.commons.CriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.DisconnectorCriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.DisconnectorRepository;
-import com.alejandro.mtoconfiguration.service.commons.AsyncBaseService;
+import com.alejandro.mtoconfiguration.service.commons.CRUDService;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.utils.InfrastructureUtils;
-import com.alejandro.mtoconfiguration.validator.commons.Validator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.DisconnectorValidator;
 import com.querydsl.core.BooleanBuilder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -29,7 +24,7 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-public class DisconnectorService extends AsyncBaseService<DisconnectorDTO, Disconnector> implements
+public class DisconnectorService extends CRUDService<DisconnectorDTO, Disconnector> implements
         IDisconnectorService {
 
     private final DisconnectorRepository repository;

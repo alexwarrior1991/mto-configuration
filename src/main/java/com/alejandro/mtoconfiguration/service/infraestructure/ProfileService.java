@@ -8,7 +8,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDT
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.ProfileFilter;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileCriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
-import com.alejandro.mtoconfiguration.service.commons.AsyncBaseService;
+import com.alejandro.mtoconfiguration.service.commons.CRUDService;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.utils.InfrastructureUtils;
 import com.alejandro.mtoconfiguration.utils.PermissionUtils;
@@ -30,7 +30,7 @@ import java.util.function.Function;
 
 @Service
 @RequiredArgsConstructor
-public class ProfileService extends AsyncBaseService<ProfileDTO, Profile>
+public class ProfileService extends CRUDService<ProfileDTO, Profile>
         implements IProfileService {
 
     private final ProfileRepository repository;

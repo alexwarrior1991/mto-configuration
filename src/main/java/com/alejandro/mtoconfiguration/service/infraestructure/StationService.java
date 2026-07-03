@@ -8,7 +8,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDT
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.StationFilter;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.StationCriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.StationRepository;
-import com.alejandro.mtoconfiguration.service.commons.AsyncBaseService;
+import com.alejandro.mtoconfiguration.service.commons.CRUDService;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.utils.InfrastructureUtils;
 import com.alejandro.mtoconfiguration.utils.PermissionUtils;
@@ -26,7 +26,7 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-public class StationService extends AsyncBaseService<StationDTO, Station>
+public class StationService extends CRUDService<StationDTO, Station>
         implements IStationService {
 
     private final StationRepository repository;

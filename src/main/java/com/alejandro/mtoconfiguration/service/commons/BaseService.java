@@ -114,27 +114,28 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
             rollbackOn = {ValidationException.class, Exception.class}
     )
     public T create(T dto) throws BaseException {
-        // 1. Validaciones previas (Lanza ValidationException si falla)
-        doValidationsBeforeSave(dto);
-
-        // 2. Proceso de creación funcional
-        return Optional.of(getEntity())
+        return Optional.ofNullable(dto)
+                .map(d -> {
+                    validateBeforeCreate(d);
+                    return d;
+                })
+                .map(getMapper()::toEntity)
                 .map(entity -> {
-                    Optional.ofNullable(getBusiness()).ifPresent(b -> b.preMapperDTOToEntity(dto, entity));
-                    getMapper().updateEntityFromDTO(dto, entity);
-                    Optional.ofNullable(getBusiness()).ifPresent(b -> b.postValidationDTOToEntity(dto, entity));
+                    Optional.ofNullable(getBusiness())
+                            .ifPresent(b -> b.preMapperDTOToEntity(dto, entity));
+
+                    Optional.ofNullable(getBusiness())
+                            .ifPresent(b -> b.postValidationDTOToEntity(dto, entity));
 
                     return entity;
                 })
                 .map(getRepository()::saveAndFlush)
-                .map(e -> {
-                    getMapper().updateDTOFromEntity(e, dto);
-
+                .map(savedEntity -> {
+                    getMapper().updateDTOFromEntity(savedEntity, dto);
                     publishCacheEvictionEvent();
-
                     return dto;
                 })
-                .orElseThrow(() -> new BaseException("Error inesperado al crear la entidad"));
+                .orElseThrow(() -> new BaseException("No se puede crear un objeto nulo"));
 
     }
 
@@ -145,21 +146,14 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
         return Optional.ofNullable(dtoList)
                 .filter(CollectionUtils::isNotEmpty)
                 .map(list -> {
-                    // 1. Validaciones masivas
-                    doValidationsBeforeBulkSave(list);
-                    doValidationsBeforeSave(list);
-
+                    validateBeforeBulkCreate(list);
                     return list;
                 })
-                .map(getMapper()::toListEntity) // 2. Mapeo masivo DTO -> Entity
-                .map(getRepository()::saveAll)  // 3. Persistencia en bloque
+                .map(getMapper()::toListEntity)
+                .map(getRepository()::saveAll)
                 .map(savedEntities -> {
                     getRepository().flush();
-
-                    // 4. Limpieza de caché
                     publishCacheEvictionEvent();
-
-                    // 5. Mapeo de vuelta para retornar DTOs con IDs y auditoría
                     return getMapper().toListDTO(savedEntities);
                 })
                 .orElseGet(Collections::emptyList);
@@ -171,33 +165,79 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
     public T update(T dto) throws BaseException {
         return Optional.ofNullable(dto)
                 .filter(Utils::exists)
+                .map(d -> {
+                    validateBeforeUpdate(d);
+                    return d;
+                })
                 .map(T::getId)
-                .map(getRepository()::getReferenceById)
+                .map(id -> getRepository().findById(id)
+                        .orElseThrow(() -> new BaseException(
+                                getEntity().getClass().getSimpleName() + " Object not found with id " + id
+                        ))
+                )
                 .map(entity -> {
+                    Optional.ofNullable(getBusiness())
+                            .ifPresent(b -> b.preMapperDTOToEntity(dto, entity));
 
-                    Optional.ofNullable(getValidator())
-                            .map(v -> v.validateBeforeUpdate(dto))
-                            .filter(Utils::hasErrors)
-                            .ifPresent(alerts -> {
-                                throw new ValidationException(alerts);
-                            });
-
-                    Optional.ofNullable(getBusiness()).ifPresent(b -> b.preMapperDTOToEntity(dto, entity));
                     getMapper().updateEntityFromDTO(dto, entity);
-                    Optional.ofNullable(getBusiness()).ifPresent(b -> b.postValidationDTOToEntity(dto, entity));
+
+                    Optional.ofNullable(getBusiness())
+                            .ifPresent(b -> b.postValidationDTOToEntity(dto, entity));
 
                     return entity;
                 })
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
-                    // Refresco de DTO y limpieza de caché
                     getMapper().updateDTOFromEntity(savedEntity, dto);
                     publishCacheEvictionEvent();
                     return dto;
                 })
                 .orElseThrow(() -> new BaseException("No se puede actualizar un objeto nulo o sin ID"));
-
     }
+
+    @Transactional(
+            rollbackOn = {ValidationException.class, ConcurrencyException.class, Exception.class}
+    )
+    public List<T> bulkUpdate(List<T> dtoList) throws BaseException {
+        return Optional.ofNullable(dtoList)
+                .filter(CollectionUtils::isNotEmpty)
+                .map(list -> {
+                    validateBeforeBulkUpdate(list);
+                    return list;
+                })
+                .map(list -> list.stream()
+                        .map(dto -> Optional.ofNullable(dto)
+                                .filter(Utils::exists)
+                                .map(T::getId)
+                                .map(id -> getRepository().findById(id)
+                                        .orElseThrow(() -> new BaseException(
+                                                getEntity().getClass().getSimpleName() + " Object not found with id " + id
+                                        ))
+                                )
+                                .map(entity -> {
+                                    Optional.ofNullable(getBusiness())
+                                            .ifPresent(b -> b.preMapperDTOToEntity(dto, entity));
+
+                                    getMapper().updateEntityFromDTO(dto, entity);
+
+                                    Optional.ofNullable(getBusiness())
+                                            .ifPresent(b -> b.postValidationDTOToEntity(dto, entity));
+
+                                    return entity;
+                                })
+                                .orElseThrow(() -> new BaseException("No se puede actualizar un objeto nulo o sin ID"))
+                        )
+                        .toList()
+                )
+                .map(getRepository()::saveAll)
+                .map(savedEntities -> {
+                    getRepository().flush();
+                    publishCacheEvictionEvent();
+                    return getMapper().toListDTO(savedEntities);
+                })
+                .orElseGet(Collections::emptyList);
+    }
+
 
     @Transactional(
             rollbackOn = {ValidationException.class, ConcurrencyException.class, Exception.class}
@@ -248,7 +288,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .orElseThrow(() -> new BaseException("El ID proporcionado no puede ser nulo"));
     }
 
-    private void doValidationsBeforeSave(T dto) {
+    private void validateBeforeCreate(T dto) {
         Optional.ofNullable(getValidator())
                 .map(validator -> validator.validateBeforeSave(dto))
                 .filter(Utils::hasErrors)
@@ -257,28 +297,33 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 });
     }
 
-    private void doValidationsBeforeSave(List<T> dtos) throws ValidationException {
+    private void validateBeforeBulkCreate(List<T> dtoList) {
         Optional.ofNullable(getValidator())
-                .map(validator -> dtos.stream()
-                        .map(validator::validateBeforeSave)
-                        .filter(CollectionUtils::isNotEmpty)
-                        .flatMap(Collection::stream)
-                        .toList())
+                .map(validator -> validator.validateBeforeBulkSave(dtoList))
                 .filter(Utils::hasErrors)
                 .ifPresent(alerts -> {
                     throw new ValidationException(alerts);
                 });
     }
 
-    private void doValidationsBeforeBulkSave(List<T> dto) throws ValidationException {
+    private void validateBeforeUpdate(T dto) {
         Optional.ofNullable(getValidator())
-                .map(validator -> validator.validateBeforeBulkSave(dto))
+                .map(validator -> validator.validateBeforeUpdate(dto))
                 .filter(Utils::hasErrors)
                 .ifPresent(alerts -> {
                     throw new ValidationException(alerts);
                 });
     }
-    
+
+    private void validateBeforeBulkUpdate(List<T> dtoList) {
+        Optional.ofNullable(getValidator())
+                .map(validator -> validator.validateBeforeBulkUpdate(dtoList))
+                .filter(Utils::hasErrors)
+                .ifPresent(alerts -> {
+                    throw new ValidationException(alerts);
+                });
+    }
+
     protected <V> void applyCondition(BooleanBuilder builder, V value, Function<V, BooleanExpression> function) {
         Optional.ofNullable(value)
                 .filter(v -> !(v instanceof String s) || !s.isBlank())

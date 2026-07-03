@@ -8,7 +8,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.Execution
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.ExecutionPackageFilter;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageCriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
-import com.alejandro.mtoconfiguration.service.commons.AsyncBaseService;
+import com.alejandro.mtoconfiguration.service.commons.CRUDService;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.utils.InfrastructureUtils;
 import com.alejandro.mtoconfiguration.utils.PermissionUtils;
@@ -26,7 +26,7 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-public class ExecutionPackageService extends AsyncBaseService<ExecutionPackageDTO, ExecutionPackage>
+public class ExecutionPackageService extends CRUDService<ExecutionPackageDTO, ExecutionPackage>
         implements IExecutionPackageService {
 
     private final ExecutionPackageRepository repository;

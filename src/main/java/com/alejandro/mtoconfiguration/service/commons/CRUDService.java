@@ -22,13 +22,10 @@ public abstract class CRUDService<T extends BaseDTO, E extends CRUDEntity> exten
 
     @Transactional(rollbackOn = {ValidationException.class, Exception.class})
     public void delete(T dto) throws BaseException {
-        this.softDelete(dto);
+        softDelete(dto);
     }
 
-    @Transactional(
-            rollbackOn = {ValidationException.class, Exception.class}
-    )
-    public void softDelete(T dto) {
+    protected void softDelete(T dto) {
         Optional.ofNullable(dto)
                 .filter(Utils::exists)
                 .map(T::getId)
@@ -52,7 +49,7 @@ public abstract class CRUDService<T extends BaseDTO, E extends CRUDEntity> exten
                     entity.delete();
 
                     getRepository().saveAndFlush(entity);
-                    applicationContext.getBean(this.getClass()).cacheClean(true);
+                    publishCacheEvictionEvent();
 
                 });
 
