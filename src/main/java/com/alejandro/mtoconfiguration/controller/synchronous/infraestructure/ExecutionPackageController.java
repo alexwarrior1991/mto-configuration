@@ -6,6 +6,7 @@ import com.alejandro.mtoconfiguration.controller.commons.CRUDController;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.ExecutionPackageFilter;
 import com.alejandro.mtoconfiguration.service.infraestructure.ExecutionPackageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -13,6 +14,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -142,5 +145,23 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
     public ResponseEntity<Object> search(@RequestBody SearchRequestDTO searchRequestDTO) {
         return processGenericPageRequest(getService()::search, searchRequestDTO);
+    }
+
+    @PostMapping("/filter")
+    @Operation(
+            summary = "Filtrar paquetes de ejecución",
+            description = "Recupera una página de paquetes de ejecución aplicando filtros específicos (nombre, compañía, fechas, texto libre) mediante QueryDSL."
+    )
+    @ApiResponse(
+            responseCode = ApiConstants.CODE_200,
+            description = ApiConstants.DESC_200,
+            content = @Content(schema = @Schema(implementation = ExecutionPackageDTO.class))
+    )
+    @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
+    public ResponseEntity<Object> getExecutionPackages(
+            @PageableDefault(size = 20) Pageable pageable,
+            @RequestBody ExecutionPackageFilter filter
+    ) {
+        return processGenericPageRequest(f -> getService().getExecutionPackages(pageable, f), filter);
     }
 }
