@@ -28,7 +28,9 @@ public class AsynchronousMessageHashService {
     }
 
     public <T> boolean isValid(AsynchronousMessage<T> message) {
-        return calculate(message).equals(message.messageHash());
+        byte[] expected = calculate(message).getBytes(StandardCharsets.UTF_8);
+        byte[] actual = message.messageHash().getBytes(StandardCharsets.UTF_8);
+        return MessageDigest.isEqual(expected, actual);
     }
 
     private <T> String calculate(
