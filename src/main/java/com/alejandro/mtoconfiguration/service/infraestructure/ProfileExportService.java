@@ -31,30 +31,35 @@ public class ProfileExportService {
     private static final String CSV_SEPARATOR = ";";
 
     public CompletableFuture<Void> exportToCsvAsync(Long trackId, Path targetPath, Function<Profile, String> mapper) {
-        // Al usar virtualExecutor, este método retorna INSTANTÁNEAMENTE
         return CompletableFuture.runAsync(() -> {
             log.info("Hilo virtual iniciando exportación: {}", Thread.currentThread());
 
-            try (BufferedWriter writer = Files.newBufferedWriter(targetPath,
-                    StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING)) {
+            try {
+                if (targetPath.getParent() != null) {
+                    Files.createDirectories(targetPath.getParent());
+                }
 
-                // El proceso de ventanas NO bloquea hilos del sistema, solo el hilo virtual
-                profileService.processProfilesByTrack(trackId, profile -> {
-                    try {
-                        writer.write(mapper.apply(profile));
-                        writer.newLine();
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
+                try (BufferedWriter writer = Files.newBufferedWriter(targetPath,
+                        StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.TRUNCATE_EXISTING)) {
 
-                log.info("Exportación finalizada en {}", targetPath);
+                    profileService.processProfilesByTrack(trackId, profile -> {
+                        try {
+                            writer.write(mapper.apply(profile));
+                            writer.newLine();
+                        } catch (IOException e) {
+                            throw new RuntimeException("Error escribiendo línea CSV", e);
+                        }
+                    });
+
+                    log.info("Exportación finalizada en {}", targetPath);
+                }
             } catch (IOException e) {
                 log.error("Error en exportación", e);
+                throw new RuntimeException(e);
             }
-        }, virtualExecutor); // <--- IMPORTANTE: Usar el ejecutor de hilos virtuales
+        }, virtualExecutor);
     }
 
     /**

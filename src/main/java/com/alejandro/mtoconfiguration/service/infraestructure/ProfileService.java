@@ -20,6 +20,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -136,6 +137,7 @@ public class ProfileService extends CRUDService<ProfileDTO, Profile>
     }
 
     @Override
+    @Transactional(readOnly = true)
     public void processProfilesByTrack(Long trackId, Consumer<Profile> processor) {
         int pageSize = 500; // Tamaño óptimo de ventana
         Pageable pageRequest = PageRequest.of(0, pageSize);
@@ -143,9 +145,9 @@ public class ProfileService extends CRUDService<ProfileDTO, Profile>
         // Definimos la lógica de "búsqueda de la siguiente ventana"
         Function<Profile, List<Profile>> fetchNextWindow = (lastProfile) -> {
             if (lastProfile == null) {
-                return repository.findByTrackIdOrderByKpAscIdAsc(trackId, pageRequest);
+                return repository.findByTrackIdOrderByKpAscIdAscGraph(trackId, pageRequest);
             }
-            return repository.findNextPage(trackId, lastProfile.getKp(), lastProfile.getId(), pageRequest);
+            return repository.findNextPageGraph(trackId, lastProfile.getKp(), lastProfile.getId(), pageRequest);
         };
 
         // Creamos el iterador con nuestra lambda

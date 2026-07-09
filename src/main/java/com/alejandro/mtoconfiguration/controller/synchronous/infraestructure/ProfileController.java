@@ -7,6 +7,7 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.ProfileFilter;
+import com.alejandro.mtoconfiguration.service.infraestructure.ProfileExportService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ProfileService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -20,7 +21,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.function.Function;
 
 @RestController
 @RequiredArgsConstructor
@@ -33,6 +36,8 @@ import java.util.List;
 public class ProfileController extends CRUDController<ProfileDTO, Profile> {
 
     private final ProfileService profileService;
+
+    private final ProfileExportService profileExportService;
 
     @Override
     public ProfileService getService() {
@@ -176,5 +181,25 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
             @RequestParam BigDecimal endKp
     ) {
         return processGenericListRequestGeneric(id -> getService().getProfilesByKpRange(id, startKp, endKp), trackId);
+    }
+
+    @GetMapping("/track/{trackId}/export")
+    public ResponseEntity<Object> exportProfilesByTrack(
+            @PathVariable Long trackId,
+            @RequestParam(defaultValue = "basic") String mapperType
+    ) {
+        Path targetPath = Path.of("exports", "profiles-track-" + trackId + ".csv");
+
+        Function<Profile, String> mapper = switch (mapperType.toLowerCase()) {
+            case "technical" -> profileExportService.getTechnicalMapper();
+            case "default" -> profileExportService.getDefaultMapper();
+            default -> profileExportService.getBasicMapper();
+        };
+
+        profileExportService.exportToCsvAsync(trackId, targetPath, mapper);
+
+        return ResponseEntity.accepted().body(
+                "Exportación iniciada para la vía " + trackId + ". Archivo destino: " + targetPath
+        );
     }
 }
