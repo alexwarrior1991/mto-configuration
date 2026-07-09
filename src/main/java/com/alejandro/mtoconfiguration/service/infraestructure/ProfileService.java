@@ -9,8 +9,6 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.Pr
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileCriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.service.commons.CRUDService;
-import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
-import com.alejandro.mtoconfiguration.utils.InfrastructureUtils;
 import com.alejandro.mtoconfiguration.utils.PermissionUtils;
 import com.alejandro.mtoconfiguration.utils.WindowIterator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.ProfileValidator;
@@ -38,8 +36,6 @@ public class ProfileService extends CRUDService<ProfileDTO, Profile>
     private final ProfileValidator validator;
     private final ProfileBusiness business;
     private final ProfileCriteriaSearchRepository criteriaSearchRepository;
-    private final MasterDataService masterDataService;
-    private final InfrastructureUtils infrastructureUtils;
 
     @PersistenceContext
     private EntityManager entityManager;
