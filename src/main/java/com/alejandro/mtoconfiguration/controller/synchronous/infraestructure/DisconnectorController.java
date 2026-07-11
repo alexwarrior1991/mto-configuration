@@ -25,7 +25,7 @@ import java.util.List;
 @RequestMapping(value = "/api/v1/disconnector")
 @Tag(
         name = "Disconnectors",
-        description = "Operaciones síncronas para la gestión de seccionadores"
+        description = "Synchronous operations for disconnector management"
 )
 public class DisconnectorController extends CRUDController<DisconnectorDTO, Disconnector> {
 
@@ -38,8 +38,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
 
     @GetMapping("/{id}")
     @Operation(
-            summary = "Obtener seccionador por ID",
-            description = "Recupera un seccionador mediante su identificador."
+            summary = "Get disconnector by ID",
+            description = "Retrieves a disconnector by its identifier."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -53,8 +53,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
 
     @PostMapping
     @Operation(
-            summary = "Crear seccionador",
-            description = "Crea un nuevo seccionador ejecutando validaciones y lógica de negocio."
+            summary = "Create disconnector",
+            description = "Creates a new disconnector executing validations and business logic."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -68,8 +68,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
 
     @PostMapping("/bulk")
     @Operation(
-            summary = "Crear seccionadores en bloque",
-            description = "Crea varios seccionadores en una única operación transaccional."
+            summary = "Bulk create disconnectors",
+            description = "Creates several disconnectors in a single transactional operation."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -79,8 +79,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
 
     @PutMapping("/{id}")
     @Operation(
-            summary = "Actualizar seccionador",
-            description = "Actualiza un seccionador existente asignando el ID de la ruta al DTO."
+            summary = "Update disconnector",
+            description = "Updates an existing disconnector by assigning the path ID to the DTO."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -99,8 +99,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
 
     @PutMapping("/bulk")
     @Operation(
-            summary = "Actualizar seccionadores en bloque",
-            description = "Actualiza varios seccionadores en una única transacción."
+            summary = "Bulk update disconnectors",
+            description = "Updates several disconnectors in a single transaction."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -110,8 +110,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
 
     @DeleteMapping("/{id}")
     @Operation(
-            summary = "Eliminar seccionador por ID",
-            description = "Realiza el borrado lógico de un seccionador usando el ID de la ruta."
+            summary = "Delete disconnector by ID",
+            description = "Performs logical deletion of a disconnector using the path ID."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
@@ -123,8 +123,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
 
     @PostMapping("/search")
     @Operation(
-            summary = "Buscar seccionadores",
-            description = "Busca seccionadores aplicando filtros, ordenación y paginación genérica."
+            summary = "Search disconnectors",
+            description = "Searches for disconnectors applying filters, sorting, and generic pagination."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     public ResponseEntity<Object> search(@RequestBody SearchRequestDTO searchRequestDTO) {
@@ -133,8 +133,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
 
     @PostMapping("/filter")
     @Operation(
-            summary = "Filtrar seccionadores",
-            description = "Recupera una página de seccionadores aplicando filtros específicos mediante QueryDSL."
+            summary = "Filter disconnectors",
+            description = "Retrieves a page of disconnectors applying specific filters using QueryDSL."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -150,8 +150,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
 
     @GetMapping("/station/{stationId}")
     @Operation(
-            summary = "Obtener seccionadores por ID de estación",
-            description = "Recupera una lista de seccionadores asociados a una estación específica."
+            summary = "Get disconnectors by station ID",
+            description = "Retrieves a list of disconnectors associated with a specific station."
     )
     public ResponseEntity<Object> getByStationId(@PathVariable Long stationId) {
         return processGenericListRequest(getService()::getDisconnectorByStationId, stationId);
@@ -159,8 +159,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
 
     @GetMapping("/station/name/{stationName}")
     @Operation(
-            summary = "Obtener seccionadores por nombre de estación",
-            description = "Recupera una lista de seccionadores cuyo nombre de estación coincida con el proporcionado."
+            summary = "Get disconnectors by station name",
+            description = "Retrieves a list of disconnectors whose station name matches the provided one."
     )
     public ResponseEntity<Object> getByStationName(@PathVariable String stationName) {
         return processGenericListRequest(getService()::getDisconnectorsByStationName, stationName);

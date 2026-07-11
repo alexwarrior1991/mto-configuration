@@ -25,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 @RequestMapping(value = "/api/v1/async/execution-package")
 @Tag(
         name = "Execution Packages Async",
-        description = "Operaciones asíncronas para la gestión de paquetes de ejecución"
+        description = "Asynchronous operations for execution package management"
 )
 @ApiResponsesStandard
 public class ExecutionPackageAsyncController {
@@ -34,8 +34,8 @@ public class ExecutionPackageAsyncController {
 
     @GetMapping("/{id}")
     @Operation(
-            summary = "Obtener paquete de ejecución por ID (async)",
-            description = "Recupera de forma asíncrona un paquete de ejecución mediante su identificador, ejecutándose en el executor configurado."
+            summary = "Get execution package by ID (async)",
+            description = "Asynchronously retrieves an execution package by its identifier, running on the configured executor."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -51,8 +51,8 @@ public class ExecutionPackageAsyncController {
 
     @GetMapping
     @Operation(
-            summary = "Listar todos los paquetes de ejecución (async)",
-            description = "Recupera de forma asíncrona todos los paquetes de ejecución."
+            summary = "List all execution packages (async)",
+            description = "Asynchronously retrieves all execution packages."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     public CompletableFuture<ResponseEntity<Object>> findAllAsync() {
@@ -62,8 +62,8 @@ public class ExecutionPackageAsyncController {
 
     @PostMapping
     @Operation(
-            summary = "Crear paquete de ejecución (async)",
-            description = "Crea de forma asíncrona un nuevo paquete de ejecución. Ejecuta validaciones, lógica de negocio, persistencia y limpieza de caché."
+            summary = "Create execution package (async)",
+            description = "Asynchronously creates a new execution package. Executes validations, business logic, persistence, and cache cleanup."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -78,8 +78,8 @@ public class ExecutionPackageAsyncController {
 
     @PostMapping("/bulk")
     @Operation(
-            summary = "Crear paquetes de ejecución en bloque (async)",
-            description = "Crea varios paquetes de ejecución de forma asíncrona en una única operación transaccional."
+            summary = "Bulk create execution packages (async)",
+            description = "Asynchronously creates several execution packages in a single transactional operation."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -90,8 +90,8 @@ public class ExecutionPackageAsyncController {
 
     @PutMapping("/{id}")
     @Operation(
-            summary = "Actualizar paquete de ejecución (async)",
-            description = "Actualiza de forma asíncrona un paquete existente. El ID de la ruta se asigna al DTO antes de llamar al servicio."
+            summary = "Update execution package (async)",
+            description = "Asynchronously updates an existing package. The path ID is assigned to the DTO before calling the service."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -111,8 +111,8 @@ public class ExecutionPackageAsyncController {
 
     @PutMapping("/bulk")
     @Operation(
-            summary = "Actualizar paquetes de ejecución en bloque (async)",
-            description = "Actualiza varios paquetes de forma asíncrona en una única transacción. Si uno falla, se hace rollback de todos."
+            summary = "Bulk update execution packages (async)",
+            description = "Asynchronously updates several packages in a single transaction. If one fails, all are rolled back."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -123,8 +123,8 @@ public class ExecutionPackageAsyncController {
 
     @PostMapping("/search")
     @Operation(
-            summary = "Buscar paquetes de ejecución (async)",
-            description = "Busca de forma asíncrona paquetes de ejecución aplicando filtros, ordenación y paginación."
+            summary = "Search execution packages (async)",
+            description = "Asynchronously searches for execution packages applying filters, sorting, and pagination."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -135,8 +135,8 @@ public class ExecutionPackageAsyncController {
 
     @PostMapping("/filter")
     @Operation(
-            summary = "Filtrar paquetes de ejecución (async)",
-            description = "Recupera de forma asíncrona una página de paquetes de ejecución aplicando filtros específicos mediante QueryDSL."
+            summary = "Filter execution packages (async)",
+            description = "Asynchronously retrieves a page of execution packages applying specific filters using QueryDSL."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,

@@ -25,7 +25,7 @@ import java.util.List;
 @RequestMapping(value = "/api/v1/track")
 @Tag(
         name = "Tracks",
-        description = "Operaciones síncronas para la gestión de vías"
+        description = "Synchronous operations for track management"
 )
 public class TrackController extends CRUDController<TrackDTO, Track> {
 
@@ -38,8 +38,8 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
 
     @GetMapping("/{id}")
     @Operation(
-            summary = "Obtener vía por ID",
-            description = "Recupera una vía mediante su identificador."
+            summary = "Get track by ID",
+            description = "Retrieves a track by its identifier."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -53,8 +53,8 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
 
     @PostMapping
     @Operation(
-            summary = "Crear vía",
-            description = "Crea una nueva vía ejecutando validaciones y lógica de negocio."
+            summary = "Create track",
+            description = "Creates a new track executing validations and business logic."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -68,8 +68,8 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
 
     @PostMapping("/bulk")
     @Operation(
-            summary = "Crear vías en bloque",
-            description = "Crea varias vías en una única operación transaccional."
+            summary = "Bulk create tracks",
+            description = "Creates several tracks in a single transactional operation."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -79,8 +79,8 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
 
     @PutMapping("/{id}")
     @Operation(
-            summary = "Actualizar vía",
-            description = "Actualiza una vía existente asignando el ID de la ruta al DTO."
+            summary = "Update track",
+            description = "Updates an existing track by assigning the path ID to the DTO."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -99,8 +99,8 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
 
     @PutMapping("/bulk")
     @Operation(
-            summary = "Actualizar vías en bloque",
-            description = "Actualiza varias vías en una única transacción."
+            summary = "Bulk update tracks",
+            description = "Updates several tracks in a single transaction."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -110,8 +110,8 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
 
     @DeleteMapping("/{id}")
     @Operation(
-            summary = "Eliminar vía por ID",
-            description = "Realiza el borrado lógico de una vía usando el ID de la ruta."
+            summary = "Delete track by ID",
+            description = "Performs logical deletion of a track using the path ID."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
@@ -123,8 +123,8 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
 
     @PostMapping("/search")
     @Operation(
-            summary = "Buscar vías",
-            description = "Busca vías aplicando filtros, ordenación y paginación genérica."
+            summary = "Search tracks",
+            description = "Searches for tracks applying filters, sorting, and generic pagination."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     public ResponseEntity<Object> search(@RequestBody SearchRequestDTO searchRequestDTO) {
@@ -133,8 +133,8 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
 
     @PostMapping("/filter")
     @Operation(
-            summary = "Filtrar vías",
-            description = "Recupera una página de vías aplicando filtros específicos mediante QueryDSL."
+            summary = "Filter tracks",
+            description = "Retrieves a page of tracks applying specific filters using QueryDSL."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,

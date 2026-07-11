@@ -26,7 +26,7 @@ import java.util.List;
 @RequestMapping(value = "/api/v1/station")
 @Tag(
         name = "Stations",
-        description = "Operaciones síncronas para la gestión de estaciones"
+        description = "Synchronous operations for station management"
 )
 public class StationController extends CRUDController<StationDTO, Station> {
 
@@ -40,8 +40,8 @@ public class StationController extends CRUDController<StationDTO, Station> {
 
     @GetMapping("/{id}")
     @Operation(
-            summary = "Obtener estación por ID",
-            description = "Recupera una estación mediante su identificador."
+            summary = "Get station by ID",
+            description = "Retrieves a station by its identifier."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -55,8 +55,8 @@ public class StationController extends CRUDController<StationDTO, Station> {
 
     @PostMapping
     @Operation(
-            summary = "Crear estación",
-            description = "Crea una nueva estación ejecutando validaciones y lógica de negocio."
+            summary = "Create station",
+            description = "Creates a new station executing validations and business logic."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -70,8 +70,8 @@ public class StationController extends CRUDController<StationDTO, Station> {
 
     @PostMapping("/bulk")
     @Operation(
-            summary = "Crear estaciones en bloque",
-            description = "Crea varias estaciones en una única operación transaccional."
+            summary = "Bulk create stations",
+            description = "Creates several stations in a single transactional operation."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -81,8 +81,8 @@ public class StationController extends CRUDController<StationDTO, Station> {
 
     @PutMapping("/{id}")
     @Operation(
-            summary = "Actualizar estación",
-            description = "Actualiza una estación existente asignando el ID de la ruta al DTO."
+            summary = "Update station",
+            description = "Updates an existing station by assigning the path ID to the DTO."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -101,8 +101,8 @@ public class StationController extends CRUDController<StationDTO, Station> {
 
     @PutMapping("/bulk")
     @Operation(
-            summary = "Actualizar estaciones en bloque",
-            description = "Actualiza varias estaciones en una única transacción."
+            summary = "Bulk update stations",
+            description = "Updates several stations in a single transaction."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -112,8 +112,8 @@ public class StationController extends CRUDController<StationDTO, Station> {
 
     @DeleteMapping("/{id}")
     @Operation(
-            summary = "Eliminar estación por ID",
-            description = "Realiza el borrado lógico de una estación usando el ID de la ruta."
+            summary = "Delete station by ID",
+            description = "Performs logical deletion of a station using the path ID."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
@@ -125,8 +125,8 @@ public class StationController extends CRUDController<StationDTO, Station> {
 
     @PostMapping("/search")
     @Operation(
-            summary = "Buscar estaciones",
-            description = "Busca estaciones aplicando filtros, ordenación y paginación genérica."
+            summary = "Search stations",
+            description = "Searches for stations applying filters, sorting, and generic pagination."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     public ResponseEntity<Object> search(@RequestBody SearchRequestDTO searchRequestDTO) {
@@ -135,8 +135,8 @@ public class StationController extends CRUDController<StationDTO, Station> {
 
     @PostMapping("/filter")
     @Operation(
-            summary = "Filtrar estaciones",
-            description = "Recupera una página de estaciones aplicando filtros específicos (nombre, paquete, tracks) mediante QueryDSL."
+            summary = "Filter stations",
+            description = "Retrieves a page of stations applying specific filters (name, package, tracks) using QueryDSL."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,

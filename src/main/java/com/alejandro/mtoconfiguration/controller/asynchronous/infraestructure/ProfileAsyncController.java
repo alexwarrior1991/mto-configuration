@@ -26,7 +26,7 @@ import java.util.concurrent.CompletableFuture;
 @RequestMapping(value = "/api/v1/async/profile")
 @Tag(
         name = "Profiles Async",
-        description = "Operaciones asíncronas para la gestión de perfiles (postes)"
+        description = "Asynchronous operations for profile (poles) management"
 )
 @ApiResponsesStandard
 public class ProfileAsyncController {
@@ -35,8 +35,8 @@ public class ProfileAsyncController {
 
     @GetMapping("/{id}")
     @Operation(
-            summary = "Obtener perfil por ID (async)",
-            description = "Recupera de forma asíncrona un perfil mediante su identificador."
+            summary = "Get profile by ID (async)",
+            description = "Asynchronously retrieves a profile by its identifier."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -50,8 +50,8 @@ public class ProfileAsyncController {
 
     @GetMapping
     @Operation(
-            summary = "Listar todos los perfiles (async)",
-            description = "Recupera de forma asíncrona todos los perfiles."
+            summary = "List all profiles (async)",
+            description = "Asynchronously retrieves all profiles."
     )
     public CompletableFuture<ResponseEntity<Object>> findAllAsync() {
         return profileAsyncService.findAllAsync()
@@ -60,8 +60,8 @@ public class ProfileAsyncController {
 
     @PostMapping
     @Operation(
-            summary = "Crear perfil (async)",
-            description = "Crea de forma asíncrona un nuevo perfil."
+            summary = "Create profile (async)",
+            description = "Asynchronously creates a new profile."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -75,8 +75,8 @@ public class ProfileAsyncController {
 
     @PostMapping("/bulk")
     @Operation(
-            summary = "Crear perfiles en bloque (async)",
-            description = "Crea varios perfiles de forma asíncrona."
+            summary = "Bulk create profiles (async)",
+            description = "Asynchronously creates several profiles."
     )
     public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@RequestBody List<ProfileDTO> dtoList) {
         return profileAsyncService.bulkCreateAsync(dtoList)
@@ -85,8 +85,8 @@ public class ProfileAsyncController {
 
     @PutMapping("/{id}")
     @Operation(
-            summary = "Actualizar perfil (async)",
-            description = "Actualiza de forma asíncrona un perfil existente."
+            summary = "Update profile (async)",
+            description = "Asynchronously updates an existing profile."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -104,8 +104,8 @@ public class ProfileAsyncController {
 
     @PutMapping("/bulk")
     @Operation(
-            summary = "Actualizar perfiles en bloque (async)",
-            description = "Actualiza varios perfiles de forma asíncrona."
+            summary = "Bulk update profiles (async)",
+            description = "Asynchronously updates several profiles."
     )
     public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@RequestBody List<ProfileDTO> dtoList) {
         return profileAsyncService.bulkUpdateAsync(dtoList)
@@ -114,8 +114,8 @@ public class ProfileAsyncController {
 
     @PostMapping("/search")
     @Operation(
-            summary = "Buscar perfiles (async)",
-            description = "Busca de forma asíncrona perfiles aplicando filtros y paginación."
+            summary = "Search profiles (async)",
+            description = "Asynchronously searches for profiles applying filters and pagination."
     )
     public CompletableFuture<ResponseEntity<Object>> searchAsync(@RequestBody SearchRequestDTO searchRequestDTO) {
         return profileAsyncService.searchAsync(searchRequestDTO)
@@ -124,8 +124,8 @@ public class ProfileAsyncController {
 
     @PostMapping("/filter")
     @Operation(
-            summary = "Filtrar perfiles (async)",
-            description = "Recupera de forma asíncrona una página de perfiles aplicando filtros específicos."
+            summary = "Filter profiles (async)",
+            description = "Asynchronously retrieves a page of profiles applying specific filters."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -142,8 +142,8 @@ public class ProfileAsyncController {
 
     @GetMapping("/track/{trackId}/keyset")
     @Operation(
-            summary = "Obtener perfiles por Keyset (async)",
-            description = "Recupera de forma asíncrona una ventana de perfiles usando Keyset Pagination."
+            summary = "Get profiles by Keyset (async)",
+            description = "Asynchronously retrieves a window of profiles using Keyset Pagination."
     )
     public CompletableFuture<ResponseEntity<Object>> getProfilesByKeysetAsync(
             @PathVariable Long trackId,
@@ -157,8 +157,8 @@ public class ProfileAsyncController {
 
     @GetMapping("/track/{trackId}/range")
     @Operation(
-            summary = "Obtener perfiles por rango de KP (async)",
-            description = "Recupera de forma asíncrona todos los perfiles de una vía comprendidos entre dos puntos kilométricos."
+            summary = "Get profiles by KP range (async)",
+            description = "Asynchronously retrieves all profiles of a track between two kilometric points."
     )
     public CompletableFuture<ResponseEntity<Object>> getProfilesByKpRangeAsync(
             @PathVariable Long trackId,

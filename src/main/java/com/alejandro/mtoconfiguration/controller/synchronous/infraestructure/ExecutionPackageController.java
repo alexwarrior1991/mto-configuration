@@ -26,7 +26,7 @@ import java.util.List;
 @RequestMapping(value = "/api/v1/execution-package")
 @Tag(
         name = "Execution Packages",
-        description = "Operaciones síncronas para la gestión de paquetes de ejecución"
+        description = "Synchronous operations for execution package management"
 )
 @ApiResponsesStandard
 public class ExecutionPackageController extends CRUDController<ExecutionPackageDTO, ExecutionPackage> {
@@ -41,8 +41,8 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
 
     @GetMapping("/{id}")
     @Operation(
-            summary = "Obtener paquete de ejecución por ID",
-            description = "Recupera un paquete de ejecución mediante su identificador. Usa la caché configurada en el servicio."
+            summary = "Get execution package by ID",
+            description = "Retrieves an execution package by its identifier. Uses the configured cache in the service."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -56,8 +56,8 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
 
     @PostMapping
     @Operation(
-            summary = "Crear paquete de ejecución",
-            description = "Crea un nuevo paquete de ejecución. Ejecuta validaciones, lógica de negocio, persistencia y limpieza de caché."
+            summary = "Create execution package",
+            description = "Creates a new execution package. Executes validations, business logic, persistence, and cache cleanup."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -71,8 +71,8 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
 
     @PostMapping("/bulk")
     @Operation(
-            summary = "Crear paquetes de ejecución en bloque",
-            description = "Crea varios paquetes de ejecución en una única operación transaccional."
+            summary = "Bulk create execution packages",
+            description = "Creates several execution packages in a single transactional operation."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -82,8 +82,8 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
 
     @PutMapping("/{id}")
     @Operation(
-            summary = "Actualizar paquete de ejecución",
-            description = "Actualiza un paquete de ejecución existente. El ID de la ruta se asigna al DTO antes de llamar al servicio."
+            summary = "Update execution package",
+            description = "Updates an existing execution package. The path ID is assigned to the DTO before calling the service."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -102,8 +102,8 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
 
     @PutMapping("/bulk")
     @Operation(
-            summary = "Actualizar paquetes de ejecución en bloque",
-            description = "Actualiza varios paquetes de ejecución en una única transacción. Si uno falla, se hace rollback de todos."
+            summary = "Bulk update execution packages",
+            description = "Updates several execution packages in a single transaction. If one fails, all are rolled back."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -113,8 +113,8 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
 
     @DeleteMapping
     @Operation(
-            summary = "Eliminar paquete de ejecución",
-            description = "Realiza el borrado lógico de un paquete de ejecución usando el ID recibido en el cuerpo."
+            summary = "Delete execution package",
+            description = "Performs logical deletion of an execution package using the ID received in the body."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -125,8 +125,8 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
 
     @DeleteMapping("/{id}")
     @Operation(
-            summary = "Eliminar paquete de ejecución por ID",
-            description = "Realiza el borrado lógico de un paquete de ejecución usando el ID de la ruta."
+            summary = "Delete execution package by ID",
+            description = "Performs logical deletion of an execution package using the path ID."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
@@ -138,8 +138,8 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
 
     @PostMapping("/search")
     @Operation(
-            summary = "Buscar paquetes de ejecución",
-            description = "Busca paquetes de ejecución aplicando filtros, ordenación y paginación."
+            summary = "Search execution packages",
+            description = "Searches for execution packages applying filters, sorting, and pagination."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -149,8 +149,8 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
 
     @PostMapping("/filter")
     @Operation(
-            summary = "Filtrar paquetes de ejecución",
-            description = "Recupera una página de paquetes de ejecución aplicando filtros específicos (nombre, compañía, fechas, texto libre) mediante QueryDSL."
+            summary = "Filter execution packages",
+            description = "Retrieves a page of execution packages applying specific filters (name, company, dates, free text) using QueryDSL."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,

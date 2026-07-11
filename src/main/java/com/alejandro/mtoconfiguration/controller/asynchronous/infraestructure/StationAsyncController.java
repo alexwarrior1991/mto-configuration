@@ -25,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 @RequestMapping(value = "/api/v1/async/station")
 @Tag(
         name = "Stations Async",
-        description = "Operaciones asíncronas para la gestión de estaciones"
+        description = "Asynchronous operations for station management"
 )
 @ApiResponsesStandard
 public class StationAsyncController {
@@ -34,8 +34,8 @@ public class StationAsyncController {
 
     @GetMapping("/{id}")
     @Operation(
-            summary = "Obtener estación por ID (async)",
-            description = "Recupera de forma asíncrona una estación mediante su identificador."
+            summary = "Get station by ID (async)",
+            description = "Asynchronously retrieves a station by its identifier."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -49,8 +49,8 @@ public class StationAsyncController {
 
     @GetMapping
     @Operation(
-            summary = "Listar todas las estaciones (async)",
-            description = "Recupera de forma asíncrona todas las estaciones."
+            summary = "List all stations (async)",
+            description = "Asynchronously retrieves all stations."
     )
     public CompletableFuture<ResponseEntity<Object>> findAllAsync() {
         return stationAsyncService.findAllAsync()
@@ -59,8 +59,8 @@ public class StationAsyncController {
 
     @PostMapping
     @Operation(
-            summary = "Crear estación (async)",
-            description = "Crea de forma asíncrona una nueva estación."
+            summary = "Create station (async)",
+            description = "Asynchronously creates a new station."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -74,8 +74,8 @@ public class StationAsyncController {
 
     @PostMapping("/bulk")
     @Operation(
-            summary = "Crear estaciones en bloque (async)",
-            description = "Crea varias estaciones de forma asíncrona."
+            summary = "Bulk create stations (async)",
+            description = "Asynchronously creates several stations."
     )
     public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@RequestBody List<StationDTO> dtoList) {
         return stationAsyncService.bulkCreateAsync(dtoList)
@@ -84,8 +84,8 @@ public class StationAsyncController {
 
     @PutMapping("/{id}")
     @Operation(
-            summary = "Actualizar estación (async)",
-            description = "Actualiza de forma asíncrona una estación existente."
+            summary = "Update station (async)",
+            description = "Asynchronously updates an existing station."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -103,8 +103,8 @@ public class StationAsyncController {
 
     @PutMapping("/bulk")
     @Operation(
-            summary = "Actualizar estaciones en bloque (async)",
-            description = "Actualiza varias estaciones de forma asíncrona."
+            summary = "Bulk update stations (async)",
+            description = "Asynchronously updates several stations."
     )
     public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@RequestBody List<StationDTO> dtoList) {
         return stationAsyncService.bulkUpdateAsync(dtoList)
@@ -113,8 +113,8 @@ public class StationAsyncController {
 
     @PostMapping("/search")
     @Operation(
-            summary = "Buscar estaciones (async)",
-            description = "Busca de forma asíncrona estaciones aplicando filtros y paginación."
+            summary = "Search stations (async)",
+            description = "Asynchronously searches for stations applying filters and pagination."
     )
     public CompletableFuture<ResponseEntity<Object>> searchAsync(@RequestBody SearchRequestDTO searchRequestDTO) {
         return stationAsyncService.searchAsync(searchRequestDTO)
@@ -123,8 +123,8 @@ public class StationAsyncController {
 
     @PostMapping("/filter")
     @Operation(
-            summary = "Filtrar estaciones (async)",
-            description = "Recupera de forma asíncrona una página de estaciones aplicando filtros específicos."
+            summary = "Filter stations (async)",
+            description = "Asynchronously retrieves a page of stations applying specific filters."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,

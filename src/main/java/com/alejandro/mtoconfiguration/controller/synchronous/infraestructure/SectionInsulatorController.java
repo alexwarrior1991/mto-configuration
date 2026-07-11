@@ -26,7 +26,7 @@ import java.util.List;
 @RequestMapping(value = "/api/v1/section-insulator")
 @Tag(
         name = "Section Insulators",
-        description = "Operaciones síncronas para la gestión de aisladores de sección"
+        description = "Synchronous operations for section insulator management"
 )
 @ApiResponsesStandard
 public class SectionInsulatorController extends CRUDController<SectionInsulatorDTO, SectionInsulator> {
@@ -40,8 +40,8 @@ public class SectionInsulatorController extends CRUDController<SectionInsulatorD
 
     @GetMapping("/{id}")
     @Operation(
-            summary = "Obtener aislador de sección por ID",
-            description = "Recupera un aislador de sección mediante su identificador."
+            summary = "Get section insulator by ID",
+            description = "Retrieves a section insulator by its identifier."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -55,8 +55,8 @@ public class SectionInsulatorController extends CRUDController<SectionInsulatorD
 
     @PostMapping
     @Operation(
-            summary = "Crear aislador de sección",
-            description = "Crea un nuevo aislador de sección ejecutando validaciones y lógica de negocio."
+            summary = "Create section insulator",
+            description = "Creates a new section insulator executing validations and business logic."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -70,8 +70,8 @@ public class SectionInsulatorController extends CRUDController<SectionInsulatorD
 
     @PostMapping("/bulk")
     @Operation(
-            summary = "Crear aisladores de sección en bloque",
-            description = "Crea varios aisladores de sección en una única operación transaccional."
+            summary = "Bulk create section insulators",
+            description = "Creates several section insulators in a single transactional operation."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -81,8 +81,8 @@ public class SectionInsulatorController extends CRUDController<SectionInsulatorD
 
     @PutMapping("/{id}")
     @Operation(
-            summary = "Actualizar aislador de sección",
-            description = "Actualiza un aislador de sección existente asignando el ID de la ruta al DTO."
+            summary = "Update section insulator",
+            description = "Updates an existing section insulator by assigning the path ID to the DTO."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -101,8 +101,8 @@ public class SectionInsulatorController extends CRUDController<SectionInsulatorD
 
     @PutMapping("/bulk")
     @Operation(
-            summary = "Actualizar aisladores de sección en bloque",
-            description = "Actualiza varios aisladores de sección en una única transacción."
+            summary = "Bulk update section insulators",
+            description = "Updates several section insulators in a single transaction."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -112,8 +112,8 @@ public class SectionInsulatorController extends CRUDController<SectionInsulatorD
 
     @DeleteMapping("/{id}")
     @Operation(
-            summary = "Eliminar aislador de sección por ID",
-            description = "Realiza el borrado lógico de un aislador de sección usando el ID de la ruta."
+            summary = "Delete section insulator by ID",
+            description = "Performs logical deletion of a section insulator using the path ID."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
@@ -125,8 +125,8 @@ public class SectionInsulatorController extends CRUDController<SectionInsulatorD
 
     @PostMapping("/search")
     @Operation(
-            summary = "Buscar aisladores de sección",
-            description = "Busca aisladores de sección aplicando filtros, ordenación y paginación genérica."
+            summary = "Search section insulators",
+            description = "Searches for section insulators applying filters, sorting, and generic pagination."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     public ResponseEntity<Object> search(@RequestBody SearchRequestDTO searchRequestDTO) {
@@ -135,8 +135,8 @@ public class SectionInsulatorController extends CRUDController<SectionInsulatorD
 
     @PostMapping("/filter")
     @Operation(
-            summary = "Filtrar aisladores de sección",
-            description = "Recupera una página de aisladores de sección aplicando filtros específicos mediante QueryDSL."
+            summary = "Filter section insulators",
+            description = "Retrieves a page of section insulators applying specific filters using QueryDSL."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -152,8 +152,8 @@ public class SectionInsulatorController extends CRUDController<SectionInsulatorD
 
     @GetMapping("/station/{stationId}")
     @Operation(
-            summary = "Obtener aisladores de sección por ID de estación",
-            description = "Recupera una lista de aisladores de sección asociados a una estación específica."
+            summary = "Get section insulators by station ID",
+            description = "Retrieves a list of section insulators associated with a specific station."
     )
     public ResponseEntity<Object> getByStationId(@PathVariable Long stationId) {
         return processGenericListRequest(getService()::getSectionInsulatorsByStationId, stationId);
@@ -161,8 +161,8 @@ public class SectionInsulatorController extends CRUDController<SectionInsulatorD
 
     @GetMapping("/station/name/{stationName}")
     @Operation(
-            summary = "Obtener aisladores de sección por nombre de estación",
-            description = "Recupera una lista de aisladores de sección cuyo nombre de estación coincida con el proporcionado."
+            summary = "Get section insulators by station name",
+            description = "Retrieves a list of section insulators whose station name matches the provided one."
     )
     public ResponseEntity<Object> getByStationName(@PathVariable String stationName) {
         return processGenericListRequest(getService()::getSectionInsulatorsByStationName, stationName);

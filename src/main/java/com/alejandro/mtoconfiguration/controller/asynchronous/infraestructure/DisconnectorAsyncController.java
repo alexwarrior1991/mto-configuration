@@ -24,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
 @RequestMapping(value = "/api/v1/async/disconnector")
 @Tag(
         name = "Disconnectors Async",
-        description = "Operaciones asíncronas para la gestión de seccionadores"
+        description = "Asynchronous operations for disconnector management"
 )
 public class DisconnectorAsyncController {
 
@@ -32,8 +32,8 @@ public class DisconnectorAsyncController {
 
     @GetMapping("/{id}")
     @Operation(
-            summary = "Obtener seccionador por ID (async)",
-            description = "Recupera de forma asíncrona un seccionador mediante su identificador."
+            summary = "Get disconnector by ID (async)",
+            description = "Asynchronously retrieves a disconnector by its identifier."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -47,8 +47,8 @@ public class DisconnectorAsyncController {
 
     @GetMapping
     @Operation(
-            summary = "Listar todos los seccionadores (async)",
-            description = "Recupera de forma asíncrona todos los seccionadores."
+            summary = "List all disconnectors (async)",
+            description = "Asynchronously retrieves all disconnectors."
     )
     public CompletableFuture<ResponseEntity<Object>> findAllAsync() {
         return disconnectorAsyncService.findAllAsync()
@@ -57,8 +57,8 @@ public class DisconnectorAsyncController {
 
     @PostMapping
     @Operation(
-            summary = "Crear seccionador (async)",
-            description = "Crea de forma asíncrona un nuevo seccionador."
+            summary = "Create disconnector (async)",
+            description = "Asynchronously creates a new disconnector."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -72,8 +72,8 @@ public class DisconnectorAsyncController {
 
     @PostMapping("/bulk")
     @Operation(
-            summary = "Crear seccionadores en bloque (async)",
-            description = "Crea varios seccionadores de forma asíncrona."
+            summary = "Bulk create disconnectors (async)",
+            description = "Asynchronously creates several disconnectors."
     )
     public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@RequestBody List<DisconnectorDTO> dtoList) {
         return disconnectorAsyncService.bulkCreateAsync(dtoList)
@@ -82,8 +82,8 @@ public class DisconnectorAsyncController {
 
     @PutMapping("/{id}")
     @Operation(
-            summary = "Actualizar seccionador (async)",
-            description = "Actualiza de forma asíncrona un seccionador existente."
+            summary = "Update disconnector (async)",
+            description = "Asynchronously updates an existing disconnector."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -101,8 +101,8 @@ public class DisconnectorAsyncController {
 
     @PutMapping("/bulk")
     @Operation(
-            summary = "Actualizar seccionadores en bloque (async)",
-            description = "Actualiza varios seccionadores de forma asíncrona."
+            summary = "Bulk update disconnectors (async)",
+            description = "Asynchronously updates several disconnectors."
     )
     public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@RequestBody List<DisconnectorDTO> dtoList) {
         return disconnectorAsyncService.bulkUpdateAsync(dtoList)
@@ -111,8 +111,8 @@ public class DisconnectorAsyncController {
 
     @PostMapping("/search")
     @Operation(
-            summary = "Buscar seccionadores (async)",
-            description = "Busca de forma asíncrona seccionadores aplicando filtros y paginación."
+            summary = "Search disconnectors (async)",
+            description = "Asynchronously searches for disconnectors applying filters and pagination."
     )
     public CompletableFuture<ResponseEntity<Object>> searchAsync(@RequestBody SearchRequestDTO searchRequestDTO) {
         return disconnectorAsyncService.searchAsync(searchRequestDTO)
@@ -121,8 +121,8 @@ public class DisconnectorAsyncController {
 
     @PostMapping("/filter")
     @Operation(
-            summary = "Filtrar seccionadores (async)",
-            description = "Recupera de forma asíncrona una página de seccionadores aplicando filtros específicos."
+            summary = "Filter disconnectors (async)",
+            description = "Asynchronously retrieves a page of disconnectors applying specific filters."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -139,8 +139,8 @@ public class DisconnectorAsyncController {
 
     @GetMapping("/station/{stationId}")
     @Operation(
-            summary = "Obtener seccionadores por ID de estación (async)",
-            description = "Recupera de forma asíncrona una lista de seccionadores asociados a una estación específica."
+            summary = "Get disconnectors by station ID (async)",
+            description = "Asynchronously retrieves a list of disconnectors associated with a specific station."
     )
     public CompletableFuture<ResponseEntity<Object>> getByStationIdAsync(@PathVariable Long stationId) {
         return disconnectorAsyncService.getDisconnectorByStationIdAsync(stationId)
@@ -149,8 +149,8 @@ public class DisconnectorAsyncController {
 
     @GetMapping("/station/name/{stationName}")
     @Operation(
-            summary = "Obtener seccionadores por nombre de estación (async)",
-            description = "Recupera de forma asíncrona una lista de seccionadores cuyo nombre de estación coincida con el proporcionado."
+            summary = "Get disconnectors by station name (async)",
+            description = "Asynchronously retrieves a list of disconnectors whose station name matches the provided one."
     )
     public CompletableFuture<ResponseEntity<Object>> getByStationNameAsync(@PathVariable String stationName) {
         return disconnectorAsyncService.getDisconnectorsByStationNameAsync(stationName)

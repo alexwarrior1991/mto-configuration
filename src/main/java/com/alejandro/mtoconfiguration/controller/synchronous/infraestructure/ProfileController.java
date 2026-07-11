@@ -30,7 +30,7 @@ import java.util.function.Function;
 @RequestMapping(value = "/api/v1/profile")
 @Tag(
         name = "Profiles",
-        description = "Operaciones síncronas para la gestión de perfiles (postes)"
+        description = "Synchronous operations for profile (poles) management"
 )
 @ApiResponsesStandard
 public class ProfileController extends CRUDController<ProfileDTO, Profile> {
@@ -46,8 +46,8 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
 
     @GetMapping("/{id}")
     @Operation(
-            summary = "Obtener perfil por ID",
-            description = "Recupera un perfil mediante su identificador."
+            summary = "Get profile by ID",
+            description = "Retrieves a profile by its identifier."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -61,8 +61,8 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
 
     @PostMapping
     @Operation(
-            summary = "Crear perfil",
-            description = "Crea un nuevo perfil ejecutando validaciones y lógica de negocio."
+            summary = "Create profile",
+            description = "Creates a new profile executing validations and business logic."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -76,8 +76,8 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
 
     @PostMapping("/bulk")
     @Operation(
-            summary = "Crear perfiles en bloque",
-            description = "Crea varios perfiles en una única operación transaccional."
+            summary = "Bulk create profiles",
+            description = "Creates several profiles in a single transactional operation."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -87,8 +87,8 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
 
     @PutMapping("/{id}")
     @Operation(
-            summary = "Actualizar perfil",
-            description = "Actualiza un perfil existente asignando el ID de la ruta al DTO."
+            summary = "Update profile",
+            description = "Updates an existing profile by assigning the path ID to the DTO."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -107,8 +107,8 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
 
     @PutMapping("/bulk")
     @Operation(
-            summary = "Actualizar perfiles en bloque",
-            description = "Actualiza varios perfiles en una única transacción."
+            summary = "Bulk update profiles",
+            description = "Updates several profiles in a single transaction."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
@@ -118,8 +118,8 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
 
     @DeleteMapping("/{id}")
     @Operation(
-            summary = "Eliminar perfil por ID",
-            description = "Realiza el borrado lógico de un perfil usando el ID de la ruta."
+            summary = "Delete profile by ID",
+            description = "Performs logical deletion of a profile using the path ID."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
@@ -131,8 +131,8 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
 
     @PostMapping("/search")
     @Operation(
-            summary = "Buscar perfiles",
-            description = "Busca perfiles aplicando filtros, ordenación y paginación genérica."
+            summary = "Search profiles",
+            description = "Searches for profiles applying filters, sorting, and generic pagination."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     public ResponseEntity<Object> search(@RequestBody SearchRequestDTO searchRequestDTO) {
@@ -141,8 +141,8 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
 
     @PostMapping("/filter")
     @Operation(
-            summary = "Filtrar perfiles",
-            description = "Recupera una página de perfiles aplicando filtros específicos mediante QueryDSL."
+            summary = "Filter profiles",
+            description = "Retrieves a page of profiles applying specific filters using QueryDSL."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -158,8 +158,8 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
 
     @GetMapping("/track/{trackId}/keyset")
     @Operation(
-            summary = "Obtener perfiles por Keyset",
-            description = "Recupera una ventana de perfiles usando Keyset Pagination para mayor eficiencia en grandes volúmenes."
+            summary = "Get profiles by Keyset",
+            description = "Retrieves a window of profiles using Keyset Pagination for higher efficiency in large volumes."
     )
     public ResponseEntity<Object> getProfilesByKeyset(
             @PathVariable Long trackId,
@@ -172,8 +172,8 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
 
     @GetMapping("/track/{trackId}/range")
     @Operation(
-            summary = "Obtener perfiles por rango de KP",
-            description = "Recupera todos los perfiles de una vía comprendidos entre dos puntos kilométricos."
+            summary = "Get profiles by KP range",
+            description = "Retrieves all profiles of a track between two kilometric points."
     )
     public ResponseEntity<Object> getProfilesByKpRange(
             @PathVariable Long trackId,

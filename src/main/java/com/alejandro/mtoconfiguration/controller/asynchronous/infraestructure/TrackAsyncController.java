@@ -24,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
 @RequestMapping(value = "/api/v1/async/track")
 @Tag(
         name = "Tracks Async",
-        description = "Operaciones asíncronas para la gestión de vías"
+        description = "Asynchronous operations for track management"
 )
 public class TrackAsyncController {
 
@@ -32,8 +32,8 @@ public class TrackAsyncController {
 
     @GetMapping("/{id}")
     @Operation(
-            summary = "Obtener vía por ID (async)",
-            description = "Recupera de forma asíncrona una vía mediante su identificador."
+            summary = "Get track by ID (async)",
+            description = "Asynchronously retrieves a track by its identifier."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -47,8 +47,8 @@ public class TrackAsyncController {
 
     @GetMapping
     @Operation(
-            summary = "Listar todas las vías (async)",
-            description = "Recupera de forma asíncrona todas las vías."
+            summary = "List all tracks (async)",
+            description = "Asynchronously retrieves all tracks."
     )
     public CompletableFuture<ResponseEntity<Object>> findAllAsync() {
         return trackAsyncService.findAllAsync()
@@ -57,8 +57,8 @@ public class TrackAsyncController {
 
     @PostMapping
     @Operation(
-            summary = "Crear vía (async)",
-            description = "Crea de forma asíncrona una nueva vía."
+            summary = "Create track (async)",
+            description = "Asynchronously creates a new track."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -72,8 +72,8 @@ public class TrackAsyncController {
 
     @PostMapping("/bulk")
     @Operation(
-            summary = "Crear vías en bloque (async)",
-            description = "Crea varias vías de forma asíncrona."
+            summary = "Bulk create tracks (async)",
+            description = "Asynchronously creates several tracks."
     )
     public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@RequestBody List<TrackDTO> dtoList) {
         return trackAsyncService.bulkCreateAsync(dtoList)
@@ -82,8 +82,8 @@ public class TrackAsyncController {
 
     @PutMapping("/{id}")
     @Operation(
-            summary = "Actualizar vía (async)",
-            description = "Actualiza de forma asíncrona una vía existente."
+            summary = "Update track (async)",
+            description = "Asynchronously updates an existing track."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -101,8 +101,8 @@ public class TrackAsyncController {
 
     @PutMapping("/bulk")
     @Operation(
-            summary = "Actualizar vías en bloque (async)",
-            description = "Actualiza varias vías de forma asíncrona."
+            summary = "Bulk update tracks (async)",
+            description = "Asynchronously updates several tracks."
     )
     public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@RequestBody List<TrackDTO> dtoList) {
         return trackAsyncService.bulkUpdateAsync(dtoList)
@@ -111,8 +111,8 @@ public class TrackAsyncController {
 
     @PostMapping("/search")
     @Operation(
-            summary = "Buscar vías (async)",
-            description = "Busca de forma asíncrona vías aplicando filtros y paginación."
+            summary = "Search tracks (async)",
+            description = "Asynchronously searches for tracks applying filters and pagination."
     )
     public CompletableFuture<ResponseEntity<Object>> searchAsync(@RequestBody SearchRequestDTO searchRequestDTO) {
         return trackAsyncService.searchAsync(searchRequestDTO)
@@ -121,8 +121,8 @@ public class TrackAsyncController {
 
     @PostMapping("/filter")
     @Operation(
-            summary = "Filtrar vías (async)",
-            description = "Recupera de forma asíncrona una página de vías aplicando filtros específicos."
+            summary = "Filter tracks (async)",
+            description = "Asynchronously retrieves a page of tracks applying specific filters."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,

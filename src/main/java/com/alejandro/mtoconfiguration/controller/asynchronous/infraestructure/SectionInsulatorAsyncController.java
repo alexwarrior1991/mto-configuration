@@ -25,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 @RequestMapping(value = "/api/v1/async/section-insulator")
 @Tag(
         name = "Section Insulators Async",
-        description = "Operaciones asíncronas para la gestión de aisladores de sección"
+        description = "Asynchronous operations for section insulator management"
 )
 @ApiResponsesStandard
 public class SectionInsulatorAsyncController {
@@ -34,8 +34,8 @@ public class SectionInsulatorAsyncController {
 
     @GetMapping("/{id}")
     @Operation(
-            summary = "Obtener aislador de sección por ID (async)",
-            description = "Recupera de forma asíncrona un aislador de sección mediante su identificador."
+            summary = "Get section insulator by ID (async)",
+            description = "Asynchronously retrieves a section insulator by its identifier."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -49,8 +49,8 @@ public class SectionInsulatorAsyncController {
 
     @GetMapping
     @Operation(
-            summary = "Listar todos los aisladores de sección (async)",
-            description = "Recupera de forma asíncrona todos los aisladores de sección."
+            summary = "List all section insulators (async)",
+            description = "Asynchronously retrieves all section insulators."
     )
     public CompletableFuture<ResponseEntity<Object>> findAllAsync() {
         return sectionInsulatorAsyncService.findAllAsync()
@@ -59,8 +59,8 @@ public class SectionInsulatorAsyncController {
 
     @PostMapping
     @Operation(
-            summary = "Crear aislador de sección (async)",
-            description = "Crea de forma asíncrona un nuevo aislador de sección."
+            summary = "Create section insulator (async)",
+            description = "Asynchronously creates a new section insulator."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -74,8 +74,8 @@ public class SectionInsulatorAsyncController {
 
     @PostMapping("/bulk")
     @Operation(
-            summary = "Crear aisladores de sección en bloque (async)",
-            description = "Crea varios aisladores de sección de forma asíncrona."
+            summary = "Bulk create section insulators (async)",
+            description = "Asynchronously creates several section insulators."
     )
     public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@RequestBody List<SectionInsulatorDTO> dtoList) {
         return sectionInsulatorAsyncService.bulkCreateAsync(dtoList)
@@ -84,8 +84,8 @@ public class SectionInsulatorAsyncController {
 
     @PutMapping("/{id}")
     @Operation(
-            summary = "Actualizar aislador de sección (async)",
-            description = "Actualiza de forma asíncrona un aislador de sección existente."
+            summary = "Update section insulator (async)",
+            description = "Asynchronously updates an existing section insulator."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -103,8 +103,8 @@ public class SectionInsulatorAsyncController {
 
     @PutMapping("/bulk")
     @Operation(
-            summary = "Actualizar aisladores de sección en bloque (async)",
-            description = "Actualiza varios aisladores de sección de forma asíncrona."
+            summary = "Bulk update section insulators (async)",
+            description = "Asynchronously updates several section insulators."
     )
     public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@RequestBody List<SectionInsulatorDTO> dtoList) {
         return sectionInsulatorAsyncService.bulkUpdateAsync(dtoList)
@@ -113,8 +113,8 @@ public class SectionInsulatorAsyncController {
 
     @PostMapping("/search")
     @Operation(
-            summary = "Buscar aisladores de sección (async)",
-            description = "Busca de forma asíncrona aisladores de sección aplicando filtros y paginación."
+            summary = "Search section insulators (async)",
+            description = "Asynchronously searches for section insulators applying filters and pagination."
     )
     public CompletableFuture<ResponseEntity<Object>> searchAsync(@RequestBody SearchRequestDTO searchRequestDTO) {
         return sectionInsulatorAsyncService.searchAsync(searchRequestDTO)
@@ -123,8 +123,8 @@ public class SectionInsulatorAsyncController {
 
     @PostMapping("/filter")
     @Operation(
-            summary = "Filtrar aisladores de sección (async)",
-            description = "Recupera de forma asíncrona una página de aisladores de sección aplicando filtros específicos."
+            summary = "Filter section insulators (async)",
+            description = "Asynchronously retrieves a page of section insulators applying specific filters."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,
@@ -141,8 +141,8 @@ public class SectionInsulatorAsyncController {
 
     @GetMapping("/station/{stationId}")
     @Operation(
-            summary = "Obtener aisladores de sección por ID de estación (async)",
-            description = "Recupera de forma asíncrona aisladores de sección asociados a una estación."
+            summary = "Get section insulators by station ID (async)",
+            description = "Asynchronously retrieves section insulators associated with a station."
     )
     public CompletableFuture<ResponseEntity<Object>> getByStationIdAsync(@PathVariable Long stationId) {
         return sectionInsulatorAsyncService.getSectionInsulatorsByStationIdAsync(stationId)
@@ -151,8 +151,8 @@ public class SectionInsulatorAsyncController {
 
     @GetMapping("/station/name/{stationName}")
     @Operation(
-            summary = "Obtener aisladores de sección por nombre de estación (async)",
-            description = "Recupera de forma asíncrona aisladores de sección por nombre de estación."
+            summary = "Get section insulators by station name (async)",
+            description = "Asynchronously retrieves section insulators by station name."
     )
     public CompletableFuture<ResponseEntity<Object>> getByStationNameAsync(@PathVariable String stationName) {
         return sectionInsulatorAsyncService.getSectionInsulatorsByStationNameAsync(stationName)
