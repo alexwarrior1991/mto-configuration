@@ -40,6 +40,7 @@ public class RabbitMqConfiguration {
         RabbitTemplate template = new RabbitTemplate(connectionFactory);
         template.setMessageConverter(rabbitMessageConverter);
         template.setMandatory(properties.getPublisher().isMandatory());
+        template.setObservationEnabled(true);
         return template;
     }
 

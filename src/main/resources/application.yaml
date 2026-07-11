@@ -104,6 +104,12 @@ app:
         exchange: mto.master-data.exchange
         routing-key: mto.master-data.*.deleted
 
+  outbox:
+    enabled: true
+    max-attempts: 10
+    initial-retry-delay: 5s
+    publisher-fixed-delay: 5s
+
 cache:
   application: mto-configuration
   redis:
