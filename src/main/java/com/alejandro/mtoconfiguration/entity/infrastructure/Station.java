@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.entity.infrastructure;
 
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
+import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
 import jakarta.persistence.*;
 import lombok.Setter;
 import org.hibernate.envers.Audited;
@@ -15,6 +16,7 @@ import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 @Entity
 @Audited
 @Table(name = "STATION")
+@PublishMasterDataEvent(name = "station")
 public class Station extends CRUDEntity {
 
     @Serial

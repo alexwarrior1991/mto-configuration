@@ -11,6 +11,8 @@ import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.CriteriaSearchRepository;
+import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeApplicationEvent;
+import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeOperation;
 import com.alejandro.mtoconfiguration.utils.Utils;
 import com.alejandro.mtoconfiguration.validator.commons.Validator;
 import com.querydsl.core.BooleanBuilder;
@@ -64,6 +66,26 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
     protected abstract Map<String, Object> searchParams();
 
     protected abstract Business<T, E> getBusiness();
+
+    protected void publishEntityCreatedEvent(E entity) {
+        publishEntityChangedEvent(entity, EntityChangeOperation.CREATED);
+    }
+
+    protected void publishEntityUpdatedEvent(E entity) {
+        publishEntityChangedEvent(entity, EntityChangeOperation.UPDATED);
+    }
+
+    protected void publishEntityDeletedEvent(E entity) {
+        publishEntityChangedEvent(entity, EntityChangeOperation.DELETED);
+    }
+
+    protected void publishEntityChangedEvent(E entity, EntityChangeOperation operation) {
+        if (entity == null || entity.getId() == null || operation == null) {
+            return;
+        }
+
+        applicationEventPublisher.publishEvent(new EntityChangeApplicationEvent<>(entity, operation));
+    }
 
     @Cacheable(
             cacheNames = CacheNames.NORMAL_LIST,
@@ -131,6 +153,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 })
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
+                    publishEntityCreatedEvent(savedEntity);
                     getMapper().updateDTOFromEntity(savedEntity, dto);
                     publishCacheEvictionEvent();
                     return dto;
@@ -153,6 +176,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(getRepository()::saveAll)
                 .map(savedEntities -> {
                     getRepository().flush();
+                    savedEntities.forEach(this::publishEntityCreatedEvent);
                     publishCacheEvictionEvent();
                     return getMapper().toListDTO(savedEntities);
                 })
@@ -188,6 +212,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 })
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
+                    publishEntityUpdatedEvent(savedEntity);
                     getMapper().updateDTOFromEntity(savedEntity, dto);
                     publishCacheEvictionEvent();
                     return dto;
@@ -232,6 +257,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(getRepository()::saveAll)
                 .map(savedEntities -> {
                     getRepository().flush();
+                    savedEntities.forEach(this::publishEntityUpdatedEvent);
                     publishCacheEvictionEvent();
                     return getMapper().toListDTO(savedEntities);
                 })
@@ -263,6 +289,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 })
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
+                    publishEntityUpdatedEvent(savedEntity);
                     getMapper().updateDTOFromEntity(savedEntity, dto);
                     publishCacheEvictionEvent();
                     return dto;

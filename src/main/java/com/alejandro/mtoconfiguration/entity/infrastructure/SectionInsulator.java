@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
+import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.Setter;
@@ -14,6 +15,7 @@ import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 @Entity
 @Audited
 @Table(name = "SECTION_INSULATOR")
+@PublishMasterDataEvent(name = "section-insulator")
 public class SectionInsulator extends CRUDEntity {
 
     @Serial

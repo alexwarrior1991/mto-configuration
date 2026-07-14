@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.repository.jpa.infrastructure;
 
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.CRUDRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.commons.MessagingEntityGraphRepository;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Query;
@@ -10,9 +11,11 @@ import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
-public interface ProfileRepository extends CRUDRepository<Profile> {
+public interface ProfileRepository extends CRUDRepository<Profile>,
+        MessagingEntityGraphRepository<Profile> {
     List<Profile> findByTrackId(Long trackId);
 
     List<Profile> findByTrackNameContainingIgnoreCase(String trackName);
@@ -66,6 +69,31 @@ public interface ProfileRepository extends CRUDRepository<Profile> {
     List<Profile> findByKpRange(@Param("trackId") Long trackId,
                                 @Param("startKp") BigDecimal startKp,
                                 @Param("endKp") BigDecimal endKp);
+
+
+
+    @Override
+    @EntityGraph(attributePaths = {
+            "track",
+            "track.station",
+            "track.executionPackage",
+            "anchorage",
+            "anchorageFoundation",
+            "foundation",
+            "poleType",
+            "portal",
+            "profileStatus",
+            "returnSupport",
+            "sectioning",
+            "cantilevers",
+            "cantilevers.cantileverType",
+            "cantilevers.steadyArm",
+            "cantilevers.steadyArm.steadyArmType",
+            "disconnector",
+            "disconnector.disconnectorFunction"
+    })
+    @Query("select p from Profile p where p.id = :id")
+    Optional<Profile> findByIdForMessaging(@Param("id") Long id);
 
 
 }

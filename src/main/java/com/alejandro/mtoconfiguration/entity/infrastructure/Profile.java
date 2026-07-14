@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.entity.infrastructure;
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.lov.*;
+import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
@@ -23,6 +24,7 @@ import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 @Setter
 @Entity
 @Audited
+@PublishMasterDataEvent(name = "profile")
 @Table(name = "PROFILE", indexes = {
         @Index(name = "IDX_PROFILE_TRACK_KP_ID", columnList = "TRACK_ID, KILOMETRIC_POINT, id")
 })

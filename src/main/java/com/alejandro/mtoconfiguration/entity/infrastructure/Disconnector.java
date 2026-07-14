@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.entity.infrastructure;
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
+import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.Setter;
@@ -18,6 +19,7 @@ import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 @Entity
 @Audited
 @Table(name = "DISCONNECTOR")
+@PublishMasterDataEvent(name = "disconnector")
 public class Disconnector extends CRUDEntity {
 
     @Serial

@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.entity.infrastructure;
 
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.lov.CantileverType;
+import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -18,6 +19,7 @@ import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 @Entity
 @Audited
 @Table(name = "CANTILEVER")
+@PublishMasterDataEvent(name = "cantilever")
 public class Cantilever extends CRUDEntity {
 
     @Serial

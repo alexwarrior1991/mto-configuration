@@ -48,7 +48,8 @@ public abstract class CRUDService<T extends BaseDTO, E extends CRUDEntity> exten
 
                     entity.delete();
 
-                    getRepository().saveAndFlush(entity);
+                    E savedEntity = getRepository().saveAndFlush(entity);
+                    publishEntityDeletedEvent(savedEntity);
                     publishCacheEvictionEvent();
 
                 });
