@@ -22,7 +22,7 @@ Actualmente la aplicación contiene una base funcional para exponer y gestionar 
 
 ## Tecnologías principales
 
-- Java 21.
+- Java 25.
 - Spring Boot 4.0.1.
 - Spring MVC para API REST.
 - Spring Data JPA con PostgreSQL.
