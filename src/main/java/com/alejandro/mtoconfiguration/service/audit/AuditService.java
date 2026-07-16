@@ -1,8 +1,12 @@
 package com.alejandro.mtoconfiguration.service.audit;
 
+import com.alejandro.mtoconfiguration.core.audit.envers.AuditModifiedEntity;
 import com.alejandro.mtoconfiguration.core.audit.envers.ExtendedRevisionEntity;
+import com.alejandro.mtoconfiguration.model.audit.*;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.Transient;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Hibernate;
 import org.hibernate.envers.AuditReader;
 import org.hibernate.envers.AuditReaderFactory;
 import org.hibernate.envers.RevisionType;
@@ -11,6 +15,9 @@ import org.hibernate.envers.query.AuditQuery;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
@@ -23,332 +30,332 @@ public class AuditService {
 
     private final EntityManager entityManager;
 
-    /**
-     * Retrieves a list of revision numbers associated with a specific entity.
-     *
-     * @param entityClass the class of the entity to retrieve revisions for
-     * @param entityId    the identifier of the entity whose revisions are to be fetched
-     * @param revision    an optional revision parameter (not used in this implementation)
-     * @return a list of revision numbers associated with the specified entity
-     */
-    public List<Number> getRevisions(Class<?> entityClass, Long entityId, Number revision) {
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
+    public AuditRevisionDTO getRevisionInfo(Number revision) {
+        AuditReader auditReader = getAuditReader();
+        ExtendedRevisionEntity revisionEntity = auditReader.findRevision(ExtendedRevisionEntity.class, revision);
+
+        if (revisionEntity == null) {
+            return null;
+        }
+
+        return toAuditRevisionDTO(revisionEntity);
+    }
+
+    public <T> List<Number> getRevisionNumbers(Class<T> entityClass, Long entityId) {
+        AuditReader auditReader = getAuditReader();
         return auditReader.getRevisions(entityClass, entityId);
     }
 
-
-    /**
-     * Retrieves the state of a specific entity at a given revision.
-     *
-     * @param <T>         the type of the entity
-     * @param entityClass the class of the entity to retrieve
-     * @param entityId    the identifier of the entity
-     * @param revision    the revision number to query
-     * @return the entity instance as it was at the specified revision, or null if not available
-     */
     public <T> T getEntityAtRevision(Class<T> entityClass, Long entityId, Number revision) {
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
+        AuditReader auditReader = getAuditReader();
         return auditReader.find(entityClass, entityId, revision);
     }
 
-    /**
-     * Retrieves a list of entities that were changed in the specified revision.
-     *
-     * @param revision the revision number to query for changes
-     * @return a list of entities that were modified in the given revision
-     */
-    public List<Object> getEntitiesChangedInRevision(Number revision) {
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
-        return auditReader.getCrossTypeRevisionChangesReader().findEntities(revision);
-    }
-
-    /**
-     * Retrieves a list of revision numbers for a specific entity within the specified timestamp range.
-     *
-     * @param entityClass  the class of the entity to retrieve revisions for
-     * @param entityId     the identifier of the entity whose revisions are to be fetched
-     * @param fromDateTime the starting timestamp of the range
-     * @param toDateTime   the ending timestamp of the range
-     * @return a list of revision numbers associated with the specified entity within the given timestamp range
-     */
-    public List<Number> getRevisionsBetweenTimestamps(Class<?> entityClass, Long entityId,
-                                                      LocalDateTime fromDateTime, LocalDateTime toDateTime) {
-        return (List<Number>) queryRevisions(entityClass, entityId, fromDateTime, toDateTime, false);
-    }
-
-
-    /**
-     * Retrieves the states of a specific entity between two specified timestamps.
-     *
-     * @param entityClass  the class of the entity to retrieve states for
-     * @param entityId     the identifier of the entity whose states are to be fetched
-     * @param fromDateTime the starting timestamp of the range
-     * @param toDateTime   the ending timestamp of the range
-     * @return a list of object arrays, where each array contains the entity's state and additional revision metadata
-     * within the specified timestamp range
-     */
-    public List<Object[]> getEntityStatesBetweenTimestamps(Class<?> entityClass, Long entityId,
-                                                           LocalDateTime fromDateTime, LocalDateTime toDateTime) {
-        return (List<Object[]>) queryRevisions(entityClass, entityId, fromDateTime, toDateTime, true);
-    }
-
-    private List<?> queryRevisions(Class<?> entityClass, Long entityId,
-                                   LocalDateTime fromDateTime, LocalDateTime toDateTime,
-                                   boolean includeStates) {
-
-        long fromTimestamp = fromDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        long toTimestamp = toDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
+    public <T> List<AuditEntityRevisionDTO<T>> getEntityRevisionHistory(Class<T> entityClass, Long entityId) {
+        AuditReader auditReader = getAuditReader();
 
         List<Object[]> results = auditReader.createQuery()
                 .forRevisionsOfEntity(entityClass, false, true)
+                .add(AuditEntity.id().eq(entityId))
+                .addOrder(AuditEntity.revisionNumber().asc())
+                .getResultList();
+
+        return results.stream()
+                .map(result -> toAuditEntityRevisionDTO(entityClass, result))
+                .toList();
+    }
+
+    public <T> List<AuditEntityRevisionDTO<T>> getEntityRevisionHistoryBetweenDates(
+            Class<T> entityClass,
+            Long entityId,
+            LocalDateTime fromDateTime,
+            LocalDateTime toDateTime
+    ) {
+        long fromTimestamp = toTimestamp(fromDateTime);
+        long toTimestamp = toTimestamp(toDateTime);
+
+        AuditReader auditReader = getAuditReader();
+
+        List<Object[]> results = auditReader.createQuery()
+                .forRevisionsOfEntity(entityClass, false, true)
+                .add(AuditEntity.id().eq(entityId))
                 .add(AuditEntity.revisionProperty("timestamp").ge(fromTimestamp))
                 .add(AuditEntity.revisionProperty("timestamp").le(toTimestamp))
-                .add(AuditEntity.id().eq(entityId))
+                .addOrder(AuditEntity.revisionNumber().asc())
                 .getResultList();
 
-
-        if (!includeStates) {
-            return results.stream()
-                    .map(result -> (Number) result[1])
-                    .collect(Collectors.toList());
-        }
-        // Devuelve los estados completos si includeStates es verdadero
-        return results;
+        return results.stream()
+                .map(result -> toAuditEntityRevisionDTO(entityClass, result))
+                .toList();
     }
 
-    /**
-     * Retrieves only specific properties of an entity at a given revision using projections.
-     *
-     * @param <T>         the type of the entity
-     * @param entityClass the class of the entity to retrieve
-     * @param entityId    the identifier of the entity
-     * @param revision    the revision number to query
-     * @param properties  the names of the properties to retrieve
-     * @return a map containing the requested properties and their values
-     */
-    public <T> Map<String, Object> getEntityPropertiesAtRevision(Class<T> entityClass, Long entityId,
-                                                                 Number revision, String... properties) {
-
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
-
-        AuditQuery query = auditReader.createQuery()
-                .forRevisionsOfEntity(entityClass, false, true)
-                .add(AuditEntity.id().eq(entityId))
-                .add(AuditEntity.revisionNumber().eq(revision));
-
-        Arrays.stream(properties).forEach(property -> query.addProjection(AuditEntity.property(property)));
-
-        List<Object> result = query.getResultList();
-
-        // Create a map of property names to values
-        Map<String, Object> propertyMap = new HashMap<>();
-        for (int i = 0; i < properties.length; i++) {
-            propertyMap.put(properties[i], result.get(i));
-        }
-
-        return propertyMap;
-    }
-
-    /**
-     * Finds all deleted entities of a specific type.
-     *
-     * @param <T>         the type of the entity
-     * @param entityClass the class of the entity to retrieve
-     * @return a list of deleted entities with their revision information
-     */
-    public <T> List<Object[]> findDeletedEntities(Class<T> entityClass) {
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
-
-        return auditReader.createQuery()
-                .forRevisionsOfEntity(entityClass, false, true)
-                .add(AuditEntity.revisionType().eq(RevisionType.DEL))
-                .getResultList();
-    }
-
-    /**
-     * Compares two revisions of an entity and returns the differences.
-     *
-     * @param <T>         the type of the entity
-     * @param entityClass the class of the entity to compare
-     * @param entityId    the identifier of the entity
-     * @param oldRevision the older revision number
-     * @param newRevision the newer revision number
-     * @return a map containing the property names and their changed values [old, new]
-     */
-    public <T> Map<String, Object[]> compareRevisions(Class<T> entityClass, Long entityId,
-                                                      Number oldRevision, Number newRevision) {
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
+    public <T> List<AuditDifferenceDTO> compareRevisions(
+            Class<T> entityClass,
+            Long entityId,
+            Number oldRevision,
+            Number newRevision
+    ) {
+        AuditReader auditReader = getAuditReader();
 
         T oldEntity = auditReader.find(entityClass, entityId, oldRevision);
         T newEntity = auditReader.find(entityClass, entityId, newRevision);
 
-        Map<String, Object[]> differences = new HashMap<>();
+        if (oldEntity == null && newEntity == null) {
+            return List.of();
+        }
 
-        differences.put("entity", new Object[]{oldEntity, newEntity});
+        if (oldEntity == null) {
+            return List.of(new AuditDifferenceDTO("entity", null, newEntity));
+        }
 
-        return differences;
+        if (newEntity == null) {
+            return List.of(new AuditDifferenceDTO("entity", oldEntity, null));
+        }
+
+        return compareObjects(entityClass, oldEntity, newEntity);
     }
 
-    /**
-     * Retrieves revision information including the user who made the changes.
-     *
-     * @param revision the revision number
-     * @return the extended revision entity with user information
-     */
-    public ExtendedRevisionEntity getRevisionInfo(Number revision) {
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
-        return auditReader.findRevision(ExtendedRevisionEntity.class, revision);
-    }
-
-    /**
-     * Finds all revisions where a specific property of an entity has a certain value.
-     *
-     * @param <T>          the type of the entity
-     * @param entityClass  the class of the entity to query
-     * @param propertyName the name of the property to check
-     * @param value        the value to search for
-     * @return a list of revisions where the property has the specified value
-     */
-    public <T> List<Number> findRevisionsByPropertyValue(Class<T> entityClass, String propertyName, Object value) {
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
-
-        List<Object[]> results = auditReader.createQuery()
-                .forRevisionsOfEntity(entityClass, false, true)
-                .add(AuditEntity.property(propertyName).eq(value))
-                .getResultList();
-
-        return results.stream()
-                .map(result -> (Number) result[1])
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Retrieves the history of a specific property of an entity.
-     *
-     * @param <T>          the type of the entity
-     * @param entityClass  the class of the entity
-     * @param entityId     the identifier of the entity
-     * @param propertyName the name of the property to track
-     * @return a map of revision numbers to property values
-     */
-    public <T> Map<Number, Object> getPropertyHistory(Class<T> entityClass, Long entityId, String propertyName) {
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
+    public <T> List<AuditPropertyHistoryDTO> getPropertyHistory(
+            Class<T> entityClass,
+            Long entityId,
+            String propertyName
+    ) {
+        AuditReader auditReader = getAuditReader();
 
         List<Object[]> results = auditReader.createQuery()
                 .forRevisionsOfEntity(entityClass, false, true)
                 .add(AuditEntity.id().eq(entityId))
                 .addProjection(AuditEntity.revisionNumber())
+                .addProjection(AuditEntity.revisionProperty("timestamp"))
                 .addProjection(AuditEntity.property(propertyName))
+                .addOrder(AuditEntity.revisionNumber().asc())
                 .getResultList();
 
-        Map<Number, Object> history = new LinkedHashMap<>();
-        for (Object[] result : results) {
-            history.put((Number) result[0], result[1]);
-        }
-
-        return history;
+        return results.stream()
+                .map(result -> new AuditPropertyHistoryDTO(
+                        (Number) result[0],
+                        toLocalDateTime((Long) result[1]),
+                        result[2]
+                ))
+                .toList();
     }
 
-    /**
-     * Finds entities that were modified by a specific user.
-     *
-     * @param <T>         the type of the entity
-     * @param entityClass the class of the entity
-     * @param username    the username to search for
-     * @return a list of entities modified by the specified user
-     */
-    public <T> List<T> findEntitiesModifiedByUser(Class<T> entityClass, String username) {
-        // This method assumes that the username is stored in the ExtendedRevisionEntity
-        // You may need to adjust this based on your actual implementation
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
-
-        // This is a simplified example. In a real implementation, you would need to
-        // query the revision entity for revisions by the specified user, then find
-        // the entities associated with those revisions.
-        return Collections.emptyList();
-    }
-
-    /**
-     * Retrieves the revision history of a collection relationship.
-     *
-     * @param <T>            the type of the entity
-     * @param entityClass    the class of the entity
-     * @param entityId       the identifier of the entity
-     * @param collectionName the name of the collection property
-     * @return a map of revision numbers to collection states
-     */
-    public <T> Map<Number, Collection<?>> getCollectionHistory(Class<T> entityClass, Long entityId, String collectionName) {
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
+    public <T> List<AuditEntityRevisionDTO<T>> findEntitiesModifiedByUser(
+            Class<T> entityClass,
+            String username
+    ) {
+        AuditReader auditReader = getAuditReader();
 
         List<Object[]> results = auditReader.createQuery()
                 .forRevisionsOfEntity(entityClass, false, true)
-                .add(AuditEntity.id().eq(entityId))
+                .add(AuditEntity.revisionProperty("username").eq(username))
+                .addOrder(AuditEntity.revisionNumber().desc())
                 .getResultList();
 
-        Map<Number, Collection<?>> history = new LinkedHashMap<>();
-        for (Object[] result : results) {
-            T entity = (T) result[0];
-            Number revisionNumber = (Number) result[1];
-
-            // This is a simplified approach. In a real implementation, you would use reflection
-            // to access the collection property of the entity.
-            // For demonstration purposes, we'll return empty collections
-            history.put(revisionNumber, Collections.emptyList());
-        }
-
-        return history;
+        return results.stream()
+                .map(result -> toAuditEntityRevisionDTO(entityClass, result))
+                .toList();
     }
 
-    /**
-     * Finds all entities that were modified in a specific date range.
-     *
-     * @param <T>          the type of the entity
-     * @param entityClass  the class of the entity
-     * @param fromDateTime the starting timestamp of the range
-     * @param toDateTime   the ending timestamp of the range
-     * @return a list of entities modified within the specified date range
-     */
-    public <T> List<T> findEntitiesModifiedInDateRange(Class<T> entityClass,
-                                                       LocalDateTime fromDateTime,
-                                                       LocalDateTime toDateTime) {
-        long fromTimestamp = fromDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        long toTimestamp = toDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+    public <T> List<AuditEntityRevisionDTO<T>> findEntitiesModifiedInDateRange(
+            Class<T> entityClass,
+            LocalDateTime fromDateTime,
+            LocalDateTime toDateTime
+    ) {
+        long fromTimestamp = toTimestamp(fromDateTime);
+        long toTimestamp = toTimestamp(toDateTime);
 
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
+        AuditReader auditReader = getAuditReader();
 
         List<Object[]> results = auditReader.createQuery()
-                .forRevisionsOfEntity(entityClass, true, false)  // selectDeletedEntities = true, selectEntitiesOnly = false
+                .forRevisionsOfEntity(entityClass, false, true)
                 .add(AuditEntity.revisionProperty("timestamp").ge(fromTimestamp))
                 .add(AuditEntity.revisionProperty("timestamp").le(toTimestamp))
+                .addOrder(AuditEntity.revisionNumber().desc())
                 .getResultList();
 
         return results.stream()
-                .map(result -> (T) result[0])
-                .collect(Collectors.toList());
+                .map(result -> toAuditEntityRevisionDTO(entityClass, result))
+                .toList();
     }
 
-    /**
-     * Retrieves the last revision where an entity was in a specific state.
-     *
-     * @param <T>          the type of the entity
-     * @param entityClass  the class of the entity
-     * @param propertyName the name of the property to check
-     * @param value        the value to search for
-     * @return the latest revision number where the property had the specified value
-     */
-    public <T> Number getLastRevisionWithPropertyValue(Class<T> entityClass, String propertyName, Object value) {
-        AuditReader auditReader = AuditReaderFactory.get(entityManager);
+    public <T> List<AuditEntityRevisionDTO<T>> findDeletedEntities(Class<T> entityClass) {
+        AuditReader auditReader = getAuditReader();
 
-        List<Number> revisions = auditReader.createQuery()
+        List<Object[]> results = auditReader.createQuery()
+                .forRevisionsOfEntity(entityClass, false, true)
+                .add(AuditEntity.revisionType().eq(RevisionType.DEL))
+                .addOrder(AuditEntity.revisionNumber().desc())
+                .getResultList();
+
+        return results.stream()
+                .map(result -> toAuditEntityRevisionDTO(entityClass, result))
+                .toList();
+    }
+
+    public <T> List<Number> findRevisionsByPropertyValue(
+            Class<T> entityClass,
+            String propertyName,
+            Object value
+    ) {
+        AuditReader auditReader = getAuditReader();
+
+        List<Object[]> results = auditReader.createQuery()
                 .forRevisionsOfEntity(entityClass, false, true)
                 .add(AuditEntity.property(propertyName).eq(value))
                 .addProjection(AuditEntity.revisionNumber())
-                .addOrder(AuditEntity.revisionNumber().desc())
-                .setMaxResults(1)
+                .addOrder(AuditEntity.revisionNumber().asc())
                 .getResultList();
 
-        return revisions.isEmpty() ? null : revisions.get(0);
+        return results.stream()
+                .map(result -> (Number) result[0])
+                .toList();
     }
+
+    public <T> Number getLastRevisionWithPropertyValue(
+            Class<T> entityClass,
+            String propertyName,
+            Object value
+    ) {
+        List<Number> revisions = findRevisionsByPropertyValue(entityClass, propertyName, value);
+
+        if (revisions.isEmpty()) {
+            return null;
+        }
+
+        return revisions.getLast();
+    }
+
+
+    private AuditReader getAuditReader() {
+        return AuditReaderFactory.get(entityManager);
+    }
+
+    private <T> AuditEntityRevisionDTO<T> toAuditEntityRevisionDTO(Class<T> entityClass, Object[] result) {
+        T entity = entityClass.cast(result[0]);
+        ExtendedRevisionEntity revisionEntity = (ExtendedRevisionEntity) result[1];
+        RevisionType revisionType = (RevisionType) result[2];
+
+        return new AuditEntityRevisionDTO<>(
+                entity,
+                revisionEntity.getId(),
+                revisionType,
+                revisionEntity.getRevisionDateTime(),
+                revisionEntity.getUsername(),
+                revisionEntity.getUserId(),
+                revisionEntity.getRequestMethod(),
+                revisionEntity.getRequestUri()
+        );
+    }
+
+    private AuditRevisionDTO toAuditRevisionDTO(ExtendedRevisionEntity revisionEntity) {
+        Hibernate.initialize(revisionEntity.getModifiedEntities());
+
+        List<AuditModifiedEntityDTO> modifiedEntities = revisionEntity.getModifiedEntities()
+                .stream()
+                .map(this::toAuditModifiedEntityDTO)
+                .toList();
+
+        return new AuditRevisionDTO(
+                revisionEntity.getId(),
+                revisionEntity.getTimestamp(),
+                revisionEntity.getRevisionDateTime(),
+                revisionEntity.getUsername(),
+                revisionEntity.getUserId(),
+                revisionEntity.getIpAddress(),
+                revisionEntity.getUserAgent(),
+                revisionEntity.getRequestMethod(),
+                revisionEntity.getRequestUri(),
+                revisionEntity.getCorrelationId(),
+                modifiedEntities
+        );
+    }
+
+    private AuditModifiedEntityDTO toAuditModifiedEntityDTO(AuditModifiedEntity entity) {
+        return new AuditModifiedEntityDTO(
+                entity.getId(),
+                entity.getEntityId(),
+                entity.getEntityClassName(),
+                entity.getEntityName()
+        );
+    }
+
+    private <T> List<AuditDifferenceDTO> compareObjects(Class<T> entityClass, T oldEntity, T newEntity) {
+        List<AuditDifferenceDTO> differences = new ArrayList<>();
+
+        for (Field field : getComparableFields(entityClass)) {
+            try {
+                field.setAccessible(true);
+
+                Object oldValue = field.get(oldEntity);
+                Object newValue = field.get(newEntity);
+
+                if (!Objects.equals(oldValue, newValue)) {
+                    differences.add(new AuditDifferenceDTO(field.getName(), oldValue, newValue));
+                }
+            } catch (IllegalAccessException ignored) {
+                // Si un campo no se puede leer, simplemente no lo añadimos a la comparación.
+            }
+        }
+
+        return differences;
+
+    }
+
+    private List<Field> getComparableFields(Class<?> entityClass) {
+        List<Field> fields = new ArrayList<>();
+        Class<?> currentClass = entityClass;
+
+        while (currentClass != null && !Object.class.equals(currentClass)) {
+            Arrays.stream(currentClass.getDeclaredFields())
+                    .filter(this::isComparableField)
+                    .forEach(fields::add);
+
+            currentClass = currentClass.getSuperclass();
+        }
+
+        return fields;
+    }
+
+    private boolean isComparableField(Field field) {
+        int modifiers = field.getModifiers();
+
+        if (Modifier.isStatic(modifiers) || Modifier.isTransient(modifiers)) {
+            return false;
+        }
+
+        if (field.isAnnotationPresent(Transient.class)) {
+            return false;
+        }
+
+        String fieldName = field.getName();
+
+        return !Set.of(
+                "serialVersionUID",
+                "createdBy",
+                "createdDate",
+                "lastModifiedBy",
+                "lastModifiedDate",
+                "deletedBy",
+                "deletedDate"
+        ).contains(fieldName);
+    }
+
+    private long toTimestamp(LocalDateTime dateTime) {
+        return dateTime.atZone(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli();
+    }
+
+    private LocalDateTime toLocalDateTime(Long timestamp) {
+        if (timestamp == null) {
+            return null;
+        }
+
+        return Instant.ofEpochMilli(timestamp)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime();
+    }
+
+
 }
