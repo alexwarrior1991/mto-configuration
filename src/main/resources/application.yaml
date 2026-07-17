@@ -1,10 +1,14 @@
+# Spring Framework configuration
 spring:
+  # Application identification
   application:
     name: mto-configuration
 
+  # Cache provider configuration - using Redis as the caching mechanism
   cache:
     type: redis
 
+  # Redis configuration for distributed caching
   data:
     redis:
       host: localhost
@@ -17,113 +21,219 @@ spring:
           min-idle: 2
           max-wait: 2s
 
+  # JPA/Hibernate configuration for database operations
   jpa:
     properties:
       hibernate:
+        # Number of entities to fetch in a single batch - improves performance by reducing queries
         default_batch_fetch_size: 20
 
+  # RabbitMQ connection and messaging configuration
   rabbitmq:
     host: localhost
     port: 5672
     username: guest
     password: guest
     virtual-host: /
+    # Publisher confirmation type for reliable message delivery
     publisher-confirm-type: correlated
+    # Return undeliverable messages to the publisher
     publisher-returns: true
     listener:
       simple:
+        # Auto-acknowledge messages upon successful processing
         acknowledge-mode: auto
         retry:
+          # Enable automatic retry mechanism for failed messages
           enabled: true
+          # Initial delay before first retry attempt
           initial-interval: 1000ms
+          # Maximum delay between retry attempts
           max-interval: 10000ms
+          # Exponential backoff multiplier
           multiplier: 2
+          # Maximum number of retry attempts before sending to DLQ
           max-retries: 3
 
+  # Virtual threads configuration for improved scalability (Java 21+)
   threads:
     virtual:
       enabled: true
+      
+  # OAuth2 resource server configuration for JWT-based authentication
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Keycloak issuer URI for JWT token validation
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/mto}
 
 
+# Custom application-specific configuration
 app:
+  # RabbitMQ messaging configuration
   rabbitmq:
+    # Enable/disable RabbitMQ functionality
     enabled: true
 
+    # Default settings for exchanges, queues, and bindings
     defaults:
+      # Queues/exchanges survive broker restarts
       durable: true
+      # Queue is not restricted to a single connection
       exclusive: false
+      # Queue/exchange is not deleted when unused
       auto-delete: false
+      # Enable dead letter queues for failed messages
       dead-letter-enabled: true
+      # Suffix for dead letter exchange names
       dead-letter-exchange-suffix: .dlx
+      # Suffix for dead letter queue names
       dead-letter-queue-suffix: .dlq
+      # Suffix for dead letter routing keys
       dead-letter-routing-key-suffix: .dlq
 
+    # RabbitMQ message listener configuration
     listener:
+      # Initial number of concurrent message consumers
       concurrent-consumers: 1
+      # Maximum number of concurrent consumers for scalability
       max-concurrent-consumers: 5
+      # Number of unacknowledged messages a consumer can have
       prefetch-count: 10
+      # Do not requeue rejected messages (send to DLQ instead)
       default-requeue-rejected: false
+      # Timeout for receiving messages in milliseconds
       receive-timeout: 1000
 
+    # RabbitMQ message publisher configuration
     publisher:
+      # Return messages if they cannot be routed to any queue
       mandatory: true
 
+    # RabbitMQ exchange definitions - routing mechanisms for messages
     exchanges:
+      # Topic exchange for master data events with pattern-based routing
       - name: mto.master-data.exchange
         type: topic
         durable: true
         auto-delete: false
 
+    # RabbitMQ queue definitions - message storage endpoints
     queues:
+      # Queue for general master data events
       - name: mto.master-data.events.queue
         durable: true
         dead-letter-enabled: true
 
+      # Queue for cache invalidation events
       - name: mto.master-data.cache.queue
         durable: true
         dead-letter-enabled: true
 
+      # Queue for audit trail events
       - name: mto.master-data.audit.queue
         durable: true
         dead-letter-enabled: true
 
+      # Queue specifically for deleted entity events
       - name: mto.master-data.deleted.queue
         durable: true
         dead-letter-enabled: true
 
+    # RabbitMQ bindings - connect queues to exchanges with routing keys
     bindings:
+      # Bind events queue to receive all master data events
       - queue: mto.master-data.events.queue
         exchange: mto.master-data.exchange
         routing-key: mto.master-data.#
 
+      # Bind cache queue to receive all master data events for cache invalidation
       - queue: mto.master-data.cache.queue
         exchange: mto.master-data.exchange
         routing-key: mto.master-data.#
 
+      # Bind audit queue to receive all master data events for audit logging
       - queue: mto.master-data.audit.queue
         exchange: mto.master-data.exchange
         routing-key: mto.master-data.#
 
+      # Bind deleted queue to receive only deletion events (pattern: *.deleted)
       - queue: mto.master-data.deleted.queue
         exchange: mto.master-data.exchange
         routing-key: mto.master-data.*.deleted
 
-  outbox:
+  # Application security configuration for authentication and authorization
+  security:
+    # Enable/disable security features
     enabled: true
+    # Keycloak client identifier for this application
+    client-id: ${KEYCLOAK_CLIENT_ID:mto-configuration-api}
+    # JWT claim to use as the principal username
+    principal-claim: preferred_username
+    # Validate that JWT contains the required audience
+    audience-validation-enabled: true
+    # Expected audience value in JWT tokens
+    required-audience: ${KEYCLOAK_AUDIENCE:mto-configuration-api}
+    # Cross-Origin Resource Sharing (CORS) configuration
+    cors:
+      # Allowed origins for cross-origin requests
+      allowed-origins:
+        - ${APP_CORS_ALLOWED_ORIGIN:http://localhost:4200}
+      # HTTP methods allowed for cross-origin requests
+      allowed-methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      # Headers allowed in cross-origin requests
+      allowed-headers:
+        - Authorization
+        - Content-Type
+        - Accept
+        - Origin
+        - X-Requested-With
+      # Headers exposed to the client in cross-origin responses
+      exposed-headers:
+        - Location
+      # Allow credentials (cookies, authorization headers) in cross-origin requests
+      allow-credentials: true
+      # How long preflight request results can be cached (seconds)
+      max-age: 3600
+  
+  # Transactional outbox pattern configuration for reliable message publishing
+  outbox:
+    # Enable/disable the outbox pattern
+    enabled: true
+    # Maximum retry attempts for failed message publishing
     max-attempts: 10
+    # Initial delay before retrying failed messages
     initial-retry-delay: 5s
+    # Fixed delay between outbox publisher executions
     publisher-fixed-delay: 5s
 
+# Cache configuration for Redis-based caching strategy
 cache:
+  # Application name for cache key prefixing
   application: mto-configuration
   redis:
+    # Default time-to-live for cached entries
     default-ttl: 30m
+    # TTL for individual entity items
     normal-item-ttl: 6h
+    # TTL for lists of entities
     normal-list-ttl: 30m
+    # TTL for paginated results
     normal-page-ttl: 10m
+    # TTL for search query results
     normal-search-ttl: 10m
+    # TTL for list of values (LOV) items - longer due to infrequent changes
     lov-item-ttl: 24h
+    # TTL for list of values (LOV) lists
     lov-list-ttl: 24h
+    # Allowed package prefixes for serialization security
     allowed-subtypes:
       - com.alejandro.mtoconfiguration
       - java.util
