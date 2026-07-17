@@ -40,6 +40,10 @@ spring:
           multiplier: 2
           max-retries: 3
 
+  threads:
+    virtual:
+      enabled: true
+
 
 app:
   rabbitmq:
