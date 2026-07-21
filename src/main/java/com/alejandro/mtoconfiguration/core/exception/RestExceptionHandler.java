@@ -15,6 +15,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.transaction.TransactionSystemException;
 import org.springframework.validation.ObjectError;
@@ -25,7 +26,6 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-import java.nio.file.AccessDeniedException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -94,7 +94,7 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<DefaultErrorResponse> handleAccessDeniedException(AccessDeniedException e, HttpServletResponse response) {
         log.error(e.getMessage(), e);
-        return new ResponseEntity<>(getErrorResponse("unauthorized", HttpStatus.UNAUTHORIZED), HttpStatus.UNAUTHORIZED);
+        return new ResponseEntity<>(getErrorResponse("unauthorized", HttpStatus.FORBIDDEN), HttpStatus.FORBIDDEN);
     }
 
 

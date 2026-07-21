@@ -3,7 +3,6 @@ package com.alejandro.mtoconfiguration.utils;
 import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
 import com.alejandro.mtoconfiguration.model.commons.LovDTO;
-import com.alejandro.mtoconfiguration.validator.commons.Validator;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
@@ -17,8 +16,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Setter
 @Getter
@@ -306,6 +303,22 @@ public class ValidatorUtils {
     }
 
     public ValidatorUtils validateRangeIfTrueCondition(boolean condition, Integer value, int min, int max, String errorMessage, String fieldName) {
+        if (condition) {
+            return validateRange(value, min, max, errorMessage, fieldName);
+        }
+
+        return this;
+    }
+
+    public ValidatorUtils validateRange(Long value, long min, long max, String errorMessage, String fieldName) {
+        if (value != null && (value < min || value > max)) {
+            alerts.add(Alert.ofDanger(errorMessage, fieldName, String.valueOf(min), String.valueOf(max)));
+        }
+
+        return this;
+    }
+
+    public ValidatorUtils validateRangeIfTrueCondition(boolean condition, Long value, long min, long max, String errorMessage, String fieldName) {
         if (condition) {
             return validateRange(value, min, max, errorMessage, fieldName);
         }

@@ -204,7 +204,15 @@ public class PermissionUtils {
      */
     public static List<String> getScopes() {
         return getJwt()
-                .map(jwt -> jwt.getClaimAsStringList("scope"))
+                .map(jwt -> {
+                    String scope = jwt.getClaimAsString("scope");
+                    if (scope == null || scope.isBlank()) {
+                        return Collections.<String>emptyList();
+                    }
+                    return Arrays.stream(scope.split(" "))
+                            .filter(value -> value != null && !value.isBlank())
+                            .toList();
+                })
                 .orElse(Collections.emptyList());
     }
 
@@ -216,6 +224,15 @@ public class PermissionUtils {
      */
     public static boolean hasScope(String scope) {
         return getScopes().contains(scope);
+    }
+
+    public static boolean hasClientRole(String clientId, String role) {
+        return getClientRoles(clientId).contains(role);
+    }
+
+    public static boolean hasAnyClientRole(String clientId, String... roles) {
+        Set<String> userRoles = getClientRoles(clientId);
+        return Arrays.stream(roles).anyMatch(userRoles::contains);
     }
 
 
