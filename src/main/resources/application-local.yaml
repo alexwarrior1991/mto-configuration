@@ -1,0 +1,43 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mto_configuration_db
+    username: mto_configuration_user
+    password: mto_configuration_password
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    url: jdbc:postgresql://localhost:5432/mto_configuration_db
+    user: mto_configuration_user
+    password: mto_configuration_password
+    default-schema: mto_configuration
+    schemas: mto_configuration
+
+  jpa:
+    properties:
+      hibernate:
+        default_schema: mto_configuration
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://auth.mto.local:8082/realms/mto
+
+app:
+  security:
+    client-id: mto-configuration-api
+    required-audience: mto-configuration-api
+    cors:
+      allowed-origins:
+        - http://localhost:4200

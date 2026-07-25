@@ -13,6 +13,7 @@ public class CRUDBusiness<T extends BaseDTO, E extends CRUDEntity> extends BaseB
     private static final long serialVersionUID = 1L;
 
     public void deleteEntity(E entity) {
+        // validaciones, limpieza de relaciones, lógica previa, etc. Borrar hijos
         entity.delete();
     }
 }

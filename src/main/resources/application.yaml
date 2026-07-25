@@ -11,8 +11,8 @@ spring:
   # Redis configuration for distributed caching
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
       timeout: 2s
       lettuce:
         pool:
@@ -21,19 +21,64 @@ spring:
           min-idle: 2
           max-wait: 2s
 
+
+#  SPRING_DATASOURCE_URL: permite cambiar la URL desde Docker.
+#  localhost: se usa cuando ejecutas la app fuera de Docker.
+#  postgres: se usará dentro de Docker Compose como nombre del servicio.
+#  mto_configuration: nombre de la base de datos.
+#  mto_user: usuario de PostgreSQL.
+#  mto_password: contraseña de PostgreSQL.
+
+  datasource:
+    url: ${MTO_CONFIGURATION_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mto_configuration_db}
+    username: ${MTO_CONFIGURATION_DATASOURCE_USERNAME:mto_configuration_user}
+    password: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD:mto_configuration_password}
+    driver-class-name: org.postgresql.Driver
+
+#  locations: Indica dónde estarán tus scripts SQL en src/main/resources/db/migration
+#  V1__init_schema.sql
+#  V2__insert_initial_lov_data.sql
+#  V3__add_new_table.sql
+#  default-schema: Indica el esquema por defecto que usará Flyway.
+#  schemas: Le dice a Flyway qué schema debe gestionar.
+#  create-schemas: Permite que Flyway cree el schema automáticamente si no existe.
+#  baseline-on-migrate: Esto ayuda si la base de datos ya existía antes de usar Flyway
+#  validate-on-migrate: Hace que Flyway valide las migraciones antes de ejecutarlas.
+# Si alguien modifica un script ya aplicado, Flyway lo detectará y fallará para proteger la consistencia de la base de datos.
+# clean-disabled: Evita que se pueda ejecutar accidentalmente un borrado completo de la base de datos con flyway clean
+  flyway:
+    enabled: true
+    url: ${MTO_CONFIGURATION_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mto_configuration_db}
+    user: ${MTO_CONFIGURATION_DATASOURCE_USERNAME:mto_configuration_user}
+    password: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD:mto_configuration_password}
+    locations: classpath:db/migration
+    default-schema: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
+    schemas: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
+    create-schemas: true
+    baseline-on-migrate: false
+    validate-on-migrate: true
+    clean-disabled: true
+
   # JPA/Hibernate configuration for database operations
   jpa:
     properties:
       hibernate:
         # Number of entities to fetch in a single batch - improves performance by reducing queries
         default_batch_fetch_size: 20
+        default_schema: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
+        format_sql: true
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
 
   # RabbitMQ connection and messaging configuration
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_USERNAME:guest}
     virtual-host: /
     # Publisher confirmation type for reliable message delivery
     publisher-confirm-type: correlated
@@ -66,7 +111,7 @@ spring:
       resourceserver:
         jwt:
           # Keycloak issuer URI for JWT token validation
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/mto}
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://auth.mto.local:8082/realms/mto}
 
 
 # Custom application-specific configuration

@@ -1,0 +1,142 @@
+name: mto-configuration-stack
+
+services:
+  # Servicio de base de datos PostgreSQL para almacenar los datos de la aplicación
+  postgres:
+    # Imagen de PostgreSQL versión 17 basada en Alpine Linux (ligera)
+    image: postgres:17-alpine
+    container_name: mto-configuration-postgres
+    # Variables de entorno para configurar la base de datos PostgreSQL
+    environment:
+      POSTGRES_DB: mto_configuration_db
+      POSTGRES_USER: mto_configuration_user
+      POSTGRES_PASSWORD: mto_configuration_password
+    # Mapeo de puertos: puerto del host:puerto del contenedor
+    ports:
+      - "5432:5432"
+    # Volumen para persistir los datos de PostgreSQL
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Verificación de salud para comprobar que PostgreSQL está listo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mto_configuration_user -d mto_configuration_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Servicio de caché Redis para mejorar el rendimiento de la aplicación
+  redis:
+    # Imagen de Redis versión 7.4 basada en Alpine Linux (ligera)
+    image: redis:7.4-alpine
+    container_name: mto-configuration-redis
+    # Mapeo de puertos: puerto del host:puerto del contenedor
+    ports:
+      - "6379:6379"
+    # Volumen para persistir los datos de Redis
+    volumes:
+      - redis_data:/data
+    # Comando para iniciar Redis con persistencia AOF (Append Only File)
+    command: redis-server --appendonly yes
+    # Verificación de salud para comprobar que Redis está listo
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Servicio de mensajería RabbitMQ para comunicación asíncrona entre servicios
+  rabbitmq:
+    # Imagen de RabbitMQ versión 4 con consola de administración, basada en Alpine Linux
+    image: rabbitmq:4-management-alpine
+    container_name: mto-configuration-rabbitmq
+    # Variables de entorno para configurar RabbitMQ
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_VHOST: /
+    # Mapeo de puertos: 5672 para AMQP, 15672 para la interfaz de administración web
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    # Volumen para persistir los datos de RabbitMQ
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    # Verificación de salud para comprobar que RabbitMQ está listo
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Servicio de Keycloak para autenticación y autorización OAuth2/OpenID Connect
+  keycloak:
+    # Imagen oficial de Keycloak versión 26.1
+    image: quay.io/keycloak/keycloak:26.1
+    container_name: mto-configuration-keycloak
+    # Comando para iniciar Keycloak en modo desarrollo
+    command: start-dev --hostname=auth.mto.local --hostname-port=8082 --hostname-strict=false
+    # Variables de entorno para configurar las credenciales de administrador de Keycloak
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: true
+    # Mapeo de puertos: puerto del host:puerto del contenedor
+    ports:
+      - "8082:8080"
+    # Verificación de salud para comprobar que Keycloak está listo
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/8080' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # Servicio principal de la aplicación Spring Boot
+  app:
+    # Configuración de construcción del contenedor Docker
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mto-configuration-api
+    # Variables de entorno para configurar la aplicación Spring Boot
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+
+      MTO_CONFIGURATION_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mto_configuration_db
+      MTO_CONFIGURATION_DATASOURCE_USERNAME: mto_configuration_user
+      MTO_CONFIGURATION_DATASOURCE_PASSWORD: mto_configuration_password
+      MTO_CONFIGURATION_DB_SCHEMA: mto_configuration
+
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
+
+      KEYCLOAK_ISSUER_URI: http://auth.mto.local:8082/realms/mto
+      KEYCLOAK_CLIENT_ID: mto-configuration-api
+      KEYCLOAK_AUDIENCE: mto-configuration-api
+
+      APP_CORS_ALLOWED_ORIGIN: http://localhost:4200
+    extra_hosts:
+      - "auth.mto.local:host-gateway"
+    # Mapeo de puertos: puerto del host:puerto del contenedor
+    ports:
+      - "8081:8080"
+    # Dependencias de servicios: la aplicación espera a que los servicios estén listos
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+# Definición de volúmenes nombrados para persistir datos de los servicios
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
