@@ -7,6 +7,8 @@ import com.alejandro.mtoconfiguration.repository.jpa.lov.commons.LovRepository;
 import com.alejandro.mtoconfiguration.utils.Utils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.Optional;
+
 public interface LovMapper<T extends LovDTO, E extends Lov> extends BaseMapper<T, E> {
 
     default E findOrMap(T dto, LovRepository<E> repository) {
@@ -20,7 +22,7 @@ public interface LovMapper<T extends LovDTO, E extends Lov> extends BaseMapper<T
             entity = repository.findById(dto.getId()).orElse(null);
         }
 
-        if (StringUtils.isBlank(dto.getCode())) {
+        if (entity == null && StringUtils.isNotBlank(dto.getCode())) {
             entity = repository.findByCode(dto.getCode());
         }
 
