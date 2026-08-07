@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure;
 
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.TrackFilter;
@@ -10,9 +11,11 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/api/v1/async/track")
+@RequestMapping(ConfigurationApiPaths.ASYNC_BASE_PATH + "/tracks")
 @Tag(
         name = "Tracks Async",
         description = "Asynchronous operations for track management"
@@ -65,9 +68,9 @@ public class TrackAsyncController {
             description = ApiConstants.DESC_200,
             content = @Content(schema = @Schema(implementation = TrackDTO.class))
     )
-    public CompletableFuture<ResponseEntity<Object>> createAsync(@RequestBody TrackDTO dto) {
+    public CompletableFuture<ResponseEntity<Object>> createAsync(@Valid @RequestBody TrackDTO dto) {
         return trackAsyncService.createAsync(dto)
-                .thenApply(ResponseEntity::ok);
+                .thenApply(result -> ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
     }
 
     @PostMapping("/bulk")
@@ -75,9 +78,9 @@ public class TrackAsyncController {
             summary = "Bulk create tracks (async)",
             description = "Asynchronously creates several tracks."
     )
-    public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@RequestBody List<TrackDTO> dtoList) {
+    public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@Valid @RequestBody List<@Valid TrackDTO> dtoList) {
         return trackAsyncService.bulkCreateAsync(dtoList)
-                .thenApply(ResponseEntity::ok);
+                .thenApply(result -> ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
     }
 
     @PutMapping("/{id}")
@@ -92,7 +95,7 @@ public class TrackAsyncController {
     )
     public CompletableFuture<ResponseEntity<Object>> updateAsync(
             @PathVariable Long id,
-            @RequestBody TrackDTO dto
+            @Valid @RequestBody TrackDTO dto
     ) {
         dto.setId(id);
         return trackAsyncService.updateAsync(dto)
@@ -104,7 +107,7 @@ public class TrackAsyncController {
             summary = "Bulk update tracks (async)",
             description = "Asynchronously updates several tracks."
     )
-    public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@RequestBody List<TrackDTO> dtoList) {
+    public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@Valid @RequestBody List<@Valid TrackDTO> dtoList) {
         return trackAsyncService.bulkUpdateAsync(dtoList)
                 .thenApply(ResponseEntity::ok);
     }
@@ -114,7 +117,7 @@ public class TrackAsyncController {
             summary = "Search tracks (async)",
             description = "Asynchronously searches for tracks applying filters and pagination."
     )
-    public CompletableFuture<ResponseEntity<Object>> searchAsync(@RequestBody SearchRequestDTO searchRequestDTO) {
+    public CompletableFuture<ResponseEntity<Object>> searchAsync(@Valid @RequestBody SearchRequestDTO searchRequestDTO) {
         return trackAsyncService.searchAsync(searchRequestDTO)
                 .thenApply(ResponseEntity::ok);
     }
@@ -131,7 +134,7 @@ public class TrackAsyncController {
     )
     public CompletableFuture<ResponseEntity<Object>> getTracksAsync(
             @PageableDefault(size = 20) Pageable pageable,
-            @RequestBody TrackFilter filter
+            @Valid @RequestBody TrackFilter filter
     ) {
         return trackAsyncService.getTracksAsync(pageable, filter)
                 .thenApply(ResponseEntity::ok);

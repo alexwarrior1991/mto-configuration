@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure;
 
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
 import com.alejandro.mtoconfiguration.controller.commons.ApiResponsesStandard;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.SectionInsulatorFilter;
@@ -11,9 +12,11 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/api/v1/async/section-insulator")
+@RequestMapping(ConfigurationApiPaths.ASYNC_BASE_PATH + "/section-insulators")
 @Tag(
         name = "Section Insulators Async",
         description = "Asynchronous operations for section insulator management"
@@ -67,9 +70,9 @@ public class SectionInsulatorAsyncController {
             description = ApiConstants.DESC_200,
             content = @Content(schema = @Schema(implementation = SectionInsulatorDTO.class))
     )
-    public CompletableFuture<ResponseEntity<Object>> createAsync(@RequestBody SectionInsulatorDTO dto) {
+    public CompletableFuture<ResponseEntity<Object>> createAsync(@Valid @RequestBody SectionInsulatorDTO dto) {
         return sectionInsulatorAsyncService.createAsync(dto)
-                .thenApply(ResponseEntity::ok);
+                .thenApply(result -> ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
     }
 
     @PostMapping("/bulk")
@@ -77,9 +80,9 @@ public class SectionInsulatorAsyncController {
             summary = "Bulk create section insulators (async)",
             description = "Asynchronously creates several section insulators."
     )
-    public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@RequestBody List<SectionInsulatorDTO> dtoList) {
+    public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@Valid @RequestBody List<@Valid SectionInsulatorDTO> dtoList) {
         return sectionInsulatorAsyncService.bulkCreateAsync(dtoList)
-                .thenApply(ResponseEntity::ok);
+                .thenApply(result -> ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
     }
 
     @PutMapping("/{id}")
@@ -94,7 +97,7 @@ public class SectionInsulatorAsyncController {
     )
     public CompletableFuture<ResponseEntity<Object>> updateAsync(
             @PathVariable Long id,
-            @RequestBody SectionInsulatorDTO dto
+            @Valid @RequestBody SectionInsulatorDTO dto
     ) {
         dto.setId(id);
         return sectionInsulatorAsyncService.updateAsync(dto)
@@ -106,7 +109,7 @@ public class SectionInsulatorAsyncController {
             summary = "Bulk update section insulators (async)",
             description = "Asynchronously updates several section insulators."
     )
-    public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@RequestBody List<SectionInsulatorDTO> dtoList) {
+    public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@Valid @RequestBody List<@Valid SectionInsulatorDTO> dtoList) {
         return sectionInsulatorAsyncService.bulkUpdateAsync(dtoList)
                 .thenApply(ResponseEntity::ok);
     }
@@ -116,7 +119,7 @@ public class SectionInsulatorAsyncController {
             summary = "Search section insulators (async)",
             description = "Asynchronously searches for section insulators applying filters and pagination."
     )
-    public CompletableFuture<ResponseEntity<Object>> searchAsync(@RequestBody SearchRequestDTO searchRequestDTO) {
+    public CompletableFuture<ResponseEntity<Object>> searchAsync(@Valid @RequestBody SearchRequestDTO searchRequestDTO) {
         return sectionInsulatorAsyncService.searchAsync(searchRequestDTO)
                 .thenApply(ResponseEntity::ok);
     }
@@ -133,7 +136,7 @@ public class SectionInsulatorAsyncController {
     )
     public CompletableFuture<ResponseEntity<Object>> getSectionInsulatorsAsync(
             @PageableDefault(size = 20) Pageable pageable,
-            @RequestBody SectionInsulatorFilter filter
+            @Valid @RequestBody SectionInsulatorFilter filter
     ) {
         return sectionInsulatorAsyncService.getSectionInsulatorsAsync(pageable, filter)
                 .thenApply(ResponseEntity::ok);

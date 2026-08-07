@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure;
 
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
 import com.alejandro.mtoconfiguration.controller.commons.ApiResponsesStandard;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SteadyArmDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.SteadyArmFilter;
@@ -11,9 +12,11 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/api/v1/async/steady-arm")
+@RequestMapping(ConfigurationApiPaths.ASYNC_BASE_PATH + "/steady-arms")
 @Tag(
         name = "Steady Arms Async",
         description = "Asynchronous operations for steady arm management"
@@ -67,9 +70,9 @@ public class SteadyArmAsyncController {
             description = ApiConstants.DESC_200,
             content = @Content(schema = @Schema(implementation = SteadyArmDTO.class))
     )
-    public CompletableFuture<ResponseEntity<Object>> createAsync(@RequestBody SteadyArmDTO dto) {
+    public CompletableFuture<ResponseEntity<Object>> createAsync(@Valid @RequestBody SteadyArmDTO dto) {
         return steadyArmAsyncService.createAsync(dto)
-                .thenApply(ResponseEntity::ok);
+                .thenApply(result -> ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
     }
 
     @PostMapping("/bulk")
@@ -77,9 +80,9 @@ public class SteadyArmAsyncController {
             summary = "Bulk create steady arms (async)",
             description = "Asynchronously creates several steady arms."
     )
-    public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@RequestBody List<SteadyArmDTO> dtoList) {
+    public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@Valid @RequestBody List<@Valid SteadyArmDTO> dtoList) {
         return steadyArmAsyncService.bulkCreateAsync(dtoList)
-                .thenApply(ResponseEntity::ok);
+                .thenApply(result -> ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
     }
 
     @PutMapping("/{id}")
@@ -94,7 +97,7 @@ public class SteadyArmAsyncController {
     )
     public CompletableFuture<ResponseEntity<Object>> updateAsync(
             @PathVariable Long id,
-            @RequestBody SteadyArmDTO dto
+            @Valid @RequestBody SteadyArmDTO dto
     ) {
         dto.setId(id);
         return steadyArmAsyncService.updateAsync(dto)
@@ -106,7 +109,7 @@ public class SteadyArmAsyncController {
             summary = "Bulk update steady arms (async)",
             description = "Asynchronously updates several steady arms."
     )
-    public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@RequestBody List<SteadyArmDTO> dtoList) {
+    public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@Valid @RequestBody List<@Valid SteadyArmDTO> dtoList) {
         return steadyArmAsyncService.bulkUpdateAsync(dtoList)
                 .thenApply(ResponseEntity::ok);
     }
@@ -116,7 +119,7 @@ public class SteadyArmAsyncController {
             summary = "Search steady arms (async)",
             description = "Asynchronously searches for steady arms applying filters and pagination."
     )
-    public CompletableFuture<ResponseEntity<Object>> searchAsync(@RequestBody SearchRequestDTO searchRequestDTO) {
+    public CompletableFuture<ResponseEntity<Object>> searchAsync(@Valid @RequestBody SearchRequestDTO searchRequestDTO) {
         return steadyArmAsyncService.searchAsync(searchRequestDTO)
                 .thenApply(ResponseEntity::ok);
     }
@@ -133,7 +136,7 @@ public class SteadyArmAsyncController {
     )
     public CompletableFuture<ResponseEntity<Object>> getSteadyArmsAsync(
             @PageableDefault(size = 20) Pageable pageable,
-            @RequestBody SteadyArmFilter filter
+            @Valid @RequestBody SteadyArmFilter filter
     ) {
         return steadyArmAsyncService.getSteadyArmsAsync(pageable, filter)
                 .thenApply(ResponseEntity::ok);

@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.controller.synchronous.infraestructure;
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
 import com.alejandro.mtoconfiguration.controller.commons.ApiResponsesStandard;
 import com.alejandro.mtoconfiguration.controller.commons.CRUDController;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
@@ -13,9 +14,11 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,7 +26,7 @@ import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/api/v1/execution-package")
+@RequestMapping(ConfigurationApiPaths.BASE_PATH + "/execution-packages")
 @Tag(
         name = "Execution Packages",
         description = "Synchronous operations for execution package management"
@@ -65,8 +68,8 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
             content = @Content(schema = @Schema(implementation = ExecutionPackageDTO.class))
     )
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> create(@RequestBody ExecutionPackageDTO dto) {
-        return processRequestWithValidation(getService()::create, dto);
+    public ResponseEntity<Object> create(@Valid @RequestBody ExecutionPackageDTO dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(getService().create(dto));
     }
 
     @PostMapping("/bulk")
@@ -76,8 +79,8 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> bulkCreate(@RequestBody List<ExecutionPackageDTO> dtoList) {
-        return processBulkRequestWithValidation(getService()::bulkCreate, dtoList);
+    public ResponseEntity<Object> bulkCreate(@Valid @RequestBody List<@Valid ExecutionPackageDTO> dtoList) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(getService().bulkCreate(dtoList));
     }
 
     @PutMapping("/{id}")
@@ -94,7 +97,7 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
     public ResponseEntity<Object> update(
             @PathVariable Long id,
-            @RequestBody ExecutionPackageDTO dto
+            @Valid @RequestBody ExecutionPackageDTO dto
     ) {
         dto.setId(id);
         return processRequestWithValidation(getService()::update, dto);
@@ -107,7 +110,7 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> bulkUpdate(@RequestBody List<ExecutionPackageDTO> dtoList) {
+    public ResponseEntity<Object> bulkUpdate(@Valid @RequestBody List<@Valid ExecutionPackageDTO> dtoList) {
         return processBulkRequestWithValidation(getService()::bulkUpdate, dtoList);
     }
 
@@ -119,8 +122,9 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
-    public ResponseEntity<Object> delete(@RequestBody ExecutionPackageDTO dto) {
-        return super.delete(dto);
+    public ResponseEntity<Void> deleteByBody(@Valid @RequestBody ExecutionPackageDTO dto) {
+        getService().delete(dto);
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{id}")
@@ -130,10 +134,11 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
-    public ResponseEntity<Object> deleteById(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteById(@PathVariable Long id) {
         ExecutionPackageDTO dto = new ExecutionPackageDTO();
         dto.setId(id);
-        return super.delete(dto);
+        getService().delete(dto);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/search")
@@ -143,7 +148,7 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> search(@RequestBody SearchRequestDTO searchRequestDTO) {
+    public ResponseEntity<Object> search(@Valid @RequestBody SearchRequestDTO searchRequestDTO) {
         return processGenericPageRequest(getService()::search, searchRequestDTO);
     }
 
@@ -160,7 +165,7 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
     public ResponseEntity<Object> getExecutionPackages(
             @PageableDefault(size = 20) Pageable pageable,
-            @RequestBody ExecutionPackageFilter filter
+            @Valid @RequestBody ExecutionPackageFilter filter
     ) {
         return processGenericPageRequest(f -> getService().getExecutionPackages(pageable, f), filter);
     }

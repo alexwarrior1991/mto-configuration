@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.controller.synchronous.infraestructure;
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
 import com.alejandro.mtoconfiguration.controller.commons.ApiResponsesStandard;
 import com.alejandro.mtoconfiguration.controller.commons.CRUDController;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
@@ -14,9 +15,11 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,7 +30,7 @@ import java.util.function.Function;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/api/v1/profile")
+@RequestMapping(ConfigurationApiPaths.BASE_PATH + "/profiles")
 @Tag(
         name = "Profiles",
         description = "Synchronous operations for profile (poles) management"
@@ -70,8 +73,8 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
             content = @Content(schema = @Schema(implementation = ProfileDTO.class))
     )
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> create(@RequestBody ProfileDTO dto) {
-        return processRequestWithValidation(getService()::create, dto);
+    public ResponseEntity<Object> create(@Valid @RequestBody ProfileDTO dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(getService().create(dto));
     }
 
     @PostMapping("/bulk")
@@ -81,8 +84,8 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> bulkCreate(@RequestBody List<ProfileDTO> dtoList) {
-        return processBulkRequestWithValidation(getService()::bulkCreate, dtoList);
+    public ResponseEntity<Object> bulkCreate(@Valid @RequestBody List<@Valid ProfileDTO> dtoList) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(getService().bulkCreate(dtoList));
     }
 
     @PutMapping("/{id}")
@@ -99,7 +102,7 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
     public ResponseEntity<Object> update(
             @PathVariable Long id,
-            @RequestBody ProfileDTO dto
+            @Valid @RequestBody ProfileDTO dto
     ) {
         dto.setId(id);
         return processRequestWithValidation(getService()::update, dto);
@@ -112,7 +115,7 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> bulkUpdate(@RequestBody List<ProfileDTO> dtoList) {
+    public ResponseEntity<Object> bulkUpdate(@Valid @RequestBody List<@Valid ProfileDTO> dtoList) {
         return processBulkRequestWithValidation(getService()::bulkUpdate, dtoList);
     }
 
@@ -123,10 +126,11 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
-    public ResponseEntity<Object> deleteById(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteById(@PathVariable Long id) {
         ProfileDTO dto = new ProfileDTO();
         dto.setId(id);
-        return super.delete(dto);
+        getService().delete(dto);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/search")
@@ -135,7 +139,7 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
             description = "Searches for profiles applying filters, sorting, and generic pagination."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
-    public ResponseEntity<Object> search(@RequestBody SearchRequestDTO searchRequestDTO) {
+    public ResponseEntity<Object> search(@Valid @RequestBody SearchRequestDTO searchRequestDTO) {
         return processGenericPageRequest(getService()::search, searchRequestDTO);
     }
 
@@ -151,7 +155,7 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
     )
     public ResponseEntity<Object> getProfiles(
             @PageableDefault(size = 20) Pageable pageable,
-            @RequestBody ProfileFilter filter
+            @Valid @RequestBody ProfileFilter filter
     ) {
         return processGenericPageRequest(f -> getService().getProfiles(pageable, f), filter);
     }

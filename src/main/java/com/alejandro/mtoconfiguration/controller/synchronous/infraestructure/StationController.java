@@ -2,20 +2,22 @@ package com.alejandro.mtoconfiguration.controller.synchronous.infraestructure;
 
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
 import com.alejandro.mtoconfiguration.controller.commons.CRUDController;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.StationFilter;
-import com.alejandro.mtoconfiguration.service.commons.CRUDService;
 import com.alejandro.mtoconfiguration.service.infraestructure.StationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,7 +25,7 @@ import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/api/v1/station")
+@RequestMapping(ConfigurationApiPaths.BASE_PATH + "/stations")
 @Tag(
         name = "Stations",
         description = "Synchronous operations for station management"
@@ -64,8 +66,8 @@ public class StationController extends CRUDController<StationDTO, Station> {
             content = @Content(schema = @Schema(implementation = StationDTO.class))
     )
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> create(@RequestBody StationDTO dto) {
-        return processRequestWithValidation(getService()::create, dto);
+    public ResponseEntity<Object> create(@Valid @RequestBody StationDTO dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(getService().create(dto));
     }
 
     @PostMapping("/bulk")
@@ -75,8 +77,8 @@ public class StationController extends CRUDController<StationDTO, Station> {
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> bulkCreate(@RequestBody List<StationDTO> dtoList) {
-        return processBulkRequestWithValidation(getService()::bulkCreate, dtoList);
+    public ResponseEntity<Object> bulkCreate(@Valid @RequestBody List<@Valid StationDTO> dtoList) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(getService().bulkCreate(dtoList));
     }
 
     @PutMapping("/{id}")
@@ -93,7 +95,7 @@ public class StationController extends CRUDController<StationDTO, Station> {
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
     public ResponseEntity<Object> update(
             @PathVariable Long id,
-            @RequestBody StationDTO dto
+            @Valid @RequestBody StationDTO dto
     ) {
         dto.setId(id);
         return processRequestWithValidation(getService()::update, dto);
@@ -106,7 +108,7 @@ public class StationController extends CRUDController<StationDTO, Station> {
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> bulkUpdate(@RequestBody List<StationDTO> dtoList) {
+    public ResponseEntity<Object> bulkUpdate(@Valid @RequestBody List<@Valid StationDTO> dtoList) {
         return processBulkRequestWithValidation(getService()::bulkUpdate, dtoList);
     }
 
@@ -117,10 +119,11 @@ public class StationController extends CRUDController<StationDTO, Station> {
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
-    public ResponseEntity<Object> deleteById(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteById(@PathVariable Long id) {
         StationDTO dto = new StationDTO();
         dto.setId(id);
-        return super.delete(dto);
+        getService().delete(dto);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/search")
@@ -129,7 +132,7 @@ public class StationController extends CRUDController<StationDTO, Station> {
             description = "Searches for stations applying filters, sorting, and generic pagination."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
-    public ResponseEntity<Object> search(@RequestBody SearchRequestDTO searchRequestDTO) {
+    public ResponseEntity<Object> search(@Valid @RequestBody SearchRequestDTO searchRequestDTO) {
         return processGenericPageRequest(getService()::search, searchRequestDTO);
     }
 
@@ -145,7 +148,7 @@ public class StationController extends CRUDController<StationDTO, Station> {
     )
     public ResponseEntity<Object> getStations(
             @PageableDefault(size = 20) Pageable pageable,
-            @RequestBody StationFilter filter
+            @Valid @RequestBody StationFilter filter
     ) {
         return processGenericPageRequest(f -> getService().getStations(pageable, f), filter);
     }

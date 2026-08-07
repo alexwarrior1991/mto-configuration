@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.controller.synchronous.infraestructure;
 
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
 import com.alejandro.mtoconfiguration.controller.commons.CRUDController;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
@@ -12,9 +13,11 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,7 +25,7 @@ import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/api/v1/disconnector")
+@RequestMapping(ConfigurationApiPaths.BASE_PATH + "/disconnectors")
 @Tag(
         name = "Disconnectors",
         description = "Synchronous operations for disconnector management"
@@ -62,8 +65,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
             content = @Content(schema = @Schema(implementation = DisconnectorDTO.class))
     )
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> create(@RequestBody DisconnectorDTO dto) {
-        return processRequestWithValidation(getService()::create, dto);
+    public ResponseEntity<Object> create(@Valid @RequestBody DisconnectorDTO dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(getService().create(dto));
     }
 
     @PostMapping("/bulk")
@@ -73,8 +76,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> bulkCreate(@RequestBody List<DisconnectorDTO> dtoList) {
-        return processBulkRequestWithValidation(getService()::bulkCreate, dtoList);
+    public ResponseEntity<Object> bulkCreate(@Valid @RequestBody List<@Valid DisconnectorDTO> dtoList) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(getService().bulkCreate(dtoList));
     }
 
     @PutMapping("/{id}")
@@ -91,7 +94,7 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
     public ResponseEntity<Object> update(
             @PathVariable Long id,
-            @RequestBody DisconnectorDTO dto
+            @Valid @RequestBody DisconnectorDTO dto
     ) {
         dto.setId(id);
         return processRequestWithValidation(getService()::update, dto);
@@ -104,7 +107,7 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> bulkUpdate(@RequestBody List<DisconnectorDTO> dtoList) {
+    public ResponseEntity<Object> bulkUpdate(@Valid @RequestBody List<@Valid DisconnectorDTO> dtoList) {
         return processBulkRequestWithValidation(getService()::bulkUpdate, dtoList);
     }
 
@@ -115,10 +118,11 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
-    public ResponseEntity<Object> deleteById(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteById(@PathVariable Long id) {
         DisconnectorDTO dto = new DisconnectorDTO();
         dto.setId(id);
-        return super.delete(dto);
+        getService().delete(dto);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/search")
@@ -127,7 +131,7 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
             description = "Searches for disconnectors applying filters, sorting, and generic pagination."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
-    public ResponseEntity<Object> search(@RequestBody SearchRequestDTO searchRequestDTO) {
+    public ResponseEntity<Object> search(@Valid @RequestBody SearchRequestDTO searchRequestDTO) {
         return processGenericPageRequest(getService()::search, searchRequestDTO);
     }
 
@@ -143,7 +147,7 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
     )
     public ResponseEntity<Object> getDisconnectors(
             @PageableDefault(size = 20) Pageable pageable,
-            @RequestBody DisconnectorFilter filter
+            @Valid @RequestBody DisconnectorFilter filter
     ) {
         return processGenericPageRequest(f -> getService().getDisconnectors(pageable, f), filter);
     }

@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.controller.synchronous.infraestructure;
 
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
 import com.alejandro.mtoconfiguration.controller.commons.CRUDController;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
@@ -12,9 +13,11 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,7 +25,7 @@ import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/api/v1/track")
+@RequestMapping(ConfigurationApiPaths.BASE_PATH + "/tracks")
 @Tag(
         name = "Tracks",
         description = "Synchronous operations for track management"
@@ -62,8 +65,8 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
             content = @Content(schema = @Schema(implementation = TrackDTO.class))
     )
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> create(@RequestBody TrackDTO dto) {
-        return processRequestWithValidation(getService()::create, dto);
+    public ResponseEntity<Object> create(@Valid @RequestBody TrackDTO dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(getService().create(dto));
     }
 
     @PostMapping("/bulk")
@@ -73,8 +76,8 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> bulkCreate(@RequestBody List<TrackDTO> dtoList) {
-        return processBulkRequestWithValidation(getService()::bulkCreate, dtoList);
+    public ResponseEntity<Object> bulkCreate(@Valid @RequestBody List<@Valid TrackDTO> dtoList) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(getService().bulkCreate(dtoList));
     }
 
     @PutMapping("/{id}")
@@ -91,7 +94,7 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
     public ResponseEntity<Object> update(
             @PathVariable Long id,
-            @RequestBody TrackDTO dto
+            @Valid @RequestBody TrackDTO dto
     ) {
         dto.setId(id);
         return processRequestWithValidation(getService()::update, dto);
@@ -104,7 +107,7 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public ResponseEntity<Object> bulkUpdate(@RequestBody List<TrackDTO> dtoList) {
+    public ResponseEntity<Object> bulkUpdate(@Valid @RequestBody List<@Valid TrackDTO> dtoList) {
         return processBulkRequestWithValidation(getService()::bulkUpdate, dtoList);
     }
 
@@ -115,10 +118,11 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
-    public ResponseEntity<Object> deleteById(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteById(@PathVariable Long id) {
         TrackDTO dto = new TrackDTO();
         dto.setId(id);
-        return super.delete(dto);
+        getService().delete(dto);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/search")
@@ -127,7 +131,7 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
             description = "Searches for tracks applying filters, sorting, and generic pagination."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
-    public ResponseEntity<Object> search(@RequestBody SearchRequestDTO searchRequestDTO) {
+    public ResponseEntity<Object> search(@Valid @RequestBody SearchRequestDTO searchRequestDTO) {
         return processGenericPageRequest(getService()::search, searchRequestDTO);
     }
 
@@ -143,7 +147,7 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
     )
     public ResponseEntity<Object> getTracks(
             @PageableDefault(size = 20) Pageable pageable,
-            @RequestBody TrackFilter filter
+            @Valid @RequestBody TrackFilter filter
     ) {
         return processGenericPageRequest(f -> getService().getTracks(pageable, f), filter);
     }

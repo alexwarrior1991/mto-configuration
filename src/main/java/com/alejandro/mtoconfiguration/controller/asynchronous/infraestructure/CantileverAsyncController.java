@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure;
 
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
 import com.alejandro.mtoconfiguration.controller.commons.ApiResponsesStandard;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.CantileverFilter;
@@ -11,9 +12,11 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/api/v1/async/cantilever")
+@RequestMapping(ConfigurationApiPaths.ASYNC_BASE_PATH + "/cantilevers")
 @Tag(
         name = "Cantilevers Async",
         description = "Asynchronous operations for cantilever management"
@@ -67,9 +70,9 @@ public class CantileverAsyncController {
             description = ApiConstants.DESC_200,
             content = @Content(schema = @Schema(implementation = CantileverDTO.class))
     )
-    public CompletableFuture<ResponseEntity<Object>> createAsync(@RequestBody CantileverDTO dto) {
+    public CompletableFuture<ResponseEntity<Object>> createAsync(@Valid @RequestBody CantileverDTO dto) {
         return cantileverAsyncService.createAsync(dto)
-                .thenApply(ResponseEntity::ok);
+                .thenApply(result -> ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
     }
 
     @PostMapping("/bulk")
@@ -77,9 +80,9 @@ public class CantileverAsyncController {
             summary = "Bulk create cantilevers (async)",
             description = "Asynchronously creates several cantilevers."
     )
-    public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@RequestBody List<CantileverDTO> dtoList) {
+    public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@Valid @RequestBody List<@Valid CantileverDTO> dtoList) {
         return cantileverAsyncService.bulkCreateAsync(dtoList)
-                .thenApply(ResponseEntity::ok);
+                .thenApply(result -> ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
     }
 
     @PutMapping("/{id}")
@@ -94,7 +97,7 @@ public class CantileverAsyncController {
     )
     public CompletableFuture<ResponseEntity<Object>> updateAsync(
             @PathVariable Long id,
-            @RequestBody CantileverDTO dto
+            @Valid @RequestBody CantileverDTO dto
     ) {
         dto.setId(id);
         return cantileverAsyncService.updateAsync(dto)
@@ -106,7 +109,7 @@ public class CantileverAsyncController {
             summary = "Bulk update cantilevers (async)",
             description = "Asynchronously updates several cantilevers."
     )
-    public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@RequestBody List<CantileverDTO> dtoList) {
+    public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@Valid @RequestBody List<@Valid CantileverDTO> dtoList) {
         return cantileverAsyncService.bulkUpdateAsync(dtoList)
                 .thenApply(ResponseEntity::ok);
     }
@@ -116,7 +119,7 @@ public class CantileverAsyncController {
             summary = "Search cantilevers (async)",
             description = "Asynchronously searches for cantilevers applying filters and pagination."
     )
-    public CompletableFuture<ResponseEntity<Object>> searchAsync(@RequestBody SearchRequestDTO searchRequestDTO) {
+    public CompletableFuture<ResponseEntity<Object>> searchAsync(@Valid @RequestBody SearchRequestDTO searchRequestDTO) {
         return cantileverAsyncService.searchAsync(searchRequestDTO)
                 .thenApply(ResponseEntity::ok);
     }
@@ -133,7 +136,7 @@ public class CantileverAsyncController {
     )
     public CompletableFuture<ResponseEntity<Object>> getCantileversAsync(
             @PageableDefault(size = 20) Pageable pageable,
-            @RequestBody CantileverFilter filter
+            @Valid @RequestBody CantileverFilter filter
     ) {
         return cantileverAsyncService.getCantileversAsync(pageable, filter)
                 .thenApply(ResponseEntity::ok);

@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure;
 
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
 import com.alejandro.mtoconfiguration.controller.commons.ApiResponsesStandard;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.ExecutionPackageFilter;
@@ -11,9 +12,11 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/api/v1/async/execution-package")
+@RequestMapping(ConfigurationApiPaths.ASYNC_BASE_PATH + "/execution-packages")
 @Tag(
         name = "Execution Packages Async",
         description = "Asynchronous operations for execution package management"
@@ -71,9 +74,9 @@ public class ExecutionPackageAsyncController {
             content = @Content(schema = @Schema(implementation = ExecutionPackageDTO.class))
     )
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public CompletableFuture<ResponseEntity<Object>> createAsync(@RequestBody ExecutionPackageDTO dto) {
+    public CompletableFuture<ResponseEntity<Object>> createAsync(@Valid @RequestBody ExecutionPackageDTO dto) {
         return executionPackageAsyncService.createAsync(dto)
-                .thenApply(ResponseEntity::ok);
+                .thenApply(result -> ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
     }
 
     @PostMapping("/bulk")
@@ -83,9 +86,9 @@ public class ExecutionPackageAsyncController {
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@RequestBody List<ExecutionPackageDTO> dtoList) {
+    public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@Valid @RequestBody List<@Valid ExecutionPackageDTO> dtoList) {
         return executionPackageAsyncService.bulkCreateAsync(dtoList)
-                .thenApply(ResponseEntity::ok);
+                .thenApply(result -> ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
     }
 
     @PutMapping("/{id}")
@@ -102,7 +105,7 @@ public class ExecutionPackageAsyncController {
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
     public CompletableFuture<ResponseEntity<Object>> updateAsync(
             @PathVariable Long id,
-            @RequestBody ExecutionPackageDTO dto
+            @Valid @RequestBody ExecutionPackageDTO dto
     ) {
         dto.setId(id);
         return executionPackageAsyncService.updateAsync(dto)
@@ -116,7 +119,7 @@ public class ExecutionPackageAsyncController {
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@RequestBody List<ExecutionPackageDTO> dtoList) {
+    public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@Valid @RequestBody List<@Valid ExecutionPackageDTO> dtoList) {
         return executionPackageAsyncService.bulkUpdateAsync(dtoList)
                 .thenApply(ResponseEntity::ok);
     }
@@ -128,7 +131,7 @@ public class ExecutionPackageAsyncController {
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
-    public CompletableFuture<ResponseEntity<Object>> searchAsync(@RequestBody SearchRequestDTO searchRequestDTO) {
+    public CompletableFuture<ResponseEntity<Object>> searchAsync(@Valid @RequestBody SearchRequestDTO searchRequestDTO) {
         return executionPackageAsyncService.searchAsync(searchRequestDTO)
                 .thenApply(ResponseEntity::ok);
     }
@@ -146,7 +149,7 @@ public class ExecutionPackageAsyncController {
     @ApiResponse(responseCode = ApiConstants.CODE_400, description = ApiConstants.DESC_400)
     public CompletableFuture<ResponseEntity<Object>> getExecutionPackagesAsync(
             @PageableDefault(size = 20) Pageable pageable,
-            @RequestBody ExecutionPackageFilter filter
+            @Valid @RequestBody ExecutionPackageFilter filter
     ) {
         return executionPackageAsyncService.getExecutionPackagesAsync(pageable, filter)
                 .thenApply(ResponseEntity::ok);

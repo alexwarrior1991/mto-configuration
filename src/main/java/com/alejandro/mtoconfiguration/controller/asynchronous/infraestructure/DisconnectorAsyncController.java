@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure;
 
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.DisconnectorFilter;
@@ -10,9 +11,11 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/api/v1/async/disconnector")
+@RequestMapping(ConfigurationApiPaths.ASYNC_BASE_PATH + "/disconnectors")
 @Tag(
         name = "Disconnectors Async",
         description = "Asynchronous operations for disconnector management"
@@ -65,9 +68,9 @@ public class DisconnectorAsyncController {
             description = ApiConstants.DESC_200,
             content = @Content(schema = @Schema(implementation = DisconnectorDTO.class))
     )
-    public CompletableFuture<ResponseEntity<Object>> createAsync(@RequestBody DisconnectorDTO dto) {
+    public CompletableFuture<ResponseEntity<Object>> createAsync(@Valid @RequestBody DisconnectorDTO dto) {
         return disconnectorAsyncService.createAsync(dto)
-                .thenApply(ResponseEntity::ok);
+                .thenApply(result -> ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
     }
 
     @PostMapping("/bulk")
@@ -75,9 +78,9 @@ public class DisconnectorAsyncController {
             summary = "Bulk create disconnectors (async)",
             description = "Asynchronously creates several disconnectors."
     )
-    public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@RequestBody List<DisconnectorDTO> dtoList) {
+    public CompletableFuture<ResponseEntity<Object>> bulkCreateAsync(@Valid @RequestBody List<@Valid DisconnectorDTO> dtoList) {
         return disconnectorAsyncService.bulkCreateAsync(dtoList)
-                .thenApply(ResponseEntity::ok);
+                .thenApply(result -> ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
     }
 
     @PutMapping("/{id}")
@@ -92,7 +95,7 @@ public class DisconnectorAsyncController {
     )
     public CompletableFuture<ResponseEntity<Object>> updateAsync(
             @PathVariable Long id,
-            @RequestBody DisconnectorDTO dto
+            @Valid @RequestBody DisconnectorDTO dto
     ) {
         dto.setId(id);
         return disconnectorAsyncService.updateAsync(dto)
@@ -104,7 +107,7 @@ public class DisconnectorAsyncController {
             summary = "Bulk update disconnectors (async)",
             description = "Asynchronously updates several disconnectors."
     )
-    public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@RequestBody List<DisconnectorDTO> dtoList) {
+    public CompletableFuture<ResponseEntity<Object>> bulkUpdateAsync(@Valid @RequestBody List<@Valid DisconnectorDTO> dtoList) {
         return disconnectorAsyncService.bulkUpdateAsync(dtoList)
                 .thenApply(ResponseEntity::ok);
     }
@@ -114,7 +117,7 @@ public class DisconnectorAsyncController {
             summary = "Search disconnectors (async)",
             description = "Asynchronously searches for disconnectors applying filters and pagination."
     )
-    public CompletableFuture<ResponseEntity<Object>> searchAsync(@RequestBody SearchRequestDTO searchRequestDTO) {
+    public CompletableFuture<ResponseEntity<Object>> searchAsync(@Valid @RequestBody SearchRequestDTO searchRequestDTO) {
         return disconnectorAsyncService.searchAsync(searchRequestDTO)
                 .thenApply(ResponseEntity::ok);
     }
@@ -131,7 +134,7 @@ public class DisconnectorAsyncController {
     )
     public CompletableFuture<ResponseEntity<Object>> getDisconnectorsAsync(
             @PageableDefault(size = 20) Pageable pageable,
-            @RequestBody DisconnectorFilter filter
+            @Valid @RequestBody DisconnectorFilter filter
     ) {
         return disconnectorAsyncService.getDisconnectorsAsync(pageable, filter)
                 .thenApply(ResponseEntity::ok);
