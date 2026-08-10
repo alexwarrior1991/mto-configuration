@@ -93,9 +93,23 @@ Lógica específica para eventos de entidades de infraestructura.
 
 ---
 
-## 3. Topología de RabbitMQ
+## 3. Infraestructura de RabbitMQ (Exchanges, Colas y Dead Letter)
 
-El sistema utiliza un **Topic Exchange** llamado `mto.master-data.exchange`. Esto permite una gran flexibilidad en el enrutado.
+El sistema utiliza una configuración dinámica basada en propiedades para definir la infraestructura de mensajería, asegurando que el broker (RabbitMQ) esté siempre alineado con los requisitos del código.
+
+### 3.1. Exchanges (Intercambiadores)
+El punto central de recepción de mensajes es el **Topic Exchange** llamado `mto.master-data.exchange`.
+- **Tipo Topic**: A diferencia de un exchange directo, este permite una distribución selectiva. Los mensajes se envían con una "Routing Key" (ej: `mto.master-data.station.created`) y el exchange los entrega a las colas cuyo "Binding Pattern" coincida.
+- **Durabilidad**: Declarado como `durable`, lo que garantiza que la configuración del exchange sobreviva a un reinicio de RabbitMQ.
+- **Auto-declaración**: La clase `RabbitMqConfiguration` lee la lista de exchanges desde el YAML y utiliza `RabbitAdmin` para crearlos automáticamente si no existen.
+
+### 3.2. Colas (Queues)
+Las colas son los buzones donde residen los mensajes hasta que un consumidor los procesa.
+- **Nomenclatura**: Siguen el estándar `mto.master-data.{propósito}.queue`.
+- **Modo Lazy**: Configurable vía propiedades. Permite que los mensajes se guarden en disco inmediatamente, ideal para soportar picos de tráfico masivos sin agotar la memoria RAM del broker.
+- **Persistencia**: Por defecto son `durable`, asegurando que los mensajes no se pierdan si el broker se apaga.
+
+**Topología de Colas Estándar:**
 
 | Cola | Binding (Routing Key) | Propósito |
 | :--- | :--- | :--- |
@@ -104,9 +118,44 @@ El sistema utiliza un **Topic Exchange** llamado `mto.master-data.exchange`. Est
 | `mto.master-data.audit.queue` | `mto.master-data.#` | Registro histórico de auditoría técnica. |
 | `mto.master-data.deleted.queue` | `mto.master-data.*.deleted` | Lógica específica para limpieza de datos eliminados. |
 
+### 3.3. Estrategia de Dead Letter (DLX/DLQ)
+Para garantizar la resiliencia, el sistema implementa un mecanismo automático de gestión de errores mediante **Dead Lettering**.
+- **Dead Letter Exchange (DLX)**: Por cada cola configurada con `dead-letter-enabled: true`, el sistema crea un exchange adicional de tipo `direct` con el sufijo `.dlx` (ej: `mto.master-data.events.queue.dlx`).
+- **Dead Letter Queue (DLQ)**: Se crea una cola espejo con el sufijo `.dlq` (ej: `mto.master-data.events.queue.dlq`) conectada al DLX.
+- **Flujo de Error**: Cuando un mensaje no puede ser procesado (ej: formato inválido, error persistente en el consumidor o expiración de TTL), RabbitMQ lo mueve automáticamente de la cola principal a la DLQ. Esto permite:
+    1. **Aislamiento**: Los mensajes problemáticos no bloquean el procesamiento de los mensajes nuevos.
+    2. **Inspección**: Los administradores pueden revisar la DLQ para entender por qué falló el mensaje.
+    3. **Recuperación**: Una vez corregido el problema, los mensajes pueden ser reinyectados a la cola principal.
+
 ---
 
-## 4. Guía de Implementación
+## 4. Ciclo de Vida del Mensaje: Proceso Paso a Paso
+
+El flujo de un evento en este módulo sigue un camino estrictamente controlado para evitar la pérdida de datos:
+
+### Fase 1: Captura del Evento (Base de Datos)
+1.  **Operación de Negocio**: Un servicio realiza un cambio en una entidad (ej: `repository.save(station)`).
+2.  **Llamada al Publisher**: Dentro de la misma transacción `@Transactional`, se llama a `eventPublisher.publishCreated(savedEntity)`.
+3.  **Serialización**: El sistema convierte la entidad en un `AsynchronousMessage<T>`, calculando un hash SHA-256 para integridad y asignando un `operationId`.
+4.  **Persistencia Outbox**: El mensaje se guarda en la tabla `outbox_message` con estado `PENDING`. 
+    *   *Importante*: Si la transacción de base de datos falla (rollback), el registro en la tabla Outbox nunca se crea, evitando enviar eventos falsos.
+
+### Fase 2: El Relay (Envío al Broker)
+5.  **Scheduler**: El `OutboxPublisherScheduler` despierta cada N segundos.
+6.  **Recuperación**: Busca los mensajes marcados como `PENDING` en la tabla.
+7.  **Publicación**: Utiliza `RabbitTemplate` para enviar el JSON al exchange `mto.master-data.exchange`.
+8.  **Confirmación**:
+    *   **Éxito**: El estado del mensaje en la tabla cambia a `PUBLISHED`.
+    *   **Fallo Temporal**: Si RabbitMQ está caído, el scheduler lo reintentará más tarde con un retardo mayor (Backoff).
+    *   **Fallo Definitivo**: Tras agotar los reintentos configurados, el mensaje queda como `FAILED` para alerta de administración.
+
+### Fase 3: Enrutado y Consumo
+9.  **Distribución**: El Exchange recibe el mensaje y, basándose en la Routing Key, lo deposita en una o varias colas (Audit, Events, Cache, etc.).
+10. **Procesamiento**: El microservicio destino consume el mensaje. Si falla y el sistema está configurado para no reencolar, el mensaje viaja a la **DLQ** para su posterior análisis.
+
+---
+
+## 5. Guía de Implementación
 
 ### Paso 1: Preparar la Entidad
 Opcionalmente, usa la anotación para definir un nombre personalizado.
@@ -142,7 +191,7 @@ public Station update(Long id, Station data) {
 
 ---
 
-## 5. Configuración en `application.yaml`
+## 6. Configuración en `application.yaml`
 
 ```yaml
 app:
@@ -169,7 +218,7 @@ app:
 
 ---
 
-## 6. Monitoreo y Resolución de Problemas
+## 7. Monitoreo y Resolución de Problemas
 
 1.  **Tabla Outbox**: Si un mensaje no llega a RabbitMQ, consulta la tabla `outbox_message`. El campo `last_error` indicará el motivo del fallo y `attempts` cuántas veces se ha intentado.
 2.  **Logs**: Busca el prefijo `Outbox message published` para confirmar envíos exitosos.
