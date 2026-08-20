@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.mapper.lov.AnchorageFoundationTypeMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageFoundationTypeDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.AnchorageFoundationTypeRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -14,9 +15,10 @@ public class AnchorageFoundationTypeService
 
     public AnchorageFoundationTypeService(
             AnchorageFoundationTypeRepository repository,
-            AnchorageFoundationTypeMapper mapper
+            AnchorageFoundationTypeMapper mapper,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
-        super(repository, mapper);
+        super(repository, mapper, applicationEventPublisher);
     }
 
     @Override

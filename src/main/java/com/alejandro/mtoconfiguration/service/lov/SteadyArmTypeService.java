@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.mapper.lov.SteadyArmTypeMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SteadyArmTypeDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.SteadyArmTypeRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,9 +13,10 @@ public class SteadyArmTypeService extends AbstractLovCrudService<SteadyArmTypeDT
 
     public SteadyArmTypeService(
             SteadyArmTypeRepository repository,
-            SteadyArmTypeMapper mapper
+            SteadyArmTypeMapper mapper,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
-        super(repository, mapper);
+        super(repository, mapper, applicationEventPublisher);
     }
 
     @Override

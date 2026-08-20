@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.mapper.lov.PoleTypeMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.PoleTypeDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.PoleTypeRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,9 +13,10 @@ public class PoleTypeService extends AbstractLovCrudService<PoleTypeDTO, PoleTyp
 
     public PoleTypeService(
             PoleTypeRepository repository,
-            PoleTypeMapper mapper
+            PoleTypeMapper mapper,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
-        super(repository, mapper);
+        super(repository, mapper, applicationEventPublisher);
     }
 
     @Override

@@ -19,7 +19,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Function;
 
 @Service
 @RequiredArgsConstructor
@@ -65,23 +64,15 @@ public class MasterDataService {
     private final SteadyArmTypeMapper steadyArmTypeMapper;
     private final SupportTypeMapper supportTypeMapper;
 
-    private <E extends Lov> E getEntityByCode(String code, LovRepository<E> repository) {
-        return Optional.ofNullable(code)
-                .filter(StringUtils::isNotBlank)
-                .map(repository::findByCode)
-                .map(this::initialize)
-                .orElse(null);
-    }
+    // Resolver en bean aparte: la llamada cruza el proxy de Spring y sí aplica @Cacheable
+    private final LovReferenceResolver lovReferenceResolver;
 
-    private <E extends Lov, D extends LovDTO> E getEntityRefByCode(
+    private <E extends Lov> E getEntityRefByCode(
+            String lovName,
             String code,
-            LovRepository<E> repository,
-            Function<String, D> cachedDtoLookup
+            LovRepository<E> repository
     ) {
-        return Optional.ofNullable(code)
-                .filter(StringUtils::isNotBlank)
-                .map(cachedDtoLookup)
-                .map(LovDTO::getId)
+        return Optional.ofNullable(lovReferenceResolver.resolveIdByCode(lovName, code, repository))
                 .map(repository::getReferenceById)
                 .orElse(null);
     }
@@ -138,7 +129,7 @@ public class MasterDataService {
 
 
     public AnchorageFoundation getAnchorageFoundationByCode(String code) {
-        return getEntityRefByCode(code, anchorageFoundationRepository, this::getAnchorageFoundationByCodeAndMapToDTO);
+        return getEntityRefByCode("AnchorageFoundation", code, anchorageFoundationRepository);
     }
 
     @Cacheable(
@@ -172,7 +163,7 @@ public class MasterDataService {
     // --- Anchorage Foundation Type ---
 
     public AnchorageFoundationType getAnchorageFoundationTypeByCode(String code) {
-        return getEntityRefByCode(code, anchorageFoundationTypeRepository, this::getAnchorageFoundationTypeByCodeAndMapToDTO);
+        return getEntityRefByCode("AnchorageFoundationType", code, anchorageFoundationTypeRepository);
     }
 
     @Cacheable(
@@ -205,7 +196,7 @@ public class MasterDataService {
     // --- Anchorage ---
 
     public Anchorage getAnchorageByCode(String code) {
-        return getEntityRefByCode(code, anchorageRepository, this::getAnchorageByCodeAndMapToDTO);
+        return getEntityRefByCode("Anchorage", code, anchorageRepository);
     }
 
     @Cacheable(
@@ -238,7 +229,7 @@ public class MasterDataService {
     // --- Cantilever Type ---
 
     public CantileverType getCantileverTypeByCode(String code) {
-        return getEntityRefByCode(code, cantileverTypeRepository, this::getCantileverTypeByCodeAndMapToDTO);
+        return getEntityRefByCode("CantileverType", code, cantileverTypeRepository);
     }
 
     @Cacheable(
@@ -271,7 +262,7 @@ public class MasterDataService {
     // --- Comercial Entity Type ---
 
     public ComercialEntityType getComercialEntityTypeByCode(String code) {
-        return getEntityRefByCode(code, comercialEntityTypeRepository, this::getComercialEntityTypeByCodeAndMapToDTO);
+        return getEntityRefByCode("ComercialEntityType", code, comercialEntityTypeRepository);
     }
 
     @Cacheable(
@@ -305,7 +296,7 @@ public class MasterDataService {
     // --- Disconnector Function ---
 
     public DisconnectorFunction getDisconnectorFunctionByCode(String code) {
-        return getEntityRefByCode(code, disconnectorFunctionRepository, this::getDisconnectorFunctionByCodeAndMapToDTO);
+        return getEntityRefByCode("DisconnectorFunction", code, disconnectorFunctionRepository);
     }
 
     @Cacheable(
@@ -338,7 +329,7 @@ public class MasterDataService {
     // --- Foundation ---
 
     public Foundation getFoundationByCode(String code) {
-        return getEntityRefByCode(code, foundationRepository, this::getFoundationByCodeAndMapToDTO);
+        return getEntityRefByCode("Foundation", code, foundationRepository);
     }
 
     @Cacheable(
@@ -371,7 +362,7 @@ public class MasterDataService {
     // --- Foundation Type ---
 
     public FoundationType getFoundationTypeByCode(String code) {
-        return getEntityRefByCode(code, foundationTypeRepository, this::getFoundationTypeByCodeAndMapToDTO);
+        return getEntityRefByCode("FoundationType", code, foundationTypeRepository);
     }
 
     @Cacheable(
@@ -404,7 +395,7 @@ public class MasterDataService {
     // --- Pole Type ---
 
     public PoleType getPoleTypeByCode(String code) {
-        return getEntityRefByCode(code, poleTypeRepository, this::getPoleTypeByCodeAndMapToDTO);
+        return getEntityRefByCode("PoleType", code, poleTypeRepository);
     }
 
     @Cacheable(
@@ -437,7 +428,7 @@ public class MasterDataService {
     // --- Portal ---
 
     public Portal getPortalByCode(String code) {
-        return getEntityRefByCode(code, portalRepository, this::getPortalByCodeAndMapToDTO);
+        return getEntityRefByCode("Portal", code, portalRepository);
     }
 
     @Cacheable(
@@ -470,7 +461,7 @@ public class MasterDataService {
     // --- Portal Type ---
 
     public PortalType getPortalTypeByCode(String code) {
-        return getEntityRefByCode(code, portalTypeRepository, this::getPortalTypeByCodeAndMapToDTO);
+        return getEntityRefByCode("PortalType", code, portalTypeRepository);
     }
 
     @Cacheable(
@@ -503,7 +494,7 @@ public class MasterDataService {
     // --- Profile Status ---
 
     public ProfileStatus getProfileStatusByCode(String code) {
-        return getEntityRefByCode(code, profileStatusRepository, this::getProfileStatusByCodeAndMapToDTO);
+        return getEntityRefByCode("ProfileStatus", code, profileStatusRepository);
     }
 
     @Cacheable(
@@ -536,7 +527,7 @@ public class MasterDataService {
     // --- Return Support ---
 
     public ReturnSupport getReturnSupportByCode(String code) {
-        return getEntityRefByCode(code, returnSupportRepository, this::getReturnSupportByCodeAndMapToDTO);
+        return getEntityRefByCode("ReturnSupport", code, returnSupportRepository);
     }
 
     @Cacheable(
@@ -570,7 +561,7 @@ public class MasterDataService {
     // --- Sectioning ---
 
     public Sectioning getSectioningByCode(String code) {
-        return getEntityRefByCode(code, sectioningRepository, this::getSectioningByCodeAndMapToDTO);
+        return getEntityRefByCode("Sectioning", code, sectioningRepository);
     }
 
     @Cacheable(
@@ -604,7 +595,7 @@ public class MasterDataService {
     // --- Steady Arm Type ---
 
     public SteadyArmType getSteadyArmTypeByCode(String code) {
-        return getEntityRefByCode(code, steadyArmTypeRepository, this::getSteadyArmTypeByCodeAndMapToDTO);
+        return getEntityRefByCode("SteadyArmType", code, steadyArmTypeRepository);
     }
 
     @Cacheable(
@@ -637,7 +628,7 @@ public class MasterDataService {
     // --- Support Type ---
 
     public SupportType getSupportTypeByCode(String code) {
-        return getEntityRefByCode(code, supportTypeRepository, this::getSupportTypeByCodeAndMapToDTO);
+        return getEntityRefByCode("SupportType", code, supportTypeRepository);
     }
 
     @Cacheable(

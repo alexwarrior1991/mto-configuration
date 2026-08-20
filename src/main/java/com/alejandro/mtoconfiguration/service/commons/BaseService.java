@@ -3,13 +3,13 @@ package com.alejandro.mtoconfiguration.service.commons;
 import com.alejandro.mtoconfiguration.business.commons.Business;
 import com.alejandro.mtoconfiguration.configuration.cache.CacheEvictionEvent;
 import com.alejandro.mtoconfiguration.configuration.cache.CacheNames;
+import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheKeyGenerator;
 import com.alejandro.mtoconfiguration.core.exception.BaseException;
 import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.commons.IEntity;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
-import com.alejandro.mtoconfiguration.model.commons.CachedPageDTO;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.CriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeApplicationEvent;
@@ -27,7 +27,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
@@ -53,8 +52,10 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
     private ApplicationEventPublisher applicationEventPublisher;
 
     @Autowired
-    @Lazy
-    private BaseService<T, E> self;
+    private PageCacheService pageCacheService;
+
+    @Autowired
+    private RedisCacheKeyGenerator cacheKeyGenerator;
 
     // Abstract methods to be implemented in concrete subclasses
     protected abstract BaseMapper<T, E> getMapper();
@@ -106,34 +107,17 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
     }
 
     public Page<T> findAll(Pageable pageable) throws BaseException {
-        // Se llama al proxy inyectado para que Spring aplique @Cacheable y no haya auto-invocación.
-        return self.findAllCached(pageable).toPage();
-    }
+        // La caché vive en PageCacheService: así la llamada cruza el proxy de Spring
+        // y @Cacheable se aplica de verdad (la auto-invocación lo ignoraría).
+        String cacheKey = cacheKeyGenerator.buildKey(this, "findAll", pageable);
 
-    @Cacheable(
-            cacheNames = CacheNames.NORMAL_PAGE,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null || #result.isEmpty()"
-    )
-    public CachedPageDTO<T> findAllCached(Pageable pageable) throws BaseException {
-        return Optional.of(getRepository().findAll(pageable))
-                .map(getMapper()::mapToDTOs)
-                .map(CachedPageDTO::from)
-                .orElseGet(() -> CachedPageDTO.from(Page.empty(pageable)));
+        return pageCacheService.getPage(cacheKey,
+                        () -> getMapper().mapToDTOs(getRepository().findAll(pageable)))
+                .toPage();
     }
 
     public Page<T> search(SearchRequestDTO searchRequestDTO) throws BaseException {
-        // Se llama al proxy inyectado para que Spring aplique @Cacheable y no haya auto-invocación.
-        return self.searchCached(searchRequestDTO).toPage();
-    }
-
-    @Cacheable(
-            cacheNames = CacheNames.NORMAL_SEARCH,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null || #result.isEmpty()"
-    )
-    public CachedPageDTO<T> searchCached(SearchRequestDTO searchRequestDTO) throws BaseException {
-
+        // La validación va FUERA de la caché: debe ejecutarse también en cache hit.
         Optional.ofNullable(getValidator())
                 .map(v -> v.validateBeforeSearch(searchRequestDTO))
                 .filter(Utils::hasErrors)
@@ -141,12 +125,17 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                     throw new ValidationException(alerts);
                 });
 
-        return Optional.ofNullable(getCriteriaSearchRepository())
-                .map(repo -> repo.criteriaSearchWithChildren((Class<E>) getEntity().getClass(), searchRequestDTO, em, searchParams()))
-                .map(getMapper()::mapToDTOs)
-                .map(CachedPageDTO::from)
-                .orElseThrow(() -> new BaseException("Search method not implemented (CriteriaSearchRepository is null)"));
+        if (getCriteriaSearchRepository() == null) {
+            throw new BaseException("Search method not implemented (CriteriaSearchRepository is null)");
+        }
 
+        String cacheKey = cacheKeyGenerator.buildKey(this, "search", searchRequestDTO);
+
+        return pageCacheService.getSearch(cacheKey,
+                        () -> getMapper().mapToDTOs(
+                                getCriteriaSearchRepository().criteriaSearchWithChildren(
+                                        (Class<E>) getEntity().getClass(), searchRequestDTO, em, searchParams())))
+                .toPage();
     }
 
     @Transactional(

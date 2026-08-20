@@ -283,4 +283,6 @@ cache:
       - com.alejandro.mtoconfiguration
       - java.util
       - java.time
+      # Necesario para cachear escalares como el id resuelto por LovReferenceResolver
+      - java.lang
       - org.springframework.data.domain

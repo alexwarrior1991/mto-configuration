@@ -8,6 +8,7 @@ import com.alejandro.mtoconfiguration.repository.jpa.lov.PortalRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.PortalTypeRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
 import com.alejandro.mtoconfiguration.service.lov.commons.LovRelationResolver;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -20,9 +21,10 @@ public class PortalService extends AbstractLovCrudService<PortalDTO, Portal> {
             PortalRepository repository,
             PortalMapper mapper,
             PortalTypeRepository portalTypeRepository,
-            LovRelationResolver lovRelationResolver
+            LovRelationResolver lovRelationResolver,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
-        super(repository, mapper);
+        super(repository, mapper, applicationEventPublisher);
         this.portalTypeRepository = portalTypeRepository;
         this.lovRelationResolver = lovRelationResolver;
     }

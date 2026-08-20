@@ -31,6 +31,11 @@ public record CachedPageDTO<T>(
     }
 
     public Page<T> toPage() {
+        // PageRequest.of lanza IllegalArgumentException con size == 0 (caso Pageable.unpaged())
+        if (size <= 0) {
+            return new PageImpl<>(content);
+        }
+
         return new PageImpl<>(content, PageRequest.of(page, size, toSort()), totalElements);
     }
 

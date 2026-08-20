@@ -7,13 +7,18 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.AnchorageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.commons.LovRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
 public class AnchorageService extends AbstractLovCrudService<AnchorageDTO, Anchorage> {
 
-    public AnchorageService(AnchorageRepository repository, AnchorageMapper mapper) {
-        super(repository, mapper);
+    public AnchorageService(
+            AnchorageRepository repository,
+            AnchorageMapper mapper,
+            ApplicationEventPublisher applicationEventPublisher
+    ) {
+        super(repository, mapper, applicationEventPublisher);
     }
 
     @Override

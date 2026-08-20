@@ -40,16 +40,44 @@ public class RedisCacheEvictService {
         evictByPattern(applicationName + "::" + CacheNames.LOV_LIST + "::*");
     }
 
+    /**
+     * Invalidación granular de un LOV concreto.
+     * Los patrones están anclados a los sufijos reales (get&lt;Lov&gt;By* y get&lt;Lov&gt;List)
+     * para no arrastrar LOV con prefijo común (Anchorage vs AnchorageFoundation,
+     * Portal vs PortalType, Foundation vs FoundationType).
+     */
     public void evictLovCaches(String lovName) {
         if (StringUtils.isBlank(lovName)) {
             evictLovCaches();
             return;
         }
 
-        evictByPattern(lovPattern(CacheNames.LOV_ITEM, "MasterDataService:get" + lovName + "*"));
-        evictByPattern(lovPattern(CacheNames.LOV_LIST, "MasterDataService:get" + lovName + "*"));
-        evictByPattern(lovPattern(CacheNames.LOV_ITEM, lovName + "Service:find*"));
-        evictByPattern(lovPattern(CacheNames.LOV_LIST, lovName + "Service:find*"));
+        // Claves de MasterDataService: getXByIdAndMapToDTO / getXByCodeAndMapToDTO / getXList
+        evictByPattern(lovPattern(CacheNames.LOV_ITEM, masterDataItemKeyPattern(lovName)));
+        evictByPattern(lovPattern(CacheNames.LOV_LIST, masterDataListKeyPattern(lovName)));
+
+        // Clave del resolver código -> id (LovReferenceResolver)
+        evictByPattern(lovPattern(CacheNames.LOV_ITEM, lovIdByCodeKeyPattern(lovName)));
+
+        // Claves del servicio LOV concreto (AbstractLovCrudService)
+        evictByPattern(lovPattern(CacheNames.LOV_ITEM, lovServiceKeyPattern(lovName)));
+        evictByPattern(lovPattern(CacheNames.LOV_LIST, lovServiceKeyPattern(lovName)));
+    }
+
+    private String masterDataItemKeyPattern(String lovName) {
+        return "MasterDataService:get" + lovName + "By*";
+    }
+
+    private String masterDataListKeyPattern(String lovName) {
+        return "MasterDataService:get" + lovName + "List";
+    }
+
+    private String lovIdByCodeKeyPattern(String lovName) {
+        return "lovIdByCode:" + lovName + ":*";
+    }
+
+    private String lovServiceKeyPattern(String lovName) {
+        return lovName + "Service:find*";
     }
 
     private String lovPattern(String cacheName, String keyPattern) {

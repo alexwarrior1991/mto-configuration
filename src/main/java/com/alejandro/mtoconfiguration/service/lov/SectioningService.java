@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.mapper.lov.SectioningMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.SectioningRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,9 +13,10 @@ public class SectioningService extends AbstractLovCrudService<SectioningDTO, Sec
 
     public SectioningService(
             SectioningRepository repository,
-            SectioningMapper mapper
+            SectioningMapper mapper,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
-        super(repository, mapper);
+        super(repository, mapper, applicationEventPublisher);
     }
 
     @Override

@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.mapper.lov.FoundationTypeMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.FoundationTypeDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.FoundationTypeRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,9 +13,10 @@ public class FoundationTypeService extends AbstractLovCrudService<FoundationType
 
     public FoundationTypeService(
             FoundationTypeRepository repository,
-            FoundationTypeMapper mapper
+            FoundationTypeMapper mapper,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
-        super(repository, mapper);
+        super(repository, mapper, applicationEventPublisher);
     }
 
     @Override

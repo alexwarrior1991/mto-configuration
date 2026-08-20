@@ -10,6 +10,7 @@ import com.alejandro.mtoconfiguration.repository.jpa.lov.FoundationTypeRepositor
 import com.alejandro.mtoconfiguration.repository.jpa.lov.commons.LovRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
 import com.alejandro.mtoconfiguration.service.lov.commons.LovRelationResolver;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -23,9 +24,10 @@ public class FoundationService extends AbstractLovCrudService<FoundationDTO, Fou
             FoundationRepository repository,
             FoundationMapper mapper,
             FoundationTypeRepository foundationTypeRepository,
-            LovRelationResolver lovRelationResolver
+            LovRelationResolver lovRelationResolver,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
-        super(repository, mapper);
+        super(repository, mapper, applicationEventPublisher);
         this.foundationTypeRepository = foundationTypeRepository;
         this.lovRelationResolver = lovRelationResolver;
     }

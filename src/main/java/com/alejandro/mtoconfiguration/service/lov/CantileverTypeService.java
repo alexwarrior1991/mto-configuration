@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.mapper.lov.CantileverTypeMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.CantileverTypeDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.CantileverTypeRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,9 +13,10 @@ public class CantileverTypeService extends AbstractLovCrudService<CantileverType
 
     public CantileverTypeService(
             CantileverTypeRepository repository,
-            CantileverTypeMapper mapper
+            CantileverTypeMapper mapper,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
-        super(repository, mapper);
+        super(repository, mapper, applicationEventPublisher);
     }
 
     @Override

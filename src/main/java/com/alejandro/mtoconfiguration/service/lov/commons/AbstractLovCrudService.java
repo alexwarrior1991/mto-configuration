@@ -8,7 +8,6 @@ import com.alejandro.mtoconfiguration.model.commons.LovDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.commons.LovRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,20 +20,15 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
 
     protected final LovRepository<E> repository;
     protected final LovMapper<D, E> mapper;
-    @Autowired
-    protected ApplicationEventPublisher applicationEventPublisher;
-
-    protected AbstractLovCrudService(LovRepository<E> repository, LovMapper<D, E> mapper) {
-        this.repository = repository;
-        this.mapper = mapper;
-    }
+    protected final ApplicationEventPublisher applicationEventPublisher;
 
     protected AbstractLovCrudService(
             LovRepository<E> repository,
             LovMapper<D, E> mapper,
             ApplicationEventPublisher applicationEventPublisher
     ) {
-        this(repository, mapper);
+        this.repository = repository;
+        this.mapper = mapper;
         this.applicationEventPublisher = applicationEventPublisher;
     }
 
@@ -98,6 +92,8 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
 
         afterCreate(saved);
 
+        publishLovCacheEvictionEvent();
+
         return mapper.toDTO(saved);
     }
 
@@ -116,6 +112,8 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
         E saved = repository.save(entity);
 
         afterUpdate(saved);
+
+        publishLovCacheEvictionEvent();
 
         return mapper.toDTO(saved);
     }
@@ -157,6 +155,10 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
 
         savedEntities.forEach(this::afterCreate);
 
+        // Un solo evento por operación bulk: publicar uno por entidad dispararía
+        // cientos de SCAN sobre el keyspace para invalidar exactamente lo mismo.
+        publishLovCacheEvictionEvent();
+
         return mapper.toListDTO(savedEntities);
     }
 
@@ -187,6 +189,10 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
         List<E> savedEntities = repository.saveAll(entities);
 
         savedEntities.forEach(this::afterUpdate);
+
+        // Un solo evento por operación bulk: publicar uno por entidad dispararía
+        // cientos de SCAN sobre el keyspace para invalidar exactamente lo mismo.
+        publishLovCacheEvictionEvent();
 
         return mapper.toListDTO(savedEntities);
     }
@@ -232,11 +238,11 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
     }
 
     protected void afterCreate(E entity) {
-        publishLovCacheEvictionEvent();
+        // Hook para servicios hijos
     }
 
     protected void afterUpdate(E entity) {
-        publishLovCacheEvictionEvent();
+        // Hook para servicios hijos
     }
 
     protected void beforeDelete(E entity) {
