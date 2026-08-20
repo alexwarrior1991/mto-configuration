@@ -33,6 +33,7 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -95,12 +96,12 @@ class RedisCacheIT {
 
     @Test
     void shouldReadEveryCacheFromRedisWithoutTouchingRepositoryTwice() {
-        assertCacheHit(CacheNames.NORMAL_ITEM, () -> service.normalItem("normal-item"));
-        assertCacheHit(CacheNames.NORMAL_LIST, () -> service.normalList("normal-list"));
-        assertCacheHit(CacheNames.NORMAL_PAGE, () -> service.normalPage("normal-page"));
-        assertCacheHit(CacheNames.NORMAL_SEARCH, () -> service.normalSearch("normal-search"));
-        assertCacheHit(CacheNames.LOV_ITEM, () -> service.lovItem("lov-item"));
-        assertCacheHit(CacheNames.LOV_LIST, () -> service.lovList("lov-list"));
+        assertCacheHit("normal-item", service::normalItem);
+        assertCacheHit("normal-list", service::normalList);
+        assertCacheHit("normal-page", service::normalPage);
+        assertCacheHit("normal-search", service::normalSearch);
+        assertCacheHit("lov-item", service::lovItem);
+        assertCacheHit("lov-list", service::lovList);
     }
 
     @Test
@@ -163,7 +164,11 @@ class RedisCacheIT {
     }
 
     private void assertPageRoundTrip(String cacheKey, Page<TestValue> original, boolean pageCache) {
-        Supplier<Page<TestValue>> loader = () -> original;
+        AtomicInteger loads = new AtomicInteger();
+        Supplier<Page<TestValue>> loader = () -> {
+            loads.incrementAndGet();
+            return original;
+        };
 
         Page<TestValue> first = pageCache
                 ? pageCacheService.getPage(cacheKey, loader).toPage()
@@ -172,6 +177,13 @@ class RedisCacheIT {
         Page<TestValue> fromRedis = pageCache
                 ? pageCacheService.getPage(cacheKey, loader).toPage()
                 : pageCacheService.getSearch(cacheKey, loader).toPage();
+
+        // Sin esto el test pasaba aunque PageCacheService no cachease nada: el loader
+        // devuelve siempre el mismo objeto, asi que comparar contenidos no prueba que
+        // el segundo venga de Redis.
+        assertThat(loads.get())
+                .as("el segundo acceso a '%s' debe salir de Redis, no del loader", cacheKey)
+                .isEqualTo(1);
 
         assertThat(first.getContent()).isEqualTo(original.getContent());
         assertThat(fromRedis.getContent()).isEqualTo(original.getContent());
@@ -188,15 +200,23 @@ class RedisCacheIT {
         return new PageImpl<>(content, pageRequest, 5);
     }
 
-    private <T> void assertCacheHit(String cacheName, Supplier<T> cachedCall) {
-        TestValue expected = new TestValue(cacheName, "value");
-        when(repository.load(cacheName)).thenReturn(expected);
+    /**
+     * La clave se pasa UNA sola vez y de ella salen el stub, la llamada y la
+     * verificacion. Antes el stub usaba la constante de CacheNames ("normal:item")
+     * mientras la llamada pasaba otro literal ("normal-item"): el mock devolvia null
+     * para el argumento real y el @Cacheable reventaba al intentar guardarlo, porque
+     * la configuracion lleva disableCachingNullValues.
+     */
+    private <T> void assertCacheHit(String key, Function<String, T> cachedCall) {
+        TestValue expected = new TestValue(key, "value");
+        when(repository.load(key)).thenReturn(expected);
 
-        T first = cachedCall.get();
-        T second = cachedCall.get();
+        T first = cachedCall.apply(key);
+        T second = cachedCall.apply(key);
 
+        assertThat(first).isNotNull();
         assertThat(second).isEqualTo(first);
-        verify(repository, times(1)).load(cacheName);
+        verify(repository, times(1)).load(key);
     }
 
     @Configuration

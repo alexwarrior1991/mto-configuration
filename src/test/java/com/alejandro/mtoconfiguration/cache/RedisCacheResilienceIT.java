@@ -7,7 +7,10 @@ import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheConfig;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheKeyGenerator;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
@@ -42,6 +45,11 @@ import static org.mockito.Mockito.when;
 // asi que nadie crearia el RedisConnectionFactory ni el RedisCacheManager y
 // @EnableCaching fallaria con "No qualifying bean of type CacheManager".
 // Se importan solo las dos que hacen falta, en vez de arrancar la aplicacion entera.
+// El orden importa y no es cosmetico: los tres tests comparten el mismo contenedor
+// estatico, y dos de ellos lo PARAN a proposito. El que necesita Redis vivo tiene que
+// ejecutarse primero; sin orden fijo, JUnit puede arrancar por uno que lo tumba y el
+// primero falla al no encontrar la cache que esperaba.
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @ImportAutoConfiguration({DataRedisAutoConfiguration.class, CacheAutoConfiguration.class})
 @SpringBootTest(classes = {
         RedisCacheConfig.class,
@@ -80,6 +88,7 @@ class RedisCacheResilienceIT {
     }
 
     @Test
+    @Order(1)
     void shouldKeepServingFromDatabaseWhenRedisGoesDown() {
         when(repository.load("K")).thenReturn(new TestValue("K", "desde-bd"));
 
@@ -100,6 +109,7 @@ class RedisCacheResilienceIT {
     }
 
     @Test
+    @Order(2)
     void shouldCountCacheErrorsSoTheDegradationIsVisible() {
         when(repository.load("M")).thenReturn(new TestValue("M", "desde-bd"));
 
@@ -118,6 +128,7 @@ class RedisCacheResilienceIT {
     }
 
     @Test
+    @Order(3)
     void shouldShortCircuitInsteadOfRetryingRedisOnEveryCall() {
         when(repository.load("S")).thenReturn(new TestValue("S", "desde-bd"));
 
