@@ -406,6 +406,20 @@ public class PredicateBuilder<E1 extends BaseEntity, E2 extends BaseEntity> {
         return and(localDateFrom(columnName, filterName), localDateTo(columnName, filterName));
     }
 
+    public Predicate localDateGe(String columnName, String filterKey) {
+        String value = MapUtils.getString(filters, filterKey);
+        return StringUtils.isNotBlank(value)
+                ? criteriaBuilder.greaterThanOrEqualTo(from.get(columnName), LocalDate.parse(value))
+                : null;
+    }
+
+    public Predicate localDateLe(String columnName, String filterKey) {
+        String value = MapUtils.getString(filters, filterKey);
+        return StringUtils.isNotBlank(value)
+                ? criteriaBuilder.lessThanOrEqualTo(from.get(columnName), LocalDate.parse(value))
+                : null;
+    }
+
     public Predicate numberFrom(String columnName) {
         return numberFrom(columnName, null);
     }
@@ -424,6 +438,16 @@ public class PredicateBuilder<E1 extends BaseEntity, E2 extends BaseEntity> {
 
     public Predicate numberTo(String columnName, String filterName) {
         Number value = MapUtils.getNumber(filters, StringUtils.defaultIfBlank(filterName, columnName) + "To");
+        return value != null ? criteriaBuilder.le(from.get(columnName), value) : null;
+    }
+
+    public Predicate numberGe(String columnName, String filterKey) {
+        Number value = MapUtils.getNumber(filters, filterKey);
+        return value != null ? criteriaBuilder.ge(from.get(columnName), value) : null;
+    }
+
+    public Predicate numberLe(String columnName, String filterKey) {
+        Number value = MapUtils.getNumber(filters, filterKey);
         return value != null ? criteriaBuilder.le(from.get(columnName), value) : null;
     }
 
