@@ -162,10 +162,19 @@ public interface CriteriaSearchRepository<E extends IEntity> {
 
         Long count = entityManager.createQuery(countQuery).getSingleResult();
 
+        // Sin ids no hay nada que traer: ademas de ahorrar la consulta, evita un
+        // "in ()" vacio, que no es SQL valido.
+        if (entityIds.isEmpty()) {
+            return new PageImpl<>(new ArrayList<>(), pageRequest, count);
+        }
+
         CriteriaQuery<E> entityQuery = criteriaBuilder.createQuery(entityClass);
         Root<E> entityRoot = entityQuery.from(entityClass);
 
-        entityQuery.select(entityRoot).where(entityRoot.in(entityIds)).distinct(true);
+        // El IN va contra el id, no contra el root. Comparar la entidad con una lista
+        // de Long lo rechaza Hibernate: "Cannot compare left expression of type
+        // 'Cantilever' with right expression of type 'java.lang.Long'".
+        entityQuery.select(entityRoot).where(entityRoot.get(PoleType_.ID).in(entityIds)).distinct(true);
         TypedQuery<E> typedQuery = entityManager.createQuery(entityQuery);
 
         List<E> results = typedQuery.getResultList();
