@@ -12,7 +12,10 @@ import com.alejandro.mtoconfiguration.service.commons.PageCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.cache.autoconfigure.CacheAutoConfiguration;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
@@ -80,6 +83,12 @@ class RedisCacheIT {
     @Autowired
     private SearchLikeTestService searchLikeTestService;
 
+    @Autowired
+    private CacheManager cacheManager;
+
+    @Autowired
+    private RedisCacheKeyGenerator cacheKeyGenerator;
+
     @DynamicPropertySource
     static void redisProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.data.redis.host", redis::getHost);
@@ -88,6 +97,44 @@ class RedisCacheIT {
         registry.add("cache.redis.allowed-subtypes[1]", () -> "org.springframework.data.domain");
         registry.add("cache.redis.allowed-subtypes[2]", () -> "com.alejandro.mtoconfiguration");
         registry.add("cache.redis.allowed-subtypes[3]", () -> "java.lang");
+        // application.yaml deja el timeout en 1s, que es lo correcto en produccion pero
+        // se queda corto aqui: con la suite entera compitiendo por la maquina, un Redis
+        // recien arrancado tarda a veces mas y los tests fallaban de forma intermitente.
+        registry.add("spring.data.redis.timeout", () -> "5s");
+    }
+
+    /**
+     * Diagnostico, y va deliberadamente el primero.
+     * <p>
+     * Los tests de esta clase comprueban "hubo acierto de cache", que es un sintoma:
+     * si falla puede ser por conectividad, por serializacion, por la clave o porque el
+     * bean no esta proxiado, y el mensaje de Mockito no distingue entre esas cuatro.
+     * Este test recorre la cadena por capas para que el fallo diga en cual se rompe.
+     */
+    @Test
+    void shouldHaveAWorkingCacheBeforeCheckingAnyHit() {
+        // 1. El CacheManager existe y expone la cache
+        Cache cache = cacheManager.getCache(CacheNames.NORMAL_ITEM);
+        assertThat(cache).as("la cache '%s' no esta registrada", CacheNames.NORMAL_ITEM).isNotNull();
+
+        // 2. Redis responde: se escribe y se vuelve a leer sin pasar por @Cacheable
+        TestValue value = new TestValue("diagnostico", "value");
+        cache.put("diagnostico", value);
+
+        assertThat(cache.get("diagnostico"))
+                .as("Redis no devuelve lo que se acaba de guardar: conectividad o serializacion")
+                .isNotNull();
+        assertThat(cache.get("diagnostico").get()).isEqualTo(value);
+
+        // 3. La clave es estable entre llamadas identicas
+        String first = cacheKeyGenerator.buildKey(service, "normalItem", "diagnostico");
+        String second = cacheKeyGenerator.buildKey(service, "normalItem", "diagnostico");
+        assertThat(first).as("la clave cambia entre llamadas identicas").isEqualTo(second);
+
+        // 4. El bean esta proxiado: sin proxy, @Cacheable no se aplica nunca
+        assertThat(AopUtils.isAopProxy(service))
+                .as("RedisBackedTestService no esta proxiado, @Cacheable no se aplicaria")
+                .isTrue();
     }
 
     @BeforeEach
