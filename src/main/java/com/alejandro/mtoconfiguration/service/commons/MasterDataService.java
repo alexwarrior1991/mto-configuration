@@ -64,11 +64,16 @@ public class MasterDataService {
     private final SteadyArmTypeMapper steadyArmTypeMapper;
     private final SupportTypeMapper supportTypeMapper;
 
-    private <E extends Lov> E getEntityByCode(String code, LovRepository<E> repository) {
-        return Optional.ofNullable(code)
-                .filter(StringUtils::isNotBlank)
-                .map(repository::findByCode)
-                .map(this::initialize)
+    // Resolver en bean aparte: la llamada cruza el proxy de Spring y sí aplica @Cacheable
+    private final LovReferenceResolver lovReferenceResolver;
+
+    private <E extends Lov> E getEntityRefByCode(
+            String lovName,
+            String code,
+            LovRepository<E> repository
+    ) {
+        return Optional.ofNullable(lovReferenceResolver.resolveIdByCode(lovName, code, repository))
+                .map(repository::getReferenceById)
                 .orElse(null);
     }
 
@@ -123,13 +128,8 @@ public class MasterDataService {
     // --- Anchorage Foundation ---
 
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public AnchorageFoundation getAnchorageFoundationByCode(String code) {
-        return getEntityByCode(code, anchorageFoundationRepository);
+        return getEntityRefByCode("AnchorageFoundation", code, anchorageFoundationRepository);
     }
 
     @Cacheable(
@@ -162,13 +162,8 @@ public class MasterDataService {
 
     // --- Anchorage Foundation Type ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public AnchorageFoundationType getAnchorageFoundationTypeByCode(String code) {
-        return getEntityByCode(code, anchorageFoundationTypeRepository);
+        return getEntityRefByCode("AnchorageFoundationType", code, anchorageFoundationTypeRepository);
     }
 
     @Cacheable(
@@ -200,13 +195,8 @@ public class MasterDataService {
 
     // --- Anchorage ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public Anchorage getAnchorageByCode(String code) {
-        return getEntityByCode(code, anchorageRepository);
+        return getEntityRefByCode("Anchorage", code, anchorageRepository);
     }
 
     @Cacheable(
@@ -238,13 +228,8 @@ public class MasterDataService {
 
     // --- Cantilever Type ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public CantileverType getCantileverTypeByCode(String code) {
-        return getEntityByCode(code, cantileverTypeRepository);
+        return getEntityRefByCode("CantileverType", code, cantileverTypeRepository);
     }
 
     @Cacheable(
@@ -276,13 +261,8 @@ public class MasterDataService {
 
     // --- Comercial Entity Type ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public ComercialEntityType getComercialEntityTypeByCode(String code) {
-        return getEntityByCode(code, comercialEntityTypeRepository);
+        return getEntityRefByCode("ComercialEntityType", code, comercialEntityTypeRepository);
     }
 
     @Cacheable(
@@ -315,13 +295,8 @@ public class MasterDataService {
 
     // --- Disconnector Function ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public DisconnectorFunction getDisconnectorFunctionByCode(String code) {
-        return getEntityByCode(code, disconnectorFunctionRepository);
+        return getEntityRefByCode("DisconnectorFunction", code, disconnectorFunctionRepository);
     }
 
     @Cacheable(
@@ -353,13 +328,8 @@ public class MasterDataService {
 
     // --- Foundation ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public Foundation getFoundationByCode(String code) {
-        return getEntityByCode(code, foundationRepository);
+        return getEntityRefByCode("Foundation", code, foundationRepository);
     }
 
     @Cacheable(
@@ -391,13 +361,8 @@ public class MasterDataService {
 
     // --- Foundation Type ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public FoundationType getFoundationTypeByCode(String code) {
-        return getEntityByCode(code, foundationTypeRepository);
+        return getEntityRefByCode("FoundationType", code, foundationTypeRepository);
     }
 
     @Cacheable(
@@ -429,13 +394,8 @@ public class MasterDataService {
 
     // --- Pole Type ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public PoleType getPoleTypeByCode(String code) {
-        return getEntityByCode(code, poleTypeRepository);
+        return getEntityRefByCode("PoleType", code, poleTypeRepository);
     }
 
     @Cacheable(
@@ -467,13 +427,8 @@ public class MasterDataService {
 
     // --- Portal ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public Portal getPortalByCode(String code) {
-        return getEntityByCode(code, portalRepository);
+        return getEntityRefByCode("Portal", code, portalRepository);
     }
 
     @Cacheable(
@@ -505,13 +460,8 @@ public class MasterDataService {
 
     // --- Portal Type ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public PortalType getPortalTypeByCode(String code) {
-        return getEntityByCode(code, portalTypeRepository);
+        return getEntityRefByCode("PortalType", code, portalTypeRepository);
     }
 
     @Cacheable(
@@ -543,13 +493,8 @@ public class MasterDataService {
 
     // --- Profile Status ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public ProfileStatus getProfileStatusByCode(String code) {
-        return getEntityByCode(code, profileStatusRepository);
+        return getEntityRefByCode("ProfileStatus", code, profileStatusRepository);
     }
 
     @Cacheable(
@@ -581,13 +526,8 @@ public class MasterDataService {
 
     // --- Return Support ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public ReturnSupport getReturnSupportByCode(String code) {
-        return getEntityByCode(code, returnSupportRepository);
+        return getEntityRefByCode("ReturnSupport", code, returnSupportRepository);
     }
 
     @Cacheable(
@@ -620,13 +560,8 @@ public class MasterDataService {
 
     // --- Sectioning ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public Sectioning getSectioningByCode(String code) {
-        return getEntityByCode(code, sectioningRepository);
+        return getEntityRefByCode("Sectioning", code, sectioningRepository);
     }
 
     @Cacheable(
@@ -659,13 +594,8 @@ public class MasterDataService {
 
     // --- Steady Arm Type ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public SteadyArmType getSteadyArmTypeByCode(String code) {
-        return getEntityByCode(code, steadyArmTypeRepository);
+        return getEntityRefByCode("SteadyArmType", code, steadyArmTypeRepository);
     }
 
     @Cacheable(
@@ -697,13 +627,8 @@ public class MasterDataService {
 
     // --- Support Type ---
 
-    @Cacheable(
-            cacheNames = CACHE_ITEM,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null"
-    )
     public SupportType getSupportTypeByCode(String code) {
-        return getEntityByCode(code, supportTypeRepository);
+        return getEntityRefByCode("SupportType", code, supportTypeRepository);
     }
 
     @Cacheable(

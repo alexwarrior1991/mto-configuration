@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.mapper.lov.SupportTypeMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SupportTypeDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.SupportTypeRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,9 +13,10 @@ public class SupportTypeService extends AbstractLovCrudService<SupportTypeDTO, S
 
     public SupportTypeService(
             SupportTypeRepository repository,
-            SupportTypeMapper mapper
+            SupportTypeMapper mapper,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
-        super(repository, mapper);
+        super(repository, mapper, applicationEventPublisher);
     }
 
     @Override

@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.service.commons;
 import com.alejandro.mtoconfiguration.business.commons.Business;
 import com.alejandro.mtoconfiguration.configuration.cache.CacheEvictionEvent;
 import com.alejandro.mtoconfiguration.configuration.cache.CacheNames;
+import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheKeyGenerator;
 import com.alejandro.mtoconfiguration.core.exception.BaseException;
 import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
@@ -49,6 +50,12 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
 
     @Autowired
     private ApplicationEventPublisher applicationEventPublisher;
+
+    @Autowired
+    private PageCacheService pageCacheService;
+
+    @Autowired
+    private RedisCacheKeyGenerator cacheKeyGenerator;
 
     // Abstract methods to be implemented in concrete subclasses
     protected abstract BaseMapper<T, E> getMapper();
@@ -99,25 +106,18 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .orElseGet(ArrayList::new);
     }
 
-    @Cacheable(
-            cacheNames = CacheNames.NORMAL_PAGE,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null || #result.isEmpty()"
-    )
     public Page<T> findAll(Pageable pageable) throws BaseException {
-        return Optional.of(getRepository().findAll(pageable))
-                .filter(page -> !page.stream().isParallel())
-                .map(getMapper()::mapToDTOs)
-                .orElseGet(Page::empty);
+        // La caché vive en PageCacheService: así la llamada cruza el proxy de Spring
+        // y @Cacheable se aplica de verdad (la auto-invocación lo ignoraría).
+        String cacheKey = cacheKeyGenerator.buildKey(this, "findAll", pageable);
+
+        return pageCacheService.getPage(cacheKey,
+                        () -> getMapper().mapToDTOs(getRepository().findAll(pageable)))
+                .toPage();
     }
 
-    @Cacheable(
-            cacheNames = CacheNames.NORMAL_SEARCH,
-            keyGenerator = "redisCacheKeyGenerator",
-            unless = "#result == null || #result.isEmpty()"
-    )
     public Page<T> search(SearchRequestDTO searchRequestDTO) throws BaseException {
-
+        // La validación va FUERA de la caché: debe ejecutarse también en cache hit.
         Optional.ofNullable(getValidator())
                 .map(v -> v.validateBeforeSearch(searchRequestDTO))
                 .filter(Utils::hasErrors)
@@ -125,11 +125,17 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                     throw new ValidationException(alerts);
                 });
 
-        return Optional.ofNullable(getCriteriaSearchRepository())
-                .map(repo -> repo.criteriaSearchWithChildren((Class<E>) getEntity().getClass(), searchRequestDTO, em, searchParams()))
-                .map(getMapper()::mapToDTOs)
-                .orElseThrow(() -> new BaseException("Search method not implemented (CriteriaSearchRepository is null)"));
+        if (getCriteriaSearchRepository() == null) {
+            throw new BaseException("Search method not implemented (CriteriaSearchRepository is null)");
+        }
 
+        String cacheKey = cacheKeyGenerator.buildKey(this, "search", searchRequestDTO);
+
+        return pageCacheService.getSearch(cacheKey,
+                        () -> getMapper().mapToDTOs(
+                                getCriteriaSearchRepository().criteriaSearchWithChildren(
+                                        (Class<E>) getEntity().getClass(), searchRequestDTO, em, searchParams())))
+                .toPage();
     }
 
     @Transactional(

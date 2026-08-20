@@ -8,6 +8,7 @@ import com.alejandro.mtoconfiguration.repository.jpa.lov.AnchorageFoundationRepo
 import com.alejandro.mtoconfiguration.repository.jpa.lov.AnchorageFoundationTypeRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
 import com.alejandro.mtoconfiguration.service.lov.commons.LovRelationResolver;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -20,9 +21,10 @@ public class AnchorageFoundationService extends AbstractLovCrudService<Anchorage
             AnchorageFoundationRepository repository,
             AnchorageFoundationMapper mapper,
             AnchorageFoundationTypeRepository anchorageFoundationTypeRepository,
-            LovRelationResolver lovRelationResolver
+            LovRelationResolver lovRelationResolver,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
-        super(repository, mapper);
+        super(repository, mapper, applicationEventPublisher);
         this.anchorageFoundationTypeRepository = anchorageFoundationTypeRepository;
         this.lovRelationResolver = lovRelationResolver;
     }

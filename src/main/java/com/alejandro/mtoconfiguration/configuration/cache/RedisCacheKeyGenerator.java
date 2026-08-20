@@ -25,17 +25,23 @@ public class RedisCacheKeyGenerator implements KeyGenerator {
     }
 
 
-    @Override
-    public Object generate(Object target, Method method, @Nullable Object... params) {
+    /**
+     * Construye la clave con el mismo formato que usa el generador automático.
+     * Se expone para que los servicios que delegan la caché en otro bean puedan
+     * reutilizar exactamente la misma clave y los patrones de invalidación sigan casando.
+     */
+    public String buildKey(Object target, String methodName, Object... params) {
         String serviceName = getServiceName(target);
-        String methodName = method.getName();
         String paramsKey = buildParamsKey(params);
 
-        if (paramsKey.isBlank()) {
-            return serviceName + ":" + methodName;
-        }
+        return paramsKey.isBlank()
+                ? serviceName + ":" + methodName
+                : serviceName + ":" + methodName + ":" + paramsKey;
+    }
 
-        return serviceName + ":" + methodName + ":" + paramsKey;
+    @Override
+    public Object generate(Object target, Method method, @Nullable Object... params) {
+        return buildKey(target, method.getName(), params);
     }
 
     private String getServiceName(Object target) {

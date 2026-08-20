@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.mapper.lov.PortalTypeMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.PortalTypeDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.PortalTypeRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,9 +13,10 @@ public class PortalTypeService extends AbstractLovCrudService<PortalTypeDTO, Por
 
     public PortalTypeService(
             PortalTypeRepository repository,
-            PortalTypeMapper mapper
+            PortalTypeMapper mapper,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
-        super(repository, mapper);
+        super(repository, mapper, applicationEventPublisher);
     }
 
     @Override

@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.mapper.lov.DisconnectorFunctionMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.DisconnectorFunctionRepository;
 import com.alejandro.mtoconfiguration.service.lov.commons.AbstractLovCrudService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,9 +13,10 @@ public class DisconnectorFunctionService extends AbstractLovCrudService<Disconne
 
     public DisconnectorFunctionService(
             DisconnectorFunctionRepository repository,
-            DisconnectorFunctionMapper mapper
+            DisconnectorFunctionMapper mapper,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
-        super(repository, mapper);
+        super(repository, mapper, applicationEventPublisher);
     }
 
     @Override

@@ -33,6 +33,7 @@
         <org.mapstruct.version>1.6.3</org.mapstruct.version>
         <commons-collections4.version>4.4</commons-collections4.version>
         <querydsl.version>5.1.0</querydsl.version>
+        <testcontainers.version>1.21.3</testcontainers.version>
     </properties>
     <dependencies>
         <dependency>
@@ -187,6 +188,20 @@
             <scope>test</scope>
         </dependency>
 
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+
 
         <dependency>
             <groupId>com.querydsl</groupId>
@@ -215,6 +230,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <release>${java.version}</release>
+                    <!-- Necesario para que el SpEL de @Cacheable resuelva los nombres de parámetro -->
+                    <parameters>true</parameters>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
