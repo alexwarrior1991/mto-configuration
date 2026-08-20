@@ -7,13 +7,19 @@ spring:
   # Cache provider configuration - using Redis as the caching mechanism
   cache:
     type: redis
+    redis:
+      # Expone cache.gets{result=hit|miss} en Micrometer: sin esto el hit ratio
+      # real de la cache es invisible.
+      enable-statistics: true
 
   # Redis configuration for distributed caching
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
-      timeout: 2s
+      # Una cache que tarda 2s en responder ya no es una cache: se baja a 1s
+      # para que un Redis atascado no arrastre la latencia de cada peticion.
+      timeout: ${SPRING_DATA_REDIS_TIMEOUT:1s}
       lettuce:
         pool:
           max-active: 16
@@ -264,6 +270,9 @@ cache:
   # Application name for cache key prefixing
   application: mto-configuration
   redis:
+    # Ventana durante la que se cortocircuita Redis tras un fallo de conexion,
+    # para no pagar el timeout en cada peticion. Pasada la ventana se reintenta.
+    degraded-retry-window: 30s
     # Default time-to-live for cached entries
     default-ttl: 30m
     # TTL for individual entity items

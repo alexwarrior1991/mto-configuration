@@ -9,6 +9,12 @@ import java.util.List;
 public class RedisCacheProperties {
 
 
+    /**
+     * Ventana durante la que se cortocircuita Redis tras un fallo de conexión,
+     * para no pagar el timeout en cada petición. Pasada la ventana se reintenta.
+     */
+    private Duration degradedRetryWindow = Duration.ofSeconds(30);
+
     private Duration defaultTtl = Duration.ofMinutes(30);
     private Duration normalItemTtl = Duration.ofHours(6);
     private Duration normalListTtl = Duration.ofMinutes(30);
@@ -23,6 +29,14 @@ public class RedisCacheProperties {
             "org.springframework.data.domain"
     );
 
+
+    public Duration getDegradedRetryWindow() {
+        return degradedRetryWindow;
+    }
+
+    public void setDegradedRetryWindow(Duration degradedRetryWindow) {
+        this.degradedRetryWindow = degradedRetryWindow;
+    }
 
     public Duration getDefaultTtl() {
         return defaultTtl;
