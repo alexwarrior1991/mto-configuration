@@ -32,7 +32,10 @@ import java.util.Optional;
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers(disabledWithoutDocker = true)
+// Sin disabledWithoutDocker a proposito: Testcontainers no distingue "no hay Docker"
+// de "hay Docker pero no puedo hablar con el", y con ese flag un cliente mal
+// configurado se saltaba los tests devolviendo verde. Aqui debe fallar en voz alta.
+@Testcontainers
 @Import(AbstractCriteriaSearchIT.SearchTestConfiguration.class)
 public abstract class AbstractCriteriaSearchIT {
 
