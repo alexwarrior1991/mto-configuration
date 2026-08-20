@@ -31,6 +31,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -298,7 +299,9 @@ class RedisCacheIT {
 
         @Cacheable(cacheNames = CacheNames.NORMAL_LIST, keyGenerator = "redisCacheKeyGenerator")
         public List<TestValue> normalList(String cacheName) {
-            return List.of(repository.load(cacheName));
+            // ArrayList y no List.of: las listas inmutables del JDK son finales y no
+            // sobreviven al viaje por Redis. Ver el javadoc de MasterDataService.getListAndMap.
+            return new ArrayList<>(List.of(repository.load(cacheName)));
         }
 
         @Cacheable(cacheNames = CacheNames.NORMAL_PAGE, keyGenerator = "redisCacheKeyGenerator")
@@ -320,7 +323,7 @@ class RedisCacheIT {
 
         @Cacheable(cacheNames = CacheNames.LOV_LIST, keyGenerator = "redisCacheKeyGenerator")
         public List<TestValue> lovList(String cacheName) {
-            return List.of(repository.load(cacheName));
+            return new ArrayList<>(List.of(repository.load(cacheName)));
         }
     }
 
