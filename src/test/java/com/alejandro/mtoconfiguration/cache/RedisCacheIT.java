@@ -16,6 +16,7 @@ import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.cache.autoconfigure.CacheAutoConfiguration;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
@@ -89,6 +90,9 @@ class RedisCacheIT {
     @Autowired
     private RedisCacheKeyGenerator cacheKeyGenerator;
 
+    @Autowired
+    private Environment environment;
+
     @DynamicPropertySource
     static void redisProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.data.redis.host", redis::getHost);
@@ -113,9 +117,22 @@ class RedisCacheIT {
      */
     @Test
     void shouldHaveAWorkingCacheBeforeCheckingAnyHit() {
-        // 1. El CacheManager existe y expone la cache
+        // 1. El CacheManager existe, expone la cache, y AMBOS son de Redis.
+        // Esto ultimo es lo que de verdad importa: un NoOpCacheManager devuelve una
+        // cache no nula para cualquier nombre, se traga los put y devuelve null en los
+        // get, sin lanzar nada. Comprobar solo que no es null no lo distingue de una
+        // cache real, y ese es exactamente el sintoma que estamos viendo.
+        assertThat(cacheManager.getClass().getName())
+                .as("CacheManager real (spring.cache.type resuelto = '%s')",
+                        environment.getProperty("spring.cache.type", "<sin definir>"))
+                .contains("Redis");
+
         Cache cache = cacheManager.getCache(CacheNames.NORMAL_ITEM);
         assertThat(cache).as("la cache '%s' no esta registrada", CacheNames.NORMAL_ITEM).isNotNull();
+
+        assertThat(cache.getClass().getName())
+                .as("Cache real para '%s'", CacheNames.NORMAL_ITEM)
+                .contains("Redis");
 
         // 2. Redis responde: se escribe y se vuelve a leer sin pasar por @Cacheable
         TestValue value = new TestValue("diagnostico", "value");
