@@ -18,7 +18,9 @@ import org.hibernate.Hibernate;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.Optional;
 
 @Service
@@ -110,6 +112,18 @@ public class MasterDataService {
                 .orElse(null);
     }
 
+    /**
+     * Devuelve un ArrayList y no el resultado directo de Stream.toList(), que seria
+     * un ImmutableCollections$ListN.
+     * <p>
+     * No es un capricho de estilo: el resultado se cachea en Redis, y el serializador
+     * usa default typing, que solo escribe el marcador @class de las clases NO finales.
+     * Las listas inmutables del JDK son finales, asi que se guardan sin marcador y al
+     * releerlas Jackson falla con "Unexpected token START_OBJECT, expected
+     * VALUE_STRING: need String, Number of Boolean value that contains type id".
+     * Escribir funciona; leer no. Jackson 3 no ofrece un DefaultTyping que cubra las
+     * clases finales concretas, de modo que la unica solucion es no producirlas.
+     */
     private <E extends Lov, D extends LovDTO> List<D> getListAndMap(
             LovRepository<E> repository,
             LovMapper<D, E> mapper
@@ -118,7 +132,7 @@ public class MasterDataService {
                 .stream()
                 .map(this::initialize)
                 .map(mapper::toDTO)
-                .toList();
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
 

@@ -121,16 +121,21 @@ public interface CriteriaSearchRepository<E extends IEntity> {
         Optional.ofNullable(sortBy)
                 .filter(sb -> sortDirection != null && StringUtils.isNoneBlank(sb, sortDirection))
                 .map(sb -> getSortPath(entityManager, entityIdRoot, sb))
-                .ifPresent(sortPath -> idQuery.orderBy(
-                        getOrder(criteriaBuilder, sortDirection, sortPath), // sort by request param
-                        getOrder(criteriaBuilder, sortDirection, entityIdRoot.get(BaseEntity_.CREATE_DATE)) // in case of tie, sort by Parent create date
-                ));
+                .ifPresent(sortPath -> idQuery.orderBy(buildOrders(criteriaBuilder, sortDirection, sortPath,
+                        entityIdRoot, sortBy)));
 
-        // Applies predicate to ID query or selects all IDs
+        // Applies predicate to ID query or selects all IDs.
+        //
+        // Sin DISTINCT a proposito: PostgreSQL exige que toda expresion del ORDER BY
+        // aparezca en el SELECT de una consulta DISTINCT, y aqui se ordena por columnas
+        // (createDate, name...) que no se seleccionan. Los duplicados que puedan
+        // introducir los JOIN se eliminan mas abajo con stream().distinct(), que es
+        // justo para lo que existe getMaxNumberOfChildPerParent(): sobre-leer filas
+        // para que tras deduplicar siga habiendo suficientes para la pagina.
         Optional.ofNullable(predicate)
                 .ifPresentOrElse(
-                        p -> idQuery.select(entityIdRoot.get(PoleType_.ID)).distinct(true).where(p),
-                        () -> idQuery.select(entityIdRoot.get(PoleType_.ID)).distinct(true)
+                        p -> idQuery.select(entityIdRoot.get(PoleType_.ID)).where(p),
+                        () -> idQuery.select(entityIdRoot.get(PoleType_.ID))
                 );
 
         // Executes ID query; applies pagination; returns distinct IDs
@@ -142,14 +147,34 @@ public interface CriteriaSearchRepository<E extends IEntity> {
                 .limit(pageRequest.getPageSize())
                 .toList();
 
+        // El total se cuenta en su propia consulta y no reutilizando idQuery: esta
+        // arrastra el ORDER BY, y un ORDER BY junto a una funcion de agregacion sin
+        // GROUP BY es invalido en PostgreSQL. Es el mismo patron que usa criteriaSearch.
+        CriteriaQuery<Long> countQuery = criteriaBuilder.createQuery(Long.class);
+        Root<E> countRoot = countQuery.from(entityClass);
+        Predicate countPredicate = this.buildPredicate(criteriaBuilder, countRoot, searchRequestDTO.getFilters(), params);
 
-        idQuery.select(criteriaBuilder.countDistinct(entityIdRoot));
-        Long count = entityManager.createQuery(idQuery).getSingleResult();
+        countQuery.select(criteriaBuilder.countDistinct(countRoot));
+
+        if (countPredicate != null) {
+            countQuery.where(countPredicate);
+        }
+
+        Long count = entityManager.createQuery(countQuery).getSingleResult();
+
+        // Sin ids no hay nada que traer: ademas de ahorrar la consulta, evita un
+        // "in ()" vacio, que no es SQL valido.
+        if (entityIds.isEmpty()) {
+            return new PageImpl<>(new ArrayList<>(), pageRequest, count);
+        }
 
         CriteriaQuery<E> entityQuery = criteriaBuilder.createQuery(entityClass);
         Root<E> entityRoot = entityQuery.from(entityClass);
 
-        entityQuery.select(entityRoot).where(entityRoot.in(entityIds)).distinct(true);
+        // El IN va contra el id, no contra el root. Comparar la entidad con una lista
+        // de Long lo rechaza Hibernate: "Cannot compare left expression of type
+        // 'Cantilever' with right expression of type 'java.lang.Long'".
+        entityQuery.select(entityRoot).where(entityRoot.get(PoleType_.ID).in(entityIds)).distinct(true);
         TypedQuery<E> typedQuery = entityManager.createQuery(entityQuery);
 
         List<E> results = typedQuery.getResultList();
@@ -162,6 +187,24 @@ public interface CriteriaSearchRepository<E extends IEntity> {
 
         return new PageImpl<>(results, pageRequest, count);
 
+    }
+
+    /**
+     * Ordenacion por el criterio pedido, con createDate como desempate para que la
+     * paginacion sea estable. Si el criterio pedido YA es createDate no se repite:
+     * generaba un "order by create_date desc, create_date desc" redundante.
+     */
+    private List<Order> buildOrders(CriteriaBuilder criteriaBuilder, String sortDirection,
+                                    Path<? extends BaseEntity> sortPath, Root<E> root, String sortBy) {
+
+        List<Order> orders = new ArrayList<>();
+        orders.add(getOrder(criteriaBuilder, sortDirection, (Path<BaseEntity>) sortPath));
+
+        if (!BaseEntity_.CREATE_DATE.equals(sortBy)) {
+            orders.add(getOrder(criteriaBuilder, sortDirection, root.get(BaseEntity_.CREATE_DATE)));
+        }
+
+        return orders;
     }
 
     default Path<E> getPath(Root<E> root, String property) {

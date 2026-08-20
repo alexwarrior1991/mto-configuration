@@ -33,6 +33,8 @@
         <org.mapstruct.version>1.6.3</org.mapstruct.version>
         <commons-collections4.version>4.4</commons-collections4.version>
         <querydsl.version>5.1.0</querydsl.version>
+        <!-- Version de la API de Docker que declara el cliente de Testcontainers -->
+        <docker.api.version>1.44</docker.api.version>
         <testcontainers.version>1.21.3</testcontainers.version>
     </properties>
     <dependencies>
@@ -202,6 +204,15 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- PostgreSQL real en los tests de repositorio: el proyecto usa dialecto,
+             secuencias y tipos de PostgreSQL, y H2 no los reproduce con fidelidad. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+
 
         <dependency>
             <groupId>com.querydsl</groupId>
@@ -231,6 +242,25 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!-- Sin esto el cliente de docker-java negocia una version de API
+                             antigua (1.32) y los demonios recientes la rechazan con
+                             "client version is too old". Ajustar si el servidor exige mas:
+                             `docker version` muestra la API version del Server. -->
+                        <api.version>${docker.api.version}</api.version>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <api.version>${docker.api.version}</api.version>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
 
             <plugin>
