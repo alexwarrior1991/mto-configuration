@@ -202,6 +202,15 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- PostgreSQL real en los tests de repositorio: el proyecto usa dialecto,
+             secuencias y tipos de PostgreSQL, y H2 no los reproduce con fidelidad. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+
 
         <dependency>
             <groupId>com.querydsl</groupId>
