@@ -14,8 +14,6 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.List;
 import java.util.Map;
@@ -32,15 +30,31 @@ import java.util.Optional;
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-// Sin disabledWithoutDocker a proposito: Testcontainers no distingue "no hay Docker"
-// de "hay Docker pero no puedo hablar con el", y con ese flag un cliente mal
-// configurado se saltaba los tests devolviendo verde. Aqui debe fallar en voz alta.
-@Testcontainers
 @Import(AbstractCriteriaSearchIT.SearchTestConfiguration.class)
 public abstract class AbstractCriteriaSearchIT {
 
-    @Container
+    /**
+     * Contenedor unico para TODAS las clases de test, arrancado una sola vez y nunca
+     * parado (Ryuk lo elimina al terminar la JVM). Es el patron "singleton container"
+     * y aqui no es una optimizacion, es obligatorio.
+     * <p>
+     * Con @Testcontainers + @Container, Testcontainers arranca y para el contenedor
+     * una vez POR CLASE de test, con un puerto aleatorio distinto cada vez. Pero
+     * Spring cachea y reutiliza el mismo contexto entre clases, y ese contexto
+     * resolvio @DynamicPropertySource una unica vez: su DataSource sigue apuntando al
+     * puerto del PRIMER contenedor, que ya esta parado. De ahi el
+     * "Connection to localhost:xxxxx refused" en cuanto se ejecutan varias clases
+     * seguidas, y de ahi tambien que tardaran tanto (un PostgreSQL nuevo por clase).
+     * <p>
+     * Sin @Testcontainers no hay gestion de ciclo de vida: si Docker no responde,
+     * este start() falla al cargar la clase y los tests fallan en voz alta, que es lo
+     * que queremos. Nada de saltarselos en silencio.
+     */
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    static {
+        postgres.start();
+    }
 
     @PersistenceContext
     protected EntityManager em;
