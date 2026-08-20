@@ -1,25 +1,49 @@
 package com.alejandro.mtoconfiguration.service.lov.commons;
 
+import com.alejandro.mtoconfiguration.configuration.cache.CacheNames;
+import com.alejandro.mtoconfiguration.configuration.cache.LovCacheEvictionEvent;
 import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
 import com.alejandro.mtoconfiguration.mapper.lov.commons.LovMapper;
 import com.alejandro.mtoconfiguration.model.commons.LovDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.commons.LovRepository;
 import jakarta.persistence.EntityNotFoundException;
-import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements LovCrudService<D> {
 
     protected final LovRepository<E> repository;
     protected final LovMapper<D, E> mapper;
+    @Autowired
+    protected ApplicationEventPublisher applicationEventPublisher;
+
+    protected AbstractLovCrudService(LovRepository<E> repository, LovMapper<D, E> mapper) {
+        this.repository = repository;
+        this.mapper = mapper;
+    }
+
+    protected AbstractLovCrudService(
+            LovRepository<E> repository,
+            LovMapper<D, E> mapper,
+            ApplicationEventPublisher applicationEventPublisher
+    ) {
+        this(repository, mapper);
+        this.applicationEventPublisher = applicationEventPublisher;
+    }
 
     @Override
+    @Cacheable(
+            cacheNames = CacheNames.LOV_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public D findById(Long id) {
         if (id == null) {
             return null;
@@ -32,6 +56,11 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
     }
 
     @Override
+    @Cacheable(
+            cacheNames = CacheNames.LOV_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
     public D findByCode(String code) {
         if (StringUtils.isBlank(code)) {
             return null;
@@ -47,6 +76,11 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
     }
 
     @Override
+    @Cacheable(
+            cacheNames = CacheNames.LOV_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
     public List<D> findAll() {
         return mapper.toListDTO(repository.findAll());
     }
@@ -99,6 +133,7 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
         beforeDelete(entity);
 
         repository.delete(entity);
+        publishLovCacheEvictionEvent();
     }
 
     @Override
@@ -197,11 +232,11 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
     }
 
     protected void afterCreate(E entity) {
-        // Hook para servicios hijos
+        publishLovCacheEvictionEvent();
     }
 
     protected void afterUpdate(E entity) {
-        // Hook para servicios hijos
+        publishLovCacheEvictionEvent();
     }
 
     protected void beforeDelete(E entity) {
@@ -210,5 +245,9 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
 
     protected String getEntityName() {
         return "Lov";
+    }
+
+    private void publishLovCacheEvictionEvent() {
+        applicationEventPublisher.publishEvent(new LovCacheEvictionEvent(getEntityName()));
     }
 }

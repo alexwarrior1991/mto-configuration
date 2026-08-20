@@ -1,4 +1,4 @@
 package com.alejandro.mtoconfiguration.configuration.cache;
 
-public record LovCacheEvictionEvent() {
+public record LovCacheEvictionEvent(String lovName) {
 }

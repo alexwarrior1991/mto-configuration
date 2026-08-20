@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.configuration.cache;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -37,6 +38,22 @@ public class RedisCacheEvictService {
     public void evictLovCaches() {
         evictByPattern(applicationName + "::" + CacheNames.LOV_ITEM + "::*");
         evictByPattern(applicationName + "::" + CacheNames.LOV_LIST + "::*");
+    }
+
+    public void evictLovCaches(String lovName) {
+        if (StringUtils.isBlank(lovName)) {
+            evictLovCaches();
+            return;
+        }
+
+        evictByPattern(lovPattern(CacheNames.LOV_ITEM, "MasterDataService:get" + lovName + "*"));
+        evictByPattern(lovPattern(CacheNames.LOV_LIST, "MasterDataService:get" + lovName + "*"));
+        evictByPattern(lovPattern(CacheNames.LOV_ITEM, lovName + "Service:find*"));
+        evictByPattern(lovPattern(CacheNames.LOV_LIST, lovName + "Service:find*"));
+    }
+
+    private String lovPattern(String cacheName, String keyPattern) {
+        return applicationName + "::" + cacheName + "::" + keyPattern;
     }
 
     private void evictByPattern(String pattern) {

@@ -14,6 +14,6 @@ public class LovCacheEvictionListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onLovCacheEviction(LovCacheEvictionEvent event) {
-        redisCacheEvictService.evictLovCaches();
+        redisCacheEvictService.evictLovCaches(event.lovName());
     }
 }
