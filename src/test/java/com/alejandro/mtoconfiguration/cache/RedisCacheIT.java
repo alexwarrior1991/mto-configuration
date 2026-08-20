@@ -17,7 +17,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.core.env.Environment;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.cache.autoconfigure.CacheAutoConfiguration;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
@@ -38,6 +37,7 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -93,9 +93,6 @@ class RedisCacheIT {
 
     @Autowired
     private Environment environment;
-
-    @Autowired
-    private RedisConnectionFactory redisConnectionFactory;
 
     @DynamicPropertySource
     static void redisProperties(DynamicPropertyRegistry registry) {
@@ -179,11 +176,17 @@ class RedisCacheIT {
     void setUp() {
         reset(repository, portalRepository);
 
-        // Redis se vacia antes de cada test. Sin esto los metodos comparten el mismo
-        // contenedor y el mismo keyspace, y el subconjunto de tests que fallaba
-        // cambiaba de una ejecucion a otra sin tocar el codigo. Un test de cache que
-        // arranca con entradas de otro no prueba nada.
-        redisConnectionFactory.getConnection().serverCommands().flushAll();
+        // Se limpia a traves del CacheManager y no con un flushAll sobre una conexion
+        // pedida a mano. Dos motivos, los dos comprobados a base de fallos:
+        //   - getConnection() entrega una conexion del pool que hay que devolver con
+        //     close(). Sin cerrarla se filtra una por test y el pool se agota.
+        //   - FLUSHALL puede ejecutarse de forma asincrona en Redis, asi que podia
+        //     borrar por detras la entrada que el propio setUp acababa de escribir.
+        // RedisCache.clear() borra por patron de forma sincrona y devuelve la conexion.
+        cacheManager.getCacheNames().stream()
+                .map(cacheManager::getCache)
+                .filter(Objects::nonNull)
+                .forEach(Cache::clear);
 
         // Y se comprueba que Redis responde AQUI, al empezar este test concreto. Si un
         // fallo posterior es un "no hubo acierto", con esto ya sabemos que no fue
