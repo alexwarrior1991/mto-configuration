@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.core.env.Environment;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.cache.autoconfigure.CacheAutoConfiguration;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
@@ -92,6 +93,9 @@ class RedisCacheIT {
 
     @Autowired
     private Environment environment;
+
+    @Autowired
+    private RedisConnectionFactory redisConnectionFactory;
 
     @DynamicPropertySource
     static void redisProperties(DynamicPropertyRegistry registry) {
@@ -174,6 +178,24 @@ class RedisCacheIT {
     @BeforeEach
     void setUp() {
         reset(repository, portalRepository);
+
+        // Redis se vacia antes de cada test. Sin esto los metodos comparten el mismo
+        // contenedor y el mismo keyspace, y el subconjunto de tests que fallaba
+        // cambiaba de una ejecucion a otra sin tocar el codigo. Un test de cache que
+        // arranca con entradas de otro no prueba nada.
+        redisConnectionFactory.getConnection().serverCommands().flushAll();
+
+        // Y se comprueba que Redis responde AQUI, al empezar este test concreto. Si un
+        // fallo posterior es un "no hubo acierto", con esto ya sabemos que no fue
+        // porque Redis estuviera caido al arrancar.
+        Cache probe = cacheManager.getCache(CacheNames.NORMAL_ITEM);
+        probe.put("sanity", new TestValue("sanity", "value"));
+
+        assertThat(probe.get("sanity"))
+                .as("Redis no responde al inicio de este test")
+                .isNotNull();
+
+        probe.evict("sanity");
     }
 
     @Test
