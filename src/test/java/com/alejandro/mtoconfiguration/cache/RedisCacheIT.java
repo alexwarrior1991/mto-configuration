@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheConfig;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheKeyGenerator;
 import com.alejandro.mtoconfiguration.entity.lov.Portal;
 import com.alejandro.mtoconfiguration.model.commons.CachedPageDTO;
+import com.alejandro.mtoconfiguration.model.commons.LovReferenceDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.PortalRepository;
 import com.alejandro.mtoconfiguration.service.commons.LovReferenceResolver;
 import com.alejandro.mtoconfiguration.service.commons.PageCacheService;
@@ -100,12 +101,37 @@ class RedisCacheIT {
         when(portal.getId()).thenReturn(7L);
         when(portalRepository.findByCode("P-1")).thenReturn(portal);
 
-        Long first = lovReferenceResolver.resolveIdByCode("Portal", "P-1", portalRepository);
-        Long second = lovReferenceResolver.resolveIdByCode("Portal", "P-1", portalRepository);
+        LovReferenceDTO first = lovReferenceResolver.resolveIdByCode("Portal", "P-1", portalRepository);
+        LovReferenceDTO second = lovReferenceResolver.resolveIdByCode("Portal", "P-1", portalRepository);
 
-        assertThat(first).isEqualTo(7L);
-        assertThat(second).isEqualTo(7L);
+        assertThat(first.id()).isEqualTo(7L);
+        assertThat(second.id()).isEqualTo(7L);
         verify(portalRepository, times(1)).findByCode("P-1");
+    }
+
+    /**
+     * Regresion: un escalar desnudo no conserva su tipo al pasar por Redis. El
+     * serializador usa default typing sobre tipos no finales, asi que un Long se
+     * escribe como "7" sin marcador y vuelve como Integer para cualquier valor que
+     * quepa en 32 bits, haciendo saltar ClassCastException en el primer acierto de
+     * cache. Con un id pequenio este test falla si alguien vuelve a cachear el Long
+     * directamente; con uno grande el fallo no se reproduce, de ahi que se fije 7L.
+     */
+    @Test
+    void shouldPreserveLongTypeForSmallIdsComingBackFromRedis() {
+        Portal portal = Mockito.mock(Portal.class);
+        when(portal.getId()).thenReturn(7L);
+        when(portalRepository.findByCode("P-SMALL")).thenReturn(portal);
+
+        lovReferenceResolver.resolveIdByCode("Portal", "P-SMALL", portalRepository);
+
+        // Segunda llamada: el valor sale de Redis, no del repositorio
+        LovReferenceDTO fromRedis = lovReferenceResolver.resolveIdByCode("Portal", "P-SMALL", portalRepository);
+
+        verify(portalRepository, times(1)).findByCode("P-SMALL");
+        assertThat(fromRedis.id())
+                .isInstanceOf(Long.class)
+                .isEqualTo(7L);
     }
 
     @Test
