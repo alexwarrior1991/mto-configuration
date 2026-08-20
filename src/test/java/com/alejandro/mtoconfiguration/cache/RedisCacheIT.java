@@ -13,6 +13,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.cache.autoconfigure.CacheAutoConfiguration;
+import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.annotation.Bean;
@@ -39,6 +42,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @Testcontainers(disabledWithoutDocker = true)
+// Con @SpringBootTest(classes = ...) Spring Boot NO aplica sus autoconfiguraciones,
+// asi que nadie crearia el RedisConnectionFactory ni el RedisCacheManager y
+// @EnableCaching fallaria con "No qualifying bean of type CacheManager".
+// Se importan solo las dos que hacen falta, en vez de arrancar la aplicacion entera.
+@ImportAutoConfiguration({DataRedisAutoConfiguration.class, CacheAutoConfiguration.class})
 @SpringBootTest(classes = {
         RedisCacheConfig.class,
         RedisCacheKeyGenerator.class,
