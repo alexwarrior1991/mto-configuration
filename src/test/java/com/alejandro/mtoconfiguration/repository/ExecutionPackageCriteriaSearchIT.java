@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.repository;
 
 import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
+import com.alejandro.mtoconfiguration.entity.lov.ComercialEntityType;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageCriteriaSearchRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,8 @@ class ExecutionPackageCriteriaSearchIT extends AbstractCriteriaSearchIT {
 
     @Autowired
     private ExecutionPackageCriteriaSearchRepository repository;
+
+    private ComercialEntityType comercialEntityType;
 
     @BeforeEach
     void seed() {
@@ -98,8 +101,27 @@ class ExecutionPackageCriteriaSearchIT extends AbstractCriteriaSearchIT {
         entity.setName(name);
         entity.setCode(name.substring(0, 3));
         entity.setIdentificationNumber("ID-" + name.substring(0, 3));
+        // comercial_entity_type_id es NOT NULL en base de datos
+        entity.setComercialEntityType(comercialEntityType());
         em.persist(entity);
         return entity;
+    }
+
+    /**
+     * Un unico LOV compartido por todas las empresas del seed: el tipo comercial
+     * no interviene en ninguna busqueda de este test, solo hace falta para
+     * satisfacer la restriccion NOT NULL.
+     */
+    private ComercialEntityType comercialEntityType() {
+        if (comercialEntityType == null) {
+            comercialEntityType = new ComercialEntityType();
+            comercialEntityType.setCode("EMP");
+            comercialEntityType.setDescription("Empresa constructora");
+            comercialEntityType.setEnabled(true);
+            em.persist(comercialEntityType);
+        }
+
+        return comercialEntityType;
     }
 
     private ExecutionPackage executionPackage(String name, LocalDate startDate,
