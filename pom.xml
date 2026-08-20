@@ -225,6 +225,14 @@
 
     <build>
         <plugins>
+            <!-- Sin esta declaracion failsafe no se activa: viene con version y goals
+                 en el pluginManagement del parent, pero sin execution vinculada, de modo
+                 que las clases *IT no las ejecuta nadie (surefire no las incluye). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

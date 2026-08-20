@@ -7,6 +7,7 @@ import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
 import com.alejandro.mtoconfiguration.mapper.lov.*;
 import com.alejandro.mtoconfiguration.mapper.lov.commons.LovMapper;
 import com.alejandro.mtoconfiguration.model.commons.LovDTO;
+import com.alejandro.mtoconfiguration.model.commons.LovReferenceDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.*;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.*;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.commons.LovRepository;
@@ -73,6 +74,7 @@ public class MasterDataService {
             LovRepository<E> repository
     ) {
         return Optional.ofNullable(lovReferenceResolver.resolveIdByCode(lovName, code, repository))
+                .map(LovReferenceDTO::id)
                 .map(repository::getReferenceById)
                 .orElse(null);
     }

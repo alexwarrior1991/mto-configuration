@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.service.commons;
 
 import com.alejandro.mtoconfiguration.configuration.cache.CacheNames;
 import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
+import com.alejandro.mtoconfiguration.model.commons.LovReferenceDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.commons.LovRepository;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
@@ -21,19 +22,22 @@ public class LovReferenceResolver {
      * <p>
      * La clave SpEL es explícita a propósito: con el keyGenerator por defecto el
      * repository se serializaría como objeto arbitrario y la clave sería inestable.
+     * <p>
+     * Devuelve LovReferenceDTO y no un Long a propósito: un escalar desnudo no
+     * conserva su tipo en el viaje por Redis. Ver LovReferenceDTO.
      */
     @Cacheable(
             cacheNames = CacheNames.LOV_ITEM,
             key = "'lovIdByCode:' + #lovName + ':' + #code",
             unless = "#result == null"
     )
-    public <E extends Lov> Long resolveIdByCode(String lovName, String code, LovRepository<E> repository) {
+    public <E extends Lov> LovReferenceDTO resolveIdByCode(String lovName, String code, LovRepository<E> repository) {
         if (StringUtils.isBlank(code)) {
             return null;
         }
 
         return Optional.ofNullable(repository.findByCode(code))
-                .map(entity -> entity.getId())
+                .map(entity -> new LovReferenceDTO(entity.getId()))
                 .orElse(null);
     }
 }
