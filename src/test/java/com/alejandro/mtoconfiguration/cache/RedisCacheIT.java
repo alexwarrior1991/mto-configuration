@@ -152,6 +152,23 @@ class RedisCacheIT {
         assertThat(AopUtils.isAopProxy(service))
                 .as("RedisBackedTestService no esta proxiado, @Cacheable no se aplicaria")
                 .isTrue();
+
+        // 5. normal:search acepta y devuelve un CachedPageDTO. Es la unica cache donde
+        // fallan los aciertos, mientras normal:page funciona con el MISMO payload y el
+        // mismo codigo, asi que hay que descartar la cache en si antes que el @Cacheable.
+        Cache searchCache = cacheManager.getCache(CacheNames.NORMAL_SEARCH);
+        assertThat(searchCache).isNotNull();
+
+        searchCache.put("diagnostico:search", CachedPageDTO.from(samplePage()));
+
+        assertThat(searchCache.get("diagnostico:search"))
+                .as("'%s' no conserva un CachedPageDTO, aunque '%s' si lo hace",
+                        CacheNames.NORMAL_SEARCH, CacheNames.NORMAL_PAGE)
+                .isNotNull();
+
+        assertThat(pageCacheService.getClass().getName())
+                .as("PageCacheService no esta proxiado")
+                .contains("SpringCGLIB");
     }
 
     @BeforeEach
@@ -238,6 +255,15 @@ class RedisCacheIT {
         Page<TestValue> first = pageCache
                 ? pageCacheService.getPage(cacheKey, loader).toPage()
                 : pageCacheService.getSearch(cacheKey, loader).toPage();
+
+        // Antes de juzgar el acierto, comprobar si la entrada llego a escribirse.
+        // Separa "no se guardo" (unless, serializacion) de "se guardo pero no se
+        // encuentra" (clave distinta entre el put y el get).
+        String cacheName = pageCache ? CacheNames.NORMAL_PAGE : CacheNames.NORMAL_SEARCH;
+        assertThat(cacheManager.getCache(cacheName).get(cacheKey))
+                .as("tras la primera llamada no hay nada guardado en '%s' bajo la clave '%s'",
+                        cacheName, cacheKey)
+                .isNotNull();
 
         Page<TestValue> fromRedis = pageCache
                 ? pageCacheService.getPage(cacheKey, loader).toPage()
