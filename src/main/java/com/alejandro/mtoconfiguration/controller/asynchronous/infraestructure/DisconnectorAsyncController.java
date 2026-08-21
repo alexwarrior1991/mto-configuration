@@ -112,6 +112,21 @@ public class DisconnectorAsyncController {
                 .thenApply(ResponseEntity::ok);
     }
 
+    @GetMapping("/paged")
+    @Operation(
+            summary = "List all disconnectors paginated (async)",
+            description = "Asynchronously retrieves a page of disconnectors applying the requested pagination and sorting."
+    )
+    @ApiResponse(
+            responseCode = ApiConstants.CODE_200,
+            description = ApiConstants.DESC_200,
+            content = @Content(schema = @Schema(implementation = DisconnectorDTO.class))
+    )
+    public CompletableFuture<ResponseEntity<Object>> findAllAsync(@PageableDefault(size = 20) Pageable pageable) {
+        return disconnectorAsyncService.findAllAsync(pageable)
+                .thenApply(ResponseEntity::ok);
+    }
+
     @PostMapping("/search")
     @Operation(
             summary = "Search disconnectors (async)",

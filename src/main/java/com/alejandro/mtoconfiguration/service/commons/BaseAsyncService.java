@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Async;
 
 import java.util.List;
@@ -45,6 +46,11 @@ public abstract class BaseAsyncService<T extends BaseDTO, E extends CRUDEntity, 
     @Async("applicationTaskExecutor")
     public CompletableFuture<List<T>> findAllAsync() {
         return CompletableFuture.completedFuture(getService().findAll());
+    }
+
+    @Async("applicationTaskExecutor")
+    public CompletableFuture<Page<T>> findAllAsync(Pageable pageable) {
+        return CompletableFuture.completedFuture(getService().findAll(pageable));
     }
 
     @Async("applicationTaskExecutor")

@@ -6,5 +6,5 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public abstract class CRUDController<T extends BaseDTO, E extends CRUDEntity>
-        implements ReadController<T, E>, SaveController<T, E>, DeleteController<T, E>, SearchController<T, E> {
+        implements ReadController<T, E>, ReadAllController<T, E>, SaveController<T, E>, DeleteController<T, E>, SearchController<T, E> {
 }

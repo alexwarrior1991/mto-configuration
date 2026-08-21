@@ -141,6 +141,21 @@ public class ExecutionPackageController extends CRUDController<ExecutionPackageD
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/paged")
+    @Operation(
+            summary = "List all execution packages paginated",
+            description = "Retrieves a page of execution packages applying the requested pagination and sorting."
+    )
+    @ApiResponse(
+            responseCode = ApiConstants.CODE_200,
+            description = ApiConstants.DESC_200,
+            content = @Content(schema = @Schema(implementation = ExecutionPackageDTO.class))
+    )
+    @Override
+    public ResponseEntity<Object> findAll(@PageableDefault(size = 20) Pageable pageable) {
+        return processGenericPageRequest(getService()::findAll, pageable);
+    }
+
     @PostMapping("/search")
     @Operation(
             summary = "Search execution packages",

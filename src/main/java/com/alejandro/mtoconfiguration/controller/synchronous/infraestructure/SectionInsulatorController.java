@@ -127,6 +127,21 @@ public class SectionInsulatorController extends CRUDController<SectionInsulatorD
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/paged")
+    @Operation(
+            summary = "List all section insulators paginated",
+            description = "Retrieves a page of section insulators applying the requested pagination and sorting."
+    )
+    @ApiResponse(
+            responseCode = ApiConstants.CODE_200,
+            description = ApiConstants.DESC_200,
+            content = @Content(schema = @Schema(implementation = SectionInsulatorDTO.class))
+    )
+    @Override
+    public ResponseEntity<Object> findAll(@PageableDefault(size = 20) Pageable pageable) {
+        return processGenericPageRequest(getService()::findAll, pageable);
+    }
+
     @PostMapping("/search")
     @Operation(
             summary = "Search section insulators",

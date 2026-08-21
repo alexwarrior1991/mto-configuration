@@ -133,6 +133,21 @@ public class ProfileController extends CRUDController<ProfileDTO, Profile> {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/paged")
+    @Operation(
+            summary = "List all profiles paginated",
+            description = "Retrieves a page of profiles applying the requested pagination and sorting."
+    )
+    @ApiResponse(
+            responseCode = ApiConstants.CODE_200,
+            description = ApiConstants.DESC_200,
+            content = @Content(schema = @Schema(implementation = ProfileDTO.class))
+    )
+    @Override
+    public ResponseEntity<Object> findAll(@PageableDefault(size = 20) Pageable pageable) {
+        return processGenericPageRequest(getService()::findAll, pageable);
+    }
+
     @PostMapping("/search")
     @Operation(
             summary = "Search profiles",

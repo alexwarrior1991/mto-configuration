@@ -115,6 +115,21 @@ public class ProfileAsyncController {
                 .thenApply(ResponseEntity::ok);
     }
 
+    @GetMapping("/paged")
+    @Operation(
+            summary = "List all profiles paginated (async)",
+            description = "Asynchronously retrieves a page of profiles applying the requested pagination and sorting."
+    )
+    @ApiResponse(
+            responseCode = ApiConstants.CODE_200,
+            description = ApiConstants.DESC_200,
+            content = @Content(schema = @Schema(implementation = ProfileDTO.class))
+    )
+    public CompletableFuture<ResponseEntity<Object>> findAllAsync(@PageableDefault(size = 20) Pageable pageable) {
+        return profileAsyncService.findAllAsync(pageable)
+                .thenApply(ResponseEntity::ok);
+    }
+
     @PostMapping("/search")
     @Operation(
             summary = "Search profiles (async)",

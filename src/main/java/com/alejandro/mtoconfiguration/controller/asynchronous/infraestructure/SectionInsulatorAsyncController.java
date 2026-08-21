@@ -114,6 +114,21 @@ public class SectionInsulatorAsyncController {
                 .thenApply(ResponseEntity::ok);
     }
 
+    @GetMapping("/paged")
+    @Operation(
+            summary = "List all section insulators paginated (async)",
+            description = "Asynchronously retrieves a page of section insulators applying the requested pagination and sorting."
+    )
+    @ApiResponse(
+            responseCode = ApiConstants.CODE_200,
+            description = ApiConstants.DESC_200,
+            content = @Content(schema = @Schema(implementation = SectionInsulatorDTO.class))
+    )
+    public CompletableFuture<ResponseEntity<Object>> findAllAsync(@PageableDefault(size = 20) Pageable pageable) {
+        return sectionInsulatorAsyncService.findAllAsync(pageable)
+                .thenApply(ResponseEntity::ok);
+    }
+
     @PostMapping("/search")
     @Operation(
             summary = "Search section insulators (async)",

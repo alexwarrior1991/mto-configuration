@@ -112,6 +112,21 @@ public class TrackAsyncController {
                 .thenApply(ResponseEntity::ok);
     }
 
+    @GetMapping("/paged")
+    @Operation(
+            summary = "List all tracks paginated (async)",
+            description = "Asynchronously retrieves a page of tracks applying the requested pagination and sorting."
+    )
+    @ApiResponse(
+            responseCode = ApiConstants.CODE_200,
+            description = ApiConstants.DESC_200,
+            content = @Content(schema = @Schema(implementation = TrackDTO.class))
+    )
+    public CompletableFuture<ResponseEntity<Object>> findAllAsync(@PageableDefault(size = 20) Pageable pageable) {
+        return trackAsyncService.findAllAsync(pageable)
+                .thenApply(ResponseEntity::ok);
+    }
+
     @PostMapping("/search")
     @Operation(
             summary = "Search tracks (async)",

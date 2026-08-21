@@ -114,6 +114,21 @@ public class SteadyArmAsyncController {
                 .thenApply(ResponseEntity::ok);
     }
 
+    @GetMapping("/paged")
+    @Operation(
+            summary = "List all steady arms paginated (async)",
+            description = "Asynchronously retrieves a page of steady arms applying the requested pagination and sorting."
+    )
+    @ApiResponse(
+            responseCode = ApiConstants.CODE_200,
+            description = ApiConstants.DESC_200,
+            content = @Content(schema = @Schema(implementation = SteadyArmDTO.class))
+    )
+    public CompletableFuture<ResponseEntity<Object>> findAllAsync(@PageableDefault(size = 20) Pageable pageable) {
+        return steadyArmAsyncService.findAllAsync(pageable)
+                .thenApply(ResponseEntity::ok);
+    }
+
     @PostMapping("/search")
     @Operation(
             summary = "Search steady arms (async)",
