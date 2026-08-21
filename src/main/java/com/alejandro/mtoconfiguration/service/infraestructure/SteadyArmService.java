@@ -111,4 +111,14 @@ public class SteadyArmService extends CRUDService<SteadyArmDTO, SteadyArm> imple
     public Optional<SteadyArmDTO> getByCantileverId(Long cantileverId) {
         return repository.findByCantileverId(cantileverId).map(mapper::toDTO);
     }
+
+    /**
+     * SteadyArmDTO no embebe otros DTO de entidad, solo LOV, que se editan casi nunca.
+     * Sus entradas no se quedan obsoletas al cambiar otra entidad, asi que si
+     * compensa cachearlas. Ver BaseService.isCacheable().
+     */
+    @Override
+    public boolean isCacheable() {
+        return true;
+    }
 }

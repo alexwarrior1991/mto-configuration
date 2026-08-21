@@ -128,4 +128,14 @@ public class SectionInsulatorService extends CRUDService<SectionInsulatorDTO, Se
                 .map(list -> list.stream().map(getMapper()::toDTO).toList())
                 .orElseGet(List::of);
     }
+
+    /**
+     * SectionInsulatorDTO no embebe otros DTO de entidad, solo LOV, que se editan casi nunca.
+     * Sus entradas no se quedan obsoletas al cambiar otra entidad, asi que si
+     * compensa cachearlas. Ver BaseService.isCacheable().
+     */
+    @Override
+    public boolean isCacheable() {
+        return true;
+    }
 }

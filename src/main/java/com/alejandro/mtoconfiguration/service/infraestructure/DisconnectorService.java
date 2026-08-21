@@ -121,4 +121,14 @@ public class DisconnectorService extends CRUDService<DisconnectorDTO, Disconnect
                 .map(list -> list.stream().map(mapper::toDTO).toList())
                 .orElseGet(List::of);
     }
+
+    /**
+     * DisconnectorDTO no embebe otros DTO de entidad, solo LOV, que se editan casi nunca.
+     * Sus entradas no se quedan obsoletas al cambiar otra entidad, asi que si
+     * compensa cachearlas. Ver BaseService.isCacheable().
+     */
+    @Override
+    public boolean isCacheable() {
+        return true;
+    }
 }
