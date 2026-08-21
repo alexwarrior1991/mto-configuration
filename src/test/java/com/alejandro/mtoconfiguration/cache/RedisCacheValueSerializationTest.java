@@ -34,7 +34,6 @@ class RedisCacheValueSerializationTest {
     private RedisSerializationContext.SerializationPair<Object> pair;
 
     @BeforeEach
-    @SuppressWarnings("unchecked")
     void setUp() {
         RedisCacheProperties properties = new RedisCacheProperties();
         properties.setAllowedSubtypes(List.of(
@@ -43,7 +42,7 @@ class RedisCacheValueSerializationTest {
 
         // Se toma el serializador REAL de la configuracion: si alguien lo cambia,
         // este test se entera.
-        pair = (RedisSerializationContext.SerializationPair<Object>) new RedisCacheConfig()
+        pair = new RedisCacheConfig()
                 .redisCacheConfiguration(properties, "mto-configuration")
                 .getValueSerializationPair();
     }
