@@ -37,6 +37,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
 
@@ -74,6 +75,31 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
 
     protected abstract Business<T, E> getBusiness();
 
+    /**
+     * Si los resultados de lectura de este servicio se pueden cachear.
+     * <p>
+     * Por defecto NO, y es deliberado: cachear es la excepcion, no la norma.
+     * <p>
+     * El motivo es que la invalidacion es por SERVICIO, no por id: al guardar una
+     * entidad se borra el bloque entero de sus caches. Un DTO que embebe hijos
+     * (ExecutionPackage lleva estaciones, Station lleva vias, Track lleva perfiles,
+     * Profile lleva mensulas) queda obsoleto en cuanto cambia CUALQUIER hijo de
+     * CUALQUIER registro del sistema. Como aqui editar perfiles, mensulas y vias es
+     * el trabajo diario, esas caches se vaciarian continuamente y su ratio de
+     * aciertos tenderia a cero: ocuparian memoria y costarian escrituras sin llegar
+     * a servir nada.
+     * <p>
+     * Solo devuelven true los servicios cuyo DTO no embebe otros DTO de entidad.
+     * Los LOV que si embeben no cuentan: se editan casi nunca y su TTL acota la
+     * ventana.
+     * <p>
+     * CacheableServicesTest comprueba por reflexion que esta clasificacion sigue
+     * cuadrando con lo que los DTO declaran de verdad.
+     */
+    public boolean isCacheable() {
+        return false;
+    }
+
     protected void publishEntityCreatedEvent(E entity) {
         publishEntityChangedEvent(entity, EntityChangeOperation.CREATED);
     }
@@ -97,6 +123,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
     @Cacheable(
             cacheNames = CacheNames.NORMAL_LIST,
             keyGenerator = "redisCacheKeyGenerator",
+            condition = "#root.target.cacheable",
             unless = "#result == null || #result.isEmpty()"
     )
     public List<T> findAll() throws BaseException {
@@ -107,6 +134,10 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
     }
 
     public Page<T> findAll(Pageable pageable) throws BaseException {
+        if (!isCacheable()) {
+            return getMapper().mapToDTOs(getRepository().findAll(pageable));
+        }
+
         // La caché vive en PageCacheService: así la llamada cruza el proxy de Spring
         // y @Cacheable se aplica de verdad (la auto-invocación lo ignoraría).
         String cacheKey = cacheKeyGenerator.buildKey(this, "findAll", pageable);
@@ -129,12 +160,18 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
             throw new BaseException("Search method not implemented (CriteriaSearchRepository is null)");
         }
 
+        Supplier<Page<T>> loader = () -> getMapper().mapToDTOs(
+                getCriteriaSearchRepository().criteriaSearchWithChildren(
+                        (Class<E>) getEntity().getClass(), searchRequestDTO, em, searchParams()));
+
+        if (!isCacheable()) {
+            return loader.get();
+        }
+
         String cacheKey = cacheKeyGenerator.buildKey(this, "search", searchRequestDTO);
 
         return pageCacheService.getSearch(cacheKey,
-                        () -> getMapper().mapToDTOs(
-                                getCriteriaSearchRepository().criteriaSearchWithChildren(
-                                        (Class<E>) getEntity().getClass(), searchRequestDTO, em, searchParams())))
+                        loader)
                 .toPage();
     }
 
@@ -306,6 +343,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
     @Cacheable(
             cacheNames = CacheNames.NORMAL_ITEM,
             keyGenerator = "redisCacheKeyGenerator",
+            condition = "#root.target.cacheable",
             unless = "#result == null"
     )
     public T getById(Long id) throws BaseException {
