@@ -48,14 +48,23 @@ public abstract class CRUDValidator<T extends BaseDTO> extends GenericValidator<
 
         int index = 0;
         for (D child : children) {
-            validateChild(target, child, validator, path + "[" + index + "]");
+            String childPath = path + "[" + index + "]";
+
+            if (child == null) {
+                // Un hueco dentro de la colección es dato malformado, no una asociación ausente.
+                target.add(Alert.ofDanger(ErrorCodes.VALIDATION_REQUIRED_FIELD, childPath));
+            } else {
+                validateChild(target, child, validator, childPath);
+            }
+
             index++;
         }
     }
 
     /**
      * Valida un hijo único (relación uno a uno) prefijando sus campos con {@code path.campo}.
-     * Un hijo nulo no genera alerta: la obligatoriedad de la asociación se declara aparte.
+     * Un hijo nulo no genera alerta: en una asociación uno a uno la obligatoriedad se declara
+     * aparte, con el resto de campos requeridos del padre.
      */
     protected <D extends BaseDTO> void validateChild(List<Alert> target,
                                                      D child,
