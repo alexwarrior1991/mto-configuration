@@ -15,6 +15,7 @@ import java.io.Serial;
 import java.util.Comparator;
 import java.util.Objects;
 
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.STEADY_ARM_LENGTH_MAX;
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
 @Setter
@@ -49,7 +50,7 @@ public class SteadyArm extends CRUDEntity {
 
     @NotNull
     @Min(0)
-    @Max(2000)
+    @Max(STEADY_ARM_LENGTH_MAX)
     @Column(name = "LENGTH", nullable = false)
     public Long getLength() {
         return length;

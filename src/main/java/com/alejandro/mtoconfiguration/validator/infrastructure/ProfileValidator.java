@@ -2,25 +2,30 @@ package com.alejandro.mtoconfiguration.validator.infrastructure;
 
 import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
-import com.alejandro.mtoconfiguration.utils.Utils;
-import com.alejandro.mtoconfiguration.utils.ValidatorUtils;
-import com.alejandro.mtoconfiguration.validator.commons.CRUDValidator;
 import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import com.alejandro.mtoconfiguration.validator.commons.NormalEntityValidator;
-import lombok.extern.slf4j.Slf4j;
+import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
-import org.springframework.web.context.annotation.RequestScope;
 
-import java.util.*;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-@Component
-@RequestScope
-@Slf4j
-public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.PROFILE_ID_MAX_LENGTH;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.PROFILE_ID_MIN_LENGTH;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.PROFILE_MAX_CANTILEVERS;
 
+@Component
+@RequiredArgsConstructor
+public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
 
     private static final String ENTITY_NAME = "profile";
     private static final String FIELD_PROFILE_ID = "profileId";
@@ -28,6 +33,18 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
     private static final String FIELD_TRACK_ID = "trackId";
     private static final String FIELD_PROFILE_STATUS = "profileStatus";
     private static final String FIELD_PROFILES = "profiles";
+    private static final String FIELD_CANTILEVERS = "cantilevers";
+    private static final String FIELD_DISCONNECTOR = "disconnector";
+
+    /**
+     * El DTO transporta el punto kilométrico como texto pero la columna es {@code NUMERIC(12,3)} y
+     * {@code @PositiveOrZero}: sin este patrón un valor no numérico pasaba la validación y reventaba
+     * al mapear.
+     */
+    private static final String KP_PATTERN = "\\d+(\\.\\d+)?";
+
+    private final CantileverValidator cantileverValidator;
+    private final DisconnectorValidator disconnectorValidator;
 
     @Override
     protected String getEntityName() {
@@ -36,37 +53,46 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
 
     @Override
     protected void validateRequiredFields(ProfileDTO dto, List<Alert> alerts) {
-        new ValidatorUtils(alerts)
-                .validateRequiredField(dto.getProfileId(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_PROFILE_ID)
-                .validateRequiredField(dto.getKp(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_KP)
-                .validateRequiredFieldIfTrueCondition(
-                        Utils.exists(dto),
-                        dto.getTrackId(),
-                        ErrorCodes.VALIDATION_REQUIRED_FIELD,
-                        FIELD_TRACK_ID
-                )
+        check(alerts)
+                .validateRequiredString(dto.getProfileId(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_PROFILE_ID)
+                .validateRequiredString(dto.getKp(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_KP)
                 .validateRequiredLovDTO(dto.getProfileStatus(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_PROFILE_STATUS)
-                .validateLengthField(dto.getProfileId(), 1, 50, ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_PROFILE_ID)
-                .validateLengthField(dto.getKp(), 1, 50, ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_KP);
+                .validateLengthField(dto.getProfileId(), PROFILE_ID_MIN_LENGTH, PROFILE_ID_MAX_LENGTH,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_PROFILE_ID)
+                .validateFormat(dto.getKp(), KP_PATTERN, ErrorCodes.VALIDATION_INVALID_FORMAT, FIELD_KP)
+                .validateBigDecimalWithPrecision(parseKp(dto.getKp()), KP_INTEGER_DIGITS, KP_FRACTION_DIGITS,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_KP)
+                .validateMaxSize(dto.getCantilevers(), PROFILE_MAX_CANTILEVERS,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_CANTILEVERS);
+    }
+
+    @Override
+    protected void validateParentReferences(ProfileDTO dto, List<Alert> alerts) {
+        check(alerts)
+                .validateRequiredField(dto.getTrackId(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_TRACK_ID);
+    }
+
+    @Override
+    protected void validateNestedDtos(ProfileDTO dto, List<Alert> alerts) {
+        validateChildren(alerts, dto.getCantilevers(), cantileverValidator, FIELD_CANTILEVERS);
+        validateChild(alerts, dto.getDisconnector(), disconnectorValidator, FIELD_DISCONNECTOR);
     }
 
     @Override
     public List<Alert> validateBeforeBulkSave(List<ProfileDTO> dtoList) {
-        List<Alert> alerts = new ArrayList<>();
-
-        if (CollectionUtils.isEmpty(dtoList)) {
-            alerts.add(Alert.ofDanger(ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_PROFILES));
-            return alerts;
-        }
-
-        validateItems(dtoList, alerts, this::validateBeforeSave);
-        validateDuplicatedIds(dtoList, alerts);
-
-        return alerts;
+        return validateBulk(dtoList, this::validateBeforeSave);
     }
 
     @Override
     public List<Alert> validateBeforeBulkUpdate(List<ProfileDTO> dtoList) {
+        return validateBulk(dtoList, this::validateBeforeUpdate);
+    }
+
+    /**
+     * Un lote se valida elemento a elemento y, además, contra sí mismo: los identificadores
+     * repetidos dentro del propio lote no los detecta ninguna restricción por elemento.
+     */
+    private List<Alert> validateBulk(List<ProfileDTO> dtoList, Function<ProfileDTO, List<Alert>> validator) {
         List<Alert> alerts = new ArrayList<>();
 
         if (CollectionUtils.isEmpty(dtoList)) {
@@ -74,69 +100,54 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
             return alerts;
         }
 
-        validateItems(dtoList, alerts, this::validateBeforeUpdate);
-        validateDuplicatedIds(dtoList, alerts);
-        validateDuplicatedProfileIds(dtoList, alerts);
+        IntStream.range(0, dtoList.size())
+                .forEach(index -> alerts.addAll(
+                        prefixFields(validator.apply(dtoList.get(index)), FIELD_PROFILES + "[" + index + "]")));
+
+        validateDuplicates(dtoList, alerts, ProfileDTO::getId, FIELD_ID);
+        validateDuplicates(dtoList, alerts, dto -> normalizeProfileId(dto.getProfileId()), FIELD_PROFILE_ID);
 
         return alerts;
     }
 
-    private void validateItems(List<ProfileDTO> dtoList,
-                               List<Alert> alerts,
-                               Function<ProfileDTO, List<Alert>> validator) {
-        IntStream.range(0, dtoList.size())
-                .mapToObj(index -> toIndexedAlerts(validator.apply(dtoList.get(index)), index))
-                .flatMap(list -> list.stream())
-                .filter(Objects::nonNull)
-                .forEach(alerts::add);
+    /**
+     * Marca <b>todas</b> las posiciones implicadas en cada repetición, no solo la segunda, para que
+     * el cliente pueda resaltar los dos campos que chocan.
+     */
+    private void validateDuplicates(List<ProfileDTO> dtoList,
+                                    List<Alert> alerts,
+                                    Function<ProfileDTO, Object> keyExtractor,
+                                    String fieldName) {
+
+        Map<Object, List<Integer>> positionsByKey = IntStream.range(0, dtoList.size())
+                .filter(index -> dtoList.get(index) != null)
+                .filter(index -> keyExtractor.apply(dtoList.get(index)) != null)
+                .boxed()
+                .collect(Collectors.groupingBy(index -> keyExtractor.apply(dtoList.get(index))));
+
+        positionsByKey.values().stream()
+                .filter(positions -> positions.size() > 1)
+                .flatMap(List::stream)
+                .sorted()
+                .forEach(index -> alerts.add(Alert.ofDanger(
+                        ErrorCodes.DUPLICATED_RESOURCE,
+                        FIELD_PROFILES + "[" + index + "]." + fieldName)));
     }
 
-    private List<Alert> toIndexedAlerts(List<Alert> itemAlerts, int index) {
-        if (CollectionUtils.isEmpty(itemAlerts)) {
-            return List.of();
+    private static BigDecimal parseKp(String kp) {
+        if (StringUtils.isBlank(kp)) {
+            return null;
         }
 
-        itemAlerts.stream()
-                .filter(Objects::nonNull)
-                .forEach(alert -> alert.setFields(
-                        alert.getFields().stream()
-                                .map(field -> FIELD_PROFILES + "[" + index + "]." + field)
-                                .toList()
-                ));
-
-        return itemAlerts;
+        try {
+            return new BigDecimal(kp.trim());
+        } catch (NumberFormatException e) {
+            // El formato ya lo reporta validateFormat; aquí no hay precisión que comprobar.
+            return null;
+        }
     }
 
-    private void validateDuplicatedIds(List<ProfileDTO> dtoList, List<Alert> alerts) {
-        Set<Long> ids = new HashSet<>();
-
-        IntStream.range(0, dtoList.size())
-                .filter(index -> dtoList.get(index) != null)
-                .filter(index -> dtoList.get(index).getId() != null)
-                .filter(index -> !ids.add(dtoList.get(index).getId()))
-                .forEach(index -> alerts.add(Alert.ofDanger(
-                        ErrorCodes.DUPLICATED_RESOURCE,
-                        FIELD_PROFILES + "[" + index + "].id"
-                )));
+    private static String normalizeProfileId(String profileId) {
+        return StringUtils.isBlank(profileId) ? null : profileId.trim().toUpperCase();
     }
-
-    private void validateDuplicatedProfileIds(List<ProfileDTO> dtoList, List<Alert> alerts) {
-        Set<String> profileIds = new HashSet<>();
-
-        IntStream.range(0, dtoList.size())
-                .filter(index -> dtoList.get(index) != null)
-                .filter(index -> dtoList.get(index).getProfileId() != null)
-                .filter(index -> !dtoList.get(index).getProfileId().isBlank())
-                .filter(index -> !profileIds.add(normalizeProfileId(dtoList.get(index).getProfileId())))
-                .forEach(index -> alerts.add(Alert.ofDanger(
-                        ErrorCodes.DUPLICATED_RESOURCE,
-                        FIELD_PROFILES + "[" + index + "].profileId"
-                )));
-    }
-
-    private String normalizeProfileId(String profileId) {
-        return profileId.trim().toUpperCase();
-    }
-
-
 }

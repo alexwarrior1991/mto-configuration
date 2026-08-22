@@ -2,23 +2,31 @@ package com.alejandro.mtoconfiguration.validator.infrastructure;
 
 import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
-import com.alejandro.mtoconfiguration.utils.ValidatorUtils;
-import com.alejandro.mtoconfiguration.validator.commons.CRUDValidator;
 import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import com.alejandro.mtoconfiguration.validator.commons.NormalEntityValidator;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Component;
-import org.springframework.web.context.annotation.RequestScope;
 
-import java.util.Collections;
+import java.math.BigDecimal;
 import java.util.List;
-import java.util.Objects;
+
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.ARM_ANGLE_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.ARM_ANGLE_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.ARM_ANGLE_MAX;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.ARM_ANGLE_MIN;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CATENARY_HEIGHT_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CATENARY_HEIGHT_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CW_ELEVATION_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CW_ELEVATION_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CW_HEIGHT_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CW_HEIGHT_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CW_HEIGHT_MIN;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.STAGGER_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.STAGGER_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.WIND_DEFLECTION_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.WIND_DEFLECTION_INTEGER_DIGITS;
 
 @Component
-@RequestScope
-@Slf4j
 @RequiredArgsConstructor
 public class CantileverValidator extends NormalEntityValidator<CantileverDTO> {
 
@@ -33,6 +41,10 @@ public class CantileverValidator extends NormalEntityValidator<CantileverDTO> {
     private static final String FIELD_PROFILE_ID = "profileId";
     private static final String FIELD_STEADY_ARM = "steadyArm";
 
+    private static final BigDecimal CW_HEIGHT_MIN_VALUE = new BigDecimal(CW_HEIGHT_MIN);
+    private static final BigDecimal ARM_ANGLE_MIN_VALUE = new BigDecimal(ARM_ANGLE_MIN);
+    private static final BigDecimal ARM_ANGLE_MAX_VALUE = new BigDecimal(ARM_ANGLE_MAX);
+
     private final SteadyArmValidator steadyArmValidator;
 
     @Override
@@ -42,44 +54,44 @@ public class CantileverValidator extends NormalEntityValidator<CantileverDTO> {
 
     @Override
     protected void validateRequiredFields(CantileverDTO dto, List<Alert> alerts) {
-        new ValidatorUtils(alerts)
+        check(alerts)
                 .validateRequiredField(dto.getCwHeight(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_CW_HEIGHT)
                 .validateRequiredField(dto.getStagger(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_STAGGER)
                 .validateRequiredField(dto.getCatenaryHeight(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_CATENARY_HEIGHT)
                 .validateRequiredField(dto.getCwElevation(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_CW_ELEVATION)
                 .validateRequiredField(dto.getWindDeflection(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_WIND_DEFLECTION)
                 .validateRequiredField(dto.getArmAngle(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_ARM_ANGLE)
-                .validateRequiredField(dto.getProfileId(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_PROFILE_ID)
                 .validateRequiredLovDTO(dto.getCantileverType(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_CANTILEVER_TYPE)
-                .validateRequiredDTO(dto.getSteadyArm(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_STEADY_ARM)
-                .validateBigDecimalWithPrecision(dto.getCwHeight(), 10, 3, ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_CW_HEIGHT)
-                .validateBigDecimalWithPrecision(dto.getStagger(), 10, 3, ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_STAGGER)
-                .validateBigDecimalWithPrecision(dto.getCatenaryHeight(), 10, 3, ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_CATENARY_HEIGHT)
-                .validateBigDecimalWithPrecision(dto.getCwElevation(), 10, 3, ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_CW_ELEVATION)
-                .validateBigDecimalWithPrecision(dto.getWindDeflection(), 10, 3, ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_WIND_DEFLECTION)
-                .validateBigDecimalWithPrecision(dto.getArmAngle(), 10, 3, ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_ARM_ANGLE);
-
-        validateSteadyArm(dto, alerts);
+                // La asociación es obligatoria, pero no que ya exista: SteadyArm cascadea desde
+                // Cantilever, así que una ménsula nueva (sin id) es un alta perfectamente válida.
+                .validateRequiredField(dto.getSteadyArm(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_STEADY_ARM)
+                // Precisiones tomadas de las columnas: aceptar más aquí solo cambia el 400 por un 500.
+                .validateBigDecimalWithPrecision(dto.getCwHeight(), CW_HEIGHT_INTEGER_DIGITS, CW_HEIGHT_FRACTION_DIGITS,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_CW_HEIGHT)
+                .validateRange(dto.getCwHeight(), CW_HEIGHT_MIN_VALUE, null,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_CW_HEIGHT)
+                .validateBigDecimalWithPrecision(dto.getStagger(), STAGGER_INTEGER_DIGITS, STAGGER_FRACTION_DIGITS,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_STAGGER)
+                .validateBigDecimalWithPrecision(dto.getCatenaryHeight(), CATENARY_HEIGHT_INTEGER_DIGITS, CATENARY_HEIGHT_FRACTION_DIGITS,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_CATENARY_HEIGHT)
+                .validateBigDecimalWithPrecision(dto.getCwElevation(), CW_ELEVATION_INTEGER_DIGITS, CW_ELEVATION_FRACTION_DIGITS,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_CW_ELEVATION)
+                .validateBigDecimalWithPrecision(dto.getWindDeflection(), WIND_DEFLECTION_INTEGER_DIGITS, WIND_DEFLECTION_FRACTION_DIGITS,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_WIND_DEFLECTION)
+                .validateBigDecimalWithPrecision(dto.getArmAngle(), ARM_ANGLE_INTEGER_DIGITS, ARM_ANGLE_FRACTION_DIGITS,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_ARM_ANGLE)
+                .validateRange(dto.getArmAngle(), ARM_ANGLE_MIN_VALUE, ARM_ANGLE_MAX_VALUE,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_ARM_ANGLE);
     }
 
-    private void validateSteadyArm(CantileverDTO dto, List<Alert> alerts) {
-        if (dto.getSteadyArm() == null) {
-            return;
-        }
+    @Override
+    protected void validateParentReferences(CantileverDTO dto, List<Alert> alerts) {
+        check(alerts)
+                .validateRequiredField(dto.getProfileId(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_PROFILE_ID);
+    }
 
-        List<Alert> steadyArmAlerts = steadyArmValidator.validateBeforeSave(dto.getSteadyArm());
-
-        if (CollectionUtils.isEmpty(steadyArmAlerts)) {
-            return;
-        }
-
-        steadyArmAlerts.stream()
-                .filter(Objects::nonNull)
-                .peek(alert -> alert.setFields(
-                        alert.getFields().stream()
-                                .map(field -> FIELD_STEADY_ARM + "." + field)
-                                .toList()
-                ))
-                .forEach(alerts::add);
+    @Override
+    protected void validateNestedDtos(CantileverDTO dto, List<Alert> alerts) {
+        validateChild(alerts, dto.getSteadyArm(), steadyArmValidator, FIELD_STEADY_ARM);
     }
 }
