@@ -107,7 +107,7 @@ public abstract class CRUDValidator<T extends BaseDTO> extends GenericValidator<
         }
 
         List<String> prefixed = new ArrayList<>(fields);
-        prefixed.set(0, path + "." + fields.get(0));
+        prefixed.set(0, path + "." + fields.getFirst());
         alert.setFields(prefixed);
 
         return alert;

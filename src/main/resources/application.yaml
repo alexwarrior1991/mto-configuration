@@ -293,3 +293,16 @@ cache:
       - java.util
       - java.time
       - org.springframework.data.domain
+# Respuestas de error de la API (RFC 9457 Problem Details)
+configuration:
+  modules:
+    rest:
+      exception-handler:
+        enabled: true
+      errors:
+        # Prefijo del campo "type" de cada problema. Debe ser estable: los clientes
+        # pueden discriminar por él, así que cambiarlo rompe integraciones.
+        type-base-uri: ${MTO_CONFIGURATION_ERROR_TYPE_BASE_URI:https://api.mto-configuration/errors}
+        # Añade la excepción a la respuesta de los 5xx. Solo para depurar en entornos
+        # no productivos: revela estructura interna a quien llame.
+        include-stack-trace: ${MTO_CONFIGURATION_ERROR_INCLUDE_STACKTRACE:false}

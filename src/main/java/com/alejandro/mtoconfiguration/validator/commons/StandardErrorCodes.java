@@ -14,6 +14,17 @@ import java.util.stream.Collectors;
  * {@code MissingFormatArgumentException}.</p>
  */
 public enum StandardErrorCodes implements ErrorCatalogEntry {
+    VALIDATION_FAILED(
+            new ErrorCode(
+                    ErrorCodes.VALIDATION_FAILED,
+                    ErrorType.VALIDATION,
+                    Severity.ERROR,
+                    // fields = [numero de errores]
+                    "La petición contiene %s errores de validación",
+                    false
+            )
+    ),
+
     VALIDATION_REQUIRED_FIELD(
             new ErrorCode(
                     ErrorCodes.VALIDATION_REQUIRED_FIELD,
