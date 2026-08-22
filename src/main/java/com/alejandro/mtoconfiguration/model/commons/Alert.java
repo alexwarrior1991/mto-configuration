@@ -27,10 +27,7 @@ public class Alert implements Serializable {
     private String type;
     private List<String> fields;
 
-    @Getter
-    private Object excelErrors;
-
-    public Alert ofSuccess(String message, String... fields) {
+    public static Alert ofSuccess(String message, String... fields) {
         return new Alert(AlertLevel.SUCCESS, message, fields);
     }
 
@@ -54,6 +51,12 @@ public class Alert implements Serializable {
         return new Alert(AlertLevel.WARNING, message, details, fields);
     }
 
+    /**
+     * Alerta de error sobre uno o varios campos.
+     *
+     * <p>Por convención el primer elemento de {@code fields} es la ruta del campo y el resto son
+     * argumentos de la plantilla del mensaje.</p>
+     */
     public static Alert ofDanger(String message, String... fields) {
         return new Alert(AlertLevel.DANGER, message, fields);
     }
@@ -64,13 +67,6 @@ public class Alert implements Serializable {
 
     public static Alert ofDanger(String message, String details, Collection<String> fields) {
         return new Alert(AlertLevel.DANGER, message, details, fields);
-    }
-
-    public static Alert ofDanger(Object excelError) {
-        Alert alert = new Alert();
-        alert.setLevel(AlertLevel.DANGER);
-        alert.setExcelErrors(excelError);
-        return alert;
     }
 
     private Alert(AlertLevel level, String message, String... fields) {

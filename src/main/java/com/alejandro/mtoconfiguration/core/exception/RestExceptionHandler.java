@@ -1,11 +1,15 @@
 package com.alejandro.mtoconfiguration.core.exception;
 
-import com.alejandro.mtoconfiguration.core.model.exception.DefaultErrorResponse;
+import com.alejandro.mtoconfiguration.core.exception.web.ApiErrorDetail;
+import com.alejandro.mtoconfiguration.core.exception.web.ApiErrorProperties;
+import com.alejandro.mtoconfiguration.core.exception.web.ErrorCatalog;
+import com.alejandro.mtoconfiguration.core.exception.web.ProblemDetailFactory;
+import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import feign.FeignException;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolationException;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -14,317 +18,222 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.transaction.TransactionSystemException;
+import org.springframework.validation.FieldError;
 import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.Stream;
 
+/**
+ * Traduce cualquier excepción que escape de un controlador a una respuesta
+ * <i>Problem Details</i> (RFC 9457), con el mismo cuerpo para todos los casos.
+ *
+ * <p>Dos reglas gobiernan la clase:</p>
+ *
+ * <ol>
+ *   <li><b>Un solo formato.</b> Todos los handlers devuelven {@link ProblemDetail}. Antes convivían
+ *       tres formatos distintos según la excepción, y el cliente tenía que saber cuál esperaba.</li>
+ *   <li><b>Los errores internos no se cuentan.</b> Un 5xx devuelve un mensaje genérico y un
+ *       {@code traceId}; el detalle real va al log. El mensaje de una excepción no controlada puede
+ *       contener SQL, rutas o nombres de tabla, y eso no sale por la API.</li>
+ * </ol>
+ */
 @Slf4j
 @Order(Ordered.HIGHEST_PRECEDENCE)
-@ControllerAdvice
-//ToDo: write in the configuration
+@RestControllerAdvice
+@RequiredArgsConstructor
 @ConditionalOnProperty(value = "configuration.modules.rest.exception-handler.enabled", havingValue = "true", matchIfMissing = true)
 public class RestExceptionHandler extends ResponseEntityExceptionHandler {
 
-    /**
-     * Handles exceptions of type {@link FeignException.Unauthorized} triggered by Feign client calls.
-     * Logs the exception's error message and returns a ResponseEntity with an HTTP 401 Unauthorized status.
-     *
-     * @param e        the FeignException.Unauthorized instance containing details of the unauthorized exception
-     * @param response the HttpServletResponse associated with the current request
-     * @return a ResponseEntity with an HTTP status of 401 Unauthorized
-     */
-    @ExceptionHandler(FeignException.Unauthorized.class)
-    public ResponseEntity<Object> handleFeignStatusException(FeignException.Unauthorized e, HttpServletResponse response) {
-        log.error(e.getMessage(), e);
-        return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
-    }
+    private final ProblemDetailFactory problems;
+    private final ErrorCatalog catalog;
+    private final ApiErrorProperties properties;
+
+    // --- Validación de negocio ---
 
     /**
-     * Handles exceptions of type {@link InvalidBearerTokenException}.
-     * Logs the exception's error message and returns a ResponseEntity
-     * with an HTTP 401 Unauthorized status.
-     *
-     * @param e        the InvalidBearerTokenException instance providing details of the exception
-     * @param response the HttpServletResponse associated with the current request
-     * @return a ResponseEntity with an HTTP status of 401 Unauthorized
-     */
-    @ExceptionHandler(InvalidBearerTokenException.class)
-    public ResponseEntity<Object> handleTokenNotActiveException(InvalidBearerTokenException e, HttpServletResponse response) {
-        log.error(e.getMessage(), e);
-        return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
-    }
-
-    /**
-     * Handles exceptions of type {@link HttpClientErrorException.Unauthorized}.
-     * Logs the exception's error message and returns a ResponseEntity containing
-     * a {@link DefaultErrorResponse} with an HTTP 401 Unauthorized status.
-     *
-     * @param e        the {@link HttpClientErrorException.Unauthorized} instance containing details of the unauthorized exception
-     * @param response the {@link HttpServletResponse} associated with the current request
-     * @return a {@link ResponseEntity} containing a {@link DefaultErrorResponse} with an HTTP status of 401 Unauthorized
-     */
-    @ExceptionHandler(HttpClientErrorException.Unauthorized.class)
-    public ResponseEntity<DefaultErrorResponse> handleUnauthorizedException(HttpClientErrorException.Unauthorized e, HttpServletResponse response) {
-        log.error(e.getMessage(), e);
-        return new ResponseEntity<>(getErrorResponse("unauthorized", HttpStatus.UNAUTHORIZED), HttpStatus.UNAUTHORIZED);
-    }
-
-    /**
-     * Handles exceptions of type {@link AccessDeniedException}.
-     * Logs the exception's error message and returns a {@link ResponseEntity} containing
-     * a {@link DefaultErrorResponse} with an HTTP 401 Unauthorized status.
-     *
-     * @param e        the {@link AccessDeniedException} instance containing details of the access denial exception
-     * @param response the {@link HttpServletResponse} associated with the current request
-     * @return a {@link ResponseEntity} containing a {@link DefaultErrorResponse} with an HTTP status of 401 Unauthorized
-     */
-    @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<DefaultErrorResponse> handleAccessDeniedException(AccessDeniedException e, HttpServletResponse response) {
-        log.error(e.getMessage(), e);
-        return new ResponseEntity<>(getErrorResponse("unauthorized", HttpStatus.FORBIDDEN), HttpStatus.FORBIDDEN);
-    }
-
-
-    /**
-     * Handles exceptions of type {@link GenericException}.
-     * Logs the exception's error message and constructs a {@link ResponseEntity}
-     * containing a {@link DefaultErrorResponse} with an HTTP 400 Bad Request status.
-     *
-     * @param e       the {@link GenericException} instance containing details of the exception
-     * @param request the {@link HttpServletRequest} associated with the current request
-     * @return a {@link ResponseEntity} containing a {@link DefaultErrorResponse} with an HTTP status of 400 Bad Request
-     */
-    @ExceptionHandler(GenericException.class)
-    public ResponseEntity<Notification> handleGenericException(GenericException e, HttpServletRequest request) {
-        log.error(e.getMessage(), e);
-
-        Notification notification = getNotification(
-                e.getAction(),
-                e.getCode(),
-                e.getMessage(),
-                e.getSeverity(),
-                request.getRequestURI(),   // mejor que getPathInfo()
-                e.getCategory(),
-                request
-        );
-
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(notification);
-    }
-
-    /**
-     * Handles exceptions of type {@code RailwayInfrastructureException} and constructs an appropriate
-     * response indicating the issue details.
-     *
-     * @param e the {@code RailwayInfrastructureException} that was thrown, containing details about
-     *          the error such as action, code, message, severity, and category.
-     * @param request the {@code HttpServletRequest} object that contains the HTTP request information,
-     *                including the URI of the request.
-     * @return a {@code ResponseEntity<Notification>} containing a notification object with information
-     *         about the error and an HTTP status of {@code BAD_REQUEST}.
-     */
-    @ExceptionHandler({RailwayInfrastructureException.class})
-    public ResponseEntity<Notification> handleRailwayInfrastructureException(RailwayInfrastructureException e, HttpServletRequest request) {
-
-        Notification notification = getNotification(
-                e.getAction(),
-                e.getCode(),
-                e.getMessage(),
-                e.getSeverity(),
-                request.getRequestURI(),   // mejor que getPathInfo()
-                e.getCategory(),
-                request
-        );
-
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(notification);
-
-    }
-
-    /**
-     * Handles JPA constraint violation exceptions encountered during a transaction.
-     * This method captures and processes {@link ConstraintViolationException} instances,
-     * extracting details of the constraint violations and formatting them into a user-friendly response.
-     * If no constraint violations are found, a generic bad request response is returned.
-     *
-     * @param e the {@link TransactionSystemException} that encapsulates the root cause of the JPA constraint violations.
-     * @return a {@link ResponseEntity} containing a list of constraint violation messages if violations are present,
-     * or a generic bad request response if none are found.
-     */
-    @ExceptionHandler(TransactionSystemException.class)
-    public ResponseEntity<Object> handleJPAViolations(TransactionSystemException e) {
-        log.error(e.getMessage(), e);
-
-        var maybeConstraintViolation = Stream
-                .iterate(e.getCause(), Objects::nonNull, Throwable::getCause)
-                .filter(ConstraintViolationException.class::isInstance)
-                .map(ConstraintViolationException.class::cast)
-                .findFirst();
-
-        if (maybeConstraintViolation.isPresent()) {
-            ConstraintViolationException ve = maybeConstraintViolation.get();
-
-            // Lista de mapas {campo -> mensaje}
-            var errors = ve.getConstraintViolations().stream()
-                    .map(constraintViolation -> {
-                        Map<String, String> errMap = new HashMap<>();
-                        errMap.put(
-                                constraintViolation.getPropertyPath().toString(),
-                                constraintViolation.getMessage()
-                        );
-                        return errMap;
-                    })
-                    .distinct()
-                    .toList();
-
-            return ResponseEntity.badRequest().body(errors);
-        }
-
-        return ResponseEntity.badRequest().build();
-    }
-
-    /**
-     * Handles exceptions of type {@link MethodArgumentNotValidException} triggered when method argument validation fails.
-     * Logs the exception's error message and returns a {@link ResponseEntity} containing a {@link DefaultErrorResponse}
-     * with an HTTP 400 Bad Request status.
-     *
-     * @param e       the {@link MethodArgumentNotValidException} containing validation error details
-     * @param headers the HTTP headers to be used in the response
-     * @param status  the HTTP status code corresponding to the error
-     * @param request the {@link WebRequest} associated with the current request
-     * @return a {@link ResponseEntity} containing a {@link DefaultErrorResponse} with a list of validation error messages
-     * and an HTTP status of 400 Bad Request, or {@code null} if no response is to be returned
-     */
-    @Override
-    protected @Nullable ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException e, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
-        log.error(e.getMessage(), e);
-        var errors = e.getBindingResult().getAllErrors().stream()
-                .map(ObjectError::getDefaultMessage)
-                .distinct()
-                .toList();
-        return new ResponseEntity<>(getErrorResponse(errors, HttpStatus.BAD_REQUEST), HttpStatus.BAD_REQUEST);
-    }
-
-    /**
-     * Handles exceptions of type {@link ServletException}.
-     * Logs the exception's error message and constructs a {@link ResponseEntity}
-     * containing a {@link DefaultErrorResponse} with an HTTP 400 Bad Request status.
-     *
-     * @param e        the {@link ServletException} instance containing details of the exception
-     * @param response the {@link HttpServletResponse} associated with the current request
-     * @return a {@link ResponseEntity} containing a {@link DefaultErrorResponse}
-     * with an HTTP status of 400 Bad Request
-     */
-    @ExceptionHandler(ServletException.class)
-    public ResponseEntity<DefaultErrorResponse> handleServletException(ServletException e, HttpServletResponse response) {
-        log.error(e.getMessage(), e);
-        return new ResponseEntity<>(getErrorResponse(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR), HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-
-    /**
-     * Handles runtime exceptions and constructs a {@link ResponseEntity} containing a
-     * {@link DefaultErrorResponse} with an HTTP 400 Bad Request status.
-     * Logs the exception details for debugging purposes.
-     *
-     * @param e        the {@link Exception} instance that was thrown
-     * @param response the {@link HttpServletResponse} associated with the current request
-     * @return a {@link ResponseEntity} containing a {@link DefaultErrorResponse} with an
-     * HTTP status of 400 Bad Request
-     */
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<DefaultErrorResponse> handleRuntimeException(Exception e, HttpServletResponse response) {
-        log.error(e.getMessage(), e);
-        return new ResponseEntity<>(getErrorResponse(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR), HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-
-    /**
-     * Handles exceptions of type ValidationException and returns an appropriate HTTP response.
-     *
-     * @param e the ValidationException that was thrown, containing error details.
-     * @return a ResponseEntity containing the error details and a BAD_REQUEST (400) HTTP status.
+     * Alertas producidas por los validadores de DTO. Es la ruta por la que sale el detalle campo a
+     * campo que construye la capa de validación.
      */
     @ExceptionHandler(ValidationException.class)
-    public ResponseEntity<Object> handleValidationException(ValidationException e) {
-        log.error("Validation Error: {}", e.getMessage());
-        return new ResponseEntity<>(e.getErrors(), HttpStatus.BAD_REQUEST);
+    public ResponseEntity<ProblemDetail> handleValidation(ValidationException e, HttpServletRequest request) {
+        ProblemDetail problem = problems.validationFailure(e.getErrors(), uriOf(request));
+
+        log.info("Validación rechazada [{}]: {}", ProblemDetailFactory.traceIdOf(problem), e.getErrors().size());
+
+        return respond(problem);
+    }
+
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleNotFound(NotFoundException e, HttpServletRequest request) {
+        return respond(problems.fromCode(ErrorCodes.RESOURCE_NOT_FOUND, e.getMessage(), uriOf(request)));
+    }
+
+    @ExceptionHandler(ConcurrencyException.class)
+    public ResponseEntity<ProblemDetail> handleConcurrency(ConcurrencyException e, HttpServletRequest request) {
+        return respond(problems.fromCode(ErrorCodes.CONCURRENCY_CONFLICT, uriOf(request)));
     }
 
     /**
-     * Handles exceptions of type {@code BaseException} and returns an appropriate HTTP response.
-     *
-     * @param e the exception of type {@code BaseException} that was thrown
-     * @return a {@code ResponseEntity} object containing the error message and status code
-     *         {@code INTERNAL_SERVER_ERROR}
+     * Resto de errores de servicio. Se tratan como fallo interno salvo que la excepción traiga
+     * alertas con códigos del catálogo, en cuyo caso mandan esos.
      */
     @ExceptionHandler(BaseException.class)
-    public ResponseEntity<Object> handleBaseException(BaseException e){
-        log.error("Service error: {}", e.getMessage());
-        return new ResponseEntity<>(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+    public ResponseEntity<ProblemDetail> handleBase(BaseException e, HttpServletRequest request) {
+        return e.getErrors().stream()
+                .map(alert -> alert.getMessage())
+                .filter(code -> catalog.find(code).isPresent())
+                .findFirst()
+                .map(code -> respond(problems.fromCode(code, uriOf(request))))
+                .orElseGet(() -> internalError(e, request));
+    }
+
+    // --- Validación declarativa y de persistencia ---
+
+    /** Bean Validation sobre el cuerpo de la petición ({@code @Valid}). */
+    @Override
+    protected @Nullable ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException e,
+                                                                            HttpHeaders headers,
+                                                                            HttpStatusCode status,
+                                                                            WebRequest request) {
+        List<ApiErrorDetail> details = e.getBindingResult().getAllErrors().stream()
+                .map(RestExceptionHandler::toDetail)
+                .distinct()
+                .toList();
+
+        ProblemDetail problem = problems.withDetails(
+                ErrorCodes.VALIDATION_FAILED,
+                catalog.resolveMessage(ErrorCodes.VALIDATION_FAILED, List.of(String.valueOf(details.size()))),
+                details,
+                uriOf(request));
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(problem);
     }
 
     /**
-     * Constructs a {@link DefaultErrorResponse} instance with an error message and HTTP status.
-     *
-     * @param message the error message to include in the response
-     * @param status  the HTTP status to include in the response
-     * @return a {@link DefaultErrorResponse} instance containing the provided message and status
+     * Restricciones de la entidad que salta Hibernate al hacer flush. Llegar aquí significa que la
+     * validación de DTO dejó pasar algo que la columna no admite: se registra como aviso porque
+     * indica una divergencia entre validador y esquema.
      */
-    private DefaultErrorResponse getErrorResponse(String message, HttpStatus status) {
-        List<String> messages = new ArrayList<>();
-        messages.add(message);
-        return getErrorResponse(messages, status);
-    }
+    @ExceptionHandler(TransactionSystemException.class)
+    public ResponseEntity<ProblemDetail> handleJpaViolations(TransactionSystemException e, HttpServletRequest request) {
+        return Stream.iterate(e.getCause(), Objects::nonNull, Throwable::getCause)
+                .filter(ConstraintViolationException.class::isInstance)
+                .map(ConstraintViolationException.class::cast)
+                .findFirst()
+                .map(violation -> {
+                    List<ApiErrorDetail> details = violation.getConstraintViolations().stream()
+                            .map(v -> new ApiErrorDetail(
+                                    v.getPropertyPath().toString(),
+                                    ErrorCodes.VALIDATION_OUT_OF_RANGE,
+                                    v.getMessage()))
+                            .distinct()
+                            .toList();
 
-    /**
-     * Constructs a {@link DefaultErrorResponse} object containing the provided error details.
-     *
-     * @param message a list of error messages to include in the response
-     * @param status  the HTTP status to be set in the response
-     * @return an instance of {@link DefaultErrorResponse} containing the error details
-     */
-    private DefaultErrorResponse getErrorResponse(List<String> message, HttpStatus status) {
-        DefaultErrorResponse error = new DefaultErrorResponse();
-        error.setTimestamp(LocalDateTime.now());
-        error.setErrors(message);
-        error.setStatus(status.value());
-        return error;
-    }
+                    log.warn("Restricción de entidad incumplida tras pasar la validación de DTO: {}", details);
 
-
-    private Notification getNotification(String action,
-                                         String code,
-                                         String description,
-                                         String severity,
-                                         String path,
-                                         String category, HttpServletRequest s) {
-        return Optional.of(new Notification())
-                .map(notification -> {
-                    notification.setTimestamp(DateTimeFormatter
-                            .ofPattern("yyyy-MM-dd hh:mm:ss")
-                            .format(LocalDateTime.now()));
-                    notification.setAction(action);
-                    notification.setCode(code);
-                    notification.setDescription(description);
-                    notification.setSeverity(severity);
-                    notification.setPath(s.getRequestURI());
-                    notification.setCategory(category);
-                    return notification;
+                    return respond(problems.withDetails(
+                            ErrorCodes.VALIDATION_FAILED,
+                            catalog.resolveMessage(ErrorCodes.VALIDATION_FAILED, List.of(String.valueOf(details.size()))),
+                            details,
+                            uriOf(request)));
                 })
-                .orElseThrow();
+                .orElseGet(() -> internalError(e, request));
+    }
+
+    // --- Seguridad ---
+
+    @ExceptionHandler({FeignException.Unauthorized.class,
+            InvalidBearerTokenException.class,
+            HttpClientErrorException.Unauthorized.class})
+    public ResponseEntity<ProblemDetail> handleUnauthorized(Exception e, HttpServletRequest request) {
+        log.warn("Petición no autenticada a {}: {}", uriOf(request), e.getMessage());
+
+        return respond(problems.fromCode(ErrorCodes.UNAUTHORIZED, uriOf(request)));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ProblemDetail> handleAccessDenied(AccessDeniedException e, HttpServletRequest request) {
+        log.warn("Acceso denegado a {}: {}", uriOf(request), e.getMessage());
+
+        return respond(problems.fromCode(ErrorCodes.FORBIDDEN, uriOf(request)));
+    }
+
+    // --- Errores de otros módulos ---
+
+    @ExceptionHandler({GenericException.class, RailwayInfrastructureException.class})
+    public ResponseEntity<ProblemDetail> handleModuleException(RuntimeException e, HttpServletRequest request) {
+        String code = codeOf(e);
+
+        return catalog.find(code).isPresent()
+                ? respond(problems.fromCode(code, e.getMessage(), uriOf(request)))
+                : respond(problems.fromCode(ErrorCodes.BUSINESS_RULE_VIOLATION, e.getMessage(), uriOf(request)));
+    }
+
+    // --- Cajón de sastre ---
+
+    @ExceptionHandler({ServletException.class, Exception.class})
+    public ResponseEntity<ProblemDetail> handleUnexpected(Exception e, HttpServletRequest request) {
+        return internalError(e, request);
+    }
+
+    /**
+     * Respuesta de fallo interno: mensaje genérico del catálogo y {@code traceId}. El detalle real
+     * queda en el log, asociado a ese mismo identificador.
+     */
+    private ResponseEntity<ProblemDetail> internalError(Exception e, HttpServletRequest request) {
+        ProblemDetail problem = problems.fromCode(ErrorCodes.UNEXPECTED_ERROR, uriOf(request));
+        String traceId = ProblemDetailFactory.traceIdOf(problem);
+
+        log.error("Error inesperado [{}] en {}", traceId, uriOf(request), e);
+
+        if (properties.includeStackTrace()) {
+            problem.setProperty("exception", e.toString());
+        }
+
+        return respond(problem);
+    }
+
+    private ResponseEntity<ProblemDetail> respond(ProblemDetail problem) {
+        return ResponseEntity.status(problem.getStatus())
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(problem);
+    }
+
+    private static ApiErrorDetail toDetail(ObjectError error) {
+        String field = (error instanceof FieldError fieldError) ? fieldError.getField() : error.getObjectName();
+
+        return new ApiErrorDetail(field, ErrorCodes.VALIDATION_INVALID_FORMAT, error.getDefaultMessage());
+    }
+
+    private static String codeOf(RuntimeException e) {
+        return switch (e) {
+            case GenericException generic -> generic.getCode();
+            case RailwayInfrastructureException railway -> railway.getCode();
+            default -> null;
+        };
+    }
+
+    private static String uriOf(HttpServletRequest request) {
+        return request != null ? request.getRequestURI() : null;
+    }
+
+    private static String uriOf(WebRequest request) {
+        return request != null ? request.getDescription(false).replaceFirst("^uri=", "") : null;
     }
 }

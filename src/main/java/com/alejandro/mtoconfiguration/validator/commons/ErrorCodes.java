@@ -7,6 +7,8 @@ public final class ErrorCodes {
     }
 
     // --- VALIDACIÓN ---
+    /** Código agregado: la petición no pasó la validación. El detalle va campo a campo. */
+    public static final String VALIDATION_FAILED         = "VAL-000";
     public static final String VALIDATION_REQUIRED_FIELD = "VAL-001";
     public static final String VALIDATION_INVALID_FORMAT = "VAL-002";
     public static final String VALIDATION_OUT_OF_RANGE   = "VAL-003";
