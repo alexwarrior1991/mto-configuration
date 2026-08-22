@@ -19,6 +19,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.PROFILE_ID_MAX_LENGTH;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.PROFILE_MAX_CANTILEVERS;
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
 @Setter
@@ -91,15 +95,18 @@ public class Profile extends CRUDEntity {
     }
 
     @NotNull
-    @Column(name = "PROFILE_ID", length = 50, nullable = false)
+    @Column(name = "PROFILE_ID", length = PROFILE_ID_MAX_LENGTH, nullable = false)
     public String getProfileId() {
         return profileId;
     }
 
     @NotNull
     @PositiveOrZero
-    @Digits(integer = 9, fraction = 3)
-    @Column(name = "KILOMETRIC_POINT", precision = 12, scale = 3, nullable = false)
+    @Digits(integer = KP_INTEGER_DIGITS, fraction = KP_FRACTION_DIGITS)
+    @Column(name = "KILOMETRIC_POINT",
+            precision = KP_INTEGER_DIGITS + KP_FRACTION_DIGITS,
+            scale = KP_FRACTION_DIGITS,
+            nullable = false)
     public BigDecimal getKp() {
         return kp;
     }
@@ -167,7 +174,7 @@ public class Profile extends CRUDEntity {
         return track;
     }
 
-    @Size(max = 3, message = "The profile must have between 0 and 3 cantilevers")
+    @Size(max = PROFILE_MAX_CANTILEVERS, message = "The profile must have between 0 and 3 cantilevers")
     @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderColumn(name = "insertion_order") // Crea una columna física para guardar el índice [0, 1, 2...]
     @Audited(targetAuditMode = NOT_AUDITED)

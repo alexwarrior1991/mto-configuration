@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.NAME_MAX_LENGTH;
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
 @Setter
@@ -55,7 +56,7 @@ public class ExecutionPackage extends CRUDEntity {
         this.id = id;
     }
 
-    @Column(name = "NAME", length = 200, nullable = false)
+    @Column(name = "NAME", length = NAME_MAX_LENGTH, nullable = false)
     public String getName() {
         return name;
     }

@@ -13,6 +13,21 @@ import org.hibernate.envers.Audited;
 import java.io.Serial;
 import java.math.BigDecimal;
 
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.ARM_ANGLE_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.ARM_ANGLE_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.ARM_ANGLE_MAX;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.ARM_ANGLE_MIN;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CATENARY_HEIGHT_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CATENARY_HEIGHT_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CW_ELEVATION_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CW_ELEVATION_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CW_HEIGHT_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CW_HEIGHT_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.CW_HEIGHT_MIN;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.STAGGER_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.STAGGER_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.WIND_DEFLECTION_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.WIND_DEFLECTION_INTEGER_DIGITS;
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
 @Setter
@@ -54,41 +69,59 @@ public class Cantilever extends CRUDEntity {
         this.id = id;
     }
 
-    @DecimalMin(value = "0.000", inclusive = true)
-    @Digits(integer = 1, fraction = 3)
-    @Column(name = "CW_HEIGHT", precision = 4, scale = 3, nullable = true)
+    @DecimalMin(value = CW_HEIGHT_MIN, inclusive = true)
+    @Digits(integer = CW_HEIGHT_INTEGER_DIGITS, fraction = CW_HEIGHT_FRACTION_DIGITS)
+    @Column(name = "CW_HEIGHT",
+            precision = CW_HEIGHT_INTEGER_DIGITS + CW_HEIGHT_FRACTION_DIGITS,
+            scale = CW_HEIGHT_FRACTION_DIGITS,
+            nullable = true)
     public BigDecimal getCwHeight() {
         return cwHeight;
     }
 
-    @Digits(integer = 3, fraction = 0)
-    @Column(name = "STAGGER", precision = 3, scale = 0, nullable = true)
+    @Digits(integer = STAGGER_INTEGER_DIGITS, fraction = STAGGER_FRACTION_DIGITS)
+    @Column(name = "STAGGER",
+            precision = STAGGER_INTEGER_DIGITS + STAGGER_FRACTION_DIGITS,
+            scale = STAGGER_FRACTION_DIGITS,
+            nullable = true)
     public BigDecimal getStagger() {
         return stagger;
     }
 
-    @Digits(integer = 1, fraction = 3)
-    @Column(name = "CATENARY_HEIGHT", precision = 4, scale = 3, nullable = true)
+    @Digits(integer = CATENARY_HEIGHT_INTEGER_DIGITS, fraction = CATENARY_HEIGHT_FRACTION_DIGITS)
+    @Column(name = "CATENARY_HEIGHT",
+            precision = CATENARY_HEIGHT_INTEGER_DIGITS + CATENARY_HEIGHT_FRACTION_DIGITS,
+            scale = CATENARY_HEIGHT_FRACTION_DIGITS,
+            nullable = true)
     public BigDecimal getCatenaryHeight() {
         return catenaryHeight;
     }
 
-    @Digits(integer = 1, fraction = 3)
-    @Column(name = "CW_ELEVATION", precision = 4, scale = 3, nullable = true)
+    @Digits(integer = CW_ELEVATION_INTEGER_DIGITS, fraction = CW_ELEVATION_FRACTION_DIGITS)
+    @Column(name = "CW_ELEVATION",
+            precision = CW_ELEVATION_INTEGER_DIGITS + CW_ELEVATION_FRACTION_DIGITS,
+            scale = CW_ELEVATION_FRACTION_DIGITS,
+            nullable = true)
     public BigDecimal getCwElevation() {
         return cwElevation;
     }
 
-    @Digits(integer = 1, fraction = 3)
-    @Column(name = "WIND_DEFLECTION", precision = 4, scale = 3, nullable = true)
+    @Digits(integer = WIND_DEFLECTION_INTEGER_DIGITS, fraction = WIND_DEFLECTION_FRACTION_DIGITS)
+    @Column(name = "WIND_DEFLECTION",
+            precision = WIND_DEFLECTION_INTEGER_DIGITS + WIND_DEFLECTION_FRACTION_DIGITS,
+            scale = WIND_DEFLECTION_FRACTION_DIGITS,
+            nullable = true)
     public BigDecimal getWindDeflection() {
         return windDeflection;
     }
 
-    @DecimalMin(value = "-90.000", inclusive = true)
-    @DecimalMax(value = "90.000", inclusive = true)
-    @Digits(integer = 2, fraction = 3)
-    @Column(name = "ARM_ANGLE", precision = 5, scale = 3, nullable = true)
+    @DecimalMin(value = ARM_ANGLE_MIN, inclusive = true)
+    @DecimalMax(value = ARM_ANGLE_MAX, inclusive = true)
+    @Digits(integer = ARM_ANGLE_INTEGER_DIGITS, fraction = ARM_ANGLE_FRACTION_DIGITS)
+    @Column(name = "ARM_ANGLE",
+            precision = ARM_ANGLE_INTEGER_DIGITS + ARM_ANGLE_FRACTION_DIGITS,
+            scale = ARM_ANGLE_FRACTION_DIGITS,
+            nullable = true)
     public BigDecimal getArmAngle() {
         return armAngle;
     }

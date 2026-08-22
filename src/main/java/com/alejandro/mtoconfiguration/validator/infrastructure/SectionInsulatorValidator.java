@@ -2,21 +2,16 @@ package com.alejandro.mtoconfiguration.validator.infrastructure;
 
 import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorDTO;
-import com.alejandro.mtoconfiguration.utils.Utils;
-import com.alejandro.mtoconfiguration.utils.ValidatorUtils;
-import com.alejandro.mtoconfiguration.validator.commons.CRUDValidator;
 import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import com.alejandro.mtoconfiguration.validator.commons.NormalEntityValidator;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.web.context.annotation.RequestScope;
 
-import java.util.Collections;
 import java.util.List;
 
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.NAME_MAX_LENGTH;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.NAME_MIN_LENGTH;
+
 @Component
-@RequestScope
-@Slf4j
 public class SectionInsulatorValidator extends NormalEntityValidator<SectionInsulatorDTO> {
 
     private static final String ENTITY_NAME = "sectionInsulator";
@@ -31,15 +26,16 @@ public class SectionInsulatorValidator extends NormalEntityValidator<SectionInsu
 
     @Override
     protected void validateRequiredFields(SectionInsulatorDTO dto, List<Alert> alerts) {
-        new ValidatorUtils(alerts)
-                .validateRequiredField(dto.getName(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_NAME)
+        check(alerts)
+                .validateRequiredString(dto.getName(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_NAME)
                 .validateRequiredField(dto.getEnabled(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_ENABLED)
-                .validateRequiredFieldIfTrueCondition(
-                        Utils.exists(dto),
-                        dto.getStationId(),
-                        ErrorCodes.VALIDATION_REQUIRED_FIELD,
-                        FIELD_STATION_ID
-                )
-                .validateLengthField(dto.getName(), 1, 100, ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_NAME);
+                .validateLengthField(dto.getName(), NAME_MIN_LENGTH, NAME_MAX_LENGTH,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_NAME);
+    }
+
+    @Override
+    protected void validateParentReferences(SectionInsulatorDTO dto, List<Alert> alerts) {
+        check(alerts)
+                .validateRequiredField(dto.getStationId(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_STATION_ID);
     }
 }

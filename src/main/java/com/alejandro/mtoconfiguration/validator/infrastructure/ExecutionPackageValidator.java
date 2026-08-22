@@ -2,25 +2,17 @@ package com.alejandro.mtoconfiguration.validator.infrastructure;
 
 import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
-import com.alejandro.mtoconfiguration.utils.ValidatorUtils;
-import com.alejandro.mtoconfiguration.validator.commons.CRUDValidator;
 import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import com.alejandro.mtoconfiguration.validator.commons.NormalEntityValidator;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Component;
-import org.springframework.web.context.annotation.RequestScope;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
-import java.util.function.Function;
-import java.util.stream.IntStream;
+
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.NAME_MAX_LENGTH;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.NAME_MIN_LENGTH;
 
 @Component
-@RequestScope
-@Slf4j
 @RequiredArgsConstructor
 public class ExecutionPackageValidator extends NormalEntityValidator<ExecutionPackageDTO> {
 
@@ -37,7 +29,6 @@ public class ExecutionPackageValidator extends NormalEntityValidator<ExecutionPa
     private final TrackValidator trackValidator;
     private final StationValidator stationValidator;
 
-
     @Override
     protected String getEntityName() {
         return ENTITY_NAME;
@@ -45,76 +36,27 @@ public class ExecutionPackageValidator extends NormalEntityValidator<ExecutionPa
 
     @Override
     protected void validateRequiredFields(ExecutionPackageDTO dto, List<Alert> alerts) {
-        new ValidatorUtils(alerts)
-                .validateRequiredField(dto.getName(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_NAME)
+        check(alerts)
+                .validateRequiredString(dto.getName(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_NAME)
                 .validateRequiredField(dto.getInitialPackage(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_INITIAL_PACKAGE)
                 .validateRequiredField(dto.getLength(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_LENGTH)
                 .validateRequiredField(dto.getStartDate(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_START_DATE)
                 .validateRequiredField(dto.getEndDate(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_END_DATE)
                 .validateRequiredField(dto.getCompanyId(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_COMPANY_ID)
-                .validateLengthField(dto.getName(), 1, 100, ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_NAME);
-
-        validateChildren(dto, alerts, false);
+                .validateLengthField(dto.getName(), NAME_MIN_LENGTH, NAME_MAX_LENGTH,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_NAME)
+                .validateDate1IsAfterDate2(dto.getEndDate(), dto.getStartDate(),
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_END_DATE);
     }
 
-
+    /**
+     * Los hijos se validan una sola vez, tanto en alta como en modificación, y cada uno según su
+     * propio estado: uno sin id se valida como alta aunque el paquete se esté actualizando, de modo
+     * que se pueda añadir una vía o una estación nuevas dentro de un update.
+     */
     @Override
-    public List<Alert> validateBeforeUpdate(ExecutionPackageDTO dto) {
-        List<Alert> alerts = super.validateBeforeUpdate(dto);
-
-        if (dto != null) {
-            validateChildren(dto, alerts, true);
-        }
-
-        return alerts;
-    }
-
-    private void validateChildren(ExecutionPackageDTO dto, List<Alert> alerts, boolean update) {
-        addIndexedAlerts(
-                alerts,
-                dto.getTracks(),
-                update ? trackValidator::validateBeforeUpdate : trackValidator::validateBeforeSave,
-                FIELD_TRACKS
-        );
-
-        addIndexedAlerts(
-                alerts,
-                dto.getStations(),
-                update ? stationValidator::validateBeforeUpdate : stationValidator::validateBeforeSave,
-                FIELD_STATIONS
-        );
-    }
-
-
-
-    private <T> void addIndexedAlerts(List<Alert> alerts,
-                                      List<T> items,
-                                      Function<T, List<Alert>> validator,
-                                      String fieldPrefix) {
-        if (CollectionUtils.isEmpty(items)) {
-            return;
-        }
-
-        IntStream.range(0, items.size())
-                .mapToObj(index -> toIndexedAlerts(validator.apply(items.get(index)), fieldPrefix, index))
-                .flatMap(List::stream)
-                .filter(Objects::nonNull)
-                .forEach(alerts::add);
-    }
-
-    private List<Alert> toIndexedAlerts(List<Alert> itemAlerts, String fieldPrefix, int index) {
-        if (CollectionUtils.isEmpty(itemAlerts)) {
-            return List.of();
-        }
-
-        itemAlerts.stream()
-                .filter(Objects::nonNull)
-                .forEach(alert -> alert.setFields(
-                        alert.getFields().stream()
-                                .map(field -> fieldPrefix + "[" + index + "]." + field)
-                                .toList()
-                ));
-
-        return itemAlerts;
+    protected void validateNestedDtos(ExecutionPackageDTO dto, List<Alert> alerts) {
+        validateChildren(alerts, dto.getTracks(), trackValidator, FIELD_TRACKS);
+        validateChildren(alerts, dto.getStations(), stationValidator, FIELD_STATIONS);
     }
 }

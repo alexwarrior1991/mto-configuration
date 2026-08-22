@@ -9,6 +9,7 @@ import org.hibernate.envers.Audited;
 
 import java.io.Serial;
 
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.NAME_MAX_LENGTH;
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
 @Setter
@@ -42,7 +43,7 @@ public class SectionInsulator extends CRUDEntity {
         this.id = id;
     }
 
-    @Column(name = "NAME", length = 200, nullable = false)
+    @Column(name = "NAME", length = NAME_MAX_LENGTH, nullable = false)
     public String getName() {
         return name;
     }

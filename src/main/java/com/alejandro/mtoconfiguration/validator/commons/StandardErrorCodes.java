@@ -1,13 +1,25 @@
 package com.alejandro.mtoconfiguration.validator.commons;
 
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
-public enum StandardErrorCodes implements ErrorCatalogEntry{
+/**
+ * Catálogo de códigos de error.
+ *
+ * <p>Los marcadores de cada plantilla siguen el mismo orden con el que los validadores rellenan
+ * {@code Alert.fields}, de modo que {@code errorCode().format(alert.getFields().toArray())} produzca
+ * el mensaje correcto. Un desajuste aquí no es cosmético: {@code String::formatted} lanzaría
+ * {@code MissingFormatArgumentException}.</p>
+ */
+public enum StandardErrorCodes implements ErrorCatalogEntry {
     VALIDATION_REQUIRED_FIELD(
             new ErrorCode(
                     ErrorCodes.VALIDATION_REQUIRED_FIELD,
                     ErrorType.VALIDATION,
                     Severity.ERROR,
+                    // fields = [campo]
                     "El campo '%s' es obligatorio",
                     false
             )
@@ -18,7 +30,8 @@ public enum StandardErrorCodes implements ErrorCatalogEntry{
                     ErrorCodes.VALIDATION_INVALID_FORMAT,
                     ErrorType.VALIDATION,
                     Severity.ERROR,
-                    "El valor '%s' no tiene el formato correcto para el campo '%s'",
+                    // fields = [campo]
+                    "El campo '%s' no tiene el formato correcto",
                     false
             )
     ),
@@ -28,7 +41,8 @@ public enum StandardErrorCodes implements ErrorCatalogEntry{
                     ErrorCodes.VALIDATION_OUT_OF_RANGE,
                     ErrorType.VALIDATION,
                     Severity.ERROR,
-                    "El valor '%s' está fuera del rango permitido para el campo '%s'",
+                    // fields = [campo, minimo, maximo]
+                    "El campo '%s' está fuera del rango permitido (%s - %s)",
                     false
             )
     ),
@@ -49,7 +63,8 @@ public enum StandardErrorCodes implements ErrorCatalogEntry{
                     ErrorCodes.DUPLICATED_RESOURCE,
                     ErrorType.BUSINESS,
                     Severity.WARNING,
-                    "El recurso con identificador '%s' ya existe",
+                    // fields = [campo]
+                    "El valor del campo '%s' está repetido",
                     false
             )
     ),
@@ -158,6 +173,9 @@ public enum StandardErrorCodes implements ErrorCatalogEntry{
             )
     );
 
+    private static final Map<String, ErrorCode> BY_CODE = Arrays.stream(values())
+            .collect(Collectors.toUnmodifiableMap(entry -> entry.errorCode.code(), entry -> entry.errorCode));
+
     private final ErrorCode errorCode;
 
     StandardErrorCodes(ErrorCode errorCode) {
@@ -167,5 +185,14 @@ public enum StandardErrorCodes implements ErrorCatalogEntry{
     @Override
     public ErrorCode errorCode() {
         return errorCode;
+    }
+
+    public static Optional<ErrorCode> findByCode(String code) {
+        return Optional.ofNullable(BY_CODE.get(code));
+    }
+
+    /** Resolver del catálogo, para traducir a mensaje el código que viaja en cada {@code Alert}. */
+    public static ErrorCodeResolver resolver() {
+        return StandardErrorCodes::findByCode;
     }
 }
