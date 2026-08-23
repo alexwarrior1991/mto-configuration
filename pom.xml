@@ -36,6 +36,7 @@
         <!-- Version de la API de Docker que declara el cliente de Testcontainers -->
         <docker.api.version>1.44</docker.api.version>
         <testcontainers.version>1.21.3</testcontainers.version>
+        <poi.version>5.4.1</poi.version>
     </properties>
     <dependencies>
         <dependency>
@@ -176,6 +177,19 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- Lectura de workbooks Excel para la importacion de configuracion.
+     Queda confinada al package core.excel: ninguna otra capa usa POI. -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
         </dependency>
 
         <!-- Dependencies rabbitmq -->
