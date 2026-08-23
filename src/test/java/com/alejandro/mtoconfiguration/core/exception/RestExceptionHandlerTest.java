@@ -138,6 +138,35 @@ class RestExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("una excepción con código del catálogo usa su estado y rellena la plantilla")
+    void excepcionConCodigoDelCatalogo() throws Exception {
+        mockMvc.perform(get("/probe/business"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value(ErrorCodes.BUSINESS_RULE_VIOLATION))
+                .andExpect(jsonPath("$.detail").value("Regla de negocio violada: El paquete ya está cerrado"));
+    }
+
+    @Test
+    @DisplayName("ningún marcador de plantilla llega al cliente")
+    void ningunMarcadorLlegaAlCliente() throws Exception {
+        for (String path : List.of("/probe/validation", "/probe/business", "/probe/not-found",
+                "/probe/concurrency", "/probe/boom")) {
+            mockMvc.perform(get(path))
+                    .andExpect(jsonPath("$.detail").value(not(containsString("%s"))))
+                    .andExpect(jsonPath("$.detail").value(not(containsString("%d"))));
+        }
+    }
+
+    @Test
+    @DisplayName("una excepción de servicio sin código del catálogo es un fallo interno")
+    void excepcionDeServicioSinCodigoEsInterna() throws Exception {
+        mockMvc.perform(get("/probe/plain-base"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value(ErrorCodes.UNEXPECTED_ERROR))
+                .andExpect(jsonPath("$.detail").value(not(containsString("CriteriaSearchRepository"))));
+    }
+
+    @Test
     @DisplayName("los mensajes en castellano viajan en UTF-8, no mutilados")
     void losMensajesViajanEnUtf8() throws Exception {
         var response = mockMvc.perform(get("/probe/validation")).andReturn().getResponse();
@@ -177,6 +206,17 @@ class RestExceptionHandlerTest {
             throw new ValidationException(List.of(
                     Alert.ofDanger(ErrorCodes.VALIDATION_REQUIRED_FIELD, "name"),
                     Alert.ofDanger(ErrorCodes.VALIDATION_REQUIRED_FIELD, "enabled")));
+        }
+
+        @GetMapping("/probe/business")
+        String business() {
+            throw new BaseException(Alert.ofDanger(
+                    ErrorCodes.BUSINESS_RULE_VIOLATION, "El paquete ya está cerrado"));
+        }
+
+        @GetMapping("/probe/plain-base")
+        String plainBase() {
+            throw new BaseException("Search method not implemented (CriteriaSearchRepository is null)");
         }
 
         @GetMapping("/probe/not-found")

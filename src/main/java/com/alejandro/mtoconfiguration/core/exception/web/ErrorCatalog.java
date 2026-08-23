@@ -106,8 +106,15 @@ public class ErrorCatalog {
         } catch (RuntimeException e) {
             log.warn("La plantilla de {} no admite los argumentos {}: {}",
                     errorCode.code(), args, e.getMessage());
-            return errorCode.messageTemplate();
+
+            // Se devuelve la plantilla sin sus marcadores: un "%s" suelto en la respuesta no le
+            // dice nada a quien la lee y delata que el catálogo está mal montado.
+            return stripPlaceholders(errorCode.messageTemplate());
         }
+    }
+
+    private static String stripPlaceholders(String template) {
+        return template.replaceAll("\\s*'?%[sd]'?", "").trim();
     }
 
     private static String titleOf(ErrorType type) {

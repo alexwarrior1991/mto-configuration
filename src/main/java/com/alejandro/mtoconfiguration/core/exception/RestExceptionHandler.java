@@ -94,10 +94,14 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(BaseException.class)
     public ResponseEntity<ProblemDetail> handleBase(BaseException e, HttpServletRequest request) {
         return e.getErrors().stream()
-                .map(alert -> alert.getMessage())
-                .filter(code -> catalog.find(code).isPresent())
+                .filter(alert -> catalog.find(alert.getMessage()).isPresent())
                 .findFirst()
-                .map(code -> respond(problems.fromCode(code, uriOf(request))))
+                // Los campos de la alerta son los argumentos de la plantilla: sin ellos, un mensaje
+                // parametrizado saldría con el marcador sin sustituir.
+                .map(alert -> respond(problems.fromCode(
+                        alert.getMessage(),
+                        catalog.resolveMessage(alert.getMessage(), alert.getFields()),
+                        uriOf(request))))
                 .orElseGet(() -> internalError(e, request));
     }
 
@@ -140,7 +144,7 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
                     List<ApiErrorDetail> details = violation.getConstraintViolations().stream()
                             .map(v -> new ApiErrorDetail(
                                     v.getPropertyPath().toString(),
-                                    ErrorCodes.VALIDATION_OUT_OF_RANGE,
+                                    ErrorCodes.VALIDATION_INVALID_FORMAT,
                                     v.getMessage()))
                             .distinct()
                             .toList();
