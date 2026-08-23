@@ -116,8 +116,8 @@ class ProfileValidatorTest {
 
     @Test
     void rechazaUnLoteVacio() {
-        assertError(validator.validateBeforeBulkSave(List.of()), ErrorCodes.VALIDATION_REQUIRED_FIELD, "profiles");
-        assertError(validator.validateBeforeBulkSave(null), ErrorCodes.VALIDATION_REQUIRED_FIELD, "profiles");
+        assertError(validator.validateBeforeBulkSave(List.of()), ErrorCodes.VALIDATION_REQUIRED_FIELD, "profile");
+        assertError(validator.validateBeforeBulkSave(null), ErrorCodes.VALIDATION_REQUIRED_FIELD, "profile");
     }
 
     @Test
@@ -132,8 +132,8 @@ class ProfileValidatorTest {
         List<Alert> alerts = validator.validateBeforeBulkSave(
                 ValidDtos.listOf(perfilConId("P-1", null), perfilConId("P-1", null)));
 
-        assertError(alerts, ErrorCodes.DUPLICATED_RESOURCE, "profiles[0].profileId");
-        assertError(alerts, ErrorCodes.DUPLICATED_RESOURCE, "profiles[1].profileId");
+        assertError(alerts, ErrorCodes.DUPLICATED_RESOURCE, "[0].profileId");
+        assertError(alerts, ErrorCodes.DUPLICATED_RESOURCE, "[1].profileId");
     }
 
     @Test
@@ -150,8 +150,8 @@ class ProfileValidatorTest {
         List<Alert> alerts = validator.validateBeforeBulkUpdate(
                 ValidDtos.listOf(perfilConId("P-1", 1L), perfilConId("P-2", 1L)));
 
-        assertError(alerts, ErrorCodes.DUPLICATED_RESOURCE, "profiles[0].id");
-        assertError(alerts, ErrorCodes.DUPLICATED_RESOURCE, "profiles[1].id");
+        assertError(alerts, ErrorCodes.DUPLICATED_RESOURCE, "[0].id");
+        assertError(alerts, ErrorCodes.DUPLICATED_RESOURCE, "[1].id");
     }
 
     @Test
@@ -163,15 +163,15 @@ class ProfileValidatorTest {
         List<Alert> alerts = validator.validateBeforeBulkSave(
                 ValidDtos.listOf(ValidDtos.rootProfile(), malo));
 
-        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "profiles[1].profileId");
-        assertNoError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "profiles[0].profileId");
+        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "[1].profileId");
+        assertNoError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "[0].profileId");
     }
 
     @Test
     void elLoteDeActualizacionExigeElId() {
         List<Alert> alerts = validator.validateBeforeBulkUpdate(ValidDtos.listOf(ValidDtos.rootProfile()));
 
-        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "profiles[0].id");
+        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "[0].id");
     }
 
     private static ProfileDTO perfilConId(String profileId, Long id) {

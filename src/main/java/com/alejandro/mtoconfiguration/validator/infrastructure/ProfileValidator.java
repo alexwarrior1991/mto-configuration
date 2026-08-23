@@ -10,7 +10,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -78,36 +77,33 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
         validateChild(alerts, dto.getDisconnector(), disconnectorValidator, FIELD_DISCONNECTOR);
     }
 
+    /**
+     * Al alta en lote se le añade lo único que no puede ver una validación elemento a elemento:
+     * que el propio envío traiga identificadores repetidos.
+     */
     @Override
     public List<Alert> validateBeforeBulkSave(List<ProfileDTO> dtoList) {
-        return validateBulk(dtoList, this::validateBeforeSave);
+        List<Alert> alerts = super.validateBeforeBulkSave(dtoList);
+        validateDuplicates(dtoList, alerts);
+
+        return alerts;
     }
 
     @Override
     public List<Alert> validateBeforeBulkUpdate(List<ProfileDTO> dtoList) {
-        return validateBulk(dtoList, this::validateBeforeUpdate);
+        List<Alert> alerts = super.validateBeforeBulkUpdate(dtoList);
+        validateDuplicates(dtoList, alerts);
+
+        return alerts;
     }
 
-    /**
-     * Un lote se valida elemento a elemento y, además, contra sí mismo: los identificadores
-     * repetidos dentro del propio lote no los detecta ninguna restricción por elemento.
-     */
-    private List<Alert> validateBulk(List<ProfileDTO> dtoList, Function<ProfileDTO, List<Alert>> validator) {
-        List<Alert> alerts = new ArrayList<>();
-
+    private void validateDuplicates(List<ProfileDTO> dtoList, List<Alert> alerts) {
         if (CollectionUtils.isEmpty(dtoList)) {
-            alerts.add(Alert.ofDanger(ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_PROFILES));
-            return alerts;
+            return;
         }
-
-        IntStream.range(0, dtoList.size())
-                .forEach(index -> alerts.addAll(
-                        prefixFields(validator.apply(dtoList.get(index)), FIELD_PROFILES + "[" + index + "]")));
 
         validateDuplicates(dtoList, alerts, ProfileDTO::getId, FIELD_ID);
         validateDuplicates(dtoList, alerts, dto -> normalizeProfileId(dto.getProfileId()), FIELD_PROFILE_ID);
-
-        return alerts;
     }
 
     /**
@@ -131,7 +127,7 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
                 .sorted()
                 .forEach(index -> alerts.add(Alert.ofDanger(
                         ErrorCodes.DUPLICATED_RESOURCE,
-                        FIELD_PROFILES + "[" + index + "]." + fieldName)));
+                        "[" + index + "]." + fieldName)));
     }
 
     private static BigDecimal parseKp(String kp) {
