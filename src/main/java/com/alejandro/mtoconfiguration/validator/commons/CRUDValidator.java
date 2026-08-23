@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 
 public abstract class CRUDValidator<T extends BaseDTO> extends GenericValidator<T> {
 
@@ -79,6 +80,53 @@ public abstract class CRUDValidator<T extends BaseDTO> extends GenericValidator<
                 : validator.validateBeforeUpdateAsChild(child);
 
         target.addAll(prefixFields(childAlerts, path));
+    }
+
+    /**
+     * Validación de un alta en lote: cada elemento con las mismas reglas que en un alta individual.
+     *
+     * <p>El comportamiento por defecto <b>valida</b>. Antes era devolver la lista vacía, es decir no
+     * validar nada, y bastaba con olvidarse de sobrescribir el método para dejar un endpoint de lote
+     * sin ninguna comprobación. Quien necesite reglas adicionales de lote —duplicados dentro del
+     * propio envío, por ejemplo— llama a {@code super} y añade las suyas.</p>
+     */
+    @Override
+    public List<Alert> validateBeforeBulkSave(List<T> dtoList) {
+        return validateBulk(dtoList, this::validateBeforeSave);
+    }
+
+    @Override
+    public List<Alert> validateBeforeBulkUpdate(List<T> dtoList) {
+        return validateBulk(dtoList, this::validateBeforeUpdate);
+    }
+
+    /**
+     * Recorre el lote acumulando las alertas de cada elemento con su índice.
+     *
+     * <p>En un endpoint de lote el cuerpo de la petición <i>es</i> el array, así que la ruta de un
+     * campo es {@code [i].campo}: la ruta siempre se expresa desde la raíz del cuerpo, igual que un
+     * hijo anidado se expresa {@code tracks[i].campo} porque allí la raíz es el objeto padre.</p>
+     */
+    protected List<Alert> validateBulk(List<T> dtoList, Function<T, List<Alert>> validator) {
+        List<Alert> alerts = new ArrayList<>();
+
+        if (CollectionUtils.isEmpty(dtoList)) {
+            alerts.add(Alert.ofDanger(ErrorCodes.VALIDATION_REQUIRED_FIELD, getEntityName()));
+            return alerts;
+        }
+
+        for (int index = 0; index < dtoList.size(); index++) {
+            T dto = dtoList.get(index);
+            String path = "[" + index + "]";
+
+            if (dto == null) {
+                alerts.add(Alert.ofDanger(ErrorCodes.VALIDATION_REQUIRED_FIELD, path));
+            } else {
+                alerts.addAll(prefixFields(validator.apply(dto), path));
+            }
+        }
+
+        return alerts;
     }
 
     /**
