@@ -330,7 +330,9 @@ Si `outbox_message` ya es enorme en producción, conviene crearlos antes a mano 
 Este servicio **publica**, no consume: no hay un solo `@RabbitListener` en el repositorio. Sin embargo declara las cuatro colas de datos maestros, que consumen otros servicios. Eso trae dos problemas:
 
 - **El consumidor es quien sabe lo que necesita** (qué TTL, qué límite, qué tipo de cola). Mientras las declare el productor, esas decisiones se toman en el sitio equivocado.
-- **Un desacuerdo tumba toda la topología.** Si otro servicio declara `mto.master-data.audit.queue` con un argumento distinto, el broker responde `PRECONDITION_FAILED (406)` y Spring aborta el bloque entero de declaraciones — incluido el exchange que sí es de este servicio.
+- **Un desacuerdo rompe el enrutado.** Declarar en los dos lados es idempotente **solo si los argumentos coinciden exactamente**. Si no, el broker responde `PRECONDITION_FAILED (406)` y cierra el canal. `RabbitAdmin` declara en este orden —exchanges, colas, bindings— sobre un único canal, así que los exchanges ya declarados sobreviven, pero se quedan sin declarar el resto de colas del lote y **todos los bindings**. Sin bindings no se enruta nada.
+
+Declarar el **exchange** en ambos lados sí es buena idea: es el contrato del productor, sus argumentos (tipo y durabilidad) casi nunca cambian, y hacerlo en los dos sitios elimina la dependencia de orden en el despliegue. El problema son las colas, cuyos argumentos son justo los que evolucionan.
 
 Por eso existe `declare`:
 

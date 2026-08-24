@@ -139,10 +139,12 @@ app:
       # Si este servicio declara las colas de la lista.
       #
       # Una cola pertenece a quien la CONSUME, no a quien publica: es el consumidor
-      # el que sabe que TTL, que limite y que tipo necesita. Mientras las declare el
-      # productor, basta con que el consumidor use un argumento distinto para que el
-      # broker responda PRECONDITION_FAILED y se caiga la declaracion de TODA la
-      # topologia, incluido el exchange que si es de este servicio.
+      # el que sabe que TTL, que limite y que tipo necesita.
+      #
+      # Declararla en los dos lados es idempotente SOLO si los argumentos coinciden
+      # exactamente. Si no, el broker responde PRECONDITION_FAILED y cierra el canal:
+      # los exchanges ya declarados sobreviven, pero se quedan sin declarar el resto
+      # de colas del lote y TODOS los bindings, y sin bindings no se enruta nada.
       #
       # Sigue en true porque las colas de abajo ya existen en los entornos y las
       # consumen otros servicios: pasarlo a false hay que coordinarlo con ellos.

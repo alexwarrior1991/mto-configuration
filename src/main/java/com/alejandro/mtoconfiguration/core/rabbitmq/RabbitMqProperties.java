@@ -77,10 +77,16 @@ public class RabbitMqProperties {
          * Si esta aplicacion declara las colas de la lista.
          * <p>
          * Una cola pertenece a quien la consume, no a quien publica: es el consumidor
-         * el que sabe que TTL, que limite y que tipo necesita. Cuando el productor
-         * las declara tambien, basta con que el consumidor use un argumento distinto
-         * para que el broker responda PRECONDITION_FAILED y se caiga la declaracion
-         * de TODA la topologia, incluido el exchange que si es de este servicio.
+         * el que sabe que TTL, que limite y que tipo necesita.
+         * <p>
+         * Declarar en los dos lados es idempotente SOLO si los argumentos coinciden
+         * exactamente. Si no, el broker responde PRECONDITION_FAILED y cierra el canal:
+         * RabbitAdmin declara exchanges, luego colas y luego bindings sobre el mismo
+         * canal, de modo que los exchanges ya declarados sobreviven, pero se quedan sin
+         * declarar el resto de colas del lote y TODOS los bindings. Sin bindings no se
+         * enruta nada. Y con dos repositorios y dos ciclos de release, los argumentos
+         * acaban divergiendo: el consumidor querra un TTL y no podra ponerlo sin un
+         * despliegue coordinado de un servicio al que eso no le afecta.
          */
         private boolean declareQueues = true;
 
