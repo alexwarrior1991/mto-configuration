@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.core.outbox;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
@@ -9,4 +10,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties(OutboxProperties.class)
 public class OutboxConfiguration {
 
+    @Bean
+    public OutboxRetryPolicy outboxRetryPolicy(OutboxProperties outboxProperties) {
+        return new OutboxRetryPolicy(outboxProperties);
+    }
 }

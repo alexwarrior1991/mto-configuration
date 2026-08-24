@@ -84,7 +84,7 @@ spring:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: ${SPRING_RABBITMQ_PORT:5672}
     username: ${SPRING_RABBITMQ_USERNAME:guest}
-    password: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
     virtual-host: /
     # Publisher confirmation type for reliable message delivery
     publisher-confirm-type: correlated
@@ -258,12 +258,34 @@ app:
   outbox:
     # Enable/disable the outbox pattern
     enabled: true
-    # Maximum retry attempts for failed message publishing
-    max-attempts: 10
-    # Initial delay before retrying failed messages
+    # Intentos antes de dar el mensaje por perdido (FAILED). Con backoff exponencial
+    # acotado, 20 intentos cubren mas de una hora de broker caido.
+    max-attempts: 20
+    # Retardo del primer reintento; se duplica en cada intento hasta max-retry-delay
     initial-retry-delay: 5s
+    # Tope del backoff exponencial
+    max-retry-delay: 5m
+    # Desviacion aleatoria del retardo (0.2 => [0.8*d, 1.2*d]): evita que todas las
+    # replicas reintenten a la vez contra un broker que acaba de levantarse
+    retry-jitter: 0.2
     # Fixed delay between outbox publisher executions
     publisher-fixed-delay: 5s
+    # Mensajes que reclama cada pasada del relay
+    batch-size: 50
+    # Tiempo que un mensaje reclamado queda invisible para el resto de replicas.
+    # Es la red de seguridad si el proceso muere entre reclamar y publicar.
+    claim-visibility-timeout: 5m
+    # Espera maxima por el publisher confirm antes de dar el envio por fallido
+    confirm-timeout: 10s
+
+# Endpoints de explotacion. Por defecto Boot solo expone health, asi que el endpoint
+# del outbox (estado y redrive de los FAILED) hay que declararlo. El acceso queda
+# restringido a ADMIN/OPS en SecurityConfiguration.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,outbox
 
 # Cache configuration for Redis-based caching strategy
 cache:

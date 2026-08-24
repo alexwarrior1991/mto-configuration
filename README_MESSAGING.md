@@ -15,7 +15,9 @@ El patrón **Outbox** soluciona esto guardando el mensaje en una tabla de la mis
 - **Genérico y Extensible**: No es necesario crear lógica de mensajería por cada nueva entidad.
 - **Integridad**: Cada mensaje incluye un hash SHA-256 para verificar que no ha sido alterado.
 - **Trazabilidad**: Uso de `operationId` (UUID) para seguir el flujo de un evento en todo el sistema.
-- **Resiliencia**: Gestión automática de reintentos con backoff exponencial en caso de fallos de red o del broker.
+- **Resiliencia**: Reintentos con backoff exponencial acotado en caso de fallos de red o del broker.
+- **Exactamente una publicación por réplica**: el relay reclama los mensajes con `FOR UPDATE SKIP LOCKED`, de modo que varias instancias reparten el trabajo en lugar de duplicarlo.
+- **Confirmación del broker**: un mensaje solo pasa a `PUBLISHED` cuando RabbitMQ lo ha aceptado (publisher confirms).
 
 ---
 
@@ -49,13 +51,25 @@ Implementa la persistencia y el reenvío de mensajes.
     Representa un registro en la tabla `outbox_message`. Almacena el destino (exchange/routing-key), el payload en formato JSON y el estado del envío.
 
 *   **`OutboxStatus` (Enum)**:
-    Define los estados: `PENDING` (pendiente), `PUBLISHED` (enviado), `FAILED` (fallido tras agotar reintentos).
+    Define los estados: `PENDING` (pendiente), `IN_PROGRESS` (reclamado por un relay que está intentando publicarlo), `PUBLISHED` (aceptado por RabbitMQ) y `FAILED` (agotados los reintentos).
 
 *   **`OutboxService`**:
     Ofrece el método `save()` para persistir eventos. **Debe llamarse siempre dentro de una transacción `@Transactional`**.
 
 *   **`OutboxPublisherScheduler`**:
-    El motor del sistema. Se ejecuta cada pocos segundos (configurable) y busca mensajes `PENDING`. Realiza el envío real a RabbitMQ y actualiza el estado. Si falla, programa el siguiente intento aplicando un retardo creciente.
+    El motor del sistema. Se ejecuta cada pocos segundos (configurable): reclama un lote, lo publica y cierra el estado de cada mensaje. **No es transaccional**: la I/O contra RabbitMQ nunca debe retener una conexión de base de datos.
+
+*   **`OutboxRelayService`**:
+    La única frontera transaccional del relay, siempre con transacciones cortas. `claimBatch()` reclama un lote con `FOR UPDATE SKIP LOCKED` y lo deja invisible para el resto de réplicas durante `claim-visibility-timeout`; `markPublished()` y `markFailed()` cierran cada mensaje.
+
+*   **`OutboxRabbitPublisher`**:
+    Publica y **espera la confirmación del broker**. Detecta las dos formas de fracaso silencioso: el `nack` y el mensaje no enrutable (`basic.return`, que llega siempre antes del ack). Sin publisher confirms configurados, la aplicación no arranca.
+
+*   **`OutboxRetryPolicy`**:
+    Backoff exponencial `initial-retry-delay * 2^(intentos-1)`, acotado a `max-retry-delay` y con jitter para que las réplicas no reintenten a la vez.
+
+*   **`OutboxAdminService` / `OutboxEndpoint`**:
+    Estado del outbox y *redrive* de los mensajes `FAILED`, expuestos en `/actuator/outbox` (requiere rol `ADMIN` u `OPS`).
 
 ---
 
@@ -142,12 +156,12 @@ El flujo de un evento en este módulo sigue un camino estrictamente controlado p
 
 ### Fase 2: El Relay (Envío al Broker)
 5.  **Scheduler**: El `OutboxPublisherScheduler` despierta cada N segundos.
-6.  **Recuperación**: Busca los mensajes marcados como `PENDING` en la tabla.
-7.  **Publicación**: Utiliza `RabbitTemplate` para enviar el JSON al exchange `mto.master-data.exchange`.
-8.  **Confirmación**:
-    *   **Éxito**: El estado del mensaje en la tabla cambia a `PUBLISHED`.
-    *   **Fallo Temporal**: Si RabbitMQ está caído, el scheduler lo reintentará más tarde con un retardo mayor (Backoff).
-    *   **Fallo Definitivo**: Tras agotar los reintentos configurados, el mensaje queda como `FAILED` para alerta de administración.
+6.  **Reclamo** (transacción corta): `FOR UPDATE SKIP LOCKED` se lleva un lote **disjunto** del que se lleve cualquier otra réplica. Las filas pasan a `IN_PROGRESS` y quedan invisibles durante `claim-visibility-timeout`. Si el proceso muere antes de cerrarlas, otra réplica las recupera al expirar ese plazo.
+7.  **Publicación** (fuera de transacción): se envía el JSON al exchange `mto.master-data.exchange` y se **espera el publisher confirm**.
+8.  **Cierre** (transacción corta):
+    *   **Éxito**: con el `ack` del broker el mensaje pasa a `PUBLISHED`.
+    *   **Fallo temporal**: `nack`, mensaje no enrutable, o sin respuesta dentro de `confirm-timeout`. Vuelve a `PENDING` con el siguiente intento aplazado por backoff exponencial.
+    *   **Fallo definitivo**: agotados los intentos, queda en `FAILED`. **No es terminal**: `POST /actuator/outbox` lo devuelve a `PENDING` una vez corregida la causa.
 
 ### Fase 3: Enrutado y Consumo
 9.  **Distribución**: El Exchange recibe el mensaje y, basándose en la Routing Key, lo deposita en una o varias colas (Audit, Events, Cache, etc.).
@@ -211,9 +225,23 @@ app:
 
   outbox:
     enabled: true
-    max-attempts: 10
+    # Intentos antes de dar el mensaje por perdido. Con backoff exponencial acotado,
+    # 20 intentos cubren mas de una hora de broker caido.
+    max-attempts: 20
     initial-retry-delay: 5s
-    publisher-fixed-delay: 5000 # ms
+    max-retry-delay: 5m
+    retry-jitter: 0.2
+    publisher-fixed-delay: 5s
+    batch-size: 50
+    # Tiempo que un mensaje reclamado queda invisible para el resto de replicas
+    claim-visibility-timeout: 5m
+    confirm-timeout: 10s
+
+spring:
+  rabbitmq:
+    # Obligatorio: sin publisher confirms el relay no arranca
+    publisher-confirm-type: correlated
+    publisher-returns: true
 ```
 
 ---
@@ -221,5 +249,50 @@ app:
 ## 7. Monitoreo y Resolución de Problemas
 
 1.  **Tabla Outbox**: Si un mensaje no llega a RabbitMQ, consulta la tabla `outbox_message`. El campo `last_error` indicará el motivo del fallo y `attempts` cuántas veces se ha intentado.
-2.  **Logs**: Busca el prefijo `Outbox message published` para confirmar envíos exitosos.
+2.  **Logs**: Busca el prefijo `Outbox message publicado y confirmado` para los envíos con ack del broker.
 3.  **Dead Letter Queues**: Si RabbitMQ recibe el mensaje pero el consumidor falla repetidamente, el mensaje terminará en la cola `.dlq` correspondiente para inspección manual.
+
+---
+
+## 8. Explotación
+
+### Estado del outbox
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://.../actuator/outbox
+```
+
+```json
+{"pending":3,"inProgress":0,"published":15234,"failed":0,"oldestPendingCreatedAt":"2026-08-24T10:15:02Z"}
+```
+
+`oldestPendingCreatedAt` es la señal que conviene vigilar: si envejece, el relay está roto, sea cual sea la causa. Una alerta por encima de 60 segundos cubre casi todos los fallos posibles del circuito.
+
+### Reencolar los mensajes fallidos
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"limit": 100}' https://.../actuator/outbox
+```
+
+Devuelve a `PENDING` los `FAILED` más antiguos con el contador de intentos a cero. Hacerlo **después** de corregir la causa: si no, vuelven a agotar la ventana de reintentos.
+
+### Requisitos de configuración
+
+| Propiedad | Por qué es obligatoria |
+| :--- | :--- |
+| `spring.rabbitmq.publisher-confirm-type: correlated` | Sin ella el relay no arranca: no podría distinguir un mensaje aceptado por el broker de uno perdido. |
+| `spring.rabbitmq.publisher-returns: true` | Detecta los mensajes que no encajan en ninguna cola. |
+| `management.endpoints.web.exposure.include` con `outbox` | Necesario para el endpoint de explotación. |
+
+### Índice recomendado en `outbox_message`
+
+El relay consulta en cada pasada por estado y fecha de reintento. Sin índice, cada tick es un *seq scan* sobre una tabla que solo crece:
+
+```sql
+CREATE INDEX CONCURRENTLY idx_outbox_message_claim
+    ON outbox_message (next_attempt_at, created_at)
+    WHERE status IN ('PENDING', 'IN_PROGRESS');
+```
+
+Un índice parcial se mantiene diminuto aunque la tabla acumule millones de filas publicadas.
