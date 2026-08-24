@@ -15,6 +15,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -72,6 +74,9 @@ class OutboxRelayIT {
     private OutboxRabbitPublisher outboxRabbitPublisher;
 
     @Autowired
+    private OutboxPurgeScheduler outboxPurgeScheduler;
+
+    @Autowired
     private DataSource dataSource;
 
     @DynamicPropertySource
@@ -90,6 +95,9 @@ class OutboxRelayIT {
         outboxProperties.setMaxRetryDelay(Duration.ofMinutes(5));
         outboxProperties.setRetryJitter(0d);
         outboxProperties.setClaimVisibilityTimeout(Duration.ofMinutes(5));
+        outboxProperties.getPurge().setRetention(Duration.ofDays(7));
+        outboxProperties.getPurge().setBatchSize(500);
+        outboxProperties.getPurge().setMaxBatchesPerRun(20);
     }
 
     // ------------------------------------------------------------------ reclamo
@@ -405,6 +413,107 @@ class OutboxRelayIT {
                 .isEqualTo(OutboxStatus.PUBLISHED);
     }
 
+    // ------------------------------------------------------------------ purga
+
+    @Test
+    void laPurgaBorraLosPublicadosAntiguosYRespetaElResto() {
+        Instant viejo = Instant.now().minus(Duration.ofDays(30));
+
+        UUID publicadoAntiguo = persist(message -> {
+            message.setStatus(OutboxStatus.PUBLISHED);
+            message.setPublishedAt(viejo);
+        });
+        UUID publicadoReciente = persist(message -> {
+            message.setStatus(OutboxStatus.PUBLISHED);
+            message.setPublishedAt(Instant.now());
+        });
+        UUID fallidoAntiguo = persist(message -> {
+            message.setStatus(OutboxStatus.FAILED);
+            message.setCreatedAt(viejo);
+        });
+        UUID pendienteAntiguo = persist(message -> {
+            message.setStatus(OutboxStatus.PENDING);
+            message.setCreatedAt(viejo);
+        });
+
+        outboxPurgeScheduler.purgePublishedMessages();
+
+        assertThat(outboxMessageRepository.findById(publicadoAntiguo)).isEmpty();
+        assertThat(outboxMessageRepository.findById(publicadoReciente))
+                .as("dentro del periodo de retencion no se toca")
+                .isPresent();
+        assertThat(outboxMessageRepository.findById(fallidoAntiguo))
+                .as("un FAILED es justo lo que hay que mirar: borrarlo seria tapar el problema")
+                .isPresent();
+        assertThat(outboxMessageRepository.findById(pendienteAntiguo))
+                .as("un PENDING todavia no se ha publicado; borrarlo seria perder el evento")
+                .isPresent();
+    }
+
+    @Test
+    void laPurgaSeGuiaPorElEstadoYNoSoloPorLaFecha() {
+        Instant viejo = Instant.now().minus(Duration.ofDays(30));
+
+        // Fila artificial pero posible: un mensaje que NO esta publicado y aun asi
+        // lleva published_at informado. Si la purga se fiara solo de la fecha, se
+        // llevaria por delante un evento que nadie ha llegado a enviar.
+        UUID pendienteConFecha = persist(message -> {
+            message.setStatus(OutboxStatus.PENDING);
+            message.setPublishedAt(viejo);
+            message.setCreatedAt(viejo);
+        });
+        UUID fallidoConFecha = persist(message -> {
+            message.setStatus(OutboxStatus.FAILED);
+            message.setPublishedAt(viejo);
+            message.setCreatedAt(viejo);
+        });
+
+        outboxPurgeScheduler.purgePublishedMessages();
+
+        assertThat(outboxMessageRepository.findById(pendienteConFecha)).isPresent();
+        assertThat(outboxMessageRepository.findById(fallidoConFecha)).isPresent();
+    }
+
+    @Test
+    void laPurgaBorraPorLotesHastaVaciarLoQueToca() {
+        Instant viejo = Instant.now().minus(Duration.ofDays(30));
+        IntStream.range(0, 25).forEach(i -> persist(message -> {
+            message.setStatus(OutboxStatus.PUBLISHED);
+            message.setPublishedAt(viejo);
+        }));
+
+        outboxProperties.getPurge().setBatchSize(10);
+
+        outboxPurgeScheduler.purgePublishedMessages();
+
+        assertThat(outboxMessageRepository.count()).isZero();
+    }
+
+    @Test
+    void laPurgaNoHaceMasTrabajoDelPermitidoEnUnaPasada() {
+        Instant viejo = Instant.now().minus(Duration.ofDays(30));
+        IntStream.range(0, 25).forEach(i -> persist(message -> {
+            message.setStatus(OutboxStatus.PUBLISHED);
+            message.setPublishedAt(viejo);
+        }));
+
+        // Sobre una tabla enorme, la primera pasada no puede ser un borrado de horas.
+        outboxProperties.getPurge().setBatchSize(5);
+        outboxProperties.getPurge().setMaxBatchesPerRun(2);
+
+        outboxPurgeScheduler.purgePublishedMessages();
+
+        assertThat(outboxMessageRepository.count()).isEqualTo(15);
+    }
+
+    @Test
+    void laPurgaSobreUnOutboxLimpioNoHaceNada() {
+        persistPending(3);
+
+        assertThatCode(() -> outboxPurgeScheduler.purgePublishedMessages()).doesNotThrowAnyException();
+        assertThat(outboxMessageRepository.count()).isEqualTo(3);
+    }
+
     // ------------------------------------------------------------------ utilidades
 
     private List<UUID> persistPending(int count) {
@@ -466,9 +575,26 @@ class OutboxRelayIT {
         }
 
         @Bean
+        OutboxMetrics outboxMetrics() {
+            return new OutboxMetrics(new SimpleMeterRegistry());
+        }
+
+        @Bean
         OutboxPublisherScheduler outboxPublisherScheduler(OutboxRelayService relayService,
-                                                          OutboxRabbitPublisher publisher) {
-            return new OutboxPublisherScheduler(relayService, publisher);
+                                                          OutboxRabbitPublisher publisher,
+                                                          OutboxMetrics metrics) {
+            return new OutboxPublisherScheduler(relayService, publisher, metrics);
+        }
+
+        @Bean
+        OutboxPurgeService outboxPurgeService(OutboxMessageRepository repository) {
+            return new OutboxPurgeService(repository);
+        }
+
+        @Bean
+        OutboxPurgeScheduler outboxPurgeScheduler(OutboxPurgeService purgeService,
+                                                  OutboxProperties properties) {
+            return new OutboxPurgeScheduler(purgeService, properties);
         }
     }
 }

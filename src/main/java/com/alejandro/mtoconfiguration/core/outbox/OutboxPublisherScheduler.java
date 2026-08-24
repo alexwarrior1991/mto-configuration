@@ -23,6 +23,7 @@ public class OutboxPublisherScheduler {
 
     private final OutboxRelayService outboxRelayService;
     private final OutboxRabbitPublisher outboxRabbitPublisher;
+    private final OutboxMetrics outboxMetrics;
 
     @Scheduled(fixedDelayString = "${app.outbox.publisher-fixed-delay:5000}")
     public void publishPendingMessages() {
@@ -46,7 +47,9 @@ public class OutboxPublisherScheduler {
         try {
             outboxRabbitPublisher.publish(record);
             outboxRelayService.markPublished(record.id());
+            outboxMetrics.recordPublished();
         } catch (Exception exception) {
+            outboxMetrics.recordPublishFailure();
             markFailedQuietly(record, exception);
         }
     }

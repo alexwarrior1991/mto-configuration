@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.core.outbox;
 
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -42,4 +43,24 @@ public interface OutboxMessageRepository extends JpaRepository<OutboxMessage, UU
     Instant findOldestCreatedAt(@Param("status") OutboxStatus status);
 
     List<OutboxMessage> findByStatusOrderByCreatedAtAsc(OutboxStatus status, Limit limit);
+
+    /**
+     * Borra un lote de mensajes ya publicados y suficientemente antiguos.
+     * <p>
+     * Por lotes y no de una sentencia: un DELETE de millones de filas mantiene una
+     * transaccion larguisima, hincha el WAL y bloquea el vacuum de la tabla. El
+     * subselect con LIMIT acota cada pasada.
+     */
+    @Modifying
+    @Query(value = """
+            delete from {h-schema}outbox_message
+            where id in (
+                select id from {h-schema}outbox_message
+                where status = 'PUBLISHED'
+                  and published_at < :threshold
+                order by published_at
+                limit :batchSize
+            )
+            """, nativeQuery = true)
+    int deletePublishedOlderThan(@Param("threshold") Instant threshold, @Param("batchSize") int batchSize);
 }

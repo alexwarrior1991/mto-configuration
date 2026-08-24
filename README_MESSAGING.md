@@ -285,14 +285,36 @@ Devuelve a `PENDING` los `FAILED` más antiguos con el contador de intentos a ce
 | `spring.rabbitmq.publisher-returns: true` | Detecta los mensajes que no encajan en ninguna cola. |
 | `management.endpoints.web.exposure.include` con `outbox` | Necesario para el endpoint de explotación. |
 
-### Índice recomendado en `outbox_message`
+### Métricas
 
-El relay consulta en cada pasada por estado y fecha de reintento. Sin índice, cada tick es un *seq scan* sobre una tabla que solo crece:
+| Métrica | Qué es |
+| :--- | :--- |
+| `outbox_pending_oldest_age_seconds` | **La que hay que vigilar.** Antigüedad del pendiente más viejo. Si sube, el circuito está roto, sea cual sea la causa. Alerta por encima de 60s. |
+| `outbox_messages_pending` | Pendientes de publicar. |
+| `outbox_messages_in_progress` | Reclamados por un relay y aún sin cerrar. |
+| `outbox_messages_failed` | Han agotado los reintentos y esperan un redrive. Debería ser 0. |
+| `outbox_publish_total{result="success"\|"failure"}` | Ritmo de publicación y de fallos. |
 
-```sql
-CREATE INDEX CONCURRENTLY idx_outbox_message_claim
-    ON outbox_message (next_attempt_at, created_at)
-    WHERE status IN ('PENDING', 'IN_PROGRESS');
-```
+Los gauges se refrescan desde una foto periódica (`app.outbox.metrics-refresh-delay`), **no** en cada scrape: un gauge que consulta la base de datos cada vez que Prometheus pregunta convierte la observabilidad en carga. El total de `PUBLISHED` no se publica como gauge a propósito (contarlo recorre el grueso de la tabla); está bajo demanda en `/actuator/outbox`.
 
-Un índice parcial se mantiene diminuto aunque la tabla acumule millones de filas publicadas.
+### Purga de mensajes publicados
+
+Sin purga `outbox_message` solo crece: cada cambio de dato maestro deja una fila con su JSON, y `bulkCreate`/`bulkUpdate` publican un evento **por entidad**. `OutboxPurgeScheduler` borra los `PUBLISHED` que superan `app.outbox.purge.retention` (7 días por defecto).
+
+Tres decisiones que no son cosméticas:
+
+- **Solo `PUBLISHED`.** Los `FAILED` se quedan: son justo los que hay que mirar, y borrarlos sería tapar el problema. Los `PENDING` todavía no se han enviado.
+- **Por lotes, cada uno en su transacción.** Un `DELETE` de millones de filas mantiene una transacción larguísima, hincha el WAL y bloquea el vacuum de la tabla.
+- **Con tope de lotes por pasada** (`max-batches-per-run`), para que la primera ejecución sobre una tabla ya enorme no se convierta en un borrado de horas.
+
+### Índices
+
+Los crea `V3__outbox_message_indexes.sql`. Los tres son **parciales**, y ahí está la gracia: `outbox_message` solo crece, pero las filas que consultan el relay, la purga y las métricas son una fracción minúscula del total, de modo que los índices se mantienen diminutos aunque la tabla acumule millones de mensajes.
+
+| Índice | Para qué |
+| :--- | :--- |
+| `idx_outbox_message_claim` | Reclamo del relay. `FlywayMigrationIT` comprueba con `EXPLAIN` que la consulta puede usarlo. |
+| `idx_outbox_message_purge` | Purga por antigüedad de `published_at`. |
+| `idx_outbox_message_failed` | Redrive y, sobre todo, la métrica de fallidos, que se consulta cada pocos segundos. |
+
+Si `outbox_message` ya es enorme en producción, conviene crearlos antes a mano con `CREATE INDEX CONCURRENTLY` (que no puede ir dentro de una transacción, y Flyway ejecuta cada migración en una): el `IF NOT EXISTS` hace que entonces la migración no haga nada.

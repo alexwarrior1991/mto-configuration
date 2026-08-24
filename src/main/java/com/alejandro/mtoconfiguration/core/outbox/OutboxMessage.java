@@ -3,6 +3,8 @@ package com.alejandro.mtoconfiguration.core.outbox;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -32,8 +34,18 @@ public class OutboxMessage {
     @Column(nullable = false, length = 200)
     private String routingKey;
 
-    @Lob
-    @Column(nullable = false)
+    /**
+     * {@code @Lob} sobre un String hace que PostgreSQL use una columna {@code oid},
+     * es decir, un large object en {@code pg_largeobject} referenciado por OID. Eso
+     * trae dos problemas serios para el outbox: el contenido solo es legible con la
+     * transaccion abierta, y al borrar la fila el large object NO se borra, queda
+     * huerfano hasta que alguien pase un vacuumlo. Con purga automatica de mensajes
+     * publicados, la tabla adelgazaria mientras la base de datos sigue engordando.
+     * <p>
+     * LONGVARCHAR lo mapea a {@code text}, que es lo que se quiere: un JSON.
+     */
+    @JdbcTypeCode(SqlTypes.LONGVARCHAR)
+    @Column(nullable = false, columnDefinition = "text")
     private String payload;
 
     @Enumerated(EnumType.STRING)

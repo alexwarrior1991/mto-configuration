@@ -55,4 +55,51 @@ public class OutboxProperties {
 
     /** Espera maxima por el publisher confirm del broker antes de dar el envio por fallido. */
     private Duration confirmTimeout = Duration.ofSeconds(10);
+
+    /** Cada cuanto se refresca la foto del outbox que publican las metricas. */
+    private Duration metricsRefreshDelay = Duration.ofSeconds(30);
+
+    private Purge purge = new Purge();
+
+    /**
+     * Borrado de los mensajes ya publicados.
+     * <p>
+     * Sin purga, outbox_message solo crece: cada alta, modificacion y baja de dato
+     * maestro deja una fila con su JSON, y las operaciones masivas publican un evento
+     * POR ENTIDAD. Son millones de filas de payload dentro de la base transaccional
+     * de negocio, no en un almacen historico aparte.
+     */
+    @Getter
+    @Setter
+    public static class Purge {
+
+        private boolean enabled = true;
+
+        /**
+         * Antiguedad a partir de la cual se borra un mensaje PUBLISHED.
+         * <p>
+         * Una semana da margen de sobra para investigar un incidente de mensajeria
+         * con la tabla todavia delante.
+         */
+        private Duration retention = Duration.ofDays(7);
+
+        /**
+         * Filas por sentencia DELETE.
+         * <p>
+         * Se borra por lotes y no de una sentencia: un DELETE de millones de filas
+         * mantiene una transaccion larguisima, hincha el WAL y bloquea el vacuum.
+         */
+        private int batchSize = 500;
+
+        /**
+         * Lotes por pasada, como tope de trabajo.
+         * <p>
+         * Si hay mas atrasado, se termina en las siguientes pasadas. Asi la primera
+         * ejecucion tras activar la purga sobre una tabla enorme no se convierte en
+         * un borrado de horas.
+         */
+        private int maxBatchesPerRun = 20;
+
+        private Duration fixedDelay = Duration.ofHours(1);
+    }
 }

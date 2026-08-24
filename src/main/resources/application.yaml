@@ -61,7 +61,14 @@ spring:
     default-schema: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
     schemas: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
     create-schemas: true
-    baseline-on-migrate: false
+    # Necesario para adoptar Flyway sobre una base que YA tiene el esquema (creado
+    # en su dia por Hibernate). Sin esto, Flyway se encuentra un schema poblado sin
+    # tabla de historico y aborta el arranque. Con baseline-version 1, da V1 por
+    # aplicada sin ejecutarla y sigue por V2. En una base vacia no interviene: se
+    # aplican todas las migraciones desde V1.
+    baseline-on-migrate: true
+    baseline-version: 1
+    baseline-description: esquema preexistente
     validate-on-migrate: true
     clean-disabled: true
 
@@ -277,6 +284,23 @@ app:
     claim-visibility-timeout: 5m
     # Espera maxima por el publisher confirm antes de dar el envio por fallido
     confirm-timeout: 10s
+    # Cada cuanto se refresca la foto del outbox que publican las metricas. Los
+    # gauges NO consultan la base de datos en cada scrape de Prometheus.
+    metrics-refresh-delay: 30s
+    # Borrado de los mensajes ya publicados. Sin esto outbox_message solo crece:
+    # cada cambio de dato maestro deja una fila con su JSON, y las operaciones
+    # masivas publican un evento por entidad.
+    purge:
+      enabled: true
+      # Margen para investigar un incidente de mensajeria con la tabla delante
+      retention: 7d
+      # Se borra por lotes: un DELETE de millones de filas hincha el WAL y bloquea
+      # el vacuum de la tabla
+      batch-size: 500
+      # Tope de trabajo por pasada, para que la primera ejecucion sobre una tabla
+      # enorme no se convierta en un borrado de horas
+      max-batches-per-run: 20
+      fixed-delay: 1h
 
 # Endpoints de explotacion. Por defecto Boot solo expone health, asi que el endpoint
 # del outbox (estado y redrive de los FAILED) hay que declararlo. El acceso queda
@@ -285,7 +309,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,outbox
+        include: health,info,outbox,prometheus
 
 # Cache configuration for Redis-based caching strategy
 cache:

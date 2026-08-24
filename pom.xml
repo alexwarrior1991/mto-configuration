@@ -43,6 +43,14 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+
+        <!-- Registro Prometheus. SecurityConfiguration ya protegia
+             /actuator/prometheus, pero sin este artefacto ese endpoint no existe:
+             actuator trae el API de Micrometer, no una implementacion que exporte. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -70,10 +78,15 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Flyway para versionado de base de datos -->
+        <!-- Flyway para versionado de base de datos.
+             starter-flyway y no solo flyway-core: Spring Boot 4 saco la
+             autoconfiguracion de Flyway a su propio modulo, de modo que con
+             flyway-core a secas la libreria esta en el classpath pero NADIE la
+             ejecuta al arrancar y toda la configuracion spring.flyway.* queda
+             muerta sin que nada avise. -->
         <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
 
         <!-- Soporte específico de Flyway para PostgreSQL -->

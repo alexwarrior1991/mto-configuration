@@ -3,8 +3,10 @@ package com.alejandro.mtoconfiguration.core.outbox;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
@@ -31,6 +33,9 @@ class OutboxPublisherSchedulerTest {
 
     @Mock
     private OutboxRabbitPublisher outboxRabbitPublisher;
+
+    @Spy
+    private final OutboxMetrics outboxMetrics = new OutboxMetrics(new SimpleMeterRegistry());
 
     @InjectMocks
     private OutboxPublisherScheduler scheduler;
@@ -67,6 +72,7 @@ class OutboxPublisherSchedulerTest {
         orden.verify(outboxRabbitPublisher).publish(record);
         orden.verify(outboxRelayService).markPublished(record.id());
         verify(outboxRelayService, never()).markFailed(any(), any());
+        verify(outboxMetrics).recordPublished();
     }
 
     @Test
@@ -80,6 +86,8 @@ class OutboxPublisherSchedulerTest {
 
         verify(outboxRelayService).markFailed(record.id(), fallo);
         verify(outboxRelayService, never()).markPublished(any());
+        verify(outboxMetrics).recordPublishFailure();
+        verify(outboxMetrics, never()).recordPublished();
     }
 
     @Test

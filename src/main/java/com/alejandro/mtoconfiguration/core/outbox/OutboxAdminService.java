@@ -23,12 +23,30 @@ public class OutboxAdminService {
 
     private final OutboxMessageRepository outboxMessageRepository;
 
+    /**
+     * Foto completa, incluido el total de PUBLISHED. Es una consulta bajo demanda:
+     * ese recuento recorre el grueso de la tabla, asi que no vale para metricas
+     * periodicas. Para eso esta {@link #metricsSnapshot()}.
+     */
     @Transactional(readOnly = true)
     public OutboxStats stats() {
+        OutboxRelayHealth health = metricsSnapshot();
+
         return new OutboxStats(
+                health.pending(),
+                health.inProgress(),
+                outboxMessageRepository.countByStatus(OutboxStatus.PUBLISHED),
+                health.failed(),
+                health.oldestPendingCreatedAt()
+        );
+    }
+
+    /** Recuentos baratos, servidos por los indices parciales de outbox_message. */
+    @Transactional(readOnly = true)
+    public OutboxRelayHealth metricsSnapshot() {
+        return new OutboxRelayHealth(
                 outboxMessageRepository.countByStatus(OutboxStatus.PENDING),
                 outboxMessageRepository.countByStatus(OutboxStatus.IN_PROGRESS),
-                outboxMessageRepository.countByStatus(OutboxStatus.PUBLISHED),
                 outboxMessageRepository.countByStatus(OutboxStatus.FAILED),
                 outboxMessageRepository.findOldestCreatedAt(OutboxStatus.PENDING)
         );

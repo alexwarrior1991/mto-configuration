@@ -1,6 +1,8 @@
 package com.alejandro.mtoconfiguration.core.outbox;
 
 import org.junit.jupiter.api.Test;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -27,6 +29,8 @@ class OutboxWiringTest {
                 .withUserConfiguration(RabbitStubConfiguration.class, OutboxConfiguration.class)
                 // El acceso a base de datos no entra aqui: lo que se comprueba es el cableado.
                 .withBean(OutboxRelayService.class, () -> mock(OutboxRelayService.class))
+                // En produccion lo aporta actuator; aqui basta un registro en memoria.
+                .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
                 .withBean(OutboxRabbitPublisher.class)
                 .withBean(OutboxPublisherScheduler.class)
                 .withPropertyValues("mto.test.publisher-confirms=" + publisherConfirms);
@@ -39,6 +43,7 @@ class OutboxWiringTest {
             assertThat(context).hasSingleBean(OutboxRabbitPublisher.class);
             assertThat(context).hasSingleBean(OutboxPublisherScheduler.class);
             assertThat(context).hasSingleBean(OutboxRetryPolicy.class);
+            assertThat(context).hasSingleBean(OutboxMetrics.class);
         });
     }
 
