@@ -120,7 +120,9 @@ El punto central de recepción de mensajes es el **Topic Exchange** llamado `mto
 ### 3.2. Colas (Queues)
 Las colas son los buzones donde residen los mensajes hasta que un consumidor los procesa.
 - **Nomenclatura**: Siguen el estándar `mto.master-data.{propósito}.queue`.
-- **Modo Lazy**: Configurable vía propiedades. Permite que los mensajes se guarden en disco inmediatamente, ideal para soportar picos de tráfico masivos sin agotar la memoria RAM del broker.
+- **Tipo**: `classic` (por defecto) o `quorum`, replicada entre nodos. Ver sección 9.3.
+- **Propiedad**: `declare` indica si este servicio crea la cola o pertenece a su consumidor. Ver sección 9.1.
+- **Modo Lazy**: ~~configurable vía propiedades~~. **Obsoleto**: RabbitMQ 3.12 y posteriores ignoran `x-queue-mode`, porque las colas clásicas v2 ya escriben a disco por defecto.
 - **Persistencia**: Por defecto son `durable`, asegurando que los mensajes no se pierdan si el broker se apaga.
 
 **Topología de Colas Estándar:**
@@ -318,3 +320,91 @@ Los crea `V3__outbox_message_indexes.sql`. Los tres son **parciales**, y ahí es
 | `idx_outbox_message_failed` | Redrive y, sobre todo, la métrica de fallidos, que se consulta cada pocos segundos. |
 
 Si `outbox_message` ya es enorme en producción, conviene crearlos antes a mano con `CREATE INDEX CONCURRENTLY` (que no puede ir dentro de una transacción, y Flyway ejecuta cada migración en una): el `IF NOT EXISTS` hace que entonces la migración no haga nada.
+
+---
+
+## 9. Colas: propiedad, límites y tipo
+
+### 9.1. Una cola pertenece a quien la consume
+
+Este servicio **publica**, no consume: no hay un solo `@RabbitListener` en el repositorio. Sin embargo declara las cuatro colas de datos maestros, que consumen otros servicios. Eso trae dos problemas:
+
+- **El consumidor es quien sabe lo que necesita** (qué TTL, qué límite, qué tipo de cola). Mientras las declare el productor, esas decisiones se toman en el sitio equivocado.
+- **Un desacuerdo tumba toda la topología.** Si otro servicio declara `mto.master-data.audit.queue` con un argumento distinto, el broker responde `PRECONDITION_FAILED (406)` y Spring aborta el bloque entero de declaraciones — incluido el exchange que sí es de este servicio.
+
+Por eso existe `declare`:
+
+```yaml
+app:
+  rabbitmq:
+    defaults:
+      declare-queues: true      # global
+    queues:
+      - name: mto.master-data.audit.queue
+        declare: false          # esta cola es de otro servicio
+```
+
+Con `declare: false` no se declara ni la cola, ni su dead letter, ni sus bindings.
+
+**Sigue en `true`** porque las colas ya existen en los entornos y las consumen otros servicios: pasarlo a `false` hay que coordinarlo. El traspaso es:
+
+1. El servicio consumidor empieza a declarar la cola, su DLX/DLQ y su binding, **con exactamente los mismos argumentos** que usa hoy este servicio (si no, `PRECONDITION_FAILED` en el consumidor).
+2. Se despliega el consumidor y se comprueba que la cola sigue viva.
+3. Se pone `declare: false` aquí y se despliega.
+
+Si en algún momento la cola deja de existir, los mensajes no son enrutables: con `mandatory: true` y publisher returns, el relay lo detecta y marca el mensaje como fallido en lugar de perderlo en silencio.
+
+### 9.2. Los argumentos de una cola existente son inmutables
+
+Esto es lo que más sorpresas da: **no se le pueden añadir argumentos a una cola que ya existe redeclarándola**. Añadir un `max-length` en el YAML a una cola ya creada hace que el broker responda `PRECONDITION_FAILED` y se caiga la declaración entera en el arranque.
+
+Para poner límites a una cola existente se usa una **policy**, que además se puede cambiar en caliente:
+
+```bash
+rabbitmqctl set_policy mto-master-data-limits \
+  "^mto\.master-data\..*\.queue$" \
+  '{"max-length": 100000, "overflow": "reject-publish"}' \
+  --apply-to queues
+```
+
+`overflow` importa: el valor por defecto de RabbitMQ es `drop-head`, que descarta **los mensajes más antiguos** en silencio — para eventos de datos maestros, eso es pérdida de datos. Con `reject-publish` el publicador recibe un nack, y con el outbox eso es un reintento con backoff en lugar de un evento perdido.
+
+Sin ningún límite, un consumidor parado hace crecer la cola hasta llenar el disco del broker, y **un broker con el disco lleno bloquea las publicaciones de todos los servicios**. El validador avisa al arrancar de cada cola declarada sin límite.
+
+### 9.3. Colas quorum
+
+Las colas actuales son clásicas y sin réplica: si cae el nodo que las aloja, se pierden, por muy `durable` que sean. Las quorum se replican entre nodos.
+
+```yaml
+queues:
+  - name: mto.master-data.events.queue
+    type: quorum
+    delivery-limit: 5     # solo quorum: protección contra mensaje envenenado
+```
+
+La DLQ hereda el tipo de su cola principal — de nada sirve replicar la cola de trabajo si los mensajes que fallan acaban en una cola sin réplica, que son justo los que hay que conservar.
+
+**El tipo de una cola no se puede cambiar en caliente.** Migrar una cola existente a quorum es:
+
+1. Parar los consumidores y esperar a que la cola se vacíe (o drenarla a otro sitio).
+2. Borrar la cola.
+3. Desplegar con `type: quorum`, que la crea replicada.
+
+Mientras la cola no existe, los mensajes no son enrutables y el relay los deja en reintento, así que la ventana es recuperable, pero conviene hacerlo con el outbox vigilado.
+
+`x-queue-mode: lazy` está **obsoleto**: RabbitMQ 3.12 y posteriores lo ignoran, porque las colas clásicas v2 ya escriben a disco por defecto. El validador avisa si alguna cola lo declara.
+
+### 9.4. Qué se valida al arrancar
+
+`RabbitMqTopologyValidator` corre antes de mandar nada al broker. Falla el arranque, con todos los problemas juntos en un solo mensaje, ante:
+
+- Nombres de cola o exchange duplicados.
+- Cola quorum `exclusive`, `auto-delete`, no durable o con `lazy`.
+- `delivery-limit` en una cola clásica (`x-delivery-limit` solo existe en quorum).
+- `overflow` sin ningún límite: el argumento no llegaría a aplicarse nunca.
+- Un binding a una cola que no está en `queues`, o que tiene `declare: false`.
+- Valores negativos o a cero en los límites.
+
+Y avisa (sin fallar) de colas sin límite, colas sin binding y del `lazy` obsoleto.
+
+`ApplicationRabbitMqTopologyTest` aplica estas mismas comprobaciones a la topología real de `application.yaml`, para que un fallo salga en el build y no en el arranque del entorno.

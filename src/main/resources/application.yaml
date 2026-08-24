@@ -136,6 +136,21 @@ app:
 
     # Default settings for exchanges, queues, and bindings
     defaults:
+      # Si este servicio declara las colas de la lista.
+      #
+      # Una cola pertenece a quien la CONSUME, no a quien publica: es el consumidor
+      # el que sabe que TTL, que limite y que tipo necesita. Mientras las declare el
+      # productor, basta con que el consumidor use un argumento distinto para que el
+      # broker responda PRECONDITION_FAILED y se caiga la declaracion de TODA la
+      # topologia, incluido el exchange que si es de este servicio.
+      #
+      # Sigue en true porque las colas de abajo ya existen en los entornos y las
+      # consumen otros servicios: pasarlo a false hay que coordinarlo con ellos.
+      # Ver README_MESSAGING.md, "Traspaso de las colas a sus consumidores".
+      declare-queues: true
+      # Tipo por defecto. Cambiar el tipo de una cola que ya existe obliga a
+      # borrarla y recrearla, asi que esto solo aplica a colas nuevas.
+      queue-type: classic
       # Queues/exchanges survive broker restarts
       durable: true
       # Queue is not restricted to a single connection
@@ -178,6 +193,13 @@ app:
         auto-delete: false
 
     # RabbitMQ queue definitions - message storage endpoints
+    #
+    # OJO al tocar estas colas: los argumentos de una cola que ya existe son
+    # INMUTABLES. Anadir aqui un max-length o un overflow a una cola ya creada hace
+    # que el broker responda PRECONDITION_FAILED y se caiga la declaracion entera.
+    # Para ponerle limites a una cola existente se usa una policy del broker; para
+    # cambiarle el tipo, hay que borrarla y recrearla. Ambos procedimientos estan en
+    # README_MESSAGING.md.
     queues:
       # Queue for general master data events
       - name: mto.master-data.events.queue
