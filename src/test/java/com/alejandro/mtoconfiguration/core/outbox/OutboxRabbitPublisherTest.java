@@ -46,6 +46,7 @@ class OutboxRabbitPublisherTest {
 
     private OutboxProperties outboxProperties;
     private OutboxRabbitPublisher publisher;
+    private OutboxTracing outboxTracing;
 
     private final OutboxRecord record = new OutboxRecord(
             UUID.randomUUID(),
@@ -55,14 +56,17 @@ class OutboxRabbitPublisherTest {
             "mto.master-data.exchange",
             "mto.master-data.station.created",
             "{\"id\":42}",
-            0
+            0,
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+            "vendor=abc"
     );
 
     @BeforeEach
     void setUp() {
         outboxProperties = new OutboxProperties();
         outboxProperties.setConfirmTimeout(Duration.ofMillis(300));
-        publisher = new OutboxRabbitPublisher(rabbitTemplate, outboxProperties);
+        outboxTracing = org.mockito.Mockito.spy(new NoOpOutboxTracing());
+        publisher = new OutboxRabbitPublisher(rabbitTemplate, outboxProperties, outboxTracing);
     }
 
     /** Simula la respuesta del broker sobre el CorrelationData que recibe el template. */
@@ -148,6 +152,72 @@ class OutboxRabbitPublisherTest {
                 .containsEntry("eventType", record.eventType())
                 .containsEntry("aggregateType", record.aggregateType())
                 .containsEntry("aggregateId", record.aggregateId());
+    }
+
+    @Test
+    void elMensajeArrastraElContextoDeTrazaDeLaOperacionQueLoGenero() {
+        brokerResponds(correlation -> correlation.getFuture().complete(new CorrelationData.Confirm(true, null)));
+
+        publisher.publish(record);
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        org.mockito.Mockito.verify(rabbitTemplate)
+                .send(anyString(), anyString(), captor.capture(), any(CorrelationData.class));
+
+        // Sin estas cabeceras el consumidor empieza una traza nueva y el recorrido del
+        // evento queda partido en dos mitades que nadie relaciona.
+        assertThat(captor.getValue().getMessageProperties().getHeaders())
+                .containsEntry("traceparent", record.traceParent())
+                .containsEntry("tracestate", record.traceState());
+    }
+
+    @Test
+    void laPublicacionOcurreDentroDelAmbitoDeTrazaDelMensaje() {
+        brokerResponds(correlation -> correlation.getFuture().complete(new CorrelationData.Confirm(true, null)));
+        OutboxTracing.Scope scope = org.mockito.Mockito.mock(OutboxTracing.Scope.class);
+        org.mockito.Mockito.doReturn(scope).when(outboxTracing).startPublishScope(record);
+
+        publisher.publish(record);
+
+        // El envio tiene que caer DENTRO del ambito: si se abriera despues, el span de
+        // publicacion seguiria colgando del scheduler y no de la operacion original.
+        org.mockito.InOrder orden = org.mockito.Mockito.inOrder(outboxTracing, rabbitTemplate, scope);
+        orden.verify(outboxTracing).startPublishScope(record);
+        orden.verify(rabbitTemplate).send(anyString(), anyString(), any(Message.class), any(CorrelationData.class));
+        orden.verify(scope).close();
+    }
+
+    @Test
+    void elAmbitoSeCierraAunqueLaPublicacionFalle() {
+        brokerResponds(correlation ->
+                correlation.getFuture().complete(new CorrelationData.Confirm(false, "disco lleno")));
+        OutboxTracing.Scope scope = org.mockito.Mockito.mock(OutboxTracing.Scope.class);
+        org.mockito.Mockito.doReturn(scope).when(outboxTracing).startPublishScope(record);
+
+        assertThatThrownBy(() -> publisher.publish(record)).isInstanceOf(OutboxPublishException.class);
+
+        // El hilo del scheduler se reutiliza para el mensaje siguiente: dejarlo con un
+        // span abierto haria que el siguiente heredase una traza que no es suya.
+        org.mockito.Mockito.verify(scope).close();
+    }
+
+    @Test
+    void unMensajeSinContextoDeTrazaNoInventaCabeceras() {
+        brokerResponds(correlation -> correlation.getFuture().complete(new CorrelationData.Confirm(true, null)));
+
+        OutboxRecord sinTraza = new OutboxRecord(
+                record.id(), record.aggregateType(), record.aggregateId(), record.eventType(),
+                record.exchangeName(), record.routingKey(), record.payload(), 0, null, null);
+
+        publisher.publish(sinTraza);
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        org.mockito.Mockito.verify(rabbitTemplate)
+                .send(anyString(), anyString(), captor.capture(), any(CorrelationData.class));
+
+        assertThat(captor.getValue().getMessageProperties().getHeaders())
+                .doesNotContainKey("traceparent")
+                .doesNotContainKey("tracestate");
     }
 
     @Test

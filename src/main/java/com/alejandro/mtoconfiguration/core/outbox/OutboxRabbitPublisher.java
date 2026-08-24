@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
+import org.springframework.amqp.core.MessageBuilderSupport;
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.core.ReturnedMessage;
@@ -46,6 +47,7 @@ public class OutboxRabbitPublisher {
 
     private final RabbitTemplate rabbitTemplate;
     private final OutboxProperties outboxProperties;
+    private final OutboxTracing outboxTracing;
 
     /**
      * Sin publisher confirms, el future de CorrelationData no se completa nunca y el
@@ -68,6 +70,14 @@ public class OutboxRabbitPublisher {
     }
 
     public void publish(OutboxRecord record) {
+        // El ambito engancha la publicacion a la traza de la operacion que genero el
+        // evento; sin el, este span colgaria del scheduler y la traza quedaria partida.
+        try (OutboxTracing.Scope ignored = outboxTracing.startPublishScope(record)) {
+            doPublish(record);
+        }
+    }
+
+    private void doPublish(OutboxRecord record) {
         CorrelationData correlationData = new CorrelationData(record.id().toString());
 
         rabbitTemplate.send(record.exchangeName(), record.routingKey(), toMessage(record), correlationData);
@@ -121,7 +131,7 @@ public class OutboxRabbitPublisher {
     }
 
     private Message toMessage(OutboxRecord record) {
-        return MessageBuilder
+        MessageBuilderSupport<Message> builder = MessageBuilder
                 .withBody(record.payload().getBytes(StandardCharsets.UTF_8))
                 .setContentType(MessageProperties.CONTENT_TYPE_JSON)
                 .setContentEncoding(StandardCharsets.UTF_8.name())
@@ -129,7 +139,19 @@ public class OutboxRabbitPublisher {
                 .setMessageId(record.id().toString())
                 .setHeader("eventType", record.eventType())
                 .setHeader("aggregateType", record.aggregateType())
-                .setHeader("aggregateId", record.aggregateId())
-                .build();
+                .setHeader("aggregateId", record.aggregateId());
+
+        // Suelo de propagacion: con la instrumentacion de Spring AMQP activa, esta
+        // cabecera se sobrescribe con la del span hijo (mismo trace-id), que enlaza
+        // mejor todavia. Sin instrumentacion, esto es lo que hace que el consumidor
+        // siga perteneciendo a la traza original en vez de empezar una nueva.
+        if (record.traceParent() != null && !record.traceParent().isBlank()) {
+            builder.setHeader(MicrometerOutboxTracing.TRACE_PARENT, record.traceParent());
+        }
+        if (record.traceState() != null && !record.traceState().isBlank()) {
+            builder.setHeader(MicrometerOutboxTracing.TRACE_STATE, record.traceState());
+        }
+
+        return builder.build();
     }
 }

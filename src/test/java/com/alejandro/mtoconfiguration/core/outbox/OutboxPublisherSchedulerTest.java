@@ -58,7 +58,7 @@ class OutboxPublisherSchedulerTest {
     private OutboxRecord record(String eventType) {
         return new OutboxRecord(
                 UUID.randomUUID(), "station", "1", eventType,
-                "mto.master-data.exchange", "mto.master-data.station.created", "{}", 0);
+                "mto.master-data.exchange", "mto.master-data.station.created", "{}", 0, null, null);
     }
 
     @Test

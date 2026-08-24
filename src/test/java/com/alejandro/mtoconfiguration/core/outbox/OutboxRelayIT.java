@@ -77,6 +77,12 @@ class OutboxRelayIT {
     private OutboxPurgeScheduler outboxPurgeScheduler;
 
     @Autowired
+    private OutboxService outboxService;
+
+    @Autowired
+    private io.micrometer.tracing.Tracer tracer;
+
+    @Autowired
     private DataSource dataSource;
 
     @DynamicPropertySource
@@ -413,6 +419,50 @@ class OutboxRelayIT {
                 .isEqualTo(OutboxStatus.PUBLISHED);
     }
 
+    // ------------------------------------------------------------------ trazabilidad
+
+    @Test
+    void elContextoDeTrazaDeLaOperacionSobreviveAlSaltoDelOutbox() {
+        io.micrometer.tracing.Span operacion = tracer.nextSpan().name("PUT /stations/42").start();
+
+        // Fase 1: la operacion de negocio guarda el evento, con su traza viva.
+        try (io.micrometer.tracing.Tracer.SpanInScope ignored = tracer.withSpan(operacion)) {
+            outboxService.save("station", "42", "MASTER_DATA_STATION_UPDATED",
+                    "mto.master-data.exchange", "mto.master-data.station.updated",
+                    java.util.Map.of("id", 42));
+        } finally {
+            operacion.end();
+        }
+
+        OutboxMessage guardado = outboxMessageRepository.findAll().getFirst();
+        assertThat(guardado.getTraceParent())
+                .as("si no se guarda aqui, no hay forma de recuperarlo despues: el contexto"
+                        + " de la peticion ya no existe cuando el relay publica")
+                .contains(operacion.context().traceId());
+
+        // Fase 2: el relay, minutos despues y sin ninguna traza activa.
+        assertThat(tracer.currentSpan()).isNull();
+
+        List<OutboxRecord> lote = outboxRelayService.claimBatch();
+
+        assertThat(lote).hasSize(1);
+        assertThat(lote.getFirst().traceParent()).isEqualTo(guardado.getTraceParent());
+    }
+
+    @Test
+    void unEventoGeneradoSinTrazaSeGuardaIgualmente() {
+        // Una tarea programada no tiene peticion detras, y aun asi tiene que publicar.
+        assertThat(tracer.currentSpan()).isNull();
+
+        outboxService.save("station", "43", "MASTER_DATA_STATION_CREATED",
+                "mto.master-data.exchange", "mto.master-data.station.created",
+                java.util.Map.of("id", 43));
+
+        OutboxMessage guardado = outboxMessageRepository.findAll().getFirst();
+        assertThat(guardado.getTraceParent()).isNull();
+        assertThat(outboxRelayService.claimBatch()).hasSize(1);
+    }
+
     // ------------------------------------------------------------------ purga
 
     @Test
@@ -577,6 +627,37 @@ class OutboxRelayIT {
         @Bean
         OutboxMetrics outboxMetrics() {
             return new OutboxMetrics(new SimpleMeterRegistry());
+        }
+
+        @Bean
+        io.opentelemetry.sdk.trace.SdkTracerProvider sdkTracerProvider() {
+            return io.opentelemetry.sdk.trace.SdkTracerProvider.builder().build();
+        }
+
+        @Bean
+        io.micrometer.tracing.Tracer tracer(io.opentelemetry.sdk.trace.SdkTracerProvider tracerProvider) {
+            io.micrometer.tracing.otel.bridge.OtelCurrentTraceContext currentTraceContext =
+                    new io.micrometer.tracing.otel.bridge.OtelCurrentTraceContext();
+            return new io.micrometer.tracing.otel.bridge.OtelTracer(
+                    tracerProvider.get("it"), currentTraceContext, event -> { },
+                    new io.micrometer.tracing.otel.bridge.OtelBaggageManager(
+                            currentTraceContext, List.of(), List.of()));
+        }
+
+        @Bean
+        OutboxTracing outboxTracing(io.micrometer.tracing.Tracer tracer,
+                                    io.opentelemetry.sdk.trace.SdkTracerProvider tracerProvider) {
+            return new MicrometerOutboxTracing(tracer, new io.micrometer.tracing.otel.bridge.OtelPropagator(
+                    io.opentelemetry.context.propagation.ContextPropagators.create(
+                            io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator.getInstance()),
+                    tracerProvider.get("it")));
+        }
+
+        @Bean
+        OutboxService outboxService(OutboxMessageRepository repository,
+                                    OutboxProperties properties,
+                                    OutboxTracing tracing) {
+            return new OutboxService(repository, properties, new tools.jackson.databind.ObjectMapper(), tracing);
         }
 
         @Bean

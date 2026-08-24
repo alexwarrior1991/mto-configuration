@@ -408,3 +408,61 @@ Mientras la cola no existe, los mensajes no son enrutables y el relay los deja e
 Y avisa (sin fallar) de colas sin límite, colas sin binding y del `lazy` obsoleto.
 
 `ApplicationRabbitMqTopologyTest` aplica estas mismas comprobaciones a la topología real de `application.yaml`, para que un fallo salga en el build y no en el arranque del entorno.
+
+---
+
+## 10. Trazabilidad distribuida
+
+### 10.1. Por qué el outbox rompe la traza
+
+El outbox parte la traza en dos **por construcción**: el mensaje se escribe dentro de la petición de negocio y se publica segundos o minutos después, desde el hilo del scheduler. Sin nada que los una, el span de la publicación cuelga del planificador y no de la operación que lo originó — y se pierde justo la trazabilidad que el `operationId` del mensaje intenta reconstruir a mano.
+
+La solución es guardar el contexto W3C en la propia fila del outbox:
+
+```
+PUT /stations/42  ──┐
+                    │ traceparent capturado dentro de la transacción
+                    ▼
+            outbox_message (trace_parent, trace_state)
+                    │
+                    │ ...minutos después, hilo del scheduler
+                    ▼
+            span "outbox publish"  ──►  RabbitMQ  ──►  consumidor
+            (mismo trace-id que la petición original)
+```
+
+### 10.2. Configuración
+
+Se usa `spring-boot-starter-opentelemetry`, que trae `micrometer-tracing-bridge-otel`, el exportador OTLP **y** los módulos de autoconfiguración de Boot. Esto último importa: igual que pasaba con Flyway, la librería por sí sola no basta — sin `spring-boot-micrometer-tracing-opentelemetry` no habría ni `Tracer` ni `Propagator` y todo esto quedaría inerte.
+
+```yaml
+management:
+  tracing:
+    enabled: ${MTO_TRACING_ENABLED:true}
+    sampling:
+      probability: ${MTO_TRACING_SAMPLING_PROBABILITY:0.1}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+    metrics:
+      export:
+        enabled: false    # las métricas van por Prometheus
+```
+
+Dos detalles que suelen confundir:
+
+- **Muestrear poco no rompe la cadena.** Un span no muestreado sigue propagando su `traceparent`, con el flag a `00`. La correlación entre servicios se mantiene aunque no se exporte.
+- **Las métricas siguen yendo por Prometheus.** El starter de OpenTelemetry arrastra también un registro OTLP de métricas; se desactiva su exportación explícitamente para no duplicar el camino que ya se montó en `/actuator/prometheus`.
+
+### 10.3. Qué pasa sin trazabilidad
+
+Si `management.tracing.enabled=false` no hay beans `Tracer` ni `Propagator`, y el outbox usa `NoOpOutboxTracing`: no captura nada, no abre ningún ámbito y publica exactamente igual. **Publicar eventos es el trabajo del outbox; trazarlos es un extra que no puede condicionar su arranque.** Lo mismo vale para un contexto corrupto en la tabla: se registra un aviso y el mensaje sale.
+
+Las columnas `trace_parent` y `trace_state` admiten nulos por lo mismo: los mensajes anteriores a `V4` no lo tienen, y tampoco lo tendrán los eventos generados fuera de una petición trazada (una tarea programada, por ejemplo).
+
+### 10.4. La cabecera del mensaje
+
+`OutboxRabbitPublisher` hace dos cosas:
+
+1. **Abre un ámbito** con el contexto guardado, de modo que el span `outbox publish` pertenece a la traza original en lugar de al scheduler.
+2. **Escribe `traceparent`/`tracestate` en las cabeceras AMQP** como suelo de propagación. Con la instrumentación de Spring AMQP activa (`setObservationEnabled(true)`), esa cabecera se sobrescribe con la del span hijo — mismo `trace-id`, y enlaza mejor todavía. Sin instrumentación, es lo que hace que el consumidor siga perteneciendo a la traza original en vez de empezar una nueva.

@@ -17,7 +17,9 @@ public record OutboxRecord(
         String exchangeName,
         String routingKey,
         String payload,
-        int attempts
+        int attempts,
+        String traceParent,
+        String traceState
 ) {
 
     static OutboxRecord from(OutboxMessage message) {
@@ -29,7 +31,9 @@ public record OutboxRecord(
                 message.getExchangeName(),
                 message.getRoutingKey(),
                 message.getPayload(),
-                message.getAttempts()
+                message.getAttempts(),
+                message.getTraceParent(),
+                message.getTraceState()
         );
     }
 }

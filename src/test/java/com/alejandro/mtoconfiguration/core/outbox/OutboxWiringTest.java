@@ -2,6 +2,8 @@ package com.alejandro.mtoconfiguration.core.outbox;
 
 import org.junit.jupiter.api.Test;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.propagation.Propagator;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
@@ -44,6 +46,7 @@ class OutboxWiringTest {
             assertThat(context).hasSingleBean(OutboxPublisherScheduler.class);
             assertThat(context).hasSingleBean(OutboxRetryPolicy.class);
             assertThat(context).hasSingleBean(OutboxMetrics.class);
+            assertThat(context).hasSingleBean(OutboxTracing.class);
         });
     }
 
@@ -57,6 +60,25 @@ class OutboxWiringTest {
                 .rootCause()
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("publisher-confirm-type=correlated"));
+    }
+
+    @Test
+    void sinTrazabilidadConfiguradaElOutboxUsaLaImplementacionVacia() {
+        // Publicar eventos es el trabajo del outbox; trazarlos es un extra que no puede
+        // condicionar su arranque.
+        runner(true).run(context -> assertThat(context)
+                .getBean(OutboxTracing.class)
+                .isInstanceOf(NoOpOutboxTracing.class));
+    }
+
+    @Test
+    void conTracerYPropagatorElOutboxPropagaLaTraza() {
+        runner(true)
+                .withBean(Tracer.class, () -> mock(Tracer.class))
+                .withBean(Propagator.class, () -> mock(Propagator.class))
+                .run(context -> assertThat(context)
+                        .getBean(OutboxTracing.class)
+                        .isInstanceOf(MicrometerOutboxTracing.class));
     }
 
     @Test

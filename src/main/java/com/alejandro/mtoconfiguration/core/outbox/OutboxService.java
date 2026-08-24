@@ -14,6 +14,7 @@ public class OutboxService {
     private final OutboxMessageRepository outboxMessageRepository;
     private final OutboxProperties outboxProperties;
     private final ObjectMapper objectMapper;
+    private final OutboxTracing outboxTracing;
 
 
     public void save(
@@ -42,6 +43,12 @@ public class OutboxService {
             message.setMaxAttempts(outboxProperties.getMaxAttempts());
             message.setCreatedAt(now);
             message.setNextAttemptAt(now);
+
+            // Se captura AQUI, dentro de la transaccion de negocio, porque es el unico
+            // momento en el que el contexto de la operacion original sigue vivo.
+            OutboxTraceContext traceContext = outboxTracing.capture();
+            message.setTraceParent(traceContext.traceParent());
+            message.setTraceState(traceContext.traceState());
 
             outboxMessageRepository.save(message);
         } catch (Exception exception) {

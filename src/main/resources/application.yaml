@@ -333,6 +333,25 @@ management:
       exposure:
         include: health,info,outbox,prometheus
 
+  # Trazabilidad distribuida (micrometer-tracing-bridge-otel + exportador OTLP).
+  tracing:
+    enabled: ${MTO_TRACING_ENABLED:true}
+    sampling:
+      # Muestrear el 100% en un servicio con trafico real es caro y casi nunca hace
+      # falta. Ojo: un span NO muestreado sigue propagando su traceparent (con el
+      # flag a 00), asi que la cadena entre servicios no se rompe por muestrear poco.
+      probability: ${MTO_TRACING_SAMPLING_PROBABILITY:0.1}
+
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+    metrics:
+      export:
+        # Las metricas salen por Prometheus (ver /actuator/prometheus). El starter de
+        # OpenTelemetry arrastra tambien un registro OTLP de metricas, y sin esto
+        # intentaria empujarlas a un colector ademas de exponerlas.
+        enabled: false
+
 # Cache configuration for Redis-based caching strategy
 cache:
   # Application name for cache key prefixing

@@ -51,6 +51,16 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
+
+        <!-- Trazabilidad distribuida (micrometer-tracing-bridge-otel + exportador OTLP).
+             Se usa el starter y no los artefactos sueltos porque, igual que pasaba con
+             Flyway, la libreria por si sola no basta: la autoconfiguracion de Boot vive
+             en modulos aparte (spring-boot-micrometer-tracing-opentelemetry y
+             spring-boot-opentelemetry) y sin ellos no habria ni Tracer ni Propagator. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>

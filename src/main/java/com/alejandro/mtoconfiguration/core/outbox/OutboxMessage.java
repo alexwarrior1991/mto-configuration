@@ -67,4 +67,18 @@ public class OutboxMessage {
 
     @Column(length = 1000)
     private String lastError;
+
+    /**
+     * Contexto de traza W3C de la operacion que genero el evento.
+     * <p>
+     * El outbox parte la traza en dos por construccion: el mensaje se escribe dentro de
+     * la peticion y se publica despues, desde el hilo del scheduler. Guardarlo aqui es
+     * lo unico que permite que la publicacion cuelgue de la operacion que la origino y
+     * no de un span suelto del planificador.
+     */
+    @Column(length = 64)
+    private String traceParent;
+
+    @Column(length = 512)
+    private String traceState;
 }

@@ -90,7 +90,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3");
+        assertThat(versiones).containsExactly("1", "2", "3", "4");
     }
 
     @Test
@@ -117,6 +117,33 @@ class FlywayMigrationIT {
         // Con oid, borrar una fila deja el contenido huerfano en pg_largeobject y la
         // purga adelgazaria la tabla mientras la base de datos sigue engordando.
         assertThat(tipo).isEqualTo("text");
+    }
+
+    @Test
+    void elOutboxGuardaElContextoDeTraza() {
+        List<String> columnas = jdbc().queryForList(
+                """
+                select column_name from information_schema.columns
+                where table_schema = ? and table_name = 'outbox_message'
+                """, String.class, SCHEMA);
+
+        // Sin estas columnas la traza se parte en el salto del outbox: el span de
+        // publicacion cuelga del scheduler y no de la operacion que lo origino.
+        assertThat(columnas).contains("trace_parent", "trace_state");
+    }
+
+    @Test
+    void elContextoDeTrazaEsOpcional() {
+        // Los mensajes anteriores a la migracion no lo tienen, y tampoco lo tendran los
+        // eventos generados fuera de una peticion trazada (una tarea programada).
+        List<String> obligatorias = jdbc().queryForList(
+                """
+                select column_name from information_schema.columns
+                where table_schema = ? and table_name = 'outbox_message'
+                  and column_name in ('trace_parent', 'trace_state') and is_nullable = 'NO'
+                """, String.class, SCHEMA);
+
+        assertThat(obligatorias).isEmpty();
     }
 
     @Test
