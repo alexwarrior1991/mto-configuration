@@ -18,6 +18,7 @@ public record OutboxRecord(
         String routingKey,
         String payload,
         int attempts,
+        long sequenceNumber,
         String traceParent,
         String traceState
 ) {
@@ -32,6 +33,7 @@ public record OutboxRecord(
                 message.getRoutingKey(),
                 message.getPayload(),
                 message.getAttempts(),
+                message.getSequenceNumber(),
                 message.getTraceParent(),
                 message.getTraceState()
         );

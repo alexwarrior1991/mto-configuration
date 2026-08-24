@@ -89,7 +89,7 @@ class FlywayLegacyAdoptionIT {
 
     @Test
     void v1NoSeEjecutaYLasSiguientesSi() throws SQLException {
-        assertThat(appliedVersions()).containsExactly("1", "2", "3", "4");
+        assertThat(appliedVersions()).containsExactly("1", "2", "3", "4", "5");
         assertThat(queryForString(
                 "select type from " + SCHEMA + ".flyway_schema_history where version = '1'"))
                 .as("V1 debe quedar marcada como baseline, no ejecutada sobre un esquema que ya existe")

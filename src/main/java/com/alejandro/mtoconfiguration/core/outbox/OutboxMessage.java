@@ -3,7 +3,9 @@ package com.alejandro.mtoconfiguration.core.outbox;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.generator.EventType;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
@@ -57,6 +59,18 @@ public class OutboxMessage {
 
     @Column(nullable = false)
     private Integer maxAttempts;
+
+    /**
+     * Numero de secuencia monotono, asignado por la base de datos.
+     * <p>
+     * Lo pone la base de datos y no la aplicacion: con varias replicas escribiendo a
+     * la vez, es el unico sitio donde el contador es de verdad unico y creciente.
+     * Ordenar por createdAt no vale, porque un bulkCreate genera N mensajes con el
+     * mismo instante y el orden entre ellos queda al azar.
+     */
+    @Generated(event = EventType.INSERT)
+    @Column(name = "sequence_number", nullable = false, insertable = false, updatable = false)
+    private Long sequenceNumber;
 
     @Column(nullable = false)
     private Instant createdAt;

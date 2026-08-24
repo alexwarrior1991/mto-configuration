@@ -468,3 +468,50 @@ Las columnas `trace_parent` y `trace_state` admiten nulos por lo mismo: los mens
 
 1. **Abre un ámbito** con el contexto guardado, de modo que el span `outbox publish` pertenece a la traza original en lugar de al scheduler.
 2. **Escribe `traceparent`/`tracestate` en las cabeceras AMQP** como suelo de propagación. Con la instrumentación de Spring AMQP activa (`setObservationEnabled(true)`), esa cabecera se sobrescribe con la del span hijo — mismo `trace-id`, y enlaza mejor todavía. Sin instrumentación, es lo que hace que el consumidor siga perteneciendo a la traza original en vez de empezar una nueva.
+
+---
+
+## 11. Orden de los eventos
+
+### 11.1. El problema, y por qué apareció al arreglar otra cosa
+
+Si el mensaje A de `station-5` falla y se reprograma con backoff, el mensaje B de `station-5` —posterior— se publica antes. El consumidor aplica el cambio **viejo encima del nuevo** y el dato maestro queda mal, en silencio.
+
+Lo interesante es que **antes esto casi no se manifestaba**, y no porque el sistema fuera correcto: un mensaje que no se confirmaba se marcaba `PUBLISHED` y se perdía. Al perderse el viejo llegaba solo el nuevo, y el resultado final salía bien de casualidad. Al arreglar la pérdida (publisher confirms + reintentos), A sí llega — y puede pisar a B.
+
+Es el precio de la corrección anterior, y hay que pagarlo aquí.
+
+### 11.2. Número de secuencia
+
+`V5` añade `sequence_number`, un contador monótono que **asigna la base de datos** (`DEFAULT nextval(...)`). Lo asigna la base y no la aplicación a propósito: con varias réplicas escribiendo a la vez, es el único sitio donde el contador es de verdad único y creciente.
+
+De paso resuelve el orden no determinista: el relay ordenaba por `created_at`, y un `bulkCreate` genera N mensajes con el mismo instante — el orden entre ellos quedaba al azar. Además `created_at` lo pone la aplicación, así que un reloj desajustado entre réplicas podía darlo del revés.
+
+### 11.3. Retención por agregado
+
+El reclamo no entrega un mensaje si su agregado tiene otro anterior sin publicar:
+
+```sql
+and not exists (
+    select 1 from outbox_message anterior
+    where anterior.aggregate_type = o.aggregate_type
+      and anterior.aggregate_id   = o.aggregate_id
+      and anterior.status in ('PENDING', 'IN_PROGRESS')
+      and anterior.sequence_number < o.sequence_number
+)
+```
+
+Dos decisiones dentro de esa consulta:
+
+- **Solo retienen `PENDING` e `IN_PROGRESS`**, que son los que todavía van a llegar.
+- **Un `FAILED` no retiene.** Ya no se va a publicar por sí mismo, y dejarlo bloquear pararía el agregado de forma indefinida — peor que el desorden. Si luego se hace redrive de ese mensaje, vuelve a `PENDING` con su secuencia original, así que se ordena solo.
+
+El coste: un mensaje atascado frena a los de **su** agregado, solo a esos. El resto del circuito sigue. Se puede desactivar con `app.outbox.strict-ordering-per-aggregate: false` para vaciar un atasco a costa del orden, pero por defecto pesa más no corromper el dato.
+
+### 11.4. Defensa en profundidad para el consumidor
+
+Cada mensaje viaja con la cabecera `sequenceNumber`. El relay ya publica en orden, pero la entrega es *at-least-once* y un redrive puede reenviar algo antiguo: con ese número, el consumidor puede descartar lo que sea anterior a lo que ya aplicó para ese agregado. No es obligatorio, pero es la red que cubre lo que el orden en origen no puede.
+
+### 11.5. Índices
+
+`V5` sustituye el índice de reclamo (ahora sobre `sequence_number`) y añade `idx_outbox_message_aggregate` sobre `(aggregate_type, aggregate_id, sequence_number)`, que es el que resuelve la retención sin recorrer la tabla. Ambos parciales sobre `PENDING`/`IN_PROGRESS`, así que siguen siendo diminutos.

@@ -139,7 +139,12 @@ public class OutboxRabbitPublisher {
                 .setMessageId(record.id().toString())
                 .setHeader("eventType", record.eventType())
                 .setHeader("aggregateType", record.aggregateType())
-                .setHeader("aggregateId", record.aggregateId());
+                .setHeader("aggregateId", record.aggregateId())
+                // Defensa en profundidad del orden: el relay ya publica en orden por
+                // agregado, pero la entrega es at-least-once y un redrive puede
+                // reenviar algo antiguo. Con este numero el consumidor puede descartar
+                // lo que sea anterior a lo que ya ha aplicado.
+                .setHeader("sequenceNumber", record.sequenceNumber());
 
         // Suelo de propagacion: con la instrumentacion de Spring AMQP activa, esta
         // cabecera se sobrescribe con la del span hijo (mismo trace-id), que enlaza

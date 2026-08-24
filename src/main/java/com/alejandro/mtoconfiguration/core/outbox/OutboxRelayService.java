@@ -38,9 +38,11 @@ public class OutboxRelayService {
         Instant now = Instant.now();
         Instant invisibleUntil = now.plus(outboxProperties.getClaimVisibilityTimeout());
 
-        return outboxMessageRepository
-                .claimBatch(now, outboxProperties.getBatchSize())
-                .stream()
+        List<OutboxMessage> claimed = outboxProperties.isStrictOrderingPerAggregate()
+                ? outboxMessageRepository.claimBatchInOrder(now, outboxProperties.getBatchSize())
+                : outboxMessageRepository.claimBatch(now, outboxProperties.getBatchSize());
+
+        return claimed.stream()
                 .map(message -> claim(message, invisibleUntil))
                 .toList();
     }

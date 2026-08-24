@@ -26,15 +26,35 @@ public final class PostgresTestDatabase {
     private PostgresTestDatabase() {
     }
 
+    /**
+     * El esquema lo crean las MIGRACIONES, no Hibernate.
+     * <p>
+     * Con {@code ddl-auto: create-drop} los tests corren contra una aproximacion del
+     * esquema real: Hibernate sabe de columnas y tipos, pero no de los valores por
+     * defecto, los indices ni las restricciones que viven en los scripts. Un mensaje
+     * del outbox necesita que la base le asigne su numero de secuencia, y eso solo
+     * existe en la migracion. Corriendo contra el esquema migrado desaparece toda esa
+     * clase de divergencia entre lo que se prueba y lo que se despliega.
+     */
     public static void registerProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", PostgresTestDatabase::url);
         registry.add("spring.datasource.username", PostgresTestDatabase::username);
         registry.add("spring.datasource.password", PostgresTestDatabase::password);
         registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
-        // El repositorio no tiene migraciones Flyway: el esquema lo genera Hibernate
-        // desde las entidades, que ademas es lo que valida el mapeo de outbox_message.
-        registry.add("spring.flyway.enabled", () -> "false");
-        registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
+
+        registry.add("spring.flyway.enabled", () -> "true");
+        registry.add("spring.flyway.locations", () -> "classpath:db/migration");
+        // application.yaml da a Flyway su propia url/user/password, asi que no basta
+        // con apuntar el datasource: sin esto migraria OTRA base de datos.
+        registry.add("spring.flyway.url", PostgresTestDatabase::url);
+        registry.add("spring.flyway.user", PostgresTestDatabase::username);
+        registry.add("spring.flyway.password", PostgresTestDatabase::password);
+        registry.add("spring.flyway.default-schema", () -> "public");
+        registry.add("spring.flyway.schemas", () -> "public");
+        registry.add("spring.flyway.baseline-on-migrate", () -> "true");
+        registry.add("spring.flyway.baseline-version", () -> "1");
+
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
         registry.add("spring.jpa.properties.hibernate.default_schema", () -> "public");
     }
 

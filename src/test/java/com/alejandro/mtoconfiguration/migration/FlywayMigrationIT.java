@@ -90,7 +90,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5");
     }
 
     @Test
@@ -153,7 +153,8 @@ class FlywayMigrationIT {
                 String.class, SCHEMA);
 
         assertThat(indices)
-                .contains("idx_outbox_message_claim", "idx_outbox_message_purge");
+                .contains("idx_outbox_message_claim", "idx_outbox_message_purge",
+                        "idx_outbox_message_failed", "idx_outbox_message_aggregate");
     }
 
     @Test
@@ -173,25 +174,59 @@ class FlywayMigrationIT {
     }
 
     @Test
-    void laConsultaDeReclamoPuedeUsarSuIndice() {
+    void laBaseDeDatosAsignaElNumeroDeSecuencia() {
+        // El DEFAULT vive en la migracion, no en el mapeo: es la base quien reparte el
+        // contador, porque con varias replicas escribiendo es el unico sitio donde de
+        // verdad es unico y creciente.
+        jdbc().update("""
+                insert into %s.outbox_message
+                    (id, aggregate_type, aggregate_id, event_type, exchange_name, routing_key,
+                     payload, status, attempts, max_attempts, created_at)
+                values (gen_random_uuid(), 'station', '1', 'X', 'e', 'r', '{}', 'PENDING', 0, 20, now())
+                """.formatted(SCHEMA));
+
+        assertThat(jdbc().queryForObject(
+                "select sequence_number from " + SCHEMA + ".outbox_message", Long.class))
+                .isNotNull()
+                .isPositive();
+
+        jdbc().update("delete from " + SCHEMA + ".outbox_message");
+    }
+
+    @Test
+    void laConsultaDeReclamoPuedeUsarSusIndices() {
         // Con la tabla casi vacia el planificador elige seq scan por tamano, no por
-        // falta de indice. Desactivandolo se comprueba lo que interesa: que el indice
-        // parcial SIRVE para esta consulta tal y como esta escrita.
+        // falta de indice. Desactivandolo se comprueba lo que interesa: que los
+        // indices parciales SIRVEN para la consulta tal y como esta escrita.
         JdbcTemplate jdbc = jdbc();
         jdbc.execute("set enable_seqscan = off");
 
         String plan = String.join("\n", jdbc.queryForList(
                 """
-                explain select * from %s.outbox_message
-                where status in ('PENDING', 'IN_PROGRESS')
-                  and coalesce(next_attempt_at, created_at) <= now()
-                order by created_at, id
+                explain select * from %1$s.outbox_message o
+                where o.status in ('PENDING', 'IN_PROGRESS')
+                  and coalesce(o.next_attempt_at, o.created_at) <= now()
+                  and not exists (
+                      select 1 from %1$s.outbox_message anterior
+                      where anterior.aggregate_type = o.aggregate_type
+                        and anterior.aggregate_id = o.aggregate_id
+                        and anterior.status in ('PENDING', 'IN_PROGRESS')
+                        and anterior.sequence_number < o.sequence_number
+                  )
+                order by o.sequence_number
                 limit 50
                 """.formatted(SCHEMA), String.class));
 
         jdbc.execute("set enable_seqscan = on");
 
-        assertThat(plan).contains("idx_outbox_message_claim");
+        // Se comprueba que la consulta es INDEXABLE, no cual de los dos indices gana:
+        // con la tabla vacia el planificador no elige lo mismo que elegiria con
+        // millones de filas, y fijar el indice concreto seria un test que miente.
+        // Lo que no puede aparecer nunca es un recorrido de la tabla entera.
+        assertThat(plan)
+                .as("sin indice, cada pasada del relay recorre outbox_message entera")
+                .contains("idx_outbox_message_")
+                .doesNotContain("Seq Scan on outbox_message");
     }
 
     private static void recreateSchema() {

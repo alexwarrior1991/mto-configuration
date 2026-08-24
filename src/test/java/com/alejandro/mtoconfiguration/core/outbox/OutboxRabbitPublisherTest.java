@@ -57,6 +57,7 @@ class OutboxRabbitPublisherTest {
             "mto.master-data.station.created",
             "{\"id\":42}",
             0,
+            7L,
             "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
             "vendor=abc"
     );
@@ -151,7 +152,9 @@ class OutboxRabbitPublisherTest {
         assertThat(properties.getHeaders())
                 .containsEntry("eventType", record.eventType())
                 .containsEntry("aggregateType", record.aggregateType())
-                .containsEntry("aggregateId", record.aggregateId());
+                .containsEntry("aggregateId", record.aggregateId())
+                // Permite al consumidor descartar lo que sea anterior a lo ya aplicado
+                .containsEntry("sequenceNumber", record.sequenceNumber());
     }
 
     @Test
@@ -207,7 +210,7 @@ class OutboxRabbitPublisherTest {
 
         OutboxRecord sinTraza = new OutboxRecord(
                 record.id(), record.aggregateType(), record.aggregateId(), record.eventType(),
-                record.exchangeName(), record.routingKey(), record.payload(), 0, null, null);
+                record.exchangeName(), record.routingKey(), record.payload(), 0, 7L, null, null);
 
         publisher.publish(sinTraza);
 

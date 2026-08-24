@@ -311,6 +311,11 @@ app:
     # Cada cuanto se refresca la foto del outbox que publican las metricas. Los
     # gauges NO consultan la base de datos en cada scrape de Prometheus.
     metrics-refresh-delay: 30s
+    # Publica los mensajes de un mismo agregado en el orden en que se generaron. Sin
+    # esto, un mensaje que falla y se reprograma deja pasar por delante al siguiente
+    # del mismo agregado, y el consumidor aplica el cambio viejo encima del nuevo.
+    # El coste es que un mensaje atascado frena a los de SU agregado, solo a esos.
+    strict-ordering-per-aggregate: true
     # Borrado de los mensajes ya publicados. Sin esto outbox_message solo crece:
     # cada cambio de dato maestro deja una fila con su JSON, y las operaciones
     # masivas publican un evento por entidad.

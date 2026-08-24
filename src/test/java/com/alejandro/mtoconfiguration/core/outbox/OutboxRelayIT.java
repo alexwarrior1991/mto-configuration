@@ -101,6 +101,7 @@ class OutboxRelayIT {
         outboxProperties.setMaxRetryDelay(Duration.ofMinutes(5));
         outboxProperties.setRetryJitter(0d);
         outboxProperties.setClaimVisibilityTimeout(Duration.ofMinutes(5));
+        outboxProperties.setStrictOrderingPerAggregate(true);
         outboxProperties.getPurge().setRetention(Duration.ofDays(7));
         outboxProperties.getPurge().setBatchSize(500);
         outboxProperties.getPurge().setMaxBatchesPerRun(20);
@@ -419,6 +420,155 @@ class OutboxRelayIT {
                 .isEqualTo(OutboxStatus.PUBLISHED);
     }
 
+    // --------------------------------------------------------- orden por agregado
+
+    @Test
+    void unMensajeAtascadoRetieneALosSiguientesDeSuMismoAgregado() {
+        UUID primero = persistFor("42");
+        UUID segundo = persistFor("42");
+
+        // El primero se reclama y falla: vuelve a PENDING, aplazado por el backoff.
+        outboxRelayService.claimBatch();
+        outboxRelayService.markFailed(primero, new IllegalStateException("broker caido"));
+
+        List<OutboxRecord> lote = outboxRelayService.claimBatch();
+
+        // Sin esta retencion, el segundo saldria ahora y el primero despues: el
+        // consumidor aplicaria el cambio VIEJO encima del nuevo y el dato maestro
+        // quedaria mal sin que nadie se entere.
+        assertThat(lote)
+                .as("el segundo del agregado no puede adelantar al primero, que aun va a llegar")
+                .isEmpty();
+        assertThat(outboxMessageRepository.findById(segundo).orElseThrow().getStatus())
+                .isEqualTo(OutboxStatus.PENDING);
+    }
+
+    @Test
+    void laRetencionEsSoloDeSuAgregadoYNoFrenaAlResto() {
+        UUID bloqueante = persistFor("42");
+        persistFor("42");
+        UUID otroAgregado = persistFor("99");
+
+        // Lote de uno para que el primer reclamo se lleve solo al bloqueante y no
+        // arrastre ya de paso el mensaje del otro agregado.
+        outboxProperties.setBatchSize(1);
+        outboxRelayService.claimBatch();
+        outboxRelayService.markFailed(bloqueante, new IllegalStateException("broker caido"));
+        outboxProperties.setBatchSize(50);
+
+        assertThat(outboxRelayService.claimBatch())
+                .as("un agregado atascado no puede parar el circuito entero")
+                .extracting(OutboxRecord::id)
+                .containsExactly(otroAgregado);
+    }
+
+    @Test
+    void alPublicarseElPrimeroSeLiberaElSiguiente() {
+        UUID primero = persistFor("42");
+        UUID segundo = persistFor("42");
+
+        outboxRelayService.claimBatch();
+        outboxRelayService.markPublished(primero);
+
+        assertThat(outboxRelayService.claimBatch())
+                .extracting(OutboxRecord::id)
+                .containsExactly(segundo);
+    }
+
+    @Test
+    void unMensajeAgotadoNoRetieneAlAgregadoParaSiempre() {
+        UUID agotado = persist(message -> {
+            message.setAggregateId("42");
+            message.setStatus(OutboxStatus.FAILED);
+            message.setNextAttemptAt(null);
+        });
+        UUID siguiente = persistFor("42");
+
+        // Un FAILED ya no se va a publicar por si mismo: si retuviera, dejaria el
+        // agregado parado indefinidamente y eso es peor que el desorden.
+        assertThat(outboxRelayService.claimBatch())
+                .extracting(OutboxRecord::id)
+                .containsExactly(siguiente);
+        assertThat(outboxMessageRepository.findById(agotado).orElseThrow().getStatus())
+                .isEqualTo(OutboxStatus.FAILED);
+    }
+
+    @Test
+    void elOrdenLoMandaLaSecuenciaYNoLaFechaDeCreacion() {
+        // created_at no sirve como clave de orden: un bulkCreate genera N mensajes con
+        // el mismo instante, y ademas la fecha la pone la aplicacion, de modo que un
+        // reloj desajustado entre replicas puede darla del reves.
+        //
+        // Aqui se crean con created_at DECRECIENTE segun avanza la secuencia: si la
+        // consulta ordenara por fecha, saldrian justo al reves.
+        Instant base = Instant.now().minusSeconds(1);
+        List<UUID> porSecuencia = IntStream.range(0, 5)
+                .mapToObj(i -> {
+                    Instant haciaAtras = base.minusSeconds(i);
+                    return persist(message -> {
+                        message.setAggregateId(String.valueOf(i));
+                        message.setStatus(OutboxStatus.PENDING);
+                        message.setCreatedAt(haciaAtras);
+                        message.setNextAttemptAt(haciaAtras);
+                    });
+                })
+                .toList();
+
+        assertThat(outboxRelayService.claimBatch())
+                .extracting(OutboxRecord::id)
+                .containsExactlyElementsOf(porSecuencia);
+    }
+
+    @Test
+    void variosMensajesDelMismoInstanteConservanSuOrdenDeCreacion() {
+        // El caso real del bulkCreate: mismo created_at para todos.
+        Instant mismoInstante = Instant.now().minusSeconds(1);
+        List<UUID> creados = IntStream.range(0, 10)
+                .mapToObj(i -> persist(message -> {
+                    message.setAggregateId(String.valueOf(i));
+                    message.setStatus(OutboxStatus.PENDING);
+                    message.setCreatedAt(mismoInstante);
+                    message.setNextAttemptAt(mismoInstante);
+                }))
+                .toList();
+
+        assertThat(outboxRelayService.claimBatch())
+                .extracting(OutboxRecord::id)
+                .containsExactlyElementsOf(creados);
+    }
+
+    @Test
+    void laBaseDeDatosAsignaUnaSecuenciaCrecienteACadaMensaje() {
+        List<UUID> creados = IntStream.range(0, 5).mapToObj(i -> persistFor("42")).toList();
+
+        List<Long> secuencias = creados.stream()
+                .map(id -> outboxMessageRepository.findById(id).orElseThrow().getSequenceNumber())
+                .toList();
+
+        assertThat(secuencias).doesNotContainNull().isSorted();
+        assertThat(secuencias).doesNotHaveDuplicates();
+    }
+
+    @Test
+    void desactivandoElOrdenEstrictoElSegundoAdelantaAlPrimero() {
+        outboxProperties.setStrictOrderingPerAggregate(false);
+        UUID primero = persistFor("42");
+        UUID segundo = persistFor("42");
+
+        // Sin orden estricto nada retiene al segundo, asi que el lote de uno es lo que
+        // deja ver que adelanta al primero en cuanto este se aplaza.
+        outboxProperties.setBatchSize(1);
+        outboxRelayService.claimBatch();
+        outboxRelayService.markFailed(primero, new IllegalStateException("broker caido"));
+        outboxProperties.setBatchSize(50);
+
+        // Es la palanca para vaciar un atasco a costa del orden. Que exista no la hace
+        // recomendable: por defecto pesa mas no corromper el dato.
+        assertThat(outboxRelayService.claimBatch())
+                .extracting(OutboxRecord::id)
+                .containsExactly(segundo);
+    }
+
     // ------------------------------------------------------------------ trazabilidad
 
     @Test
@@ -574,6 +724,16 @@ class OutboxRelayIT {
                     message.setAggregateId(String.valueOf(i));
                 }))
                 .collect(Collectors.toList());
+    }
+
+    /** Mensaje listo para publicar de un agregado concreto. */
+    private UUID persistFor(String aggregateId) {
+        return persist(message -> {
+            message.setAggregateType("station");
+            message.setAggregateId(aggregateId);
+            message.setStatus(OutboxStatus.PENDING);
+            message.setNextAttemptAt(Instant.now().minusSeconds(1));
+        });
     }
 
     private UUID persist(java.util.function.Consumer<OutboxMessage> customizer) {

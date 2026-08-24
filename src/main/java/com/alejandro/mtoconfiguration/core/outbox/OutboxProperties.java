@@ -59,6 +59,20 @@ public class OutboxProperties {
     /** Cada cuanto se refresca la foto del outbox que publican las metricas. */
     private Duration metricsRefreshDelay = Duration.ofSeconds(30);
 
+    /**
+     * Publica los mensajes de un mismo agregado en el orden en que se generaron.
+     * <p>
+     * Un mensaje que falla y se reprograma dejaria pasar por delante al siguiente del
+     * mismo agregado, y el consumidor aplicaria el cambio viejo encima del nuevo. Con
+     * esto activo, el reclamo retiene a los posteriores mientras el anterior siga sin
+     * publicarse.
+     * <p>
+     * El coste es que un mensaje atascado frena a los de SU agregado (solo a esos).
+     * Se puede desactivar si en algun momento interesa vaciar un atasco a costa del
+     * orden, pero por defecto pesa mas no corromper el dato.
+     */
+    private boolean strictOrderingPerAggregate = true;
+
     private Purge purge = new Purge();
 
     /**

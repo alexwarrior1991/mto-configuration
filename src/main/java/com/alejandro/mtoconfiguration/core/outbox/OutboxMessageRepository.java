@@ -31,11 +31,43 @@ public interface OutboxMessageRepository extends JpaRepository<OutboxMessage, UU
             select * from {h-schema}outbox_message
             where status in ('PENDING', 'IN_PROGRESS')
               and coalesce(next_attempt_at, created_at) <= :now
-            order by created_at, id
+            order by sequence_number
             limit :batchSize
             for update skip locked
             """, nativeQuery = true)
     List<OutboxMessage> claimBatch(@Param("now") Instant now, @Param("batchSize") int batchSize);
+
+    /**
+     * Como {@link #claimBatch}, pero reteniendo los mensajes cuyo agregado tenga otro
+     * anterior todavia sin publicar.
+     * <p>
+     * Sin esta retencion, un mensaje que falla y se reprograma deja pasar por delante
+     * al siguiente del MISMO agregado, y el consumidor acaba aplicando el cambio viejo
+     * encima del nuevo: el dato maestro queda mal y nadie se entera. Es un fallo que
+     * antes se disimulaba, porque el mensaje que no se confirmaba se daba por
+     * publicado y se perdia, de modo que solo llegaba el nuevo y el resultado final
+     * salia bien de casualidad.
+     * <p>
+     * Solo retienen los PENDING y los IN_PROGRESS, que son los que todavia van a
+     * llegar. Un FAILED no bloquea: ya no se va a publicar nunca por si mismo, y
+     * dejarlo retener al resto pararia el agregado entero de forma indefinida.
+     */
+    @Query(value = """
+            select * from {h-schema}outbox_message o
+            where o.status in ('PENDING', 'IN_PROGRESS')
+              and coalesce(o.next_attempt_at, o.created_at) <= :now
+              and not exists (
+                  select 1 from {h-schema}outbox_message anterior
+                  where anterior.aggregate_type = o.aggregate_type
+                    and anterior.aggregate_id = o.aggregate_id
+                    and anterior.status in ('PENDING', 'IN_PROGRESS')
+                    and anterior.sequence_number < o.sequence_number
+              )
+            order by o.sequence_number
+            limit :batchSize
+            for update skip locked
+            """, nativeQuery = true)
+    List<OutboxMessage> claimBatchInOrder(@Param("now") Instant now, @Param("batchSize") int batchSize);
 
     long countByStatus(OutboxStatus status);
 
