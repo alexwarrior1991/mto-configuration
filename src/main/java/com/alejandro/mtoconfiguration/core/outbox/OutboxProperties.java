@@ -73,6 +73,14 @@ public class OutboxProperties {
      */
     private boolean strictOrderingPerAggregate = true;
 
+    /**
+     * Publica en cuanto la transaccion de negocio confirma, sin esperar al sondeo.
+     * <p>
+     * El sondeo sigue existiendo como red de seguridad; esto solo le quita el suelo de
+     * latencia, que era de hasta {@code publisher-fixed-delay} para todos los eventos.
+     */
+    private boolean immediateDispatch = true;
+
     private Purge purge = new Purge();
 
     /**

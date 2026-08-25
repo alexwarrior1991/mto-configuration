@@ -101,6 +101,16 @@ spring:
       simple:
         # Auto-acknowledge messages upon successful processing
         acknowledge-mode: auto
+        # Consumidores iniciales y maximos, y mensajes sin confirmar por consumidor.
+        # Viven aqui y no en app.rabbitmq porque es Boot quien los aplica: tenerlos
+        # duplicados en dos sitios fue lo que hizo creer que el bloque de reintentos
+        # de abajo estaba activo cuando no lo leia nadie.
+        concurrency: 1
+        max-concurrency: 5
+        prefetch: 10
+        # No se reencola un mensaje rechazado: se manda a su DLQ
+        default-requeue-rejected: false
+        receive-timeout: 1s
         retry:
           # Enable automatic retry mechanism for failed messages
           enabled: true
@@ -167,19 +177,6 @@ app:
       dead-letter-queue-suffix: .dlq
       # Suffix for dead letter routing keys
       dead-letter-routing-key-suffix: .dlq
-
-    # RabbitMQ message listener configuration
-    listener:
-      # Initial number of concurrent message consumers
-      concurrent-consumers: 1
-      # Maximum number of concurrent consumers for scalability
-      max-concurrent-consumers: 5
-      # Number of unacknowledged messages a consumer can have
-      prefetch-count: 10
-      # Do not requeue rejected messages (send to DLQ instead)
-      default-requeue-rejected: false
-      # Timeout for receiving messages in milliseconds
-      receive-timeout: 1000
 
     # RabbitMQ message publisher configuration
     publisher:
@@ -316,6 +313,10 @@ app:
     # del mismo agregado, y el consumidor aplica el cambio viejo encima del nuevo.
     # El coste es que un mensaje atascado frena a los de SU agregado, solo a esos.
     strict-ordering-per-aggregate: true
+    # Publica en cuanto la transaccion de negocio confirma, sin esperar al sondeo.
+    # El sondeo sigue como red de seguridad: esto solo le quita el suelo de latencia,
+    # que era de hasta publisher-fixed-delay para TODOS los eventos.
+    immediate-dispatch: true
     # Borrado de los mensajes ya publicados. Sin esto outbox_message solo crece:
     # cada cambio de dato maestro deja una fila con su JSON, y las operaciones
     # masivas publican un evento por entidad.

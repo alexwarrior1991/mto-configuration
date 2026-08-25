@@ -19,7 +19,6 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "app.rabbitmq")
 public class RabbitMqProperties {
 
-
     /**
      * Activa o desactiva la declaración automática de exchanges, queues y bindings.
      */
@@ -50,17 +49,10 @@ public class RabbitMqProperties {
     private List<Binding> bindings = new ArrayList<>();
 
     /**
-     * Configuración del listener container.
-     */
-    @Valid
-    private Listener listener = new Listener();
-
-    /**
      * Configuración del publisher.
      */
     @Valid
     private Publisher publisher = new Publisher();
-
 
     @Getter
     @Setter
@@ -225,16 +217,6 @@ public class RabbitMqProperties {
         private String routingKey = "";
 
         private Map<String, Object> arguments = new HashMap<>();
-    }
-
-    @Getter
-    @Setter
-    public static class Listener {
-        private int concurrentConsumers = 1;
-        private int maxConcurrentConsumers = 5;
-        private int prefetchCount = 10;
-        private boolean defaultRequeueRejected = false;
-        private long receiveTimeout = 1000L;
     }
 
     @Getter

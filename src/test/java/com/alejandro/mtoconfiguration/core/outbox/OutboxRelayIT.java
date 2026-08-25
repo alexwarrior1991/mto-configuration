@@ -83,6 +83,9 @@ class OutboxRelayIT {
     private io.micrometer.tracing.Tracer tracer;
 
     @Autowired
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+    @Autowired
     private DataSource dataSource;
 
     @DynamicPropertySource
@@ -418,6 +421,46 @@ class OutboxRelayIT {
 
         assertThat(outboxMessageRepository.findById(id).orElseThrow().getStatus())
                 .isEqualTo(OutboxStatus.PUBLISHED);
+    }
+
+    // ----------------------------------------------------- publicacion inmediata
+
+    @Test
+    void elMensajeSePublicaAlConfirmarSinEsperarAlSondeo() {
+        // El sondeo cada 5 segundos es la red de seguridad, pero tambien era el suelo
+        // de latencia de TODOS los eventos. Aqui no se llama al planificador en ningun
+        // momento: si el mensaje acaba publicado, es porque el commit lo desperto.
+        new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+                .executeWithoutResult(status -> outboxService.save(
+                        "station", "42", "MASTER_DATA_STATION_UPDATED",
+                        "mto.master-data.exchange", "mto.master-data.station.updated",
+                        java.util.Map.of("id", 42)));
+
+        org.awaitility.Awaitility.await()
+                .atMost(java.time.Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(outboxMessageRepository.findAll())
+                        .singleElement()
+                        .extracting(OutboxMessage::getStatus)
+                        .isEqualTo(OutboxStatus.PUBLISHED));
+    }
+
+    @Test
+    void unaTransaccionQueHaceRollbackNoDespiertaAlRelay() {
+        // Si se publicara antes del commit, se estaria anunciando un cambio que nunca
+        // ocurrio. Es exactamente la razon por la que existe el outbox.
+        org.springframework.transaction.support.TransactionTemplate plantilla =
+                new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+
+        assertThatCode(() -> plantilla.executeWithoutResult(status -> {
+            outboxService.save("station", "43", "MASTER_DATA_STATION_UPDATED",
+                    "mto.master-data.exchange", "mto.master-data.station.updated",
+                    java.util.Map.of("id", 43));
+            status.setRollbackOnly();
+        })).doesNotThrowAnyException();
+
+        assertThat(outboxMessageRepository.findAll())
+                .as("sin commit no hay ni fila ni evento que publicar")
+                .isEmpty();
     }
 
     // --------------------------------------------------------- orden por agregado
@@ -816,8 +859,22 @@ class OutboxRelayIT {
         @Bean
         OutboxService outboxService(OutboxMessageRepository repository,
                                     OutboxProperties properties,
-                                    OutboxTracing tracing) {
-            return new OutboxService(repository, properties, new tools.jackson.databind.ObjectMapper(), tracing);
+                                    OutboxTracing tracing,
+                                    org.springframework.context.ApplicationEventPublisher eventPublisher) {
+            return new OutboxService(repository, properties,
+                    new tools.jackson.databind.ObjectMapper(), tracing, eventPublisher);
+        }
+
+        @Bean
+        OutboxDispatchTrigger outboxDispatchTrigger(OutboxPublisherScheduler scheduler) {
+            return new OutboxDispatchTrigger(
+                    java.util.concurrent.Executors.newSingleThreadExecutor(),
+                    scheduler::publishPendingMessages);
+        }
+
+        @Bean
+        OutboxImmediateDispatchListener outboxImmediateDispatchListener(OutboxDispatchTrigger trigger) {
+            return new OutboxImmediateDispatchListener(trigger);
         }
 
         @Bean

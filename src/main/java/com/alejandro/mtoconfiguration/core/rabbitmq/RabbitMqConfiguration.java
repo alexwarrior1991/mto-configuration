@@ -9,6 +9,7 @@ import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.boot.amqp.autoconfigure.SimpleRabbitListenerContainerFactoryConfigurer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -53,19 +54,34 @@ public class RabbitMqConfiguration {
         return rabbitAdmin;
     }
 
+    /**
+     * Factory de listeners, configurada a partir de {@code spring.rabbitmq.listener.simple.*}.
+     * <p>
+     * El configurer no es un adorno: declarar este bean a mano SUSTITUYE al que crea
+     * Spring Boot, y sin pasar por el configurer se pierde en silencio toda la
+     * configuracion del YAML. Antes esta factory solo aplicaba unas pocas propiedades
+     * propias, de modo que el bloque de reintentos, el backoff y el acknowledge-mode
+     * estaban escritos en application.yaml sin que nadie los leyera: un consumidor que
+     * fallara no habria reintentado nunca las 3 veces configuradas.
+     * <p>
+     * Por eso tampoco existe ya un {@code app.rabbitmq.listener}: duplicaba una a una
+     * las propiedades de Boot, y esa duplicacion era justo la que hacia creer que algo
+     * estaba configurado cuando no lo estaba.
+     */
     @Bean
     public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(
+            SimpleRabbitListenerContainerFactoryConfigurer configurer,
             ConnectionFactory connectionFactory,
             MessageConverter rabbitMessageConverter
     ) {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
-        factory.setConnectionFactory(connectionFactory);
+
+        // Primero el YAML de Boot...
+        configurer.configure(factory, connectionFactory);
+
+        // ...y despues lo que es de este servicio.
         factory.setMessageConverter(rabbitMessageConverter);
-        factory.setConcurrentConsumers(properties.getListener().getConcurrentConsumers());
-        factory.setMaxConcurrentConsumers(properties.getListener().getMaxConcurrentConsumers());
-        factory.setPrefetchCount(properties.getListener().getPrefetchCount());
-        factory.setDefaultRequeueRejected(properties.getListener().isDefaultRequeueRejected());
-        factory.setReceiveTimeout(properties.getListener().getReceiveTimeout());
+
         return factory;
     }
 

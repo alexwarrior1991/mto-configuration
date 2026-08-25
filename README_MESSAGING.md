@@ -515,3 +515,51 @@ Cada mensaje viaja con la cabecera `sequenceNumber`. El relay ya publica en orde
 ### 11.5. Índices
 
 `V5` sustituye el índice de reclamo (ahora sobre `sequence_number`) y añade `idx_outbox_message_aggregate` sobre `(aggregate_type, aggregate_id, sequence_number)`, que es el que resuelve la retención sin recorrer la tabla. Ambos parciales sobre `PENDING`/`IN_PROGRESS`, así que siguen siendo diminutos.
+
+---
+
+## 12. Latencia y configuración del consumidor
+
+### 12.1. Publicación inmediata al confirmar
+
+El sondeo cada 5 segundos es la red de seguridad, pero también era el **suelo de latencia de todos los eventos**: un cambio de dato maestro tardaba entre 0 y 5 segundos en salir por motivos que no tienen nada que ver con el negocio.
+
+Ahora `OutboxService.save()` publica un evento de Spring y un `@TransactionalEventListener(AFTER_COMMIT)` despierta al relay. `AFTER_COMMIT` y no antes: publicar con la transacción aún abierta significaría anunciar un cambio que después puede hacer rollback — que es exactamente la razón por la que existe el outbox.
+
+Dos detalles del despertador (`OutboxDispatchTrigger`):
+
+- **Agrupa.** Un `bulkCreate` de mil entidades escribe mil mensajes y pide mil despertares; basta con uno.
+- **Libera el indicador ANTES de ejecutar.** Así lo que se guarde mientras el relay trabaja provoca otra pasada, en vez de quedarse esperando al siguiente sondeo — que es justo la latencia que se quiere quitar.
+
+Corre en un hilo propio (`outbox-dispatch`), de modo que la petición HTTP no paga la publicación, y cualquier error se traga y se registra: el planificador vuelve a pasar de todas formas. Se desactiva con `app.outbox.immediate-dispatch: false`.
+
+### 12.2. La configuración del listener ya se aplica
+
+Este servicio declaraba a mano un bean de `SimpleRabbitListenerContainerFactory`, y eso **sustituye** al que crea Spring Boot. Como no pasaba por el `SimpleRabbitListenerContainerFactoryConfigurer`, toda la configuración de `spring.rabbitmq.listener.simple.*` se descartaba en silencio: el bloque de reintentos, el backoff y el `acknowledge-mode` estaban escritos en `application.yaml` sin que nadie los leyera. Un consumidor que fallara no habría reintentado nunca las 3 veces configuradas.
+
+Es un fallo que no se ve, porque la configuración está ahí puesta y parece activa.
+
+```java
+configurer.configure(factory, connectionFactory);   // primero el YAML de Boot
+factory.setMessageConverter(rabbitMessageConverter); // después lo del servicio
+```
+
+De paso desaparece `app.rabbitmq.listener`: duplicaba una a una las propiedades de Boot (`concurrent-consumers` ↔ `concurrency`, `prefetch-count` ↔ `prefetch`…), y esa duplicación era justo la que hacía creer que algo estaba configurado cuando no lo estaba. Esos valores viven ahora donde Boot los lee:
+
+```yaml
+spring:
+  rabbitmq:
+    listener:
+      simple:
+        concurrency: 1
+        max-concurrency: 5
+        prefetch: 10
+        default-requeue-rejected: false
+        receive-timeout: 1s
+        acknowledge-mode: auto
+        retry:
+          enabled: true
+          max-retries: 3
+```
+
+**Si tu servicio consumidor también declara su propia factory, revisa lo mismo** — es fácil que el patrón esté copiado.

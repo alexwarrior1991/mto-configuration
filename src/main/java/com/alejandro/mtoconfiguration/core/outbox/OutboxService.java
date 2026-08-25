@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.core.outbox;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
@@ -15,6 +16,7 @@ public class OutboxService {
     private final OutboxProperties outboxProperties;
     private final ObjectMapper objectMapper;
     private final OutboxTracing outboxTracing;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
 
     public void save(
@@ -51,6 +53,9 @@ public class OutboxService {
             message.setTraceState(traceContext.traceState());
 
             outboxMessageRepository.save(message);
+
+            // Despierta al relay al confirmar la transaccion, para no pagar el sondeo.
+            applicationEventPublisher.publishEvent(new OutboxMessageSavedEvent());
         } catch (Exception exception) {
             throw new IllegalStateException("Error creating outbox message", exception);
         }
