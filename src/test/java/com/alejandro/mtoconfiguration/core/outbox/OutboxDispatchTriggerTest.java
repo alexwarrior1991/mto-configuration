@@ -2,6 +2,8 @@ package com.alejandro.mtoconfiguration.core.outbox;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -27,9 +29,36 @@ class OutboxDispatchTriggerTest {
     }
 
     @Test
-    void milPeticionesAntesDeEmpezarSeAgrupanEnUnaSolaPasada() throws Exception {
+    void milPeticionesSeAgrupanEnUnaSolaTareaEncolada() {
         // Un bulkCreate de mil entidades escribe mil mensajes y pide mil despertares:
-        // ejecutarlos todos seria mil pasadas del relay para el mismo trabajo.
+        // encolarlos todos seria mil pasadas del relay para el mismo trabajo.
+        //
+        // El ejecutor guarda las tareas sin ejecutarlas, en vez de usar un hilo real:
+        // asi se mide la agrupacion sin depender de si ese hilo llega a arrancar antes
+        // o despues de que termine el bucle, que es una carrera y no un invariante.
+        List<Runnable> encoladas = new ArrayList<>();
+        AtomicInteger pasadas = new AtomicInteger();
+
+        OutboxDispatchTrigger trigger = new OutboxDispatchTrigger(encoladas::add, pasadas::incrementAndGet);
+
+        for (int i = 0; i < 1000; i++) {
+            trigger.requestDispatch();
+        }
+
+        assertThat(encoladas)
+                .as("mil peticiones antes de que arranque la pasada son una sola tarea")
+                .hasSize(1);
+
+        encoladas.forEach(Runnable::run);
+        assertThat(pasadas).hasValue(1);
+    }
+
+    @Test
+    void conUnHiloRealMilPeticionesNoPuedenPasarDeDosPasadas() throws Exception {
+        // Con un ejecutor de verdad el numero exacto NO es determinista, y afirmar que
+        // es uno seria un test que falla segun la maquina. El invariante real es la
+        // COTA: el indicador es uno solo, asi que como mucho hay una pasada corriendo
+        // y otra encolada. Nunca mil, que es lo que se quiere evitar.
         AtomicInteger pasadas = new AtomicInteger();
         CountDownLatch arranca = new CountDownLatch(1);
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -50,9 +79,9 @@ class OutboxDispatchTriggerTest {
 
         executor.shutdown();
         assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
-        assertThat(pasadas)
-                .as("mil peticiones antes de que arranque la pasada son una sola pasada")
-                .hasValue(1);
+        assertThat(pasadas.get())
+                .as("mil peticiones no pueden convertirse en mil pasadas del relay")
+                .isBetween(1, 2);
     }
 
     @Test
