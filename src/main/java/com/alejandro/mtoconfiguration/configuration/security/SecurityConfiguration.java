@@ -1,6 +1,6 @@
 package com.alejandro.mtoconfiguration.configuration.security;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerProperties;
 import org.springframework.context.annotation.Bean;
@@ -13,11 +13,14 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
-import org.springframework.security.oauth2.jwt.*;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -26,8 +29,35 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @EnableWebSecurity
 @EnableMethodSecurity
 @EnableConfigurationProperties(SecurityProperties.class)
-@ConditionalOnProperty(prefix = "app.security", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class SecurityConfiguration {
+
+    private static final String API = ConfigurationApiPaths.BASE_PATH;
+    private static final String ASYNC_API = ConfigurationApiPaths.ASYNC_BASE_PATH;
+
+    /**
+     * Consultas que viajan por POST porque llevan cuerpo, no porque escriban nada. Se enumeran
+     * aparte para que no caigan bajo la regla de escritura: pedir permiso de escritura para buscar
+     * empujaría a dar {@code config-write} a perfiles de solo lectura.
+     * <p>
+     * Los patrones llevan un único comodín de segmento ({@code /*}) en lugar de {@code /**} en
+     * mitad de la ruta: {@code PathPattern}, el motor que usa Spring Security, solo admite
+     * {@code /**} al final. Por eso las variantes síncrona y asíncrona van explícitas.
+     */
+    private static final String[] QUERY_BY_POST = {
+            API + "/*/search", API + "/*/filter",
+            ASYNC_API + "/*/search", ASYNC_API + "/*/filter"
+    };
+
+    /** Cargas masivas: un solo error afecta a miles de registros, así que llevan permiso propio. */
+    private static final String[] BULK = {
+            API + "/*/bulk",
+            ASYNC_API + "/*/bulk"
+    };
+
+    private static final String[] API_DOCS = {
+            "/v3/api-docs", "/v3/api-docs/**", "/v3/api-docs.yaml",
+            "/swagger-ui/**", "/swagger-ui.html"
+    };
 
     private final SecurityProperties securityProperties;
     private final KeycloakJwtAuthenticationConverter jwtAuthenticationConverter;
@@ -56,19 +86,41 @@ public class SecurityConfiguration {
                         exceptionHandlingConfigurer.authenticationEntryPoint(authenticationEntryPoint)
                                 .accessDeniedHandler(accessDeniedHandler)
                 )
-                .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers(
-                                "/actuator/health",
-                                "/actuator/health/**",
-                                "/actuator/info",
-                                "/v3/api-docs/**",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html"
-                        ).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/actuator/prometheus").hasAnyRole("ADMIN", "OPS")
-                        .anyRequest().authenticated()
-                )
+                .authorizeHttpRequests(authorize -> {
+                    authorize.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
+
+                    authorize.requestMatchers(
+                            "/actuator/health",
+                            "/actuator/health/**",
+                            "/actuator/info"
+                    ).permitAll();
+
+                    // La documentación describe la superficie completa de la API. En un entorno
+                    // desplegado es el mejor mapa posible para quien busque un hueco, así que se
+                    // abre solo donde la configuración lo pide.
+                    if (securityProperties.exposeApiDocs()) {
+                        authorize.requestMatchers(API_DOCS).permitAll();
+                    }
+
+                    authorize.requestMatchers("/actuator/**").hasRole(SecurityRoles.OPS_METRICS);
+
+                    // El orden importa: cada petición se resuelve con la primera regla que encaja,
+                    // así que lo específico (consultas por POST, cargas masivas) va antes que la
+                    // regla general del verbo.
+                    authorize.requestMatchers(HttpMethod.GET, API + "/**").hasRole(SecurityRoles.CONFIG_READ);
+                    // HEAD lo sirve el mismo handler que GET y revela si un recurso existe, así que
+                    // no puede quedarse en el 'anyRequest().authenticated()' del final.
+                    authorize.requestMatchers(HttpMethod.HEAD, API + "/**").hasRole(SecurityRoles.CONFIG_READ);
+                    authorize.requestMatchers(HttpMethod.POST, QUERY_BY_POST).hasRole(SecurityRoles.CONFIG_READ);
+                    authorize.requestMatchers(HttpMethod.POST, BULK).hasRole(SecurityRoles.CONFIG_IMPORT);
+                    authorize.requestMatchers(HttpMethod.PUT, BULK).hasRole(SecurityRoles.CONFIG_IMPORT);
+                    authorize.requestMatchers(HttpMethod.POST, API + "/**").hasRole(SecurityRoles.CONFIG_WRITE);
+                    authorize.requestMatchers(HttpMethod.PUT, API + "/**").hasRole(SecurityRoles.CONFIG_WRITE);
+                    authorize.requestMatchers(HttpMethod.PATCH, API + "/**").hasRole(SecurityRoles.CONFIG_WRITE);
+                    authorize.requestMatchers(HttpMethod.DELETE, API + "/**").hasRole(SecurityRoles.CONFIG_DELETE);
+
+                    authorize.anyRequest().authenticated();
+                })
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
                 )
@@ -92,41 +144,56 @@ public class SecurityConfiguration {
         return source;
     }
 
+    /**
+     * Se construye con el JWK Set en lugar de con el descubrimiento por issuer: {@code
+     * JwtDecoders.fromIssuerLocation()} hace una llamada HTTP bloqueante al crear el bean, de modo
+     * que la aplicación no arrancaba si Keycloak todavía no servía el {@code
+     * .well-known/openid-configuration}. Con el JWK Set la descarga es perezosa —la primera vez que
+     * llega un token— y un reinicio simultáneo de los dos servicios deja de ser un fallo de
+     * arranque.
+     */
     @Bean
     public JwtDecoder jwtDecoder(OAuth2ResourceServerProperties properties) {
-        String issuerUri = properties.getJwt().getIssuerUri();
-        NimbusJwtDecoder jwtDecoder = JwtDecoders.fromIssuerLocation(issuerUri);
+        OAuth2ResourceServerProperties.Jwt jwtProperties = properties.getJwt();
+        String issuerUri = jwtProperties.getIssuerUri();
 
-        JwtTimestampValidator timestampValidator = new JwtTimestampValidator();
-        JwtIssuerValidator issuerValidator = new JwtIssuerValidator(issuerUri);
+        NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder
+                .withJwkSetUri(resolveJwkSetUri(jwtProperties))
+                .build();
 
-        OAuth2TokenValidator<Jwt> audienceValidator = jwt -> {
-            if (!securityProperties.audienceValidationEnabled()) {
-                return OAuth2TokenValidatorResult.success();
-            }
+        // Se parte del validador por defecto en vez de reemplazarlo: incluye la comprobación de
+        // emisor y de vigencia, y hereda las que Spring Security añada en versiones futuras.
+        jwtDecoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(issuerUri),
+                audienceValidator()
+        ));
 
-            String requiredAudience = securityProperties.requiredAudience();
-            if (requiredAudience == null || requiredAudience.isBlank()) {
-                return OAuth2TokenValidatorResult.success();
-            }
-
-            if (jwt.getAudience() != null && jwt.getAudience().contains(requiredAudience)) {
-                return OAuth2TokenValidatorResult.success();
-            }
-
-            return OAuth2TokenValidatorResult.failure(
-                    new OAuth2Error(
-                            "invalid_token",
-                            "The required audience is missing: " + requiredAudience,
-                            null
-                    )
-            );
-        };
-
-        DelegatingOAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(timestampValidator, issuerValidator, audienceValidator);
-
-        jwtDecoder.setJwtValidator(validator);
         return jwtDecoder;
+    }
+
+    /**
+     * Keycloak publica el JWK Set en una ruta fija bajo el realm. Se respeta {@code jwk-set-uri} si
+     * está configurado, para no atar la aplicación a esa convención.
+     */
+    static String resolveJwkSetUri(OAuth2ResourceServerProperties.Jwt jwtProperties) {
+        if (StringUtils.hasText(jwtProperties.getJwkSetUri())) {
+            return jwtProperties.getJwkSetUri();
+        }
+
+        return jwtProperties.getIssuerUri() + "/protocol/openid-connect/certs";
+    }
+
+    /**
+     * Que {@code required-audience} esté relleno lo garantiza {@link SecurityProperties} en el
+     * arranque, así que aquí no hay ninguna rama que deje pasar el token por falta de
+     * configuración: o se valida la audiencia, o se ha desactivado de forma explícita.
+     */
+    private OAuth2TokenValidator<Jwt> audienceValidator() {
+        if (!securityProperties.audienceValidationEnabled()) {
+            return jwt -> OAuth2TokenValidatorResult.success();
+        }
+
+        return new JwtAudienceValidator(securityProperties.requiredAudience());
     }
 
 }

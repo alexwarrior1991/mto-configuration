@@ -84,7 +84,7 @@ spring:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: ${SPRING_RABBITMQ_PORT:5672}
     username: ${SPRING_RABBITMQ_USERNAME:guest}
-    password: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
     virtual-host: /
     # Publisher confirmation type for reliable message delivery
     publisher-confirm-type: correlated
@@ -216,16 +216,20 @@ app:
 
   # Application security configuration for authentication and authorization
   security:
-    # Enable/disable security features
-    enabled: true
     # Keycloak client identifier for this application
     client-id: ${KEYCLOAK_CLIENT_ID:mto-configuration-api}
     # JWT claim to use as the principal username
     principal-claim: preferred_username
     # Validate that JWT contains the required audience
     audience-validation-enabled: true
-    # Expected audience value in JWT tokens
+    # Expected audience value in JWT tokens. Si audience-validation-enabled esta activo y este
+    # valor llega vacio, la aplicacion no arranca: sin audiencia la API aceptaria cualquier token
+    # emitido por el realm, incluido el del frontal de otra aplicacion.
     required-audience: ${KEYCLOAK_AUDIENCE:mto-configuration-api}
+    # Publicar /swagger-ui y /v3/api-docs sin autenticacion. Cerrado por defecto para que un
+    # entorno desplegado nuevo no exponga el catalogo completo de endpoints por olvido: los
+    # perfiles de desarrollo lo abren explicitamente.
+    expose-api-docs: ${APP_SECURITY_EXPOSE_API_DOCS:false}
     # Cross-Origin Resource Sharing (CORS) configuration
     cors:
       # Allowed origins for cross-origin requests
@@ -249,8 +253,9 @@ app:
       # Headers exposed to the client in cross-origin responses
       exposed-headers:
         - Location
-      # Allow credentials (cookies, authorization headers) in cross-origin requests
-      allow-credentials: true
+      # La API es stateless y se autentica con la cabecera Authorization: no hay cookies que
+      # enviar, asi que habilitar credenciales solo ampliaria la superficie.
+      allow-credentials: false
       # How long preflight request results can be cached (seconds)
       max-age: 3600
   

@@ -80,15 +80,32 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_HTTP_ENABLED: true
-    # Mapeo de puertos: puerto del host:puerto del contenedor
+      # Habilita /health/ready en el puerto de management (9000), que es lo unico que dice de
+      # verdad si Keycloak ya sirve el realm.
+      KC_HEALTH_ENABLED: true
+    # Mapeo de puertos: 8082 para la API/consola, 9000 para health y metricas
     ports:
       - "8082:8080"
-    # Verificación de salud para comprobar que Keycloak está listo
+      - "9000:9000"
+    # Un socket abierto en el 8080 no significa que el realm este disponible: Keycloak acepta
+    # conexiones bastante antes de servir el JWK Set, y la app arrancaba contra un Keycloak que
+    # todavia no respondia. Se sondea /health/ready en el puerto de management.
     healthcheck:
-      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/8080' || exit 1"]
-      interval: 10s
+      # Escalar de bloque, no cadena entre comillas: el comando lleva comillas dobles y simples, y
+      # entrecomillarlo en linea obliga a escaparlas hasta hacerlo ilegible. Los \r\n llegan
+      # literales a printf, que es quien los convierte en el CRLF que exige HTTP.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/localhost/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"UP"' <&3
+      interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 40
+      # Keycloak tarda en la primera arrancada (migracion de esquema); sin esto los primeros
+      # sondeos cuentan como fallo.
+      start_period: 30s
 
   # Servicio principal de la aplicación Spring Boot
   app:
@@ -133,7 +150,7 @@ services:
       rabbitmq:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
 
 # Definición de volúmenes nombrados para persistir datos de los servicios
 volumes:
