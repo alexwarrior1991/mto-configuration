@@ -37,6 +37,20 @@ public final class SecurityRoles {
     /** Consulta del histórico de revisiones de Envers. */
     public static final String CONFIG_AUDIT = "CONFIG_AUDIT";
 
-    /** Endpoints de operación expuestos por Actuator. */
+    /** Lectura de los endpoints de operación expuestos por Actuator. */
     public static final String OPS_METRICS = "OPS_METRICS";
+
+    /**
+     * Operaciones de Actuator que <b>modifican</b> algo, como el redrive de los mensajes en estado
+     * FAILED del outbox.
+     *
+     * <p>Va aparte de {@link #OPS_METRICS} porque son cosas distintas: leer metricas es observar, y
+     * republicar mensajes cambia el estado del sistema. Con un solo rol, cualquiera que pudiera
+     * consultar Prometheus podria tambien disparar un redrive.</p>
+     *
+     * <p>Se concede por clase de operacion y no por endpoint concreto: asi, si manana se expone
+     * otro endpoint de escritura —cambiar un nivel de log, por ejemplo— no hereda en silencio el
+     * permiso de lectura.</p>
+     */
+    public static final String OPS_WRITE = "OPS_WRITE";
 }

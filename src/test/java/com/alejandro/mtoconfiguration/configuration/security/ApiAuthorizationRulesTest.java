@@ -153,6 +153,33 @@ class ApiAuthorizationRulesTest {
                     .andExpect(status().isNotFound());
         }
 
+        /**
+         * El outbox publica su estado por {@code @ReadOperation} y el redrive de los mensajes
+         * FAILED por {@code @WriteOperation}. Republicar mensajes cambia el estado del sistema, así
+         * que no puede bastar con el permiso de leer métricas.
+         */
+        @Test
+        @DisplayName("leer Actuator no habilita sus operaciones de escritura")
+        void leerActuatorNoHabilitaEscribir() throws Exception {
+            mockMvc.perform(json(post("/actuator/outbox")).with(con(SecurityRoles.OPS_METRICS)))
+                    .andExpect(status().isForbidden());
+
+            // Con el permiso de escritura pasa la autorización; el 404 es que este slice no monta
+            // Actuator.
+            mockMvc.perform(json(post("/actuator/outbox")).with(con(SecurityRoles.OPS_WRITE)))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test
+        @DisplayName("escribir en Actuator no habilita leerlo")
+        void escribirEnActuatorNoHabilitaLeerlo() throws Exception {
+            mockMvc.perform(get("/actuator/outbox").with(con(SecurityRoles.OPS_WRITE)))
+                    .andExpect(status().isForbidden());
+
+            mockMvc.perform(get("/actuator/outbox").with(con(SecurityRoles.OPS_METRICS)))
+                    .andExpect(status().isNotFound());
+        }
+
         @Test
         @DisplayName("HEAD cuenta como lectura y no se cuela por el authenticated() final")
         void headCuentaComoLectura() throws Exception {

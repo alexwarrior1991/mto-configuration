@@ -107,6 +107,11 @@ public class SecurityConfiguration {
                     // el estado del outbox y el redrive de los mensajes FAILED: explotación, no
                     // negocio); la regla general las cubre y además no deja fuera los endpoints
                     // que se expongan más adelante.
+                    // Lo que modifica va antes que la regla general de Actuator y con su propio
+                    // permiso. En Actuator las @WriteOperation viajan por POST y las
+                    // @DeleteOperation por DELETE; el resto es lectura.
+                    authorize.requestMatchers(HttpMethod.POST, "/actuator/**").hasRole(SecurityRoles.OPS_WRITE);
+                    authorize.requestMatchers(HttpMethod.DELETE, "/actuator/**").hasRole(SecurityRoles.OPS_WRITE);
                     authorize.requestMatchers("/actuator/**").hasRole(SecurityRoles.OPS_METRICS);
 
                     // El orden importa: cada petición se resuelve con la primera regla que encaja,
