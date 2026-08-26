@@ -73,8 +73,15 @@ services:
     # Imagen oficial de Keycloak versión 26.1
     image: quay.io/keycloak/keycloak:26.1
     container_name: mto-configuration-keycloak
-    # Comando para iniciar Keycloak en modo desarrollo
-    command: start-dev --hostname=auth.mto.local --hostname-port=8082 --hostname-strict=false
+    # Keycloak 26 usa hostname v2: --hostname-port desaparecio y el puerto va dentro de la URL
+    # de --hostname. Con la opcion antigua el contenedor moria nada mas arrancar con
+    # "Unknown option: '--hostname-port'".
+    #
+    # Tampoco se pasa --hostname-strict=false: con una URL completa en --hostname, el modo
+    # estricto (el de por defecto) es justo lo que se quiere, porque fija el 'iss' de los tokens
+    # a http://auth.mto.local:8082 sea cual sea la cabecera Host de la peticion. Un emisor que
+    # variase segun quien llama no coincidiria con KEYCLOAK_ISSUER_URI y la validacion fallaria.
+    command: start-dev --hostname=http://auth.mto.local:8082
     # Variables de entorno para configurar las credenciales de administrador de Keycloak
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
