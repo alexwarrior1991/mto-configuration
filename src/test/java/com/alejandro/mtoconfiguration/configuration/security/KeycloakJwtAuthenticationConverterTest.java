@@ -24,11 +24,51 @@ class KeycloakJwtAuthenticationConverterTest {
             new KeycloakJwtAuthenticationConverter(propiedades());
 
     @Test
-    @DisplayName("los roles de realm llegan como ROLE_ y como ROLE_REALM_")
-    void losRolesDeRealmLleganConAmbosPrefijos() {
+    @DisplayName("los roles de realm llegan solo como ROLE_REALM_, nunca como ROLE_ a secas")
+    void losRolesDeRealmLleganSoloConSuPrefijo() {
         Jwt jwt = jwt().claim(JwtClaimNames.REALM_ACCESS, Map.of("roles", List.of("mto-admin"))).build();
 
-        assertThat(autoridades(jwt)).contains("ROLE_MTO_ADMIN", "ROLE_REALM_MTO_ADMIN");
+        assertThat(autoridades(jwt))
+                .contains("ROLE_REALM_MTO_ADMIN")
+                .doesNotContain("ROLE_MTO_ADMIN");
+    }
+
+    /**
+     * El motivo de que los roles de realm no emitan {@code ROLE_} a secas. Quien administra el realm
+     * no es necesariamente quien escribe el código: si bastara con crear allí un rol llamado igual
+     * que un permiso, concederlo equivaldría a conceder el permiso.
+     */
+    @Test
+    @DisplayName("un rol de realm que se llame igual que un permiso no concede ese permiso")
+    void unRolDeRealmHomonimoNoConcedeElPermiso() {
+        Jwt jwt = jwt()
+                .claim(JwtClaimNames.REALM_ACCESS, Map.of("roles", List.of("config-delete")))
+                .build();
+
+        assertThat(autoridades(jwt))
+                .contains("ROLE_REALM_" + SecurityRoles.CONFIG_DELETE)
+                .doesNotContain("ROLE_" + SecurityRoles.CONFIG_DELETE);
+    }
+
+    /**
+     * Keycloak expande los roles compuestos al emitir el token, así que un usuario con el perfil de
+     * realm {@code mto-editor} llega además con los permisos de cliente que ese perfil agrupa. Es lo
+     * que permite que el código compruebe solo permisos y que los perfiles se rediseñen en Keycloak
+     * sin desplegar.
+     */
+    @Test
+    @DisplayName("el perfil de realm y los permisos que agrupa conviven en el mismo token")
+    void elPerfilDeRealmYSusPermisosConviven() {
+        Jwt jwt = jwt()
+                .claim(JwtClaimNames.REALM_ACCESS, Map.of("roles", List.of("mto-editor")))
+                .claim(JwtClaimNames.RESOURCE_ACCESS,
+                        Map.of(CLIENT_ID, Map.of("roles", List.of("config-read", "config-write"))))
+                .build();
+
+        assertThat(autoridades(jwt)).contains(
+                "ROLE_REALM_MTO_EDITOR",
+                "ROLE_" + SecurityRoles.CONFIG_READ,
+                "ROLE_" + SecurityRoles.CONFIG_WRITE);
     }
 
     @Test
@@ -90,8 +130,9 @@ class KeycloakJwtAuthenticationConverterTest {
 
     /**
      * {@code normalize()} pasa a mayúsculas y sustituye guiones por guiones bajos, así que dos roles
-     * que solo difieran en eso acaban siendo la misma autoridad. Se deja fijado porque condiciona
-     * cómo hay que nombrar los roles en Keycloak.
+     * del mismo espacio que solo difieran en eso acaban siendo la misma autoridad. Ya no es un
+     * problema de seguridad —realm y cliente van en prefijos distintos—, pero condiciona cómo hay
+     * que nombrar los roles en Keycloak.
      */
     @Test
     @DisplayName("guion y guion bajo colapsan en la misma autoridad")

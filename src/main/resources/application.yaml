@@ -357,6 +357,16 @@ management:
       exposure:
         include: health,info,outbox,prometheus
 
+  endpoint:
+    health:
+      # El health anonimo lo consultan el balanceador y las sondas del orquestador, asi que
+      # tiene que seguir abierto, pero un UP/DOWN es todo lo que necesitan. El desglose por
+      # componente enumera la base de datos, Redis y RabbitMQ con sus mensajes de error, y eso
+      # solo lo ve quien trae el rol de explotacion.
+      show-details: when-authorized
+      show-components: when-authorized
+      roles: OPS_METRICS
+
   # Trazabilidad distribuida (micrometer-tracing-bridge-otel + exportador OTLP).
   tracing:
     enabled: ${MTO_TRACING_ENABLED:true}

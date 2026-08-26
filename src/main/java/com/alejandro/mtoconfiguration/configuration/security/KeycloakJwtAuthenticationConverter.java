@@ -49,6 +49,22 @@ public class KeycloakJwtAuthenticationConverter implements Converter<Jwt, Abstra
                 .collect(Collectors.toUnmodifiableSet());
     }
 
+    /**
+     * Los roles de realm se emiten <b>solo</b> con el prefijo {@code ROLE_REALM_}, nunca con
+     * {@code ROLE_} a secas.
+     *
+     * <p>Emitir ambos hacía que un rol de realm y uno de cliente que se llamaran igual acabaran en
+     * la misma autoridad: quien tuviera el de realm pasaba una comprobación pensada para el de
+     * cliente. Y como quien administra el realm no es necesariamente quien escribe el código,
+     * bastaba con crear allí un rol llamado igual que un permiso para concedérselo a cualquiera.</p>
+     *
+     * <p>La separación encaja con el modelo: los permisos que comprueba el código son roles de
+     * cliente, y los roles de realm son perfiles de negocio <em>compuestos</em> que los agrupan.
+     * Keycloak expande los compuestos al emitir el token, así que un usuario con el perfil de realm
+     * {@code mto-editor} ya llega con {@code config-read} y {@code config-write} dentro de
+     * {@code resource_access}. Comprobar un perfil sigue siendo posible, pero hay que nombrarlo:
+     * {@code hasRole("REALM_MTO_EDITOR")}.</p>
+     */
     private Collection<GrantedAuthority> extractRealmRoles(Jwt jwt) {
         Map<String, Object> realmAccess = jwt.getClaimAsMap(JwtClaimNames.REALM_ACCESS);
 
@@ -57,10 +73,7 @@ public class KeycloakJwtAuthenticationConverter implements Converter<Jwt, Abstra
         }
 
         return extractRoles(realmAccess).stream()
-                .flatMap(role -> Stream.of(
-                        SecurityAuthorityPrefixes.ROLE_PREFIX + normalize(role),
-                        SecurityAuthorityPrefixes.REALM_ROLE_PREFIX + normalize(role)
-                ))
+                .map(role -> SecurityAuthorityPrefixes.REALM_ROLE_PREFIX + normalize(role))
                 .map(SimpleGrantedAuthority::new)
                 .collect(Collectors.toUnmodifiableSet());
     }
@@ -149,6 +162,16 @@ public class KeycloakJwtAuthenticationConverter implements Converter<Jwt, Abstra
         return jwt.getSubject();
     }
 
+    /**
+     * Permite nombrar los roles en Keycloak como es costumbre allí —minúsculas y guiones— y
+     * comprobarlos aquí como es costumbre en Spring: {@code config-read} se convierte en
+     * {@code CONFIG_READ}, listo para {@code hasRole("CONFIG_READ")}.
+     *
+     * <p>La conversión no es inyectiva: {@code config-read}, {@code config_read} y
+     * {@code Config Read} producen la misma autoridad. Ya no es un problema de seguridad —los roles
+     * de realm y los de cliente viven en prefijos distintos—, pero sigue siendo motivo para no
+     * crear en el mismo cliente dos roles que solo se diferencien en el separador.</p>
+     */
     private String normalize(String value) {
         return value.trim()
                 .replace('-', '_')

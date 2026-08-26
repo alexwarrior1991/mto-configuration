@@ -27,11 +27,16 @@ public class CurrentUserService {
                 .map(JwtAuthenticationToken::getToken);
     }
 
-    public String getUsername() {
+    /**
+     * Devuelve vacío cuando no hay usuario autenticado, en lugar de sustituirlo por un nombre
+     * inventado. Quien llama es quien sabe si la ausencia es esperada —un proceso de fondo— o un
+     * síntoma, y solo él puede decidir qué registrar; devolver «system» desde aquí borraba esa
+     * diferencia antes de que nadie pudiera verla.
+     */
+    public Optional<String> getUsername() {
         return getJwt()
                 .map(jwt -> jwt.getClaimAsString(JwtClaimNames.PREFERRED_USERNAME))
-                .filter(value -> !value.isBlank())
-                .orElse("system");
+                .filter(value -> !value.isBlank());
     }
 
     public Optional<String> getUserId() {
