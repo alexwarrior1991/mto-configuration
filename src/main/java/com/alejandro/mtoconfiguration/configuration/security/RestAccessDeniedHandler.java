@@ -4,7 +4,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.web.access.AccessDeniedHandler;
@@ -31,10 +30,7 @@ public class RestAccessDeniedHandler implements AccessDeniedHandler {
     private final HandlerExceptionResolver handlerExceptionResolver;
 
     public RestAccessDeniedHandler(
-            // @Lazy corta el ciclo potencial: la cadena de filtros se construye durante el
-            // arranque de MVC y este bean cuelga del resolver, que es parte de MVC. El resolver
-            // no hace falta hasta que llega una petición.
-            @Lazy @Qualifier("handlerExceptionResolver") HandlerExceptionResolver handlerExceptionResolver
+            @Qualifier("handlerExceptionResolver") HandlerExceptionResolver handlerExceptionResolver
     ) {
         this.handlerExceptionResolver = handlerExceptionResolver;
     }
