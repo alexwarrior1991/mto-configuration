@@ -1,0 +1,94 @@
+{
+  "realm": "mto",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      {
+        "name": "config-delete",
+        "description": "Homonimo a proposito de un permiso de cliente: sirve para comprobar que un rol de realm NO concede el permiso del mismo nombre."
+      },
+      {
+        "name": "mto-editor",
+        "description": "Perfil compuesto: agrupa permisos de cliente.",
+        "composite": true,
+        "composites": {
+          "client": {
+            "mto-configuration-api": ["config-read", "config-write"]
+          }
+        }
+      }
+    ],
+    "client": {
+      "mto-configuration-api": [
+        { "name": "config-read" },
+        { "name": "config-write" },
+        { "name": "config-delete" },
+        { "name": "config-import" },
+        { "name": "lov-manage" },
+        { "name": "ops-metrics" }
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "mto-configuration-api",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "secret": "no-se-usa-solo-declara-roles-y-audiencia"
+    },
+    {
+      "clientId": "mto-test-frontend",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "audiencia-mto-configuration-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "mto-configuration-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "mto-test-ajeno",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true
+    }
+  ],
+  "users": [
+    {
+      "username": "lector",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "lector", "temporary": false }],
+      "clientRoles": { "mto-configuration-api": ["config-read"] }
+    },
+    {
+      "username": "editor",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "editor", "temporary": false }],
+      "realmRoles": ["mto-editor"]
+    },
+    {
+      "username": "impostor",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "impostor", "temporary": false }],
+      "realmRoles": ["config-delete"]
+    }
+  ]
+}
