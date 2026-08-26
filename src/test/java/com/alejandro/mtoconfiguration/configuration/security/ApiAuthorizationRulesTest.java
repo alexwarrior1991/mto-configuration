@@ -1,6 +1,5 @@
 package com.alejandro.mtoconfiguration.configuration.security;
 
-import com.alejandro.mtoconfiguration.configuration.JacksonConfig;
 import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.core.exception.web.ApiErrorConfiguration;
 import com.alejandro.mtoconfiguration.core.exception.web.ErrorCatalog;
@@ -47,9 +46,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         // El slice de MVC recoge el @ControllerAdvice de errores, que necesita sus colaboradores.
         // Tenerlo delante es además lo fiel: es quien traduce el 403 de @PreAuthorize.
         ProblemDetailFactory.class, ErrorCatalog.class, ApiErrorConfiguration.class,
-        // Los handlers de 401/403 serializan con el ObjectMapper de Jackson 2 que declara
-        // JacksonConfig; el resto de la aplicación va con Jackson 3, que es el que trae Boot 4.
-        JacksonConfig.class,
         ApiAuthorizationRulesTest.ProbeController.class,
         ApiAuthorizationRulesTest.ProbeAsyncController.class,
         ApiAuthorizationRulesTest.ProbeLovController.class})

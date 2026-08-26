@@ -1,28 +1,42 @@
 package com.alejandro.mtoconfiguration.configuration.security;
 
-
-import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
-
+import org.springframework.web.servlet.HandlerExceptionResolver;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
+/**
+ * Respuesta a una petición autenticada pero sin permisos, con el mismo reparto que
+ * {@link RestAuthenticationEntryPoint}: la cabecera {@code WWW-Authenticate} la pone el handler de
+ * Spring Security —que añade {@code error="insufficient_scope"} cuando la autenticación es un token
+ * OAuth2— y el cuerpo sale del catálogo de errores en formato <i>Problem Details</i>.
+ *
+ * <p>Que ambos formatos coincidan importa especialmente en el 403: unas veces lo lanza la cadena de
+ * filtros (reglas por ruta y verbo) y otras un {@code @PreAuthorize} ya dentro del controlador. Son
+ * dos caminos distintos para el mismo rechazo, y el cliente no tiene por qué notarlo.</p>
+ */
 @Component
 public class RestAccessDeniedHandler implements AccessDeniedHandler {
 
-    private final ObjectMapper objectMapper;
+    private final AccessDeniedHandler bearerTokenAccessDeniedHandler = new BearerTokenAccessDeniedHandler();
 
-    public RestAccessDeniedHandler(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+    private final HandlerExceptionResolver handlerExceptionResolver;
+
+    public RestAccessDeniedHandler(
+            // @Lazy corta el ciclo potencial: la cadena de filtros se construye durante el
+            // arranque de MVC y este bean cuelga del resolver, que es parte de MVC. El resolver
+            // no hace falta hasta que llega una petición.
+            @Lazy @Qualifier("handlerExceptionResolver") HandlerExceptionResolver handlerExceptionResolver
+    ) {
+        this.handlerExceptionResolver = handlerExceptionResolver;
     }
 
     @Override
@@ -30,17 +44,9 @@ public class RestAccessDeniedHandler implements AccessDeniedHandler {
             HttpServletRequest request,
             HttpServletResponse response,
             AccessDeniedException accessDeniedException
-    ) throws IOException {
-        response.setStatus(HttpStatus.FORBIDDEN.value());
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+    ) throws IOException, ServletException {
+        bearerTokenAccessDeniedHandler.handle(request, response, accessDeniedException);
 
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("timestamp", LocalDateTime.now().toString());
-        body.put("status", HttpStatus.FORBIDDEN.value());
-        body.put("error", HttpStatus.FORBIDDEN.getReasonPhrase());
-        body.put("message", "No tienes permisos suficientes para acceder a este recurso.");
-        body.put("path", request.getRequestURI());
-
-        objectMapper.writeValue(response.getOutputStream(), body);
+        handlerExceptionResolver.resolveException(request, response, null, accessDeniedException);
     }
 }

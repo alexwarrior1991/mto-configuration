@@ -1,6 +1,5 @@
 package com.alejandro.mtoconfiguration.configuration.security;
 
-import com.alejandro.mtoconfiguration.configuration.JacksonConfig;
 import com.alejandro.mtoconfiguration.core.exception.web.ApiErrorConfiguration;
 import com.alejandro.mtoconfiguration.core.exception.web.ErrorCatalog;
 import com.alejandro.mtoconfiguration.core.exception.web.ProblemDetailFactory;
@@ -28,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({SecurityConfiguration.class, KeycloakJwtAuthenticationConverter.class,
         RestAuthenticationEntryPoint.class, RestAccessDeniedHandler.class,
         ProblemDetailFactory.class, ErrorCatalog.class, ApiErrorConfiguration.class,
-        JacksonConfig.class, ApiAuthorizationRulesTest.ProbeController.class})
+        ApiAuthorizationRulesTest.ProbeController.class})
 @TestPropertySource(properties = {
         "app.security.client-id=mto-configuration-api",
         "app.security.principal-claim=preferred_username",
