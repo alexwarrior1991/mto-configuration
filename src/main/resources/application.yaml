@@ -38,7 +38,7 @@ spring:
   datasource:
     url: ${MTO_CONFIGURATION_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mto_configuration_db}
     username: ${MTO_CONFIGURATION_DATASOURCE_USERNAME:mto_configuration_user}
-    password: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD:mto_configuration_password}
+    password: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
 #  locations: Indica dónde estarán tus scripts SQL en src/main/resources/db/migration
@@ -56,7 +56,7 @@ spring:
     enabled: true
     url: ${MTO_CONFIGURATION_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mto_configuration_db}
     user: ${MTO_CONFIGURATION_DATASOURCE_USERNAME:mto_configuration_user}
-    password: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD:mto_configuration_password}
+    password: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD}
     locations: classpath:db/migration
     default-schema: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
     schemas: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
@@ -91,7 +91,7 @@ spring:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: ${SPRING_RABBITMQ_PORT:5672}
     username: ${SPRING_RABBITMQ_USERNAME:guest}
-    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD}
     virtual-host: /
     # Publisher confirmation type for reliable message delivery
     publisher-confirm-type: correlated
@@ -152,9 +152,9 @@ spring:
           mto-services:
             provider: keycloak
             client-id: ${KEYCLOAK_SERVICE_CLIENT_ID:mto-configuration-svc}
-            # Valor de desarrollo. En cualquier entorno desplegado tiene que venir del gestor de
-            # secretos, nunca de este fichero.
-            client-secret: ${KEYCLOAK_SERVICE_CLIENT_SECRET:mto-configuration-svc-secret}
+            # Sin valor por defecto a proposito: si la variable falta, la aplicacion no arranca.
+            # Es preferible a que arranque con un secreto de ejemplo y nadie se entere.
+            client-secret: ${KEYCLOAK_SERVICE_CLIENT_SECRET}
             authorization-grant-type: client_credentials
             client-authentication-method: client_secret_basic
 

@@ -10,7 +10,7 @@ services:
     environment:
       POSTGRES_DB: mto_configuration_db
       POSTGRES_USER: mto_configuration_user
-      POSTGRES_PASSWORD: mto_configuration_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta en .env, copiese .env.example}
     # Mapeo de puertos: puerto del host:puerto del contenedor
     ports:
       - "5432:5432"
@@ -78,7 +78,7 @@ services:
     # Variables de entorno para configurar las credenciales de administrador de Keycloak
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?falta en .env, copiese .env.example}
       KC_HTTP_ENABLED: true
       # Habilita /health/ready en el puerto de management (9000), que es lo unico que dice de
       # verdad si Keycloak ya sirve el realm.
@@ -120,7 +120,7 @@ services:
 
       MTO_CONFIGURATION_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mto_configuration_db
       MTO_CONFIGURATION_DATASOURCE_USERNAME: mto_configuration_user
-      MTO_CONFIGURATION_DATASOURCE_PASSWORD: mto_configuration_password
+      MTO_CONFIGURATION_DATASOURCE_PASSWORD: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD:?falta en .env, copiese .env.example}
       MTO_CONFIGURATION_DB_SCHEMA: mto_configuration
 
       SPRING_DATA_REDIS_HOST: redis
@@ -129,11 +129,12 @@ services:
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
       SPRING_RABBITMQ_USERNAME: guest
-      SPRING_RABBITMQ_PASSWORD: guest
+      SPRING_RABBITMQ_PASSWORD: ${SPRING_RABBITMQ_PASSWORD:?falta en .env, copiese .env.example}
 
       KEYCLOAK_ISSUER_URI: http://auth.mto.local:8082/realms/mto
       KEYCLOAK_CLIENT_ID: mto-configuration-api
       KEYCLOAK_AUDIENCE: mto-configuration-api
+      KEYCLOAK_SERVICE_CLIENT_SECRET: ${KEYCLOAK_SERVICE_CLIENT_SECRET:?falta en .env, copiese .env.example}
 
       APP_CORS_ALLOWED_ORIGIN: http://localhost:4200
     extra_hosts:
