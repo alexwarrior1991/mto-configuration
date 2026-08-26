@@ -15,19 +15,34 @@
         "composite": true,
         "composites": {
           "client": {
-            "mto-configuration-api": ["config-read", "config-write"]
+            "mto-configuration-api": [
+              "config-read",
+              "config-write"
+            ]
           }
         }
       }
     ],
     "client": {
       "mto-configuration-api": [
-        { "name": "config-read" },
-        { "name": "config-write" },
-        { "name": "config-delete" },
-        { "name": "config-import" },
-        { "name": "lov-manage" },
-        { "name": "ops-metrics" }
+        {
+          "name": "config-read"
+        },
+        {
+          "name": "config-write"
+        },
+        {
+          "name": "config-delete"
+        },
+        {
+          "name": "config-import"
+        },
+        {
+          "name": "lov-manage"
+        },
+        {
+          "name": "ops-metrics"
+        }
       ]
     }
   },
@@ -73,22 +88,76 @@
       "username": "lector",
       "enabled": true,
       "emailVerified": true,
-      "credentials": [{ "type": "password", "value": "lector", "temporary": false }],
-      "clientRoles": { "mto-configuration-api": ["config-read"] }
+      "credentials": [
+        {
+          "type": "password",
+          "value": "lector",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "mto-configuration-api": [
+          "config-read"
+        ]
+      },
+      "firstName": "Lucia",
+      "lastName": "Lectora",
+      "email": "lector@mto.local",
+      "requiredActions": []
     },
     {
       "username": "editor",
       "enabled": true,
       "emailVerified": true,
-      "credentials": [{ "type": "password", "value": "editor", "temporary": false }],
-      "realmRoles": ["mto-editor"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "editor",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "mto-editor"
+      ],
+      "firstName": "Elena",
+      "lastName": "Editora",
+      "email": "editor@mto.local",
+      "requiredActions": []
     },
     {
       "username": "impostor",
       "enabled": true,
       "emailVerified": true,
-      "credentials": [{ "type": "password", "value": "impostor", "temporary": false }],
-      "realmRoles": ["config-delete"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "impostor",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "config-delete"
+      ],
+      "firstName": "Ivan",
+      "lastName": "Impostor",
+      "email": "impostor@mto.local",
+      "requiredActions": []
+    },
+    {
+      "username": "ajeno",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Ana",
+      "lastName": "Ajena",
+      "email": "ajeno@mto.local",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ajeno",
+          "temporary": false
+        }
+      ]
     }
   ]
 }

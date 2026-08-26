@@ -178,17 +178,38 @@ class KeycloakAuthorizationIT {
     }
 
     /**
-     * S-04 contra un servidor real, y la razón por la que el realm necesita un <i>audience
-     * mapper</i>: el cliente {@code mto-test-ajeno} no lo tiene, así que sus tokens —bien firmados y
-     * del mismo emisor— no nombran a esta API.
+     * S-04 contra un servidor real: un token del mismo realm, bien firmado y con el mismo emisor,
+     * que no nombra a esta API en su {@code aud}.
+     *
+     * <p>El usuario es deliberadamente uno <b>sin roles</b>. Keycloak añade por su cuenta al
+     * {@code aud} los clientes en los que el usuario tiene roles —lo hace el mapper <i>audience
+     * resolve</i> del scope {@code roles}, que va de serie—, así que un usuario con permisos habría
+     * recibido la audiencia igual, sin mapper y sin que el test lo notara.</p>
      */
     @Test
     @DisplayName("un token de otro cliente del mismo realm se rechaza por audiencia")
     void unTokenDeOtroClienteSeRechaza() throws Exception {
-        String token = tokenDe("lector", "lector", CLIENTE_SIN_AUDIENCIA);
+        String token = tokenDe("ajeno", "ajeno", CLIENTE_SIN_AUDIENCIA);
 
         mockMvc.perform(get(PROBES + "/1").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * La contraparte del anterior, con el mismo usuario sin roles y el cliente que sí lleva el
+     * <i>audience mapper</i>. Que uno dé 401 y el otro 403 aísla al mapper: en el segundo caso la
+     * audiencia se acepta y lo único que falta son permisos.
+     *
+     * <p>Es la comprobación de que el realm está bien montado. Sin ese mapper, ningún token de un
+     * usuario sin roles validaría contra esta API, y el síntoma sería un 401 sin explicación.</p>
+     */
+    @Test
+    @DisplayName("el audience mapper da la audiencia aunque el usuario no tenga ningún rol")
+    void elAudienceMapperDaLaAudienciaSinRoles() throws Exception {
+        String token = tokenDe("ajeno", "ajeno", CLIENTE_CON_AUDIENCIA);
+
+        mockMvc.perform(get(PROBES + "/1").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden());
     }
 
     @Test
