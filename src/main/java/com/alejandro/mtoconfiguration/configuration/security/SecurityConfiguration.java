@@ -67,6 +67,8 @@ public class SecurityConfiguration {
                                 "/swagger-ui.html"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/prometheus").hasAnyRole("ADMIN", "OPS")
+                        // Estado del outbox y redrive de los mensajes FAILED: explotacion, no negocio.
+                        .requestMatchers("/actuator/outbox", "/actuator/outbox/**").hasAnyRole("ADMIN", "OPS")
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2

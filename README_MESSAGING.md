@@ -15,7 +15,9 @@ El patrón **Outbox** soluciona esto guardando el mensaje en una tabla de la mis
 - **Genérico y Extensible**: No es necesario crear lógica de mensajería por cada nueva entidad.
 - **Integridad**: Cada mensaje incluye un hash SHA-256 para verificar que no ha sido alterado.
 - **Trazabilidad**: Uso de `operationId` (UUID) para seguir el flujo de un evento en todo el sistema.
-- **Resiliencia**: Gestión automática de reintentos con backoff exponencial en caso de fallos de red o del broker.
+- **Resiliencia**: Reintentos con backoff exponencial acotado en caso de fallos de red o del broker.
+- **Exactamente una publicación por réplica**: el relay reclama los mensajes con `FOR UPDATE SKIP LOCKED`, de modo que varias instancias reparten el trabajo en lugar de duplicarlo.
+- **Confirmación del broker**: un mensaje solo pasa a `PUBLISHED` cuando RabbitMQ lo ha aceptado (publisher confirms).
 
 ---
 
@@ -32,13 +34,16 @@ Este paquete define el contrato corporativo de los mensajes asíncronos.
     - `creationDate`: Timestamp de creación.
     - `eventType`: Nombre lógico del evento (ej: `MASTER_DATA_STATION_CREATED`).
     - `data`: El contenido real del evento (payload).
-    - `messageHash`: Firma digital del mensaje para asegurar integridad.
+    - `messageHash`: Huella del contenido en el momento de crearlo. **No es una firma** y no sirve para verificar integridad en destino: ver sección 13.
 
 *   **`AsynchronousMessageFactory`**:
     Componente encargado de construir instancias de `AsynchronousMessage`. Automatiza la generación de UUIDs, timestamps y el cálculo del hash inicial.
 
 *   **`AsynchronousMessageHashService`**:
-    Utiliza Jackson para serializar el contenido y generar un hash SHA-256. Proporciona métodos para calcular y validar la integridad de los mensajes recibidos.
+    Calcula la huella `messageHash` con SHA-256 sobre el contenido antes de serializarlo. **No** ofrece validación en destino: la tenía y devolvía `false` para mensajes legítimos (ver sección 13). Para verificar de verdad está `MessagePayloadSignature`.
+
+*   **`MessagePayloadSignature`**:
+    Firma los **bytes** que viajan y la envía en cabecera. Es la única comprobación que el consumidor puede rehacer. Con secreto configurado es HMAC-SHA256; sin él, SHA-256.
 
 ---
 
@@ -49,13 +54,25 @@ Implementa la persistencia y el reenvío de mensajes.
     Representa un registro en la tabla `outbox_message`. Almacena el destino (exchange/routing-key), el payload en formato JSON y el estado del envío.
 
 *   **`OutboxStatus` (Enum)**:
-    Define los estados: `PENDING` (pendiente), `PUBLISHED` (enviado), `FAILED` (fallido tras agotar reintentos).
+    Define los estados: `PENDING` (pendiente), `IN_PROGRESS` (reclamado por un relay que está intentando publicarlo), `PUBLISHED` (aceptado por RabbitMQ) y `FAILED` (agotados los reintentos).
 
 *   **`OutboxService`**:
     Ofrece el método `save()` para persistir eventos. **Debe llamarse siempre dentro de una transacción `@Transactional`**.
 
 *   **`OutboxPublisherScheduler`**:
-    El motor del sistema. Se ejecuta cada pocos segundos (configurable) y busca mensajes `PENDING`. Realiza el envío real a RabbitMQ y actualiza el estado. Si falla, programa el siguiente intento aplicando un retardo creciente.
+    El motor del sistema. Se ejecuta cada pocos segundos (configurable): reclama un lote, lo publica y cierra el estado de cada mensaje. **No es transaccional**: la I/O contra RabbitMQ nunca debe retener una conexión de base de datos.
+
+*   **`OutboxRelayService`**:
+    La única frontera transaccional del relay, siempre con transacciones cortas. `claimBatch()` reclama un lote con `FOR UPDATE SKIP LOCKED` y lo deja invisible para el resto de réplicas durante `claim-visibility-timeout`; `markPublished()` y `markFailed()` cierran cada mensaje.
+
+*   **`OutboxRabbitPublisher`**:
+    Publica y **espera la confirmación del broker**. Detecta las dos formas de fracaso silencioso: el `nack` y el mensaje no enrutable (`basic.return`, que llega siempre antes del ack). Sin publisher confirms configurados, la aplicación no arranca.
+
+*   **`OutboxRetryPolicy`**:
+    Backoff exponencial `initial-retry-delay * 2^(intentos-1)`, acotado a `max-retry-delay` y con jitter para que las réplicas no reintenten a la vez.
+
+*   **`OutboxAdminService` / `OutboxEndpoint`**:
+    Estado del outbox y *redrive* de los mensajes `FAILED`, expuestos en `/actuator/outbox` (requiere rol `ADMIN` u `OPS`).
 
 ---
 
@@ -106,7 +123,9 @@ El punto central de recepción de mensajes es el **Topic Exchange** llamado `mto
 ### 3.2. Colas (Queues)
 Las colas son los buzones donde residen los mensajes hasta que un consumidor los procesa.
 - **Nomenclatura**: Siguen el estándar `mto.master-data.{propósito}.queue`.
-- **Modo Lazy**: Configurable vía propiedades. Permite que los mensajes se guarden en disco inmediatamente, ideal para soportar picos de tráfico masivos sin agotar la memoria RAM del broker.
+- **Tipo**: `classic` (por defecto) o `quorum`, replicada entre nodos. Ver sección 9.3.
+- **Propiedad**: `declare` indica si este servicio crea la cola o pertenece a su consumidor. Ver sección 9.1.
+- **Modo Lazy**: ~~configurable vía propiedades~~. **Obsoleto**: RabbitMQ 3.12 y posteriores ignoran `x-queue-mode`, porque las colas clásicas v2 ya escriben a disco por defecto.
 - **Persistencia**: Por defecto son `durable`, asegurando que los mensajes no se pierdan si el broker se apaga.
 
 **Topología de Colas Estándar:**
@@ -136,18 +155,18 @@ El flujo de un evento en este módulo sigue un camino estrictamente controlado p
 ### Fase 1: Captura del Evento (Base de Datos)
 1.  **Operación de Negocio**: Un servicio realiza un cambio en una entidad (ej: `repository.save(station)`).
 2.  **Llamada al Publisher**: Dentro de la misma transacción `@Transactional`, se llama a `eventPublisher.publishCreated(savedEntity)`.
-3.  **Serialización**: El sistema convierte la entidad en un `AsynchronousMessage<T>`, calculando un hash SHA-256 para integridad y asignando un `operationId`.
+3.  **Serialización**: El sistema convierte la entidad en un `AsynchronousMessage<T>`, calculando la huella `messageHash` y asignando un `operationId`. La firma verificable se calcula después, al publicar, sobre los bytes reales (sección 13).
 4.  **Persistencia Outbox**: El mensaje se guarda en la tabla `outbox_message` con estado `PENDING`. 
     *   *Importante*: Si la transacción de base de datos falla (rollback), el registro en la tabla Outbox nunca se crea, evitando enviar eventos falsos.
 
 ### Fase 2: El Relay (Envío al Broker)
 5.  **Scheduler**: El `OutboxPublisherScheduler` despierta cada N segundos.
-6.  **Recuperación**: Busca los mensajes marcados como `PENDING` en la tabla.
-7.  **Publicación**: Utiliza `RabbitTemplate` para enviar el JSON al exchange `mto.master-data.exchange`.
-8.  **Confirmación**:
-    *   **Éxito**: El estado del mensaje en la tabla cambia a `PUBLISHED`.
-    *   **Fallo Temporal**: Si RabbitMQ está caído, el scheduler lo reintentará más tarde con un retardo mayor (Backoff).
-    *   **Fallo Definitivo**: Tras agotar los reintentos configurados, el mensaje queda como `FAILED` para alerta de administración.
+6.  **Reclamo** (transacción corta): `FOR UPDATE SKIP LOCKED` se lleva un lote **disjunto** del que se lleve cualquier otra réplica. Las filas pasan a `IN_PROGRESS` y quedan invisibles durante `claim-visibility-timeout`. Si el proceso muere antes de cerrarlas, otra réplica las recupera al expirar ese plazo.
+7.  **Publicación** (fuera de transacción): se envía el JSON al exchange `mto.master-data.exchange` y se **espera el publisher confirm**.
+8.  **Cierre** (transacción corta):
+    *   **Éxito**: con el `ack` del broker el mensaje pasa a `PUBLISHED`.
+    *   **Fallo temporal**: `nack`, mensaje no enrutable, o sin respuesta dentro de `confirm-timeout`. Vuelve a `PENDING` con el siguiente intento aplazado por backoff exponencial.
+    *   **Fallo definitivo**: agotados los intentos, queda en `FAILED`. **No es terminal**: `POST /actuator/outbox` lo devuelve a `PENDING` una vez corregida la causa.
 
 ### Fase 3: Enrutado y Consumo
 9.  **Distribución**: El Exchange recibe el mensaje y, basándose en la Routing Key, lo deposita en una o varias colas (Audit, Events, Cache, etc.).
@@ -211,9 +230,23 @@ app:
 
   outbox:
     enabled: true
-    max-attempts: 10
+    # Intentos antes de dar el mensaje por perdido. Con backoff exponencial acotado,
+    # 20 intentos cubren mas de una hora de broker caido.
+    max-attempts: 20
     initial-retry-delay: 5s
-    publisher-fixed-delay: 5000 # ms
+    max-retry-delay: 5m
+    retry-jitter: 0.2
+    publisher-fixed-delay: 5s
+    batch-size: 50
+    # Tiempo que un mensaje reclamado queda invisible para el resto de replicas
+    claim-visibility-timeout: 5m
+    confirm-timeout: 10s
+
+spring:
+  rabbitmq:
+    # Obligatorio: sin publisher confirms el relay no arranca
+    publisher-confirm-type: correlated
+    publisher-returns: true
 ```
 
 ---
@@ -221,5 +254,380 @@ app:
 ## 7. Monitoreo y Resolución de Problemas
 
 1.  **Tabla Outbox**: Si un mensaje no llega a RabbitMQ, consulta la tabla `outbox_message`. El campo `last_error` indicará el motivo del fallo y `attempts` cuántas veces se ha intentado.
-2.  **Logs**: Busca el prefijo `Outbox message published` para confirmar envíos exitosos.
+2.  **Logs**: Busca el prefijo `Outbox message publicado y confirmado` para los envíos con ack del broker.
 3.  **Dead Letter Queues**: Si RabbitMQ recibe el mensaje pero el consumidor falla repetidamente, el mensaje terminará en la cola `.dlq` correspondiente para inspección manual.
+
+---
+
+## 8. Explotación
+
+### Estado del outbox
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://.../actuator/outbox
+```
+
+```json
+{"pending":3,"inProgress":0,"published":15234,"failed":0,"oldestPendingCreatedAt":"2026-08-24T10:15:02Z"}
+```
+
+`oldestPendingCreatedAt` es la señal que conviene vigilar: si envejece, el relay está roto, sea cual sea la causa. Una alerta por encima de 60 segundos cubre casi todos los fallos posibles del circuito.
+
+### Reencolar los mensajes fallidos
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"limit": 100}' https://.../actuator/outbox
+```
+
+Devuelve a `PENDING` los `FAILED` más antiguos con el contador de intentos a cero. Hacerlo **después** de corregir la causa: si no, vuelven a agotar la ventana de reintentos.
+
+### Requisitos de configuración
+
+| Propiedad | Por qué es obligatoria |
+| :--- | :--- |
+| `spring.rabbitmq.publisher-confirm-type: correlated` | Sin ella el relay no arranca: no podría distinguir un mensaje aceptado por el broker de uno perdido. |
+| `spring.rabbitmq.publisher-returns: true` | Detecta los mensajes que no encajan en ninguna cola. |
+| `management.endpoints.web.exposure.include` con `outbox` | Necesario para el endpoint de explotación. |
+
+### Métricas
+
+| Métrica | Qué es |
+| :--- | :--- |
+| `outbox_pending_oldest_age_seconds` | **La que hay que vigilar.** Antigüedad del pendiente más viejo. Si sube, el circuito está roto, sea cual sea la causa. Alerta por encima de 60s. |
+| `outbox_messages_pending` | Pendientes de publicar. |
+| `outbox_messages_in_progress` | Reclamados por un relay y aún sin cerrar. |
+| `outbox_messages_failed` | Han agotado los reintentos y esperan un redrive. Debería ser 0. |
+| `outbox_publish_total{result="success"\|"failure"}` | Ritmo de publicación y de fallos. |
+
+Los gauges se refrescan desde una foto periódica (`app.outbox.metrics-refresh-delay`), **no** en cada scrape: un gauge que consulta la base de datos cada vez que Prometheus pregunta convierte la observabilidad en carga. El total de `PUBLISHED` no se publica como gauge a propósito (contarlo recorre el grueso de la tabla); está bajo demanda en `/actuator/outbox`.
+
+### Purga de mensajes publicados
+
+Sin purga `outbox_message` solo crece: cada cambio de dato maestro deja una fila con su JSON, y `bulkCreate`/`bulkUpdate` publican un evento **por entidad**. `OutboxPurgeScheduler` borra los `PUBLISHED` que superan `app.outbox.purge.retention` (7 días por defecto).
+
+Tres decisiones que no son cosméticas:
+
+- **Solo `PUBLISHED`.** Los `FAILED` se quedan: son justo los que hay que mirar, y borrarlos sería tapar el problema. Los `PENDING` todavía no se han enviado.
+- **Por lotes, cada uno en su transacción.** Un `DELETE` de millones de filas mantiene una transacción larguísima, hincha el WAL y bloquea el vacuum de la tabla.
+- **Con tope de lotes por pasada** (`max-batches-per-run`), para que la primera ejecución sobre una tabla ya enorme no se convierta en un borrado de horas.
+
+### Índices
+
+Los crea `V3__outbox_message_indexes.sql`. Los tres son **parciales**, y ahí está la gracia: `outbox_message` solo crece, pero las filas que consultan el relay, la purga y las métricas son una fracción minúscula del total, de modo que los índices se mantienen diminutos aunque la tabla acumule millones de mensajes.
+
+| Índice | Para qué |
+| :--- | :--- |
+| `idx_outbox_message_claim` | Reclamo del relay. `FlywayMigrationIT` comprueba con `EXPLAIN` que la consulta puede usarlo. |
+| `idx_outbox_message_purge` | Purga por antigüedad de `published_at`. |
+| `idx_outbox_message_failed` | Redrive y, sobre todo, la métrica de fallidos, que se consulta cada pocos segundos. |
+
+Si `outbox_message` ya es enorme en producción, conviene crearlos antes a mano con `CREATE INDEX CONCURRENTLY` (que no puede ir dentro de una transacción, y Flyway ejecuta cada migración en una): el `IF NOT EXISTS` hace que entonces la migración no haga nada.
+
+---
+
+## 9. Colas: propiedad, límites y tipo
+
+### 9.1. Una cola pertenece a quien la consume
+
+Este servicio **publica**, no consume: no hay un solo `@RabbitListener` en el repositorio. Sin embargo declara las cuatro colas de datos maestros, que consumen otros servicios. Eso trae dos problemas:
+
+- **El consumidor es quien sabe lo que necesita** (qué TTL, qué límite, qué tipo de cola). Mientras las declare el productor, esas decisiones se toman en el sitio equivocado.
+- **Un desacuerdo rompe el enrutado.** Declarar en los dos lados es idempotente **solo si los argumentos coinciden exactamente**. Si no, el broker responde `PRECONDITION_FAILED (406)` y cierra el canal. `RabbitAdmin` declara en este orden —exchanges, colas, bindings— sobre un único canal, así que los exchanges ya declarados sobreviven, pero se quedan sin declarar el resto de colas del lote y **todos los bindings**. Sin bindings no se enruta nada.
+
+Declarar el **exchange** en ambos lados sí es buena idea: es el contrato del productor, sus argumentos (tipo y durabilidad) casi nunca cambian, y hacerlo en los dos sitios elimina la dependencia de orden en el despliegue. El problema son las colas, cuyos argumentos son justo los que evolucionan.
+
+Por eso existe `declare`:
+
+```yaml
+app:
+  rabbitmq:
+    defaults:
+      declare-queues: true      # global
+    queues:
+      - name: mto.master-data.audit.queue
+        declare: false          # esta cola es de otro servicio
+```
+
+Con `declare: false` no se declara ni la cola, ni su dead letter, ni sus bindings.
+
+**Sigue en `true`** porque las colas ya existen en los entornos y las consumen otros servicios: pasarlo a `false` hay que coordinarlo. El traspaso es:
+
+1. El servicio consumidor empieza a declarar la cola, su DLX/DLQ y su binding, **con exactamente los mismos argumentos** que usa hoy este servicio (si no, `PRECONDITION_FAILED` en el consumidor).
+2. Se despliega el consumidor y se comprueba que la cola sigue viva.
+3. Se pone `declare: false` aquí y se despliega.
+
+Si en algún momento la cola deja de existir, los mensajes no son enrutables: con `mandatory: true` y publisher returns, el relay lo detecta y marca el mensaje como fallido en lugar de perderlo en silencio.
+
+### 9.2. Los argumentos de una cola existente son inmutables
+
+Esto es lo que más sorpresas da: **no se le pueden añadir argumentos a una cola que ya existe redeclarándola**. Añadir un `max-length` en el YAML a una cola ya creada hace que el broker responda `PRECONDITION_FAILED` y se caiga la declaración entera en el arranque.
+
+Para poner límites a una cola existente se usa una **policy**, que además se puede cambiar en caliente:
+
+```bash
+rabbitmqctl set_policy mto-master-data-limits \
+  "^mto\.master-data\..*\.queue$" \
+  '{"max-length": 100000, "overflow": "reject-publish"}' \
+  --apply-to queues
+```
+
+`overflow` importa: el valor por defecto de RabbitMQ es `drop-head`, que descarta **los mensajes más antiguos** en silencio — para eventos de datos maestros, eso es pérdida de datos. Con `reject-publish` el publicador recibe un nack, y con el outbox eso es un reintento con backoff en lugar de un evento perdido.
+
+Sin ningún límite, un consumidor parado hace crecer la cola hasta llenar el disco del broker, y **un broker con el disco lleno bloquea las publicaciones de todos los servicios**. El validador avisa al arrancar de cada cola declarada sin límite.
+
+### 9.3. Colas quorum
+
+Las colas actuales son clásicas y sin réplica: si cae el nodo que las aloja, se pierden, por muy `durable` que sean. Las quorum se replican entre nodos.
+
+```yaml
+queues:
+  - name: mto.master-data.events.queue
+    type: quorum
+    delivery-limit: 5     # solo quorum: protección contra mensaje envenenado
+```
+
+La DLQ hereda el tipo de su cola principal — de nada sirve replicar la cola de trabajo si los mensajes que fallan acaban en una cola sin réplica, que son justo los que hay que conservar.
+
+**El tipo de una cola no se puede cambiar en caliente.** Migrar una cola existente a quorum es:
+
+1. Parar los consumidores y esperar a que la cola se vacíe (o drenarla a otro sitio).
+2. Borrar la cola.
+3. Desplegar con `type: quorum`, que la crea replicada.
+
+Mientras la cola no existe, los mensajes no son enrutables y el relay los deja en reintento, así que la ventana es recuperable, pero conviene hacerlo con el outbox vigilado.
+
+`x-queue-mode: lazy` está **obsoleto**: RabbitMQ 3.12 y posteriores lo ignoran, porque las colas clásicas v2 ya escriben a disco por defecto. El validador avisa si alguna cola lo declara.
+
+### 9.4. Qué se valida al arrancar
+
+`RabbitMqTopologyValidator` corre antes de mandar nada al broker. Falla el arranque, con todos los problemas juntos en un solo mensaje, ante:
+
+- Nombres de cola o exchange duplicados.
+- Cola quorum `exclusive`, `auto-delete`, no durable o con `lazy`.
+- `delivery-limit` en una cola clásica (`x-delivery-limit` solo existe en quorum).
+- `overflow` sin ningún límite: el argumento no llegaría a aplicarse nunca.
+- Un binding a una cola que no está en `queues`, o que tiene `declare: false`.
+- Valores negativos o a cero en los límites.
+
+Y avisa (sin fallar) de colas sin límite, colas sin binding y del `lazy` obsoleto.
+
+`ApplicationRabbitMqTopologyTest` aplica estas mismas comprobaciones a la topología real de `application.yaml`, para que un fallo salga en el build y no en el arranque del entorno.
+
+---
+
+## 10. Trazabilidad distribuida
+
+### 10.1. Por qué el outbox rompe la traza
+
+El outbox parte la traza en dos **por construcción**: el mensaje se escribe dentro de la petición de negocio y se publica segundos o minutos después, desde el hilo del scheduler. Sin nada que los una, el span de la publicación cuelga del planificador y no de la operación que lo originó — y se pierde justo la trazabilidad que el `operationId` del mensaje intenta reconstruir a mano.
+
+La solución es guardar el contexto W3C en la propia fila del outbox:
+
+```
+PUT /stations/42  ──┐
+                    │ traceparent capturado dentro de la transacción
+                    ▼
+            outbox_message (trace_parent, trace_state)
+                    │
+                    │ ...minutos después, hilo del scheduler
+                    ▼
+            span "outbox publish"  ──►  RabbitMQ  ──►  consumidor
+            (mismo trace-id que la petición original)
+```
+
+### 10.2. Configuración
+
+Se usa `spring-boot-starter-opentelemetry`, que trae `micrometer-tracing-bridge-otel`, el exportador OTLP **y** los módulos de autoconfiguración de Boot. Esto último importa: igual que pasaba con Flyway, la librería por sí sola no basta — sin `spring-boot-micrometer-tracing-opentelemetry` no habría ni `Tracer` ni `Propagator` y todo esto quedaría inerte.
+
+```yaml
+management:
+  tracing:
+    enabled: ${MTO_TRACING_ENABLED:true}
+    sampling:
+      probability: ${MTO_TRACING_SAMPLING_PROBABILITY:0.1}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+    metrics:
+      export:
+        enabled: false    # las métricas van por Prometheus
+```
+
+Dos detalles que suelen confundir:
+
+- **Muestrear poco no rompe la cadena.** Un span no muestreado sigue propagando su `traceparent`, con el flag a `00`. La correlación entre servicios se mantiene aunque no se exporte.
+- **Las métricas siguen yendo por Prometheus.** El starter de OpenTelemetry arrastra también un registro OTLP de métricas; se desactiva su exportación explícitamente para no duplicar el camino que ya se montó en `/actuator/prometheus`.
+
+### 10.3. Qué pasa sin trazabilidad
+
+Si `management.tracing.enabled=false` no hay beans `Tracer` ni `Propagator`, y el outbox usa `NoOpOutboxTracing`: no captura nada, no abre ningún ámbito y publica exactamente igual. **Publicar eventos es el trabajo del outbox; trazarlos es un extra que no puede condicionar su arranque.** Lo mismo vale para un contexto corrupto en la tabla: se registra un aviso y el mensaje sale.
+
+Las columnas `trace_parent` y `trace_state` admiten nulos por lo mismo: los mensajes anteriores a `V4` no lo tienen, y tampoco lo tendrán los eventos generados fuera de una petición trazada (una tarea programada, por ejemplo).
+
+### 10.4. La cabecera del mensaje
+
+`OutboxRabbitPublisher` hace dos cosas:
+
+1. **Abre un ámbito** con el contexto guardado, de modo que el span `outbox publish` pertenece a la traza original en lugar de al scheduler.
+2. **Escribe `traceparent`/`tracestate` en las cabeceras AMQP** como suelo de propagación. Con la instrumentación de Spring AMQP activa (`setObservationEnabled(true)`), esa cabecera se sobrescribe con la del span hijo — mismo `trace-id`, y enlaza mejor todavía. Sin instrumentación, es lo que hace que el consumidor siga perteneciendo a la traza original en vez de empezar una nueva.
+
+---
+
+## 11. Orden de los eventos
+
+### 11.1. El problema, y por qué apareció al arreglar otra cosa
+
+Si el mensaje A de `station-5` falla y se reprograma con backoff, el mensaje B de `station-5` —posterior— se publica antes. El consumidor aplica el cambio **viejo encima del nuevo** y el dato maestro queda mal, en silencio.
+
+Lo interesante es que **antes esto casi no se manifestaba**, y no porque el sistema fuera correcto: un mensaje que no se confirmaba se marcaba `PUBLISHED` y se perdía. Al perderse el viejo llegaba solo el nuevo, y el resultado final salía bien de casualidad. Al arreglar la pérdida (publisher confirms + reintentos), A sí llega — y puede pisar a B.
+
+Es el precio de la corrección anterior, y hay que pagarlo aquí.
+
+### 11.2. Número de secuencia
+
+`V5` añade `sequence_number`, un contador monótono que **asigna la base de datos** (`DEFAULT nextval(...)`). Lo asigna la base y no la aplicación a propósito: con varias réplicas escribiendo a la vez, es el único sitio donde el contador es de verdad único y creciente.
+
+De paso resuelve el orden no determinista: el relay ordenaba por `created_at`, y un `bulkCreate` genera N mensajes con el mismo instante — el orden entre ellos quedaba al azar. Además `created_at` lo pone la aplicación, así que un reloj desajustado entre réplicas podía darlo del revés.
+
+### 11.3. Retención por agregado
+
+El reclamo no entrega un mensaje si su agregado tiene otro anterior sin publicar:
+
+```sql
+and not exists (
+    select 1 from outbox_message anterior
+    where anterior.aggregate_type = o.aggregate_type
+      and anterior.aggregate_id   = o.aggregate_id
+      and anterior.status in ('PENDING', 'IN_PROGRESS')
+      and anterior.sequence_number < o.sequence_number
+)
+```
+
+Dos decisiones dentro de esa consulta:
+
+- **Solo retienen `PENDING` e `IN_PROGRESS`**, que son los que todavía van a llegar.
+- **Un `FAILED` no retiene.** Ya no se va a publicar por sí mismo, y dejarlo bloquear pararía el agregado de forma indefinida — peor que el desorden. Si luego se hace redrive de ese mensaje, vuelve a `PENDING` con su secuencia original, así que se ordena solo.
+
+El coste: un mensaje atascado frena a los de **su** agregado, solo a esos. El resto del circuito sigue. Se puede desactivar con `app.outbox.strict-ordering-per-aggregate: false` para vaciar un atasco a costa del orden, pero por defecto pesa más no corromper el dato.
+
+### 11.4. Defensa en profundidad para el consumidor
+
+Cada mensaje viaja con la cabecera `sequenceNumber`. El relay ya publica en orden, pero la entrega es *at-least-once* y un redrive puede reenviar algo antiguo: con ese número, el consumidor puede descartar lo que sea anterior a lo que ya aplicó para ese agregado. No es obligatorio, pero es la red que cubre lo que el orden en origen no puede.
+
+### 11.5. Índices
+
+`V5` sustituye el índice de reclamo (ahora sobre `sequence_number`) y añade `idx_outbox_message_aggregate` sobre `(aggregate_type, aggregate_id, sequence_number)`, que es el que resuelve la retención sin recorrer la tabla. Ambos parciales sobre `PENDING`/`IN_PROGRESS`, así que siguen siendo diminutos.
+
+---
+
+## 12. Latencia y configuración del consumidor
+
+### 12.1. Publicación inmediata al confirmar
+
+El sondeo cada 5 segundos es la red de seguridad, pero también era el **suelo de latencia de todos los eventos**: un cambio de dato maestro tardaba entre 0 y 5 segundos en salir por motivos que no tienen nada que ver con el negocio.
+
+Ahora `OutboxService.save()` publica un evento de Spring y un `@TransactionalEventListener(AFTER_COMMIT)` despierta al relay. `AFTER_COMMIT` y no antes: publicar con la transacción aún abierta significaría anunciar un cambio que después puede hacer rollback — que es exactamente la razón por la que existe el outbox.
+
+Dos detalles del despertador (`OutboxDispatchTrigger`):
+
+- **Agrupa.** Un `bulkCreate` de mil entidades escribe mil mensajes y pide mil despertares; basta con uno.
+- **Libera el indicador ANTES de ejecutar.** Así lo que se guarde mientras el relay trabaja provoca otra pasada, en vez de quedarse esperando al siguiente sondeo — que es justo la latencia que se quiere quitar.
+
+Corre en un hilo propio (`outbox-dispatch`), de modo que la petición HTTP no paga la publicación, y cualquier error se traga y se registra: el planificador vuelve a pasar de todas formas. Se desactiva con `app.outbox.immediate-dispatch: false`.
+
+### 12.2. La configuración del listener ya se aplica
+
+Este servicio declaraba a mano un bean de `SimpleRabbitListenerContainerFactory`, y eso **sustituye** al que crea Spring Boot. Como no pasaba por el `SimpleRabbitListenerContainerFactoryConfigurer`, toda la configuración de `spring.rabbitmq.listener.simple.*` se descartaba en silencio: el bloque de reintentos, el backoff y el `acknowledge-mode` estaban escritos en `application.yaml` sin que nadie los leyera. Un consumidor que fallara no habría reintentado nunca las 3 veces configuradas.
+
+Es un fallo que no se ve, porque la configuración está ahí puesta y parece activa.
+
+```java
+configurer.configure(factory, connectionFactory);   // primero el YAML de Boot
+factory.setMessageConverter(rabbitMessageConverter); // después lo del servicio
+```
+
+De paso desaparece `app.rabbitmq.listener`: duplicaba una a una las propiedades de Boot (`concurrent-consumers` ↔ `concurrency`, `prefetch-count` ↔ `prefetch`…), y esa duplicación era justo la que hacía creer que algo estaba configurado cuando no lo estaba. Esos valores viven ahora donde Boot los lee:
+
+```yaml
+spring:
+  rabbitmq:
+    listener:
+      simple:
+        concurrency: 1
+        max-concurrency: 5
+        prefetch: 10
+        default-requeue-rejected: false
+        receive-timeout: 1s
+        acknowledge-mode: auto
+        retry:
+          enabled: true
+          max-retries: 3
+```
+
+**Si tu servicio consumidor también declara su propia factory, revisa lo mismo** — es fácil que el patrón esté copiado.
+
+---
+
+## 13. Integridad de los mensajes
+
+### 13.1. Lo que había, y por qué no funcionaba
+
+El `messageHash` que viaja **dentro** del payload se calcula sobre el objeto **antes** de serializarlo. Para comprobarlo, el consumidor tiene que deserializar y volver a serializar — y esa ida y vuelta **no es la identidad**.
+
+Medido sobre payloads reales de este dominio:
+
+| Contenido | ¿El consumidor puede validar? |
+| :--- | :--- |
+| String, Long, Boolean | ✅ |
+| `BigDecimal 1.5` | ✅ |
+| **`BigDecimal 1.50`** | ❌ vuelve como `1.5` |
+| **`BigDecimal 2.00`** | ❌ vuelve como `2` |
+| **anidado con decimales** | ❌ |
+
+No es un caso rebuscado: `Cantilever` tiene **seis** campos `BigDecimal` y `Profile` tiene el `kp`. Los decimales llegan de la base de datos con su escala, así que un `1.50` es lo normal.
+
+Existía un `isValid()` que prometía esa verificación y **devolvía `false` para mensajes perfectamente legítimos**. Se ha eliminado: un método que dice que un mensaje bueno es malo es peor que no tenerlo.
+
+Y aunque la ida y vuelta funcionase, un SHA-256 **sin secreto no protege de manipulación**: quien altere el mensaje recalcula el hash y listo.
+
+### 13.2. Lo que hay ahora
+
+La firma va sobre **los bytes que se envían**, en dos cabeceras:
+
+| Cabecera | Contenido |
+| :--- | :--- |
+| `messageSignature` | La firma en hexadecimal |
+| `messageSignatureAlgorithm` | `HMAC-SHA256` o `SHA-256` |
+
+El consumidor firma los bytes que ha recibido y compara. **No deserializa nada**, así que los decimales dan igual.
+
+```java
+@RabbitListener(queues = "...")
+public void onMessage(Message message,
+                      @Header("messageSignature") String firma) {
+
+    if (!signature.verify(message.getBody(), firma)) {
+        throw new IllegalStateException("Firma no valida");
+    }
+    // ...
+}
+```
+
+### 13.3. El secreto
+
+```yaml
+app:
+  messaging:
+    signature:
+      secret: ${MTO_MESSAGING_SIGNATURE_SECRET:}
+```
+
+- **Con secreto** → HMAC-SHA256. Protege de manipulación: sin conocer el secreto no se puede producir una firma válida, por mucho que se conozca el algoritmo.
+- **Sin secreto** → SHA-256. Detecta corrupción, **no** manipulación. Se registra un aviso al arrancar para que no se confunda una cosa con la otra.
+
+Va vacío por defecto porque repartir un secreto entre servicios es una decisión de explotación; exigirlo impediría arrancar a quien no lo necesite. Si lo activáis, el consumidor necesita **el mismo valor**.
+
+### 13.4. Qué pasa con el `messageHash`
+
+Se queda en el payload: quitarlo cambiaría el contrato del mensaje y no hace falta para nada de esto. Pero ya está documentado por lo que es — **una huella del contenido, útil para correlacionar, no una garantía de integridad**. Eliminarlo es una limpieza para cuando toque coordinar un cambio de contrato con los consumidores.

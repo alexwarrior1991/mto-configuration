@@ -9,6 +9,7 @@ import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.boot.amqp.autoconfigure.SimpleRabbitListenerContainerFactoryConfigurer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -18,6 +19,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Configuration
 @EnableRabbit
@@ -51,24 +54,46 @@ public class RabbitMqConfiguration {
         return rabbitAdmin;
     }
 
+    /**
+     * Factory de listeners, configurada a partir de {@code spring.rabbitmq.listener.simple.*}.
+     * <p>
+     * El configurer no es un adorno: declarar este bean a mano SUSTITUYE al que crea
+     * Spring Boot, y sin pasar por el configurer se pierde en silencio toda la
+     * configuracion del YAML. Antes esta factory solo aplicaba unas pocas propiedades
+     * propias, de modo que el bloque de reintentos, el backoff y el acknowledge-mode
+     * estaban escritos en application.yaml sin que nadie los leyera: un consumidor que
+     * fallara no habria reintentado nunca las 3 veces configuradas.
+     * <p>
+     * Por eso tampoco existe ya un {@code app.rabbitmq.listener}: duplicaba una a una
+     * las propiedades de Boot, y esa duplicacion era justo la que hacia creer que algo
+     * estaba configurado cuando no lo estaba.
+     */
     @Bean
     public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(
+            SimpleRabbitListenerContainerFactoryConfigurer configurer,
             ConnectionFactory connectionFactory,
             MessageConverter rabbitMessageConverter
     ) {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
-        factory.setConnectionFactory(connectionFactory);
+
+        // Primero el YAML de Boot...
+        configurer.configure(factory, connectionFactory);
+
+        // ...y despues lo que es de este servicio.
         factory.setMessageConverter(rabbitMessageConverter);
-        factory.setConcurrentConsumers(properties.getListener().getConcurrentConsumers());
-        factory.setMaxConcurrentConsumers(properties.getListener().getMaxConcurrentConsumers());
-        factory.setPrefetchCount(properties.getListener().getPrefetchCount());
-        factory.setDefaultRequeueRejected(properties.getListener().isDefaultRequeueRejected());
-        factory.setReceiveTimeout(properties.getListener().getReceiveTimeout());
+
         return factory;
     }
 
     @Bean
-    public Declarables rabbitDeclarables() {
+    public RabbitMqTopologyValidator rabbitMqTopologyValidator() {
+        return new RabbitMqTopologyValidator(properties);
+    }
+
+    @Bean
+    public Declarables rabbitDeclarables(RabbitMqTopologyValidator topologyValidator) {
+        topologyValidator.validate();
+
         List<Declarable> declarables = new ArrayList<>();
 
         declarables.addAll(buildExchanges());
@@ -79,6 +104,14 @@ public class RabbitMqConfiguration {
         declarables.addAll(buildDeadLetterBindings());
 
         return new Declarables(declarables);
+    }
+
+    /** Colas de este servicio. Las que pertenecen a otro no se tocan. */
+    private List<RabbitMqProperties.Queue> declaredQueues() {
+        return properties.getQueues()
+                .stream()
+                .filter(this::isDeclared)
+                .toList();
     }
 
     private List<Exchange> buildExchanges() {
@@ -118,7 +151,7 @@ public class RabbitMqConfiguration {
     }
 
     private List<Queue> buildQueues() {
-        return properties.getQueues()
+        return declaredQueues()
                 .stream()
                 .map(this::buildQueue)
                 .toList();
@@ -128,24 +161,39 @@ public class RabbitMqConfiguration {
         Map<String, Object> arguments = new HashMap<>(queue.getArguments());
 
         if (isDeadLetterEnabled(queue)) {
-            arguments.put("x-dead-letter-exchange", resolveDeadLetterExchange(queue));
-            arguments.put("x-dead-letter-routing-key", resolveDeadLetterRoutingKey(queue));
+            arguments.put(RabbitMqConstants.ARG_DEAD_LETTER_EXCHANGE, resolveDeadLetterExchange(queue));
+            arguments.put(RabbitMqConstants.ARG_DEAD_LETTER_ROUTING_KEY, resolveDeadLetterRoutingKey(queue));
         }
 
         if (queue.getMessageTtl() != null) {
-            arguments.put("x-message-ttl", queue.getMessageTtl());
+            arguments.put(RabbitMqConstants.ARG_MESSAGE_TTL, queue.getMessageTtl());
         }
 
         if (queue.getMaxLength() != null) {
-            arguments.put("x-max-length", queue.getMaxLength());
+            arguments.put(RabbitMqConstants.ARG_MAX_LENGTH, queue.getMaxLength());
         }
 
         if (queue.getMaxLengthBytes() != null) {
-            arguments.put("x-max-length-bytes", queue.getMaxLengthBytes());
+            arguments.put(RabbitMqConstants.ARG_MAX_LENGTH_BYTES, queue.getMaxLengthBytes());
         }
 
-        if (queue.isLazy()) {
-            arguments.put("x-queue-mode", "lazy");
+        if (queue.getOverflow() != null) {
+            arguments.put(RabbitMqConstants.ARG_OVERFLOW, queue.getOverflow().argumentValue());
+        }
+
+        if (resolveQueueType(queue) == RabbitMqProperties.QueueType.QUORUM) {
+            // Solo se manda x-queue-type cuando es quorum: una cola clasica creada sin
+            // el argumento y redeclarada CON el es una redeclaracion distinta para el
+            // broker, y responde PRECONDITION_FAILED.
+            arguments.put(RabbitMqConstants.ARG_QUEUE_TYPE, RabbitMqProperties.QueueType.QUORUM.argumentValue());
+
+            if (queue.getDeliveryLimit() != null) {
+                arguments.put(RabbitMqConstants.ARG_DELIVERY_LIMIT, queue.getDeliveryLimit());
+            }
+        } else if (queue.isLazy()) {
+            // Ignorado por RabbitMQ 3.12+, pero se sigue mandando para no cambiar los
+            // argumentos de colas que ya existen: eso si romperia la declaracion.
+            arguments.put(RabbitMqConstants.ARG_QUEUE_MODE, "lazy");
         }
 
         return new Queue(
@@ -158,7 +206,7 @@ public class RabbitMqConfiguration {
     }
 
     private List<Exchange> buildDeadLetterExchanges() {
-        return properties.getQueues()
+        return declaredQueues()
                 .stream()
                 .filter(this::isDeadLetterEnabled)
                 .map(queue -> new DirectExchange(resolveDeadLetterExchange(queue), true, false))
@@ -168,17 +216,38 @@ public class RabbitMqConfiguration {
     }
 
     private List<Queue> buildDeadLetterQueues() {
-        return properties.getQueues()
+        return declaredQueues()
                 .stream()
                 .filter(this::isDeadLetterEnabled)
-                .map(queue -> new Queue(resolveDeadLetterQueue(queue), true, false, false))
+                .map(this::buildDeadLetterQueue)
                 .distinct()
                 .toList();
     }
 
+    /**
+     * La DLQ hereda el tipo de su cola principal: de nada sirve replicar la cola de
+     * trabajo si los mensajes que fallan acaban en una cola sin replica que se pierde
+     * con su nodo, que ademas son justo los que hay que conservar para investigar.
+     */
+    private Queue buildDeadLetterQueue(RabbitMqProperties.Queue queue) {
+        Map<String, Object> arguments = new HashMap<>();
+
+        if (resolveQueueType(queue) == RabbitMqProperties.QueueType.QUORUM) {
+            arguments.put(RabbitMqConstants.ARG_QUEUE_TYPE, RabbitMqProperties.QueueType.QUORUM.argumentValue());
+        }
+
+        return new Queue(resolveDeadLetterQueue(queue), true, false, false, arguments);
+    }
+
     private List<Binding> buildBindings() {
+        Set<String> colasPropias = declaredQueues()
+                .stream()
+                .map(RabbitMqProperties.Queue::getName)
+                .collect(Collectors.toSet());
+
         return properties.getBindings()
                 .stream()
+                .filter(binding -> colasPropias.contains(binding.getQueue()))
                 .map(binding -> new Binding(
                         binding.getQueue(),
                         Binding.DestinationType.QUEUE,
@@ -190,7 +259,7 @@ public class RabbitMqConfiguration {
     }
 
     private List<Binding> buildDeadLetterBindings() {
-        return properties.getQueues()
+        return declaredQueues()
                 .stream()
                 .filter(this::isDeadLetterEnabled)
                 .map(queue -> new Binding(
@@ -219,6 +288,18 @@ public class RabbitMqConfiguration {
         return queue.getAutoDelete() != null
                 ? queue.getAutoDelete()
                 : properties.getDefaults().isAutoDelete();
+    }
+
+    private boolean isDeclared(RabbitMqProperties.Queue queue) {
+        return queue.getDeclare() != null
+                ? queue.getDeclare()
+                : properties.getDefaults().isDeclareQueues();
+    }
+
+    private RabbitMqProperties.QueueType resolveQueueType(RabbitMqProperties.Queue queue) {
+        return queue.getType() != null
+                ? queue.getType()
+                : properties.getDefaults().getQueueType();
     }
 
     private boolean isDeadLetterEnabled(RabbitMqProperties.Queue queue) {
