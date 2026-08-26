@@ -34,13 +34,16 @@ Este paquete define el contrato corporativo de los mensajes asíncronos.
     - `creationDate`: Timestamp de creación.
     - `eventType`: Nombre lógico del evento (ej: `MASTER_DATA_STATION_CREATED`).
     - `data`: El contenido real del evento (payload).
-    - `messageHash`: Firma digital del mensaje para asegurar integridad.
+    - `messageHash`: Huella del contenido en el momento de crearlo. **No es una firma** y no sirve para verificar integridad en destino: ver sección 13.
 
 *   **`AsynchronousMessageFactory`**:
     Componente encargado de construir instancias de `AsynchronousMessage`. Automatiza la generación de UUIDs, timestamps y el cálculo del hash inicial.
 
 *   **`AsynchronousMessageHashService`**:
-    Utiliza Jackson para serializar el contenido y generar un hash SHA-256. Proporciona métodos para calcular y validar la integridad de los mensajes recibidos.
+    Calcula la huella `messageHash` con SHA-256 sobre el contenido antes de serializarlo. **No** ofrece validación en destino: la tenía y devolvía `false` para mensajes legítimos (ver sección 13). Para verificar de verdad está `MessagePayloadSignature`.
+
+*   **`MessagePayloadSignature`**:
+    Firma los **bytes** que viajan y la envía en cabecera. Es la única comprobación que el consumidor puede rehacer. Con secreto configurado es HMAC-SHA256; sin él, SHA-256.
 
 ---
 
@@ -152,7 +155,7 @@ El flujo de un evento en este módulo sigue un camino estrictamente controlado p
 ### Fase 1: Captura del Evento (Base de Datos)
 1.  **Operación de Negocio**: Un servicio realiza un cambio en una entidad (ej: `repository.save(station)`).
 2.  **Llamada al Publisher**: Dentro de la misma transacción `@Transactional`, se llama a `eventPublisher.publishCreated(savedEntity)`.
-3.  **Serialización**: El sistema convierte la entidad en un `AsynchronousMessage<T>`, calculando un hash SHA-256 para integridad y asignando un `operationId`.
+3.  **Serialización**: El sistema convierte la entidad en un `AsynchronousMessage<T>`, calculando la huella `messageHash` y asignando un `operationId`. La firma verificable se calcula después, al publicar, sobre los bytes reales (sección 13).
 4.  **Persistencia Outbox**: El mensaje se guarda en la tabla `outbox_message` con estado `PENDING`. 
     *   *Importante*: Si la transacción de base de datos falla (rollback), el registro en la tabla Outbox nunca se crea, evitando enviar eventos falsos.
 
@@ -563,3 +566,68 @@ spring:
 ```
 
 **Si tu servicio consumidor también declara su propia factory, revisa lo mismo** — es fácil que el patrón esté copiado.
+
+---
+
+## 13. Integridad de los mensajes
+
+### 13.1. Lo que había, y por qué no funcionaba
+
+El `messageHash` que viaja **dentro** del payload se calcula sobre el objeto **antes** de serializarlo. Para comprobarlo, el consumidor tiene que deserializar y volver a serializar — y esa ida y vuelta **no es la identidad**.
+
+Medido sobre payloads reales de este dominio:
+
+| Contenido | ¿El consumidor puede validar? |
+| :--- | :--- |
+| String, Long, Boolean | ✅ |
+| `BigDecimal 1.5` | ✅ |
+| **`BigDecimal 1.50`** | ❌ vuelve como `1.5` |
+| **`BigDecimal 2.00`** | ❌ vuelve como `2` |
+| **anidado con decimales** | ❌ |
+
+No es un caso rebuscado: `Cantilever` tiene **seis** campos `BigDecimal` y `Profile` tiene el `kp`. Los decimales llegan de la base de datos con su escala, así que un `1.50` es lo normal.
+
+Existía un `isValid()` que prometía esa verificación y **devolvía `false` para mensajes perfectamente legítimos**. Se ha eliminado: un método que dice que un mensaje bueno es malo es peor que no tenerlo.
+
+Y aunque la ida y vuelta funcionase, un SHA-256 **sin secreto no protege de manipulación**: quien altere el mensaje recalcula el hash y listo.
+
+### 13.2. Lo que hay ahora
+
+La firma va sobre **los bytes que se envían**, en dos cabeceras:
+
+| Cabecera | Contenido |
+| :--- | :--- |
+| `messageSignature` | La firma en hexadecimal |
+| `messageSignatureAlgorithm` | `HMAC-SHA256` o `SHA-256` |
+
+El consumidor firma los bytes que ha recibido y compara. **No deserializa nada**, así que los decimales dan igual.
+
+```java
+@RabbitListener(queues = "...")
+public void onMessage(Message message,
+                      @Header("messageSignature") String firma) {
+
+    if (!signature.verify(message.getBody(), firma)) {
+        throw new IllegalStateException("Firma no valida");
+    }
+    // ...
+}
+```
+
+### 13.3. El secreto
+
+```yaml
+app:
+  messaging:
+    signature:
+      secret: ${MTO_MESSAGING_SIGNATURE_SECRET:}
+```
+
+- **Con secreto** → HMAC-SHA256. Protege de manipulación: sin conocer el secreto no se puede producir una firma válida, por mucho que se conozca el algoritmo.
+- **Sin secreto** → SHA-256. Detecta corrupción, **no** manipulación. Se registra un aviso al arrancar para que no se confunda una cosa con la otra.
+
+Va vacío por defecto porque repartir un secreto entre servicios es una decisión de explotación; exigirlo impediría arrancar a quien no lo necesite. Si lo activáis, el consumidor necesita **el mismo valor**.
+
+### 13.4. Qué pasa con el `messageHash`
+
+Se queda en el payload: quitarlo cambiaría el contrato del mensaje y no hace falta para nada de esto. Pero ya está documentado por lo que es — **una huella del contenido, útil para correlacionar, no una garantía de integridad**. Eliminarlo es una limpieza para cuando toque coordinar un cambio de contrato con los consumidores.

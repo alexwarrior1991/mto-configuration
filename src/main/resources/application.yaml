@@ -282,6 +282,17 @@ app:
       # How long preflight request results can be cached (seconds)
       max-age: 3600
   
+  # Firma de los mensajes asincronos
+  messaging:
+    signature:
+      # Secreto compartido con los consumidores. CON secreto la firma es HMAC-SHA256
+      # y protege de manipulacion: quien altere el mensaje no puede recalcularla.
+      # SIN secreto se degrada a SHA-256 simple, que detecta corrupcion pero no
+      # manipulacion, porque cualquiera que cambie el contenido puede recalcularlo.
+      # Vacio por defecto: repartir un secreto entre servicios es una decision de
+      # explotacion, y exigirlo impediria arrancar a quien no lo necesite.
+      secret: ${MTO_MESSAGING_SIGNATURE_SECRET:}
+
   # Transactional outbox pattern configuration for reliable message publishing
   outbox:
     # Enable/disable the outbox pattern

@@ -1,5 +1,7 @@
 package com.alejandro.mtoconfiguration.core.outbox;
 
+import com.alejandro.mtoconfiguration.core.messaging.MessagePayloadSignature;
+
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +50,7 @@ public class OutboxRabbitPublisher {
     private final RabbitTemplate rabbitTemplate;
     private final OutboxProperties outboxProperties;
     private final OutboxTracing outboxTracing;
+    private final MessagePayloadSignature messagePayloadSignature;
 
     /**
      * Sin publisher confirms, el future de CorrelationData no se completa nunca y el
@@ -131,8 +134,10 @@ public class OutboxRabbitPublisher {
     }
 
     private Message toMessage(OutboxRecord record) {
+        byte[] body = record.payload().getBytes(StandardCharsets.UTF_8);
+
         MessageBuilderSupport<Message> builder = MessageBuilder
-                .withBody(record.payload().getBytes(StandardCharsets.UTF_8))
+                .withBody(body)
                 .setContentType(MessageProperties.CONTENT_TYPE_JSON)
                 .setContentEncoding(StandardCharsets.UTF_8.name())
                 .setDeliveryMode(MessageDeliveryMode.PERSISTENT)
@@ -144,7 +149,15 @@ public class OutboxRabbitPublisher {
                 // agregado, pero la entrega es at-least-once y un redrive puede
                 // reenviar algo antiguo. Con este numero el consumidor puede descartar
                 // lo que sea anterior a lo que ya ha aplicado.
-                .setHeader("sequenceNumber", record.sequenceNumber());
+                .setHeader("sequenceNumber", record.sequenceNumber())
+                // Firma sobre los bytes que viajan, no sobre el objeto: es lo unico
+                // que el consumidor puede recomprobar sin reserializar, y por tanto lo
+                // unico verificable de verdad. Va en cabecera porque un payload no
+                // puede contener su propia firma.
+                .setHeader(MessagePayloadSignature.HEADER_SIGNATURE,
+                        messagePayloadSignature.sign(body))
+                .setHeader(MessagePayloadSignature.HEADER_SIGNATURE_ALGORITHM,
+                        messagePayloadSignature.algorithm());
 
         // Suelo de propagacion: con la instrumentacion de Spring AMQP activa, esta
         // cabecera se sobrescribe con la del span hijo (mismo trace-id), que enlaza

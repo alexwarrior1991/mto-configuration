@@ -47,6 +47,7 @@ class OutboxRabbitPublisherTest {
     private OutboxProperties outboxProperties;
     private OutboxRabbitPublisher publisher;
     private OutboxTracing outboxTracing;
+    private com.alejandro.mtoconfiguration.core.messaging.MessagePayloadSignature messagePayloadSignature;
 
     private final OutboxRecord record = new OutboxRecord(
             UUID.randomUUID(),
@@ -67,7 +68,14 @@ class OutboxRabbitPublisherTest {
         outboxProperties = new OutboxProperties();
         outboxProperties.setConfirmTimeout(Duration.ofMillis(300));
         outboxTracing = org.mockito.Mockito.spy(new NoOpOutboxTracing());
-        publisher = new OutboxRabbitPublisher(rabbitTemplate, outboxProperties, outboxTracing);
+        com.alejandro.mtoconfiguration.core.messaging.MessageSignatureProperties firmaProperties =
+                new com.alejandro.mtoconfiguration.core.messaging.MessageSignatureProperties();
+        firmaProperties.setSecret("secreto-de-test");
+        messagePayloadSignature =
+                new com.alejandro.mtoconfiguration.core.messaging.MessagePayloadSignature(firmaProperties);
+
+        publisher = new OutboxRabbitPublisher(
+                rabbitTemplate, outboxProperties, outboxTracing, messagePayloadSignature);
     }
 
     /** Simula la respuesta del broker sobre el CorrelationData que recibe el template. */
@@ -155,6 +163,31 @@ class OutboxRabbitPublisherTest {
                 .containsEntry("aggregateId", record.aggregateId())
                 // Permite al consumidor descartar lo que sea anterior a lo ya aplicado
                 .containsEntry("sequenceNumber", record.sequenceNumber());
+    }
+
+    @Test
+    void elMensajeViajaFirmadoSobreLosBytesQueSeEnvian() {
+        brokerResponds(correlation -> correlation.getFuture().complete(new CorrelationData.Confirm(true, null)));
+
+        publisher.publish(record);
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        org.mockito.Mockito.verify(rabbitTemplate)
+                .send(anyString(), anyString(), captor.capture(), any(CorrelationData.class));
+
+        Message enviado = captor.getValue();
+        String firma = (String) enviado.getMessageProperties()
+                .getHeaders()
+                .get(com.alejandro.mtoconfiguration.core.messaging.MessagePayloadSignature.HEADER_SIGNATURE);
+
+        // La firma tiene que cuadrar con el CUERPO tal cual sale, que es lo unico que
+        // el consumidor puede recomprobar sin reserializar nada.
+        assertThat(messagePayloadSignature.verify(enviado.getBody(), firma)).isTrue();
+
+        assertThat(enviado.getMessageProperties().getHeaders())
+                .containsEntry(
+                        com.alejandro.mtoconfiguration.core.messaging.MessagePayloadSignature.HEADER_SIGNATURE_ALGORITHM,
+                        "HMAC-SHA256");
     }
 
     @Test

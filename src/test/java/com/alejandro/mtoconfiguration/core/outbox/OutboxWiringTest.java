@@ -33,6 +33,9 @@ class OutboxWiringTest {
                 .withBean(OutboxRelayService.class, () -> mock(OutboxRelayService.class))
                 // En produccion lo aporta actuator; aqui basta un registro en memoria.
                 .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+                .withBean(com.alejandro.mtoconfiguration.core.messaging.MessagePayloadSignature.class,
+                        () -> new com.alejandro.mtoconfiguration.core.messaging.MessagePayloadSignature(
+                                new com.alejandro.mtoconfiguration.core.messaging.MessageSignatureProperties()))
                 .withBean(OutboxRabbitPublisher.class)
                 .withBean(OutboxPublisherScheduler.class)
                 .withPropertyValues("mto.test.publisher-confirms=" + publisherConfirms);
