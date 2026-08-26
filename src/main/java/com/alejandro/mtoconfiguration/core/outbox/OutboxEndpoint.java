@@ -15,7 +15,8 @@ import java.util.Map;
  * <p>
  * Va en actuator y no en un controlador REST porque es una operacion de explotacion,
  * no de negocio. Requiere exponerlo (management.endpoints.web.exposure.include) y esta
- * restringido a ADMIN/OPS en SecurityConfiguration.
+ * restringido en SecurityConfiguration: la lectura exige el rol de metricas de
+ * explotacion y el redrive, que modifica el estado, uno propio de escritura.
  */
 @Component
 @Endpoint(id = "outbox")

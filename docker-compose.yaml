@@ -10,7 +10,7 @@ services:
     environment:
       POSTGRES_DB: mto_configuration_db
       POSTGRES_USER: mto_configuration_user
-      POSTGRES_PASSWORD: mto_configuration_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta en .env, copiese .env.example}
     # Mapeo de puertos: puerto del host:puerto del contenedor
     ports:
       - "5432:5432"
@@ -73,22 +73,46 @@ services:
     # Imagen oficial de Keycloak versión 26.1
     image: quay.io/keycloak/keycloak:26.1
     container_name: mto-configuration-keycloak
-    # Comando para iniciar Keycloak en modo desarrollo
-    command: start-dev --hostname=auth.mto.local --hostname-port=8082 --hostname-strict=false
+    # Keycloak 26 usa hostname v2: --hostname-port desaparecio y el puerto va dentro de la URL
+    # de --hostname. Con la opcion antigua el contenedor moria nada mas arrancar con
+    # "Unknown option: '--hostname-port'".
+    #
+    # Tampoco se pasa --hostname-strict=false: con una URL completa en --hostname, el modo
+    # estricto (el de por defecto) es justo lo que se quiere, porque fija el 'iss' de los tokens
+    # a http://auth.mto.local:8082 sea cual sea la cabecera Host de la peticion. Un emisor que
+    # variase segun quien llama no coincidiria con KEYCLOAK_ISSUER_URI y la validacion fallaria.
+    command: start-dev --hostname=http://auth.mto.local:8082
     # Variables de entorno para configurar las credenciales de administrador de Keycloak
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?falta en .env, copiese .env.example}
       KC_HTTP_ENABLED: true
-    # Mapeo de puertos: puerto del host:puerto del contenedor
+      # Habilita /health/ready en el puerto de management (9000), que es lo unico que dice de
+      # verdad si Keycloak ya sirve el realm.
+      KC_HEALTH_ENABLED: true
+    # Mapeo de puertos: 8082 para la API/consola, 9000 para health y metricas
     ports:
       - "8082:8080"
-    # Verificación de salud para comprobar que Keycloak está listo
+      - "9000:9000"
+    # Un socket abierto en el 8080 no significa que el realm este disponible: Keycloak acepta
+    # conexiones bastante antes de servir el JWK Set, y la app arrancaba contra un Keycloak que
+    # todavia no respondia. Se sondea /health/ready en el puerto de management.
     healthcheck:
-      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/8080' || exit 1"]
-      interval: 10s
+      # Escalar de bloque, no cadena entre comillas: el comando lleva comillas dobles y simples, y
+      # entrecomillarlo en linea obliga a escaparlas hasta hacerlo ilegible. Los \r\n llegan
+      # literales a printf, que es quien los convierte en el CRLF que exige HTTP.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/localhost/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"UP"' <&3
+      interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 40
+      # Keycloak tarda en la primera arrancada (migracion de esquema); sin esto los primeros
+      # sondeos cuentan como fallo.
+      start_period: 30s
 
   # Servicio principal de la aplicación Spring Boot
   app:
@@ -103,7 +127,7 @@ services:
 
       MTO_CONFIGURATION_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mto_configuration_db
       MTO_CONFIGURATION_DATASOURCE_USERNAME: mto_configuration_user
-      MTO_CONFIGURATION_DATASOURCE_PASSWORD: mto_configuration_password
+      MTO_CONFIGURATION_DATASOURCE_PASSWORD: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD:?falta en .env, copiese .env.example}
       MTO_CONFIGURATION_DB_SCHEMA: mto_configuration
 
       SPRING_DATA_REDIS_HOST: redis
@@ -112,11 +136,12 @@ services:
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
       SPRING_RABBITMQ_USERNAME: guest
-      SPRING_RABBITMQ_PASSWORD: guest
+      SPRING_RABBITMQ_PASSWORD: ${SPRING_RABBITMQ_PASSWORD:?falta en .env, copiese .env.example}
 
       KEYCLOAK_ISSUER_URI: http://auth.mto.local:8082/realms/mto
       KEYCLOAK_CLIENT_ID: mto-configuration-api
       KEYCLOAK_AUDIENCE: mto-configuration-api
+      KEYCLOAK_SERVICE_CLIENT_SECRET: ${KEYCLOAK_SERVICE_CLIENT_SECRET:?falta en .env, copiese .env.example}
 
       APP_CORS_ALLOWED_ORIGIN: http://localhost:4200
     extra_hosts:
@@ -133,7 +158,7 @@ services:
       rabbitmq:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
 
 # Definición de volúmenes nombrados para persistir datos de los servicios
 volumes:

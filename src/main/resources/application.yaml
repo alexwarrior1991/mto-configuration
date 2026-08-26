@@ -38,7 +38,7 @@ spring:
   datasource:
     url: ${MTO_CONFIGURATION_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mto_configuration_db}
     username: ${MTO_CONFIGURATION_DATASOURCE_USERNAME:mto_configuration_user}
-    password: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD:mto_configuration_password}
+    password: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
 #  locations: Indica dónde estarán tus scripts SQL en src/main/resources/db/migration
@@ -56,7 +56,7 @@ spring:
     enabled: true
     url: ${MTO_CONFIGURATION_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mto_configuration_db}
     user: ${MTO_CONFIGURATION_DATASOURCE_USERNAME:mto_configuration_user}
-    password: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD:mto_configuration_password}
+    password: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD}
     locations: classpath:db/migration
     default-schema: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
     schemas: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
@@ -91,7 +91,7 @@ spring:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: ${SPRING_RABBITMQ_PORT:5672}
     username: ${SPRING_RABBITMQ_USERNAME:guest}
-    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD}
     virtual-host: /
     # Publisher confirmation type for reliable message delivery
     publisher-confirm-type: correlated
@@ -135,6 +135,28 @@ spring:
         jwt:
           # Keycloak issuer URI for JWT token validation
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://auth.mto.local:8082/realms/mto}
+
+      # Cliente para las llamadas SALIENTES a otros servicios del dominio, que se autentican
+      # contra este mismo Keycloak.
+      client:
+        provider:
+          keycloak:
+            # Se declara el endpoint de token en lugar de issuer-uri a proposito: el
+            # descubrimiento por issuer es una llamada HTTP durante la creacion del bean, y con
+            # ella la aplicacion volveria a no arrancar si Keycloak no esta listo todavia.
+            token-uri: ${KEYCLOAK_TOKEN_URI:http://auth.mto.local:8082/realms/mto/protocol/openid-connect/token}
+        registration:
+          # Cuenta de servicio de esta aplicacion. client_credentials y no password: el token
+          # representa al servicio, no a una persona, y asi la auditoria del servicio remoto no
+          # atribuye a un usuario lo que hizo un proceso.
+          mto-services:
+            provider: keycloak
+            client-id: ${KEYCLOAK_SERVICE_CLIENT_ID:mto-configuration-svc}
+            # Sin valor por defecto a proposito: si la variable falta, la aplicacion no arranca.
+            # Es preferible a que arranque con un secreto de ejemplo y nadie se entere.
+            client-secret: ${KEYCLOAK_SERVICE_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+            client-authentication-method: client_secret_basic
 
 
 # Custom application-specific configuration
@@ -244,16 +266,20 @@ app:
 
   # Application security configuration for authentication and authorization
   security:
-    # Enable/disable security features
-    enabled: true
     # Keycloak client identifier for this application
     client-id: ${KEYCLOAK_CLIENT_ID:mto-configuration-api}
     # JWT claim to use as the principal username
     principal-claim: preferred_username
     # Validate that JWT contains the required audience
     audience-validation-enabled: true
-    # Expected audience value in JWT tokens
+    # Expected audience value in JWT tokens. Si audience-validation-enabled esta activo y este
+    # valor llega vacio, la aplicacion no arranca: sin audiencia la API aceptaria cualquier token
+    # emitido por el realm, incluido el del frontal de otra aplicacion.
     required-audience: ${KEYCLOAK_AUDIENCE:mto-configuration-api}
+    # Publicar /swagger-ui y /v3/api-docs sin autenticacion. Cerrado por defecto para que un
+    # entorno desplegado nuevo no exponga el catalogo completo de endpoints por olvido: los
+    # perfiles de desarrollo lo abren explicitamente.
+    expose-api-docs: ${APP_SECURITY_EXPOSE_API_DOCS:false}
     # Cross-Origin Resource Sharing (CORS) configuration
     cors:
       # Allowed origins for cross-origin requests
@@ -277,8 +303,9 @@ app:
       # Headers exposed to the client in cross-origin responses
       exposed-headers:
         - Location
-      # Allow credentials (cookies, authorization headers) in cross-origin requests
-      allow-credentials: true
+      # La API es stateless y se autentica con la cabecera Authorization: no hay cookies que
+      # enviar, asi que habilitar credenciales solo ampliaria la superficie.
+      allow-credentials: false
       # How long preflight request results can be cached (seconds)
       max-age: 3600
   
@@ -351,6 +378,16 @@ management:
     web:
       exposure:
         include: health,info,outbox,prometheus
+
+  endpoint:
+    health:
+      # El health anonimo lo consultan el balanceador y las sondas del orquestador, asi que
+      # tiene que seguir abierto, pero un UP/DOWN es todo lo que necesitan. El desglose por
+      # componente enumera la base de datos, Redis y RabbitMQ con sus mensajes de error, y eso
+      # solo lo ve quien trae el rol de explotacion.
+      show-details: when-authorized
+      show-components: when-authorized
+      roles: OPS_METRICS
 
   # Trazabilidad distribuida (micrometer-tracing-bridge-otel + exportador OTLP).
   tracing:

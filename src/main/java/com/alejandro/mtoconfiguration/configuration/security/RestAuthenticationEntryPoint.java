@@ -1,28 +1,41 @@
 package com.alejandro.mtoconfiguration.configuration.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
-
+import org.springframework.web.servlet.HandlerExceptionResolver;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
+/**
+ * Respuesta a una petición sin autenticar, en dos mitades que resuelve cada una quien sabe hacerlo.
+ *
+ * <p>La cabecera {@code WWW-Authenticate} la construye el entry point de Spring Security, que sigue
+ * el RFC 6750: distingue «no has traído token» de «tu token no vale» y, en el segundo caso, añade
+ * {@code error} y {@code error_description}. Sin esa cabecera el cliente no puede saber si le toca
+ * refrescar el token o volver a autenticar, y acaba tratando cualquier 401 igual.</p>
+ *
+ * <p>El cuerpo lo escribe el {@code @ControllerAdvice} de errores a través del resolver, de modo que
+ * un 401 lanzado aquí —en la cadena de filtros, antes de llegar a ningún controlador— sale con el
+ * mismo <i>Problem Details</i> (RFC 9457) que cualquier otro error de la API. Antes se serializaba
+ * un mapa a mano y el cliente necesitaba dos parsers según por dónde hubiera fallado la petición.</p>
+ */
 @Component
 public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
-    private final ObjectMapper objectMapper;
+    private final AuthenticationEntryPoint bearerTokenEntryPoint = new BearerTokenAuthenticationEntryPoint();
 
-    public RestAuthenticationEntryPoint(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+    private final HandlerExceptionResolver handlerExceptionResolver;
+
+    public RestAuthenticationEntryPoint(
+            @Qualifier("handlerExceptionResolver") HandlerExceptionResolver handlerExceptionResolver
+    ) {
+        this.handlerExceptionResolver = handlerExceptionResolver;
     }
 
     @Override
@@ -31,17 +44,11 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
             HttpServletResponse response,
             AuthenticationException authException
     ) throws IOException, ServletException {
+        bearerTokenEntryPoint.commence(request, response, authException);
 
-        response.setStatus(HttpStatus.UNAUTHORIZED.value());
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("timestamp", LocalDateTime.now().toString());
-        body.put("status", HttpStatus.UNAUTHORIZED.value());
-        body.put("error", HttpStatus.UNAUTHORIZED.getReasonPhrase());
-        body.put("message", "Token no válido o inexistente. Se requiere autenticación Bearer.");
-        body.put("path", request.getRequestURI());
-
-        objectMapper.writeValue(response.getOutputStream(), body);
+        // Sin handler: la excepción no viene de un controlador. El advice es global, así que la
+        // resuelve igual. Si no la resolviera, la respuesta seguiría siendo un 401 con su cabecera,
+        // solo que sin cuerpo.
+        handlerExceptionResolver.resolveException(request, response, null, authException);
     }
 }

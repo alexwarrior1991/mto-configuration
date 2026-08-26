@@ -22,7 +22,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.transaction.TransactionSystemException;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.ObjectError;
@@ -162,8 +162,14 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
 
     // --- Seguridad ---
 
+    /**
+     * Cubre {@link AuthenticationException} entera, no solo el token inválido: por aquí entran
+     * también los 401 que {@code RestAuthenticationEntryPoint} delega desde la cadena de filtros,
+     * donde el fallo puede ser la ausencia de token. Sin la superclase, esos caían en el manejador
+     * general y salían como 500.
+     */
     @ExceptionHandler({FeignException.Unauthorized.class,
-            InvalidBearerTokenException.class,
+            AuthenticationException.class,
             HttpClientErrorException.Unauthorized.class})
     public ResponseEntity<ProblemDetail> handleUnauthorized(Exception e, HttpServletRequest request) {
         log.warn("Petición no autenticada a {}: {}", uriOf(request), e.getMessage());

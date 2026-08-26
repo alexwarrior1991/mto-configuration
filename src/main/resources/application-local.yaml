@@ -1,3 +1,7 @@
+# Perfil de desarrollo. Las credenciales de este fichero son desechables y solo valen contra
+# el stack local que levanta docker-compose. Ningun valor de un entorno desplegado debe
+# escribirse aqui: la configuracion base (application.yaml) no lleva valores por defecto para
+# los secretos justamente para que un despliegue sin gestor de secretos no arranque.
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/mto_configuration_db
@@ -33,11 +37,19 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: http://auth.mto.local:8082/realms/mto
+      client:
+        # Cuenta de servicio para las llamadas salientes. Valor local; en docker-compose lo pisa
+        # la variable de entorno, que tiene mas precedencia que este fichero.
+        registration:
+          mto-services:
+            client-secret: mto-configuration-svc-secret
 
 app:
   security:
     client-id: mto-configuration-api
     required-audience: mto-configuration-api
+    # Entorno de desarrollo: la documentacion interactiva es la forma habitual de probar la API.
+    expose-api-docs: true
     cors:
       allowed-origins:
         - http://localhost:4200

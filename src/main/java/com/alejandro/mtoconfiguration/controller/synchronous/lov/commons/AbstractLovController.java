@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.controller.synchronous.lov.commons;
 
+import com.alejandro.mtoconfiguration.configuration.security.SecurityRoles;
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
 import com.alejandro.mtoconfiguration.model.commons.LovDTO;
 import com.alejandro.mtoconfiguration.service.lov.commons.LovCrudService;
@@ -13,10 +14,21 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * Las listas de valores fijan el vocabulario del que dependen todas las entidades de
+ * infraestructura, así que modificarlas exige {@code lov-manage} además del permiso de escritura
+ * que ya aplica la cadena de filtros por verbo. Es deliberado que sean dos comprobaciones: un
+ * perfil de edición diaria ({@code mto-editor}) puede mantener infraestructura sin poder tocar el
+ * catálogo, y solo {@code mto-admin} reúne ambos permisos.
+ * <p>
+ * La anotación vive aquí y no en cada controlador concreto porque las subclases no redefinen estos
+ * métodos: una LOV nueva hereda la regla sin que nadie tenga que acordarse de copiarla.
+ */
 @RequiredArgsConstructor
 public abstract class AbstractLovController<D extends LovDTO> {
 
@@ -73,6 +85,7 @@ public abstract class AbstractLovController<D extends LovDTO> {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('" + SecurityRoles.LOV_MANAGE + "')")
     @Operation(
             summary = "Create LOV record",
             description = "Creates a new LOV record after validating the request body."
@@ -93,6 +106,7 @@ public abstract class AbstractLovController<D extends LovDTO> {
     }
 
     @PostMapping("/bulk")
+    @PreAuthorize("hasRole('" + SecurityRoles.LOV_MANAGE + "')")
     @Operation(
             summary = "Bulk create LOV records",
             description = "Creates several LOV records in a single transactional operation."
@@ -109,6 +123,7 @@ public abstract class AbstractLovController<D extends LovDTO> {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('" + SecurityRoles.LOV_MANAGE + "')")
     @Operation(
             summary = "Update LOV record",
             description = "Updates an existing LOV record. The path ID is the source of truth."
@@ -130,6 +145,7 @@ public abstract class AbstractLovController<D extends LovDTO> {
     }
 
     @PutMapping("/bulk")
+    @PreAuthorize("hasRole('" + SecurityRoles.LOV_MANAGE + "')")
     @Operation(
             summary = "Bulk update LOV records",
             description = "Updates several LOV records in a single transactional operation. Each DTO must contain its ID."
@@ -147,6 +163,7 @@ public abstract class AbstractLovController<D extends LovDTO> {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('" + SecurityRoles.LOV_MANAGE + "')")
     @Operation(
             summary = "Delete LOV record",
             description = "Performs a logical deletion of the LOV record."

@@ -12,6 +12,22 @@ Modo Docker completo:
   PostgreSQL, Redis, RabbitMQ y Keycloak se ejecutan en Docker.
 ```
 
+## 0. Antes de nada: credenciales
+
+Las contraseñas del stack local viven en un fichero `.env` que **no se versiona**. Antes del
+primer arranque:
+
+```bash
+cp .env.example .env
+```
+
+Si falta, `docker compose` se niega a arrancar y dice qué variable no encuentra, en lugar de
+levantar el stack con una contraseña de ejemplo.
+
+La configuración base (`application.yaml`) tampoco lleva valores por defecto para los secretos:
+un entorno desplegado al que le falte una variable no arranca. Es deliberado — es preferible a
+que arranque con la credencial de ejemplo y nadie lo note.
+
 ## 1. Arquitectura local del proyecto
 
 El stack definido en `docker-compose.yaml` contiene estos servicios:

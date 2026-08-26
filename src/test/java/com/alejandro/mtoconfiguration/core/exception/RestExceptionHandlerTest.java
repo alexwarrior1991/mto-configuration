@@ -14,6 +14,8 @@ import com.alejandro.mtoconfiguration.configuration.security.KeycloakJwtAuthenti
 import org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration;
 import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterAutoConfiguration;
 import org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration;
+import org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration;
+import org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration;
 import org.springframework.boot.security.oauth2.server.resource.autoconfigure.servlet.OAuth2ResourceServerAutoConfiguration;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
@@ -42,7 +44,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                 SecurityAutoConfiguration.class,
                 ServletWebSecurityAutoConfiguration.class,
                 SecurityFilterAutoConfiguration.class,
-                OAuth2ResourceServerAutoConfiguration.class
+                OAuth2ResourceServerAutoConfiguration.class,
+                // El cliente OAuth2 (llamadas salientes a otros servicios) trae su propia cadena de
+                // filtros bajo @ConditionalOnDefaultWebSecurity. En la aplicación cede ante la
+                // nuestra, pero este slice excluye la seguridad a propósito y ahí sí se activaría,
+                // pidiendo un HttpSecurity que aquí no existe.
+                OAuth2ClientAutoConfiguration.class,
+                OAuth2ClientWebSecurityAutoConfiguration.class
         },
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE,
