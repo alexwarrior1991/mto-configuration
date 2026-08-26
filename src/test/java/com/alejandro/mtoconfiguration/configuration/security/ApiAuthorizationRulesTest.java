@@ -119,6 +119,12 @@ class ApiAuthorizationRulesTest {
         }
 
         @Test
+        @DisplayName("el outbox de Actuator no es negocio: exige el rol de explotación")
+        void elOutboxExigeRolDeExplotacion() throws Exception {
+            mockMvc.perform(get("/actuator/outbox")).andExpect(status().isUnauthorized());
+        }
+
+        @Test
         @DisplayName("con expose-api-docs a false la documentación exige autenticación")
         void laDocumentacionExigeAutenticacion() throws Exception {
             mockMvc.perform(get("/v3/api-docs")).andExpect(status().isUnauthorized());
@@ -137,6 +143,18 @@ class ApiAuthorizationRulesTest {
                     .andExpect(status().isOk());
             mockMvc.perform(get(PROBES + "/paged").with(con(SecurityRoles.CONFIG_READ)))
                     .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("leer datos maestros no abre los endpoints de explotación")
+        void leerDatosMaestrosNoAbreExplotacion() throws Exception {
+            mockMvc.perform(get("/actuator/outbox").with(con(SecurityRoles.CONFIG_READ)))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/actuator/prometheus").with(con(SecurityRoles.CONFIG_READ)))
+                    .andExpect(status().isForbidden());
+            // Con el rol correcto pasa la autorización; el 404 es que este slice no monta Actuator.
+            mockMvc.perform(get("/actuator/outbox").with(con(SecurityRoles.OPS_METRICS)))
+                    .andExpect(status().isNotFound());
         }
 
         @Test

@@ -16,7 +16,8 @@ public interface SteadyArmRepository extends CRUDRepository<SteadyArm>, Messagin
 
     @Override
     @EntityGraph(attributePaths = {
-            "steadyArmType"
+            "steadyArmType",
+            "cantilever"
     })
     @Query("select s from SteadyArm s where s.id = :id")
     Optional<SteadyArm> findByIdForMessaging(@Param("id") Long id);

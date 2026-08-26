@@ -61,7 +61,14 @@ spring:
     default-schema: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
     schemas: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
     create-schemas: true
-    baseline-on-migrate: false
+    # Necesario para adoptar Flyway sobre una base que YA tiene el esquema (creado
+    # en su dia por Hibernate). Sin esto, Flyway se encuentra un schema poblado sin
+    # tabla de historico y aborta el arranque. Con baseline-version 1, da V1 por
+    # aplicada sin ejecutarla y sigue por V2. En una base vacia no interviene: se
+    # aplican todas las migraciones desde V1.
+    baseline-on-migrate: true
+    baseline-version: 1
+    baseline-description: esquema preexistente
     validate-on-migrate: true
     clean-disabled: true
 
@@ -94,6 +101,16 @@ spring:
       simple:
         # Auto-acknowledge messages upon successful processing
         acknowledge-mode: auto
+        # Consumidores iniciales y maximos, y mensajes sin confirmar por consumidor.
+        # Viven aqui y no en app.rabbitmq porque es Boot quien los aplica: tenerlos
+        # duplicados en dos sitios fue lo que hizo creer que el bloque de reintentos
+        # de abajo estaba activo cuando no lo leia nadie.
+        concurrency: 1
+        max-concurrency: 5
+        prefetch: 10
+        # No se reencola un mensaje rechazado: se manda a su DLQ
+        default-requeue-rejected: false
+        receive-timeout: 1s
         retry:
           # Enable automatic retry mechanism for failed messages
           enabled: true
@@ -129,6 +146,23 @@ app:
 
     # Default settings for exchanges, queues, and bindings
     defaults:
+      # Si este servicio declara las colas de la lista.
+      #
+      # Una cola pertenece a quien la CONSUME, no a quien publica: es el consumidor
+      # el que sabe que TTL, que limite y que tipo necesita.
+      #
+      # Declararla en los dos lados es idempotente SOLO si los argumentos coinciden
+      # exactamente. Si no, el broker responde PRECONDITION_FAILED y cierra el canal:
+      # los exchanges ya declarados sobreviven, pero se quedan sin declarar el resto
+      # de colas del lote y TODOS los bindings, y sin bindings no se enruta nada.
+      #
+      # Sigue en true porque las colas de abajo ya existen en los entornos y las
+      # consumen otros servicios: pasarlo a false hay que coordinarlo con ellos.
+      # Ver README_MESSAGING.md, "Traspaso de las colas a sus consumidores".
+      declare-queues: true
+      # Tipo por defecto. Cambiar el tipo de una cola que ya existe obliga a
+      # borrarla y recrearla, asi que esto solo aplica a colas nuevas.
+      queue-type: classic
       # Queues/exchanges survive broker restarts
       durable: true
       # Queue is not restricted to a single connection
@@ -144,19 +178,6 @@ app:
       # Suffix for dead letter routing keys
       dead-letter-routing-key-suffix: .dlq
 
-    # RabbitMQ message listener configuration
-    listener:
-      # Initial number of concurrent message consumers
-      concurrent-consumers: 1
-      # Maximum number of concurrent consumers for scalability
-      max-concurrent-consumers: 5
-      # Number of unacknowledged messages a consumer can have
-      prefetch-count: 10
-      # Do not requeue rejected messages (send to DLQ instead)
-      default-requeue-rejected: false
-      # Timeout for receiving messages in milliseconds
-      receive-timeout: 1000
-
     # RabbitMQ message publisher configuration
     publisher:
       # Return messages if they cannot be routed to any queue
@@ -171,6 +192,13 @@ app:
         auto-delete: false
 
     # RabbitMQ queue definitions - message storage endpoints
+    #
+    # OJO al tocar estas colas: los argumentos de una cola que ya existe son
+    # INMUTABLES. Anadir aqui un max-length o un overflow a una cola ya creada hace
+    # que el broker responda PRECONDITION_FAILED y se caiga la declaracion entera.
+    # Para ponerle limites a una cola existente se usa una policy del broker; para
+    # cambiarle el tipo, hay que borrarla y recrearla. Ambos procedimientos estan en
+    # README_MESSAGING.md.
     queues:
       # Queue for general master data events
       - name: mto.master-data.events.queue
@@ -259,16 +287,94 @@ app:
       # How long preflight request results can be cached (seconds)
       max-age: 3600
   
+  # Firma de los mensajes asincronos
+  messaging:
+    signature:
+      # Secreto compartido con los consumidores. CON secreto la firma es HMAC-SHA256
+      # y protege de manipulacion: quien altere el mensaje no puede recalcularla.
+      # SIN secreto se degrada a SHA-256 simple, que detecta corrupcion pero no
+      # manipulacion, porque cualquiera que cambie el contenido puede recalcularlo.
+      # Vacio por defecto: repartir un secreto entre servicios es una decision de
+      # explotacion, y exigirlo impediria arrancar a quien no lo necesite.
+      secret: ${MTO_MESSAGING_SIGNATURE_SECRET:}
+
   # Transactional outbox pattern configuration for reliable message publishing
   outbox:
     # Enable/disable the outbox pattern
     enabled: true
-    # Maximum retry attempts for failed message publishing
-    max-attempts: 10
-    # Initial delay before retrying failed messages
+    # Intentos antes de dar el mensaje por perdido (FAILED). Con backoff exponencial
+    # acotado, 20 intentos cubren mas de una hora de broker caido.
+    max-attempts: 20
+    # Retardo del primer reintento; se duplica en cada intento hasta max-retry-delay
     initial-retry-delay: 5s
+    # Tope del backoff exponencial
+    max-retry-delay: 5m
+    # Desviacion aleatoria del retardo (0.2 => [0.8*d, 1.2*d]): evita que todas las
+    # replicas reintenten a la vez contra un broker que acaba de levantarse
+    retry-jitter: 0.2
     # Fixed delay between outbox publisher executions
     publisher-fixed-delay: 5s
+    # Mensajes que reclama cada pasada del relay
+    batch-size: 50
+    # Tiempo que un mensaje reclamado queda invisible para el resto de replicas.
+    # Es la red de seguridad si el proceso muere entre reclamar y publicar.
+    claim-visibility-timeout: 5m
+    # Espera maxima por el publisher confirm antes de dar el envio por fallido
+    confirm-timeout: 10s
+    # Cada cuanto se refresca la foto del outbox que publican las metricas. Los
+    # gauges NO consultan la base de datos en cada scrape de Prometheus.
+    metrics-refresh-delay: 30s
+    # Publica los mensajes de un mismo agregado en el orden en que se generaron. Sin
+    # esto, un mensaje que falla y se reprograma deja pasar por delante al siguiente
+    # del mismo agregado, y el consumidor aplica el cambio viejo encima del nuevo.
+    # El coste es que un mensaje atascado frena a los de SU agregado, solo a esos.
+    strict-ordering-per-aggregate: true
+    # Publica en cuanto la transaccion de negocio confirma, sin esperar al sondeo.
+    # El sondeo sigue como red de seguridad: esto solo le quita el suelo de latencia,
+    # que era de hasta publisher-fixed-delay para TODOS los eventos.
+    immediate-dispatch: true
+    # Borrado de los mensajes ya publicados. Sin esto outbox_message solo crece:
+    # cada cambio de dato maestro deja una fila con su JSON, y las operaciones
+    # masivas publican un evento por entidad.
+    purge:
+      enabled: true
+      # Margen para investigar un incidente de mensajeria con la tabla delante
+      retention: 7d
+      # Se borra por lotes: un DELETE de millones de filas hincha el WAL y bloquea
+      # el vacuum de la tabla
+      batch-size: 500
+      # Tope de trabajo por pasada, para que la primera ejecucion sobre una tabla
+      # enorme no se convierta en un borrado de horas
+      max-batches-per-run: 20
+      fixed-delay: 1h
+
+# Endpoints de explotacion. Por defecto Boot solo expone health, asi que el endpoint
+# del outbox (estado y redrive de los FAILED) hay que declararlo. El acceso queda
+# restringido a ADMIN/OPS en SecurityConfiguration.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,outbox,prometheus
+
+  # Trazabilidad distribuida (micrometer-tracing-bridge-otel + exportador OTLP).
+  tracing:
+    enabled: ${MTO_TRACING_ENABLED:true}
+    sampling:
+      # Muestrear el 100% en un servicio con trafico real es caro y casi nunca hace
+      # falta. Ojo: un span NO muestreado sigue propagando su traceparent (con el
+      # flag a 00), asi que la cadena entre servicios no se rompe por muestrear poco.
+      probability: ${MTO_TRACING_SAMPLING_PROBABILITY:0.1}
+
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+    metrics:
+      export:
+        # Las metricas salen por Prometheus (ver /actuator/prometheus). El starter de
+        # OpenTelemetry arrastra tambien un registro OTLP de metricas, y sin esto
+        # intentaria empujarlas a un colector ademas de exponerlas.
+        enabled: false
 
 # Cache configuration for Redis-based caching strategy
 cache:

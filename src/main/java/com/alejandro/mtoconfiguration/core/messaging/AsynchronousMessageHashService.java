@@ -10,6 +10,23 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.UUID;
 
+/**
+ * Huella del contenido del mensaje en el momento de crearlo.
+ * <p>
+ * Sirve para correlacionar y para detectar dos eventos de contenido identico. NO es
+ * una firma y NO sirve para verificar integridad, por dos motivos:
+ * <ul>
+ *   <li>Es un SHA-256 sin secreto: quien altere el mensaje puede recalcularlo.</li>
+ *   <li>No es verificable en destino. Se calcula sobre el objeto ANTES de
+ *       serializarlo, y para comprobarlo habria que deserializar y volver a
+ *       serializar. Esa ida y vuelta no es la identidad: un BigDecimal de valor
+ *       1.50 vuelve como 1.5 y da otro hash. Con seis campos BigDecimal en
+ *       Cantilever y el kp de Profile, no es un caso raro.</li>
+ * </ul>
+ * Para verificar de verdad, el mensaje viaja firmado en cabecera sobre los bytes
+ * reales: ver {@link MessagePayloadSignature}. Aqui existia un {@code isValid()} que
+ * prometia esa verificacion y devolvia false para mensajes legitimos; se ha quitado.
+ */
 @Component
 @RequiredArgsConstructor
 public class AsynchronousMessageHashService {
@@ -25,12 +42,6 @@ public class AsynchronousMessageHashService {
                 message.eventType(),
                 message.data()
         );
-    }
-
-    public <T> boolean isValid(AsynchronousMessage<T> message) {
-        byte[] expected = calculate(message).getBytes(StandardCharsets.UTF_8);
-        byte[] actual = message.messageHash().getBytes(StandardCharsets.UTF_8);
-        return MessageDigest.isEqual(expected, actual);
     }
 
     private <T> String calculate(

@@ -102,6 +102,11 @@ public class SecurityConfiguration {
                         authorize.requestMatchers(API_DOCS).permitAll();
                     }
 
+                    // Todo Actuator cerrado salvo health e info. En master estas rutas iban
+                    // enumeradas una a una (/actuator/prometheus, /actuator/outbox, que publica
+                    // el estado del outbox y el redrive de los mensajes FAILED: explotación, no
+                    // negocio); la regla general las cubre y además no deja fuera los endpoints
+                    // que se expongan más adelante.
                     authorize.requestMatchers("/actuator/**").hasRole(SecurityRoles.OPS_METRICS);
 
                     // El orden importa: cada petición se resuelve con la primera regla que encaja,

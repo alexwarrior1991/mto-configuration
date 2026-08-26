@@ -650,3 +650,92 @@ El flujo final de trabajo debe ser:
 7. Para futuros cambios, creas V2, V3, V4...
 8. No modificas migraciones ya aplicadas.
 ```
+
+---
+
+## 12. Estado actual y adopcion sobre una base que ya existe
+
+Esta seccion refleja lo que hay realmente en el repositorio.
+
+### 12.1. La dependencia, que no era obvia
+
+Spring Boot 4 saco la autoconfiguracion de Flyway a su propio modulo. Con
+`flyway-core` a secas la libreria esta en el classpath pero **nadie la ejecuta al
+arrancar**: no hay `FlywayAutoConfiguration`, toda la configuracion
+`spring.flyway.*` queda muerta y la aplicacion no avisa de nada. Por eso el
+`pom.xml` declara:
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-flyway</artifactId>
+</dependency>
+```
+
+### 12.2. Migraciones existentes
+
+```text
+src/main/resources/db/migration
+├── V1__init_schema.sql                       Esquema completo (generado desde las entidades)
+├── V2__outbox_message_payload_and_status.sql Pone al dia outbox_message
+└── V3__outbox_message_indexes.sql            Indices parciales del outbox
+```
+
+`V1` va **sin prefijo de schema** a proposito: el nombre real es configurable
+(`MTO_CONFIGURATION_DB_SCHEMA`) y lo resuelve Flyway con su `default-schema`.
+Fijar `mto_configuration.` dentro del script romperia cualquier despliegue que
+use otro.
+
+### 12.3. Base nueva
+
+Flyway aplica `V1`, `V2` y `V3` en orden y despues Hibernate valida. No hay nada
+que preparar.
+
+### 12.4. Base que ya tiene el esquema
+
+Es el caso de cualquier entorno donde el esquema lo creo Hibernate en su dia.
+Flyway se encontraria un schema poblado sin tabla de historico y abortaria el
+arranque, asi que la configuracion lleva:
+
+```yaml
+spring:
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 1
+```
+
+Con esto Flyway da `V1` por aplicada **sin ejecutarla** (queda registrada como
+`BASELINE`) y sigue por `V2`. Lo que `V2` corrige en esas bases:
+
+- `outbox_message.payload` pasa de `oid` a `text`, conservando el contenido de
+  los mensajes que estuvieran sin publicar y liberando los large objects. Con
+  `oid`, borrar una fila deja su contenido huerfano en `pg_largeobject` para
+  siempre: la purga adelgazaria la tabla mientras la base de datos sigue
+  engordando.
+- La restriccion `CHECK` de `status` pasa a admitir `IN_PROGRESS`. Ojo con esta:
+  `ddl-auto: validate` **no** mira las restricciones `CHECK`, de modo que sin la
+  migracion el fallo no sale al arrancar, sale en la primera pasada del relay.
+
+`FlywayLegacyAdoptionIT` reproduce exactamente este escenario y comprueba las
+tres cosas.
+
+### 12.5. Que cubren los tests, y que no
+
+| Test | Comprueba |
+| :--- | :--- |
+| `FlywayMigrationIT` | Las migraciones se aplican sobre un schema vacio y Hibernate valida el resultado. Si `V1` se separa de las entidades, el contexto no arranca. |
+| `FlywayLegacyAdoptionIT` | La adopcion sobre una base preexistente: baseline de `V1`, conversion del payload sin perder datos y `CHECK` actualizado. |
+
+Un limite que conviene tener presente: `ddl-auto: validate` detecta tablas y
+columnas que faltan y tipos que no cuadran, pero **no** comprueba longitudes de
+`varchar`, ni restricciones `CHECK`, ni indices. Cambiar un `varchar(100)` a
+`varchar(60)` en una migracion no lo detecta nadie. Por eso los indices y el
+`CHECK` se verifican explicitamente en los tests de arriba.
+
+### 12.6. Un detalle de configuracion
+
+`application.yaml` da a Flyway su propia `url`, `user` y `password, ademas de las
+del datasource. Resuelven de las mismas variables de entorno
+(`MTO_CONFIGURATION_DATASOURCE_*`), asi que en la practica apuntan al mismo
+sitio, pero conviene saberlo: quien sobrescriba solo `spring.datasource.url`
+dejara la aplicacion conectada a una base y Flyway migrando otra.

@@ -10,8 +10,17 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * El mapper existia pero {@code toPayload} devolvia {@code Map.of()}: los eventos de
+ * Cantilever viajaban con el payload VACIO y los metodos de abajo eran codigo muerto.
+ * El consumidor recibia un cambio sin ningun dato con el que actuar.
+ * <p>
+ * Del steadyArm solo se publican campos escalares, sin volver al cantilever, para no
+ * reintroducir el ciclo Cantilever <-> SteadyArm.
+ */
 @Component
 public class CantileverMasterDataPayloadMapper implements MasterDataEntityPayloadMapper<Cantilever> {
+
 
     @Override
     public Class<Cantilever> supportedType() {
@@ -19,8 +28,21 @@ public class CantileverMasterDataPayloadMapper implements MasterDataEntityPayloa
     }
 
     @Override
-    public Map<String, Object> toPayload(Cantilever entity) {
-        return Map.of();
+    public Map<String, Object> toPayload(Cantilever cantilever) {
+        Map<String, Object> values = new LinkedHashMap<>();
+
+        values.put("id", cantilever.getId());
+        values.put("cwHeight", cantilever.getCwHeight());
+        values.put("stagger", cantilever.getStagger());
+        values.put("catenaryHeight", cantilever.getCatenaryHeight());
+        values.put("cwElevation", cantilever.getCwElevation());
+        values.put("windDeflection", cantilever.getWindDeflection());
+        values.put("armAngle", cantilever.getArmAngle());
+        values.put("cantileverType", toCantileverTypePayload(cantilever.getCantileverType()));
+        values.put("profile", toProfilePayload(cantilever.getProfile()));
+        values.put("steadyArm", toSteadyArmPayload(cantilever.getSteadyArm()));
+
+        return values;
     }
 
     private Map<String, Object> toProfilePayload(Profile profile) {
