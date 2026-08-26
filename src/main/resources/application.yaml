@@ -136,6 +136,28 @@ spring:
           # Keycloak issuer URI for JWT token validation
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://auth.mto.local:8082/realms/mto}
 
+      # Cliente para las llamadas SALIENTES a otros servicios del dominio, que se autentican
+      # contra este mismo Keycloak.
+      client:
+        provider:
+          keycloak:
+            # Se declara el endpoint de token en lugar de issuer-uri a proposito: el
+            # descubrimiento por issuer es una llamada HTTP durante la creacion del bean, y con
+            # ella la aplicacion volveria a no arrancar si Keycloak no esta listo todavia.
+            token-uri: ${KEYCLOAK_TOKEN_URI:http://auth.mto.local:8082/realms/mto/protocol/openid-connect/token}
+        registration:
+          # Cuenta de servicio de esta aplicacion. client_credentials y no password: el token
+          # representa al servicio, no a una persona, y asi la auditoria del servicio remoto no
+          # atribuye a un usuario lo que hizo un proceso.
+          mto-services:
+            provider: keycloak
+            client-id: ${KEYCLOAK_SERVICE_CLIENT_ID:mto-configuration-svc}
+            # Valor de desarrollo. En cualquier entorno desplegado tiene que venir del gestor de
+            # secretos, nunca de este fichero.
+            client-secret: ${KEYCLOAK_SERVICE_CLIENT_SECRET:mto-configuration-svc-secret}
+            authorization-grant-type: client_credentials
+            client-authentication-method: client_secret_basic
+
 
 # Custom application-specific configuration
 app:

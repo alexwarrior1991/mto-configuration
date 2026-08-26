@@ -149,6 +149,14 @@
             <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
         </dependency>
 
+        <!-- Cliente OAuth2 para las llamadas salientes a otros servicios del mismo realm.
+             Aporta la obtencion de tokens por client_credentials con cache y renovacion,
+             que antes estaba escrita a mano y pedia un token nuevo en cada llamada. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+        </dependency>
+
         <!-- Opcional: Si necesitas leer claims específicos de Keycloak fácilmente -->
         <dependency>
             <groupId>org.springframework.security</groupId>
