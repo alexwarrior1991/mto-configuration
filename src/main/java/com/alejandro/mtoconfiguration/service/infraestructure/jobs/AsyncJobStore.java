@@ -4,9 +4,12 @@ import com.alejandro.mtoconfiguration.entity.jobs.AsyncJob;
 import com.alejandro.mtoconfiguration.enums.jobs.JobStatus;
 import com.alejandro.mtoconfiguration.enums.jobs.JobType;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.jobs.JobItemErrorDTO;
+import com.alejandro.mtoconfiguration.enums.jobs.JobSlotGroup;
 import com.alejandro.mtoconfiguration.repository.jpa.jobs.AsyncJobRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,6 +42,93 @@ public class AsyncJobStore {
 
     private final AsyncJobRepository repository;
     private final ObjectMapper objectMapper;
+    private final AsyncJobProperties properties;
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    /**
+     * Reserva cupo y crea el trabajo, todo en la misma transaccion.
+     *
+     * <p>Devuelve el trabajo en PENDING si habia hueco y en REJECTED si no. En los dos casos hay
+     * fila: un rechazo que no deja rastro solo se puede investigar leyendo logs.</p>
+     *
+     * <h2>Por que un cerrojo y no un simple recuento</h2>
+     *
+     * <p>«Cuenta los que hay y, si caben, mete uno» es una condicion de carrera de manual: dos
+     * peticiones simultaneas leen el mismo recuento, las dos ven hueco y las dos entran. Con un
+     * tope de uno, eso son dos cargas masivas a la vez, que es exactamente lo que el tope existia
+     * para impedir.</p>
+     *
+     * <p>{@code pg_advisory_xact_lock} serializa esa secuencia sin necesidad de una fila que
+     * bloquear —el cupo es un concepto, no un registro— y se suelta solo al confirmar la
+     * transaccion, de modo que no hay ninguna ruta de error que lo deje cogido. Cada grupo tiene su
+     * clave, asi que pedir hueco de exportacion no espera por uno de carga masiva.</p>
+     *
+     * <h2>Por que ya no hay semaforo</h2>
+     *
+     * <p>Antes el tope lo ponia un {@code Semaphore} en memoria. Un semaforo por JVM significa un
+     * tope por replica: con tres replicas, «maximo 2 exportaciones» eran seis contra la misma base
+     * de datos. Contra la tabla el limite es del despliegue entero, y de paso desaparece toda una
+     * clase de fallos —el permiso que no se devuelve y reduce el tope en silencio— porque el hueco
+     * no lo suelta nadie: se deja de ocupar cuando el trabajo termina o cuando deja de latir.</p>
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public AsyncJob createClaimingSlot(JobType type,
+                                       Long trackId,
+                                       String mapperType,
+                                       Integer totalItems,
+                                       String createdBy) {
+        JobSlotGroup group = type.getSlotGroup();
+        int maxConcurrency = maxConcurrencyOf(group);
+
+        lockSlotGroup(group);
+
+        Instant aliveSince = Instant.now().minus(properties.getHeartbeat().getTimeout());
+        long alive = repository.countAlive(group.types(), AsyncJobRepository.ACTIVE_STATUSES, aliveSince);
+
+        if (alive >= maxConcurrency) {
+            log.warn("Sin cupo para un trabajo [{}]: {} de {} en marcha", group, alive, maxConcurrency);
+
+            return persist(type, JobStatus.REJECTED, trackId, mapperType, totalItems, createdBy,
+                    "Sin capacidad para ejecutar mas trabajos de tipo %s (%d de %d en marcha)"
+                            .formatted(type, alive, maxConcurrency));
+        }
+
+        return persist(type, JobStatus.PENDING, trackId, mapperType, totalItems, createdBy, null);
+    }
+
+    /**
+     * Cerrojo consultivo del grupo, hasta el fin de la transaccion.
+     *
+     * <p>Se ejecuta por {@code EntityManager} y no como metodo del repositorio porque
+     * {@code pg_advisory_xact_lock} devuelve {@code void} en PostgreSQL, un tipo que Spring Data no
+     * sabe mapear a un valor de retorno.</p>
+     */
+    private void lockSlotGroup(JobSlotGroup group) {
+        entityManager.createNativeQuery("select pg_advisory_xact_lock(:key)")
+                .setParameter("key", group.getLockKey())
+                .getSingleResult();
+    }
+
+    /** Trabajos de ese grupo que siguen latiendo, en todo el despliegue. Para las metricas. */
+    @Transactional(readOnly = true)
+    public long countAlive(JobSlotGroup group) {
+        Instant aliveSince = Instant.now().minus(properties.getHeartbeat().getTimeout());
+        return repository.countAlive(group.types(), AsyncJobRepository.ACTIVE_STATUSES, aliveSince);
+    }
+
+    public int maxConcurrencyOf(JobSlotGroup group) {
+        AsyncJobProperties.ProfileJobs profileJobs = properties.getProfile();
+
+        int configured = switch (group) {
+            case EXPORT -> profileJobs.getExportMaxConcurrency();
+            case BULK -> profileJobs.getBulkMaxConcurrency();
+        };
+
+        // Un tope de cero dejaria la funcionalidad muerta sin que el arranque dijera nada.
+        return Math.max(1, configured);
+    }
 
     /**
      * Crea el trabajo ya con su identificador y lo confirma.
@@ -55,6 +145,16 @@ public class AsyncJobStore {
                            Integer totalItems,
                            String createdBy,
                            String errorMessage) {
+        return persist(type, status, trackId, mapperType, totalItems, createdBy, errorMessage);
+    }
+
+    private AsyncJob persist(JobType type,
+                             JobStatus status,
+                             Long trackId,
+                             String mapperType,
+                             Integer totalItems,
+                             String createdBy,
+                             String errorMessage) {
         AsyncJob job = new AsyncJob();
         Instant now = Instant.now();
 
@@ -62,6 +162,10 @@ public class AsyncJobStore {
         job.setType(type);
         job.setStatus(status);
         job.setCreatedAt(now);
+        // Nace latiendo: entre que se confirma la fila y arranca el hilo de fondo pasan
+        // milisegundos, pero un trabajo sin latido inicial seria un trabajo que ya nace muerto para
+        // el reparto de cupo.
+        job.setHeartbeatAt(now);
         job.setTrackId(trackId);
         job.setMapperType(mapperType);
         job.setTotalItems(totalItems);
@@ -85,8 +189,11 @@ public class AsyncJobStore {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markRunning(UUID jobId) {
         repository.findById(jobId).ifPresent(job -> {
+            Instant now = Instant.now();
+
             job.setStatus(JobStatus.RUNNING);
-            job.setStartedAt(Instant.now());
+            job.setStartedAt(now);
+            job.setHeartbeatAt(now);
             repository.saveAndFlush(job);
 
             log.info("Trabajo en ejecucion jobId={} type={} status={}",

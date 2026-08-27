@@ -69,6 +69,22 @@ public class AsyncJob {
     /** Instante en que alcanzo un estado terminal. */
     private Instant finishedAt;
 
+    /**
+     * Ultima señal de vida del proceso que ejecuta el trabajo.
+     *
+     * <p>Es lo que hace que los topes de concurrencia sean de todo el despliegue y no de cada
+     * replica: el cupo lo ocupan los trabajos que <b>laten</b>, no los que tienen la fila en
+     * RUNNING. Sin esto, una replica que muriera a mitad de una exportacion se llevaria un hueco
+     * para siempre, y el sintoma —los trabajos empiezan a rechazarse sin motivo aparente— aparece
+     * mucho despues de la causa.</p>
+     *
+     * <p>Lo refresca un unico UPDATE por replica y pasada, no uno por trabajo, y es independiente
+     * del progreso: un elemento que tarde cinco minutos no puede hacer que el trabajo parezca
+     * muerto.</p>
+     */
+    @Column(nullable = false)
+    private Instant heartbeatAt;
+
     /** Via exportada. Solo para {@link JobType#PROFILE_EXPORT}. */
     private Long trackId;
 

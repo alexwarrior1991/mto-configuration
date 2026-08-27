@@ -316,7 +316,43 @@ app:
   # eso no lo es: sin tope, media docena de exportaciones de vias grandes vacian el
   # pool y dejan sin conexiones a las peticiones normales. El recurso escaso no es
   # el hilo, es la conexion.
+  #
+  # Los topes son DE TODO EL DESPLIEGUE: se cuentan contra la tabla async_job, no
+  # contra un semaforo en memoria. Con un semaforo por JVM, "maximo 2 exportaciones"
+  # se convertian en 2 POR REPLICA, es decir, seis con tres replicas contra la misma
+  # base de datos, que es justo lo que el tope existia para impedir.
   jobs:
+    # Cada cuanto se refresca la foto de ocupacion que publican las metricas. Los
+    # gauges NO consultan la base de datos en cada scrape de Prometheus.
+    metrics-refresh-delay: 30s
+
+    # Señal de vida de los trabajos en curso.
+    #
+    # Es lo que hace viable el tope de clúster: el cupo lo ocupan los trabajos que
+    # LATEN, no los que tienen la fila en RUNNING. Sin esto, una replica que muriera
+    # a mitad de una exportacion se llevaria un hueco para siempre.
+    heartbeat:
+      # Un UPDATE por replica y pasada, no uno por trabajo.
+      interval: 15s
+      # Silencio a partir del cual se da el trabajo por muerto y su hueco se libera.
+      # Holgado respecto al intervalo a proposito: con varios latidos de margen, una
+      # pausa larga de GC no basta para declarar difunto a un trabajo vivo.
+      timeout: 2m
+      # Cada cuanto se marcan como FAILED los que dejaron de latir. No corre prisa:
+      # el hueco ya quedo libre al enfriarse el latido; esto solo corrige el estado
+      # que se le enseña a quien consulta.
+      reaper-fixed-delay: 1m
+
+    # Borrado de los trabajos viejos y de sus CSV. Sin esto async_job solo crece y
+    # el directorio de exportacion acumula ficheros para siempre; de los dos, el
+    # disco es el que da problemas antes.
+    purge:
+      enabled: true
+      retention: 7d
+      batch-size: 200
+      max-batches-per-run: 20
+      fixed-delay: 1h
+
     profile:
       # Exportaciones simultaneas. Cada una mantiene abierta una transaccion de
       # solo lectura mientras recorre la via entera por ventanas.
@@ -324,6 +360,12 @@ app:
       # Cargas masivas simultaneas. Una: escriben, y varias a la vez multiplican la
       # contencion sobre las mismas filas sin acabar antes.
       bulk-max-concurrency: ${APP_JOBS_PROFILE_BULK_MAX_CONCURRENCY:1}
+      # Elementos como maximo en una carga masiva. Ojo: el cuerpo ya esta entero en
+      # memoria cuando esto se comprueba, asi que no protege del cliente que manda un
+      # fichero de un giga —para eso hace falta un limite de tamaño de peticion en el
+      # proxy de entrada—; lo que hace es convertir en 400 lo que si no seria un
+      # trabajo de horas que nadie pidio conscientemente.
+      max-bulk-items: 50000
       # Directorio de los CSV generados. Con varias replicas debe apuntar a
       # almacenamiento COMPARTIDO, o la descarga fallara con 410 cuando la sirva una
       # replica distinta de la que genero el fichero.

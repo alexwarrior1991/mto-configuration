@@ -14,11 +14,22 @@ package com.alejandro.mtoconfiguration.enums.jobs;
 public enum JobType {
 
     /** Volcado a CSV de los perfiles de una via. Produce un fichero descargable. */
-    PROFILE_EXPORT,
+    PROFILE_EXPORT(JobSlotGroup.EXPORT),
 
     /** Alta masiva de perfiles, elemento a elemento y con progreso parcial. */
-    PROFILE_BULK_CREATE,
+    PROFILE_BULK_CREATE(JobSlotGroup.BULK),
 
     /** Modificacion masiva de perfiles, elemento a elemento y con progreso parcial. */
-    PROFILE_BULK_UPDATE
+    PROFILE_BULK_UPDATE(JobSlotGroup.BULK);
+
+    private final JobSlotGroup slotGroup;
+
+    JobType(JobSlotGroup slotGroup) {
+        this.slotGroup = slotGroup;
+    }
+
+    /** Cupo contra el que compite este tipo de trabajo. */
+    public JobSlotGroup getSlotGroup() {
+        return slotGroup;
+    }
 }

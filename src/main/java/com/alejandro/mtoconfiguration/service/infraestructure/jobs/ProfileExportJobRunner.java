@@ -23,22 +23,18 @@ import java.util.function.Function;
 public class ProfileExportJobRunner {
 
     private final ProfileExportService exportService;
-    private final AsyncJobProperties properties;
+    private final ProfileJobFiles files;
 
-    /**
-     * Escribe el CSV y deja en {@code progress} el nombre del fichero y el numero de filas.
-     *
-     * <p>El nombre lleva el identificador del trabajo. No es decorativo: sin el, dos exportaciones
-     * de la misma via se pisarian el fichero, y la segunda dejaria a la primera devolviendo una
-     * descarga que ya no es la suya. Con el UUID cada trabajo es dueno de su fichero.</p>
-     */
+    /** Escribe el CSV y deja en {@code progress} el nombre del fichero y el numero de filas. */
     public void run(UUID jobId, Long trackId, String mapperType, ProfileJobProgress progress) {
         Function<Profile, String> mapper = exportService.resolveMapper(mapperType);
         String header = exportService.resolveHeader(mapperType);
 
-        Path directory = properties.getProfile().getExportDirectory();
-        String fileName = "profiles-track-%d-%s.csv".formatted(trackId, jobId);
-        Path targetPath = directory.resolve(fileName);
+        // El nombre lo pone ProfileJobFiles, que es tambien quien luego lo busca y lo purga: con el
+        // patron repartido entre el que escribe y el que limpia, bastaba tocar uno para que la
+        // limpieza dejara de reconocer sus propios ficheros.
+        String fileName = files.exportFileName(trackId, jobId);
+        Path targetPath = files.targetPath(fileName);
 
         log.info("Exportacion en curso jobId={} trackId={} mapperType={} destino={}",
                 jobId, trackId, mapperType, fileName);

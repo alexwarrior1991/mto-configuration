@@ -17,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.core.task.support.TaskExecutorAdapter;
 
 import java.io.UncheckedIOException;
@@ -54,6 +55,8 @@ class ProfileJobServiceTest {
     @Mock
     private AsyncJobStore store;
     @Mock
+    private AsyncJobHeartbeat heartbeat;
+    @Mock
     private ProfileExportJobRunner exportRunner;
     @Mock
     private ProfileBulkJobRunner bulkRunner;
@@ -62,8 +65,9 @@ class ProfileJobServiceTest {
     @Mock
     private CurrentUserService currentUserService;
 
-    private ProfileJobConcurrencyGuard guard;
     private AsyncJobProperties properties;
+    private AsyncJobMetrics metrics;
+    private SimpleMeterRegistry meterRegistry;
     private ProfileJobService service;
 
     @BeforeEach
@@ -72,15 +76,20 @@ class ProfileJobServiceTest {
         properties.getProfile().setExportMaxConcurrency(1);
         properties.getProfile().setBulkMaxConcurrency(1);
 
-        guard = new ProfileJobConcurrencyGuard(properties);
+        meterRegistry = new SimpleMeterRegistry();
+        metrics = new AsyncJobMetrics(meterRegistry);
 
         when(currentUserService.getUsername()).thenReturn(Optional.of("ana"));
         when(exportService.resolveMapperName(anyString())).thenAnswer(i -> i.getArgument(0));
-        when(store.create(any(), any(), any(), any(), any(), any(), any()))
-                .thenAnswer(invocation -> job(invocation.getArgument(0), invocation.getArgument(1)));
 
-        service = new ProfileJobService(store, guard, exportRunner, bulkRunner, exportService,
-                currentUserService, properties, new TaskExecutorAdapter(Runnable::run));
+        // El reparto de cupo vive en la base de datos, asi que aqui se simula su respuesta: por
+        // defecto hay hueco. La atomicidad de esa reserva se prueba contra PostgreSQL de verdad en
+        // AsyncJobSlotIT; falsearla con un doble no probaria nada de lo que importa.
+        when(store.createClaimingSlot(any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> job(invocation.getArgument(0), JobStatus.PENDING));
+
+        service = new ProfileJobService(store, heartbeat, metrics, exportRunner, bulkRunner,
+                exportService, currentUserService, properties, new TaskExecutorAdapter(Runnable::run));
     }
 
     private AsyncJob job(JobType type, JobStatus status) {
@@ -98,8 +107,8 @@ class ProfileJobServiceTest {
         ProfileJobSubmission submission = service.submitExport(42L, "basic");
 
         assertThat(submission.accepted()).isTrue();
-        verify(store).create(eq(JobType.PROFILE_EXPORT), eq(JobStatus.PENDING), eq(42L),
-                eq("basic"), isNull(), eq("ana"), isNull());
+        verify(store).createClaimingSlot(eq(JobType.PROFILE_EXPORT), eq(42L), eq("basic"),
+                isNull(), eq("ana"));
         verify(store).markRunning(submission.job().getId());
         verify(exportRunner).run(eq(submission.job().getId()), eq(42L), eq("basic"), any());
         verify(store).markFinished(eq(submission.job().getId()), eq(JobStatus.COMPLETED), any(), isNull());
@@ -188,34 +197,70 @@ class ProfileJobServiceTest {
     }
 
     @Test
-    @DisplayName("el permiso vuelve tanto si el trabajo acaba bien como si falla")
-    void elPermisoSiempreVuelve() {
-        service.submitExport(1L, "basic");
-        assertThat(guard.availablePermits(JobType.PROFILE_EXPORT)).isEqualTo(1);
+    @DisplayName("el latido se registra al aceptar y se suelta acabe como acabe el trabajo")
+    void elLatidoSiempreSeSuelta() {
+        ProfileJobSubmission ok = service.submitExport(1L, "basic");
+        verify(heartbeat).register(ok.job().getId());
+        verify(heartbeat).unregister(ok.job().getId());
 
         doThrow(new IllegalStateException("boom")).when(exportRunner).run(any(), any(), any(), any());
-        service.submitExport(2L, "basic");
+        ProfileJobSubmission ko = service.submitExport(2L, "basic");
 
-        // Un permiso no devuelto reduce el tope de forma permanente, y el sintoma —los trabajos se
-        // rechazan sin motivo aparente— aparece mucho despues de la causa.
-        assertThat(guard.availablePermits(JobType.PROFILE_EXPORT)).isEqualTo(1);
+        // Olvidarlo dejaria a la replica refrescando el latido de un trabajo que termino hace rato,
+        // y ese trabajo fantasma seguiria contando contra el cupo del despliegue.
+        verify(heartbeat).unregister(ko.job().getId());
     }
 
     @Test
-    @DisplayName("sin capacidad el trabajo nace REJECTED y no se ejecuta")
+    @DisplayName("sin cupo el trabajo nace REJECTED y no se ejecuta ni late")
     void rechazoPorCapacidad() {
-        // Se agota el unico permiso y se deja retenido, como haria un trabajo todavia en curso.
-        guard.tryAcquire(JobType.PROFILE_EXPORT).orElseThrow();
+        when(store.createClaimingSlot(any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> job(invocation.getArgument(0), JobStatus.REJECTED));
 
         ProfileJobSubmission submission = service.submitExport(9L, "basic");
 
         assertThat(submission.accepted()).isFalse();
-        verify(store).create(eq(JobType.PROFILE_EXPORT), eq(JobStatus.REJECTED), eq(9L), eq("basic"),
-                isNull(), eq("ana"), anyString());
 
         // El rechazo queda persistido para que sea observable, pero no se hace ningun trabajo.
         verify(exportRunner, never()).run(any(), any(), any(), any());
         verify(store, never()).markRunning(any());
+        verify(heartbeat, never()).register(any());
+    }
+
+    @Test
+    @DisplayName("aceptaciones y rechazos quedan contados por separado")
+    void metricasDeAdmision() {
+        service.submitExport(1L, "basic");
+
+        when(store.createClaimingSlot(any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> job(invocation.getArgument(0), JobStatus.REJECTED));
+        service.submitExport(2L, "basic");
+
+        // Sin esta metrica, quedarse sin cupo es invisible: la aplicacion responde 429, deja su
+        // fila y nadie se entera hasta que alguien se queja de que no le deja exportar.
+        assertThat(counter("accepted")).isEqualTo(1);
+        assertThat(counter("rejected")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("un lote mas grande que el tope se rechaza antes de crear nada")
+    void loteDemasiadoGrande() {
+        properties.getProfile().setMaxBulkItems(2);
+
+        assertThatThrownBy(() -> service.submitBulkCreate(
+                List.of(new ProfileDTO(), new ProfileDTO(), new ProfileDTO())))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("maximo 2");
+
+        verify(store, never()).createClaimingSlot(any(), any(), any(), any(), any());
+    }
+
+    private double counter(String outcome) {
+        return meterRegistry.get(AsyncJobMetrics.SUBMITTED_COUNT)
+                .tag("type", JobType.PROFILE_EXPORT.name())
+                .tag("outcome", outcome)
+                .counter()
+                .count();
     }
 
     @Test
@@ -225,9 +270,8 @@ class ProfileJobServiceTest {
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("vacia");
 
-        // Ni fila, ni permiso consumido: la peticion se queda en la puerta.
-        verify(store, never()).create(any(), any(), any(), any(), any(), any(), any());
-        assertThat(guard.availablePermits(JobType.PROFILE_BULK_CREATE)).isEqualTo(1);
+        // Ni fila, ni cupo consumido: la peticion se queda en la puerta.
+        verify(store, never()).createClaimingSlot(any(), any(), any(), any(), any());
     }
 
     @Test

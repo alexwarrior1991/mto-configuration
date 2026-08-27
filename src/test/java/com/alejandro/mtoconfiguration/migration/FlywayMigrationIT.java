@@ -90,7 +90,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7");
     }
 
     @Test
@@ -104,6 +104,61 @@ class FlywayMigrationIT {
         assertThat(tablas)
                 .as("el schema migrado deberia tener las tablas de negocio, las _AUD de Envers y el historico de Flyway")
                 .isGreaterThan(50);
+    }
+
+    @Test
+    void losTrabajosEnSegundoPlanoTienenSuTabla() {
+        List<String> columnas = jdbc().queryForList(
+                """
+                select column_name from information_schema.columns
+                where table_schema = ? and table_name = 'async_job'
+                """, String.class, SCHEMA);
+
+        // Si la tabla se hubiera separado de la entidad, el contexto no habria arrancado:
+        // ddl-auto: validate falla antes de llegar hasta aqui. Lo que se comprueba es que estan
+        // las columnas de las que depende el reparto de cupo.
+        assertThat(columnas).contains("job_type", "status", "heartbeat_at", "file_name",
+                "processed_items", "successful_items", "failed_items", "error_details_json");
+    }
+
+    @Test
+    void elLatidoEsObligatorio() {
+        List<String> opcionales = jdbc().queryForList(
+                """
+                select column_name from information_schema.columns
+                where table_schema = ? and table_name = 'async_job'
+                  and column_name = 'heartbeat_at' and is_nullable = 'YES'
+                """, String.class, SCHEMA);
+
+        // Un latido nulo seria un trabajo que nace muerto para el reparto de cupo, y el fallo no
+        // se veria: simplemente dejaria de contar y el tope se relajaria en silencio.
+        assertThat(opcionales).isEmpty();
+    }
+
+    @Test
+    void losTrabajosTienenSusIndicesParciales() {
+        List<String> indices = jdbc().queryForList(
+                "select indexname from pg_indexes where schemaname = ? and tablename = 'async_job'",
+                String.class, SCHEMA);
+
+        // Parciales, como los del outbox: async_job solo crece, pero los trabajos vivos son
+        // siempre un punado y el indice se mantiene diminuto aunque se acumulen millones.
+        assertThat(indices).contains("idx_async_job_slot", "idx_async_job_purge",
+                "idx_async_job_active", "idx_async_job_created_at");
+    }
+
+    @Test
+    void elEstadoDeUnTrabajoEstaAcotadoPorLaBaseDeDatos() {
+        // ddl-auto: validate NO comprueba los CHECK, asi que si la migracion se olvidara de
+        // ampliarlos al anadir un estado nuevo, el fallo saldria en el primer INSERT en produccion.
+        assertThatCode(() -> jdbc().update(
+                """
+                insert into """ + SCHEMA + """
+                .async_job (id, job_type, status, created_at, heartbeat_at,
+                            processed_items, successful_items, failed_items)
+                values (gen_random_uuid(), 'PROFILE_EXPORT', 'ESTADO_INVENTADO', now(), now(), 0, 0, 0)
+                """))
+                .isInstanceOf(Exception.class);
     }
 
     @Test

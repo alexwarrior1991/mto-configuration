@@ -15,8 +15,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -48,7 +48,8 @@ import java.util.UUID;
 public class ProfileJobService {
 
     private final AsyncJobStore store;
-    private final ProfileJobConcurrencyGuard concurrencyGuard;
+    private final AsyncJobHeartbeat heartbeat;
+    private final AsyncJobMetrics metrics;
     private final ProfileExportJobRunner exportRunner;
     private final ProfileBulkJobRunner bulkRunner;
     private final ProfileExportService exportService;
@@ -68,7 +69,8 @@ public class ProfileJobService {
 
     public ProfileJobService(
             AsyncJobStore store,
-            ProfileJobConcurrencyGuard concurrencyGuard,
+            AsyncJobHeartbeat heartbeat,
+            AsyncJobMetrics metrics,
             ProfileExportJobRunner exportRunner,
             ProfileBulkJobRunner bulkRunner,
             ProfileExportService exportService,
@@ -77,7 +79,8 @@ public class ProfileJobService {
             @Qualifier(AsyncConfiguration.TASK_EXECUTOR) AsyncTaskExecutor taskExecutor
     ) {
         this.store = store;
-        this.concurrencyGuard = concurrencyGuard;
+        this.heartbeat = heartbeat;
+        this.metrics = metrics;
         this.exportRunner = exportRunner;
         this.bulkRunner = bulkRunner;
         this.exportService = exportService;
@@ -120,6 +123,19 @@ public class ProfileJobService {
                     Alert.ofDanger("La lista de perfiles no puede estar vacia", "dtoList")));
         }
 
+        int maxItems = properties.getProfile().getMaxBulkItems();
+
+        // El tope llega tarde y conviene reconocerlo: para cuando se comprueba, el cuerpo entero ya
+        // esta deserializado en memoria en el hilo de la peticion, asi que no protege del cliente
+        // que manda un fichero de un giga. Lo que si hace es convertir en un 400 explicito lo que
+        // de otro modo seria un trabajo de horas que nadie pidio conscientemente. La proteccion de
+        // verdad es un limite de tamaño de peticion en el proxy de entrada.
+        if (dtoList.size() > maxItems) {
+            throw new ValidationException(List.of(Alert.ofDanger(
+                    "La carga masiva admite como maximo %d elementos y se han enviado %d"
+                            .formatted(maxItems, dtoList.size()), "dtoList")));
+        }
+
         // Se copia la lista: el trabajo la va a recorrer mucho despues de que termine la peticion
         // que la trajo, y la deserializada por el controlador no tiene por que seguir intacta ni
         // ser segura de leer desde otro hilo.
@@ -139,41 +155,36 @@ public class ProfileJobService {
         // trabajo pertenece a quien lo pidio y no a quien lo ejecuta.
         String createdBy = currentUserService.getUsername().orElse(null);
 
-        Optional<JobPermit> permit = concurrencyGuard.tryAcquire(type);
-
-        if (permit.isEmpty()) {
-            AsyncJob rejected = store.create(type, JobStatus.REJECTED, trackId, mapperType, totalItems,
-                    createdBy, "Sin capacidad para ejecutar mas trabajos de tipo " + type);
-
-            log.warn("Trabajo rechazado jobId={} type={} status={}",
-                    rejected.getId(), type, JobStatus.REJECTED);
-
-            return ProfileJobSubmission.rejected(rejected);
-        }
-
-        JobPermit acquired = permit.get();
-        AsyncJob job;
-
-        try {
-            job = store.create(type, JobStatus.PENDING, trackId, mapperType, totalItems, createdBy, null);
-        } catch (RuntimeException e) {
-            // Si no se pudo ni crear la fila, el permiso no lo va a devolver nadie mas.
-            acquired.close();
-            throw e;
-        }
-
+        // Reservar cupo y crear la fila son la MISMA transaccion, y tienen que serlo: separarlas
+        // reabre la carrera que el cerrojo evita —dos peticiones simultaneas viendo el mismo hueco
+        // libre— y dejaria ademas una ventana en la que el hueco esta cogido y no hay nada que lo
+        // suelte si la creacion falla.
+        AsyncJob job = store.createClaimingSlot(type, trackId, mapperType, totalItems, createdBy);
         UUID jobId = job.getId();
 
+        if (job.getStatus() == JobStatus.REJECTED) {
+            log.warn("Trabajo rechazado jobId={} type={} status={}", jobId, type, JobStatus.REJECTED);
+            metrics.recordRejected(type);
+
+            return ProfileJobSubmission.rejected(job);
+        }
+
+        // Se registra ANTES de encolar: si el latido no empieza ya, el trabajo podria enfriarse
+        // entre que se confirma la fila y arranca el hilo de fondo.
+        heartbeat.register(jobId);
+
         try {
-            taskExecutor.execute(() -> run(jobId, type, acquired, task));
+            taskExecutor.execute(() -> run(jobId, type, task));
         } catch (RuntimeException e) {
-            acquired.close();
+            heartbeat.unregister(jobId);
             store.markFinished(jobId, JobStatus.FAILED, null,
                     "No se pudo encolar el trabajo: " + e.getMessage());
             throw e;
         }
 
         log.info("Trabajo aceptado jobId={} type={} status={}", jobId, type, JobStatus.PENDING);
+        metrics.recordAccepted(type);
+
         return ProfileJobSubmission.accepted(job);
     }
 
@@ -184,11 +195,9 @@ public class ProfileJobService {
      * saliera de este metodo moriria dentro del executor sin traza util, y el trabajo se quedaria
      * en RUNNING para siempre, indistinguible de uno que sigue corriendo.</p>
      */
-    private void run(UUID jobId, JobType type, JobPermit permit, JobTask task) {
-        // try-with-resources sobre el permiso: se devuelve pase lo que pase, tambien si el hilo
-        // muere por un Error. Un permiso no devuelto reduce el tope de forma permanente, y el
-        // sintoma —los trabajos empiezan a rechazarse sin motivo aparente— aparece mucho despues
-        // de la causa.
+    private void run(UUID jobId, JobType type, JobTask task) {
+        long startedAtNanos = System.nanoTime();
+
         // El progreso se crea FUERA del try para que el catch tambien lo vea. Estaba dentro, y eso
         // hacia que un fallo global tirara los errores por elemento ya recogidos: una carga que
         // procesa nueve mil elementos, acumula sus fallos y revienta por algo global terminaba con
@@ -196,7 +205,10 @@ public class ProfileJobService {
         ProfileJobProgress progress = new ProfileJobProgress(
                 null, properties.getProfile(), p -> store.saveProgress(jobId, p));
 
-        try (permit) {
+        // El finally quita el trabajo del latido pase lo que pase, tambien si el hilo muere por un
+        // Error. Olvidarlo ya no cuesta un hueco para siempre —eso era el semaforo—, pero si deja a
+        // la replica refrescando el latido de un trabajo que termino hace rato.
+        try {
             store.markRunning(jobId);
 
             task.execute(jobId, progress);
@@ -207,15 +219,22 @@ public class ProfileJobService {
                     : JobStatus.COMPLETED;
 
             store.markFinished(jobId, finalStatus, progress, null);
+            metrics.recordFinished(type, finalStatus, elapsedSince(startedAtNanos));
         } catch (InterruptedException e) {
             // Restaurar el flag es obligatorio: se acaba de consumir la interrupcion al capturarla,
             // y sin reponerla el resto del hilo —y quien lo gestione— dejaria de enterarse de que
             // alguien pidio parar.
             Thread.currentThread().interrupt();
-            failJob(jobId, type, progress, e);
+            failJob(jobId, type, progress, e, startedAtNanos);
         } catch (Exception e) {
-            failJob(jobId, type, progress, e);
+            failJob(jobId, type, progress, e, startedAtNanos);
+        } finally {
+            heartbeat.unregister(jobId);
         }
+    }
+
+    private Duration elapsedSince(long startedAtNanos) {
+        return Duration.ofNanos(System.nanoTime() - startedAtNanos);
     }
 
     /**
@@ -226,12 +245,14 @@ public class ProfileJobService {
      * cuando se cayo. En una exportacion el nombre del fichero sigue sin escribirse —solo se fija
      * cuando el CSV esta completo—, asi que un volcado a medias no se ofrece nunca para descarga.</p>
      */
-    private void failJob(UUID jobId, JobType type, ProfileJobProgress progress, Exception e) {
+    private void failJob(UUID jobId, JobType type, ProfileJobProgress progress, Exception e,
+                         long startedAtNanos) {
         log.error("Trabajo fallido jobId={} type={} status={} procesados={}",
                 jobId, type, JobStatus.FAILED, progress.getProcessedItems(), e);
 
         try {
             store.markFinished(jobId, JobStatus.FAILED, progress, describeFailure(e));
+            metrics.recordFinished(type, JobStatus.FAILED, elapsedSince(startedAtNanos));
         } catch (RuntimeException persistenceFailure) {
             // Si tampoco se puede escribir el fallo, el log es lo unico que queda. No se propaga:
             // el hilo ya esta en su camino de salida y relanzar solo perderia esta traza.
