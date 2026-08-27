@@ -31,12 +31,14 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class AsyncJobMetrics {
 
-    static final String SUBMITTED_COUNT = "mto.jobs.submitted.total";
-    static final String FINISHED_COUNT = "mto.jobs.finished.total";
-    static final String REAPED_COUNT = "mto.jobs.reaped.total";
-    static final String DURATION = "mto.jobs.duration";
-    static final String ACTIVE_COUNT = "mto.jobs.active";
-    static final String SLOTS_MAX = "mto.jobs.slots.max";
+    // Publicos porque son contrato: los paneles y las alertas se escriben contra estos nombres, asi
+    // que cambiarlos rompe cuadros de mando fuera de este repositorio.
+    public static final String SUBMITTED_COUNT = "mto.jobs.submitted.total";
+    public static final String FINISHED_COUNT = "mto.jobs.finished.total";
+    public static final String REAPED_COUNT = "mto.jobs.reaped.total";
+    public static final String DURATION = "mto.jobs.duration";
+    public static final String ACTIVE_COUNT = "mto.jobs.active";
+    public static final String SLOTS_MAX = "mto.jobs.slots.max";
 
     private final MeterRegistry meterRegistry;
 
