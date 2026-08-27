@@ -90,7 +90,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6");
     }
 
     @Test

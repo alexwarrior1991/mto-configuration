@@ -309,6 +309,36 @@ app:
       # How long preflight request results can be cached (seconds)
       max-age: 3600
   
+  # Trabajos en segundo plano (202 Accepted + jobId + consulta de estado).
+  #
+  # Los topes NO son una precaucion teorica. Un trabajo de fondo corre en un hilo
+  # virtual, que es barato, pero retiene una conexion de HikariCP mientras dura, y
+  # eso no lo es: sin tope, media docena de exportaciones de vias grandes vacian el
+  # pool y dejan sin conexiones a las peticiones normales. El recurso escaso no es
+  # el hilo, es la conexion.
+  jobs:
+    profile:
+      # Exportaciones simultaneas. Cada una mantiene abierta una transaccion de
+      # solo lectura mientras recorre la via entera por ventanas.
+      export-max-concurrency: ${APP_JOBS_PROFILE_EXPORT_MAX_CONCURRENCY:2}
+      # Cargas masivas simultaneas. Una: escriben, y varias a la vez multiplican la
+      # contencion sobre las mismas filas sin acabar antes.
+      bulk-max-concurrency: ${APP_JOBS_PROFILE_BULK_MAX_CONCURRENCY:1}
+      # Directorio de los CSV generados. Con varias replicas debe apuntar a
+      # almacenamiento COMPARTIDO, o la descarga fallara con 410 cuando la sirva una
+      # replica distinta de la que genero el fichero.
+      export-directory: ${APP_JOBS_PROFILE_EXPORT_DIRECTORY:exports}
+      # Cada cuantos elementos baja el progreso a la base de datos. Escribir en cada
+      # elemento seria duplicar las escrituras de la carga entera para mover un
+      # contador que nadie mira con esa resolucion.
+      progress-flush-interval: 25
+      # Errores por elemento que se guardan. Una carga de cien mil elementos con un
+      # mapeo mal hecho produce cien mil errores identicos: guardarlos todos convierte
+      # la fila del trabajo en varios megas y la respuesta del estado en una descarga.
+      # El recuento completo sigue en failedItems.
+      max-item-errors: 50
+      max-item-error-message-length: 500
+
   # Firma de los mensajes asincronos
   messaging:
     signature:
