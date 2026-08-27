@@ -5,6 +5,7 @@ import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.nio.file.Path;
+import java.time.Duration;
 
 /**
  * Ajustes de los trabajos en segundo plano ({@code app.jobs.*}).
@@ -55,13 +56,23 @@ public class AsyncJobProperties {
         private Path exportDirectory = Path.of("exports");
 
         /**
-         * Cada cuantos elementos se refresca el progreso en la base de datos.
+         * Cada cuanto TIEMPO se refresca el progreso en la base de datos.
          *
-         * <p>No se escribe en cada elemento a proposito: seria un UPDATE por elemento, es decir,
-         * duplicar el numero de escrituras de la carga entera solo para mover un contador. Con 25,
-         * quien sondea el estado ve avanzar el trabajo y el coste es del 4%.</p>
+         * <p>Por tiempo y no por numero de elementos, que es como estaba y era un error: un
+         * elemento de una carga masiva es una transaccion completa, pero un elemento de una
+         * exportacion es una linea de un CSV, tres ordenes de magnitud mas barata. Con una cadencia
+         * por recuento, el mismo numero que resultaba despreciable en la carga (un UPDATE cada 25
+         * INSERT) se convertia en cuatro mil escrituras para exportar una via de cien mil perfiles.
+         * Por tiempo, las dos clases de trabajo se comportan bien con un unico valor.</p>
+         *
+         * <p>Ojo con subir los topes de concurrencia: durante una exportacion este volcado ocurre
+         * <b>dentro</b> de la transaccion de solo lectura que recorre la via, y al ir en
+         * {@code REQUIRES_NEW} pide una SEGUNDA conexion del pool mientras la primera sigue
+         * retenida. Es decir, cada exportacion en curso puede llegar a ocupar dos conexiones a la
+         * vez, y la suma de los topes debe quedar holgadamente por debajo del tamano del pool de
+         * HikariCP.</p>
          */
-        private int progressFlushInterval = 25;
+        private Duration progressFlushInterval = Duration.ofSeconds(2);
 
         /**
          * Errores por elemento que se guardan, como maximo.

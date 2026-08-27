@@ -111,8 +111,12 @@ public class AsyncJobStore {
      * Cierra el trabajo en un estado terminal.
      *
      * <p>Recibe el progreso porque el ultimo tramo de elementos puede no haberse volcado todavia:
-     * el volcado periodico solo salta cada N, y sin este cierre el trabajo terminaria mostrando
-     * menos elementos procesados de los que realmente hizo.</p>
+     * el volcado periodico solo salta cada cierto tiempo, y sin este cierre el trabajo terminaria
+     * mostrando menos elementos procesados de los que realmente hizo. Llega tambien en los cierres
+     * por fallo, para no tirar lo ya procesado ni los errores ya diagnosticados.</p>
+     *
+     * <p>Admite {@code null} solo en el caso en que no llego a ejecutarse nada —un trabajo que no
+     * se pudo ni encolar—, donde no hay contadores que conservar.</p>
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markFinished(UUID jobId,

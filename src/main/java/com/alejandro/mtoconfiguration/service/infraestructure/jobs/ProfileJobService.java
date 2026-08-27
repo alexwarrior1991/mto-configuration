@@ -189,11 +189,15 @@ public class ProfileJobService {
         // muere por un Error. Un permiso no devuelto reduce el tope de forma permanente, y el
         // sintoma —los trabajos empiezan a rechazarse sin motivo aparente— aparece mucho despues
         // de la causa.
+        // El progreso se crea FUERA del try para que el catch tambien lo vea. Estaba dentro, y eso
+        // hacia que un fallo global tirara los errores por elemento ya recogidos: una carga que
+        // procesa nueve mil elementos, acumula sus fallos y revienta por algo global terminaba con
+        // el detalle vacio, que es justo cuando mas falta hace.
+        ProfileJobProgress progress = new ProfileJobProgress(
+                null, properties.getProfile(), p -> store.saveProgress(jobId, p));
+
         try (permit) {
             store.markRunning(jobId);
-
-            ProfileJobProgress progress = new ProfileJobProgress(
-                    null, properties.getProfile(), p -> store.saveProgress(jobId, p));
 
             task.execute(jobId, progress);
 
@@ -208,17 +212,26 @@ public class ProfileJobService {
             // y sin reponerla el resto del hilo —y quien lo gestione— dejaria de enterarse de que
             // alguien pidio parar.
             Thread.currentThread().interrupt();
-            failJob(jobId, type, e);
+            failJob(jobId, type, progress, e);
         } catch (Exception e) {
-            failJob(jobId, type, e);
+            failJob(jobId, type, progress, e);
         }
     }
 
-    private void failJob(UUID jobId, JobType type, Exception e) {
-        log.error("Trabajo fallido jobId={} type={} status={}", jobId, type, JobStatus.FAILED, e);
+    /**
+     * Cierra el trabajo como fallido <b>conservando lo que se llego a hacer</b>.
+     *
+     * <p>El progreso viaja tambien aqui: un fallo global no invalida los elementos ya procesados ni
+     * los errores ya diagnosticados, y son lo unico que permite saber por donde iba el trabajo
+     * cuando se cayo. En una exportacion el nombre del fichero sigue sin escribirse —solo se fija
+     * cuando el CSV esta completo—, asi que un volcado a medias no se ofrece nunca para descarga.</p>
+     */
+    private void failJob(UUID jobId, JobType type, ProfileJobProgress progress, Exception e) {
+        log.error("Trabajo fallido jobId={} type={} status={} procesados={}",
+                jobId, type, JobStatus.FAILED, progress.getProcessedItems(), e);
 
         try {
-            store.markFinished(jobId, JobStatus.FAILED, null, describeFailure(e));
+            store.markFinished(jobId, JobStatus.FAILED, progress, describeFailure(e));
         } catch (RuntimeException persistenceFailure) {
             // Si tampoco se puede escribir el fallo, el log es lo unico que queda. No se propaga:
             // el hilo ya esta en su camino de salida y relanzar solo perderia esta traza.

@@ -135,8 +135,56 @@ class ProfileJobServiceTest {
         ProfileJobSubmission submission = service.submitExport(7L, "basic");
 
         ArgumentCaptor<String> message = ArgumentCaptor.forClass(String.class);
-        verify(store).markFinished(eq(submission.job().getId()), eq(JobStatus.FAILED), isNull(), message.capture());
+        verify(store).markFinished(eq(submission.job().getId()), eq(JobStatus.FAILED), any(), message.capture());
         assertThat(message.getValue()).contains("UncheckedIOException").contains("disco lleno");
+    }
+
+    @Test
+    @DisplayName("un fallo global conserva lo procesado y los errores ya diagnosticados")
+    void elFalloGlobalNoTiraElDiagnostico() {
+        doAnswer(invocation -> {
+            ProfileJobProgress progress = invocation.getArgument(3);
+            progress.itemSucceeded();
+            progress.itemFailed(1, "create", "ValidationException", "kp obligatorio");
+            progress.itemSucceeded();
+            throw new IllegalStateException("conexion perdida");
+        }).when(bulkRunner).run(any(), eq(JobType.PROFILE_BULK_CREATE), any(), any());
+
+        ProfileJobSubmission submission = service.submitBulkCreate(
+                List.of(new ProfileDTO(), new ProfileDTO(), new ProfileDTO()));
+
+        ArgumentCaptor<ProfileJobProgress> progress = ArgumentCaptor.forClass(ProfileJobProgress.class);
+        verify(store).markFinished(eq(submission.job().getId()), eq(JobStatus.FAILED),
+                progress.capture(), anyString());
+
+        // Un fallo global no invalida los elementos ya escritos ni los errores ya diagnosticados:
+        // son lo unico que dice por donde iba el trabajo cuando se cayo.
+        assertThat(progress.getValue()).isNotNull();
+        assertThat(progress.getValue().getProcessedItems()).isEqualTo(3);
+        assertThat(progress.getValue().getSuccessfulItems()).isEqualTo(2);
+        assertThat(progress.getValue().getItemErrors()).singleElement()
+                .satisfies(error -> assertThat(error.message()).contains("kp obligatorio"));
+    }
+
+    @Test
+    @DisplayName("una exportacion fallida no deja fichero que ofrecer")
+    void exportacionFallidaSinFichero() {
+        doAnswer(invocation -> {
+            ProfileJobProgress progress = invocation.getArgument(3);
+            progress.itemSucceeded();
+            throw new UncheckedIOException("disco lleno", new IOException("no space left"));
+        }).when(exportRunner).run(any(), any(), any(), any());
+
+        ProfileJobSubmission submission = service.submitExport(7L, "basic");
+
+        ArgumentCaptor<ProfileJobProgress> progress = ArgumentCaptor.forClass(ProfileJobProgress.class);
+        verify(store).markFinished(eq(submission.job().getId()), eq(JobStatus.FAILED),
+                progress.capture(), anyString());
+
+        // El nombre solo se fija cuando el CSV esta completo, asi que un volcado a medias nunca
+        // llega a ofrecerse para descarga aunque ahora el progreso viaje en el cierre.
+        assertThat(progress.getValue().getOutputFileName()).isNull();
+        assertThat(progress.getValue().getProcessedItems()).isEqualTo(1);
     }
 
     @Test

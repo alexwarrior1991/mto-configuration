@@ -156,14 +156,23 @@ app:
       export-max-concurrency: 2      # APP_JOBS_PROFILE_EXPORT_MAX_CONCURRENCY
       bulk-max-concurrency: 1        # APP_JOBS_PROFILE_BULK_MAX_CONCURRENCY
       export-directory: exports      # APP_JOBS_PROFILE_EXPORT_DIRECTORY
-      progress-flush-interval: 25
+      progress-flush-interval: 2s
       max-item-errors: 50
       max-item-error-message-length: 500
 ```
 
-- `progress-flush-interval`: el progreso **no** se escribe en cada elemento. Sería un `UPDATE` por
-  cada `INSERT`, es decir, duplicar las escrituras de la carga entera para mover un contador que
-  nadie mira con esa resolución.
+- `progress-flush-interval`: el progreso se acota **por tiempo**, no por número de elementos. Un
+  elemento de una carga masiva es una transacción entera (un `UPDATE` cada 25 sería un 4% de coste),
+  pero uno de una exportación es una línea de CSV: con cadencia por recuento, ese mismo 25
+  significaba **cuatro mil escrituras** para exportar una vía de cien mil perfiles. Por tiempo, un
+  único valor sirve para las dos clases de trabajo y el número de escrituras deja de depender del
+  tamaño del trabajo.
+
+  > **Presupuesto de conexiones.** Durante una exportación este volcado ocurre *dentro* de la
+  > transacción de solo lectura que recorre la vía y, al ir en `REQUIRES_NEW`, pide una **segunda**
+  > conexión mientras la primera sigue retenida. Cada exportación en curso puede ocupar dos
+  > conexiones a la vez, así que la suma de los topes debe quedar holgadamente por debajo del
+  > tamaño del pool de HikariCP.
 - `max-item-errors`: una carga de cien mil elementos con un mapeo mal hecho produce cien mil errores
   idénticos. Guardarlos todos convierte la fila del trabajo en varios megas y la respuesta del
   endpoint de estado en una descarga. El recuento completo sigue en `failedItems`.
@@ -220,6 +229,10 @@ Dos decisiones que sostienen el resto:
 - **El estado se confirma aparte del trabajo** (`REQUIRES_NEW`). Si compartieran transacción, nadie
   vería progreso hasta el final y —peor— el intento de dejar constancia de un fallo se iría abajo
   con la transacción que falló, dejando el trabajo eternamente en `RUNNING` sin explicación.
+- **Un fallo global conserva el diagnóstico.** Al cerrar en `FAILED` viajan los contadores y los
+  errores por elemento ya recogidos: son lo único que dice por dónde iba el trabajo cuando se cayó.
+  En una exportación el nombre del fichero solo se fija cuando el CSV está completo, así que un
+  volcado a medias no llega a ofrecerse para descarga.
 
 ---
 

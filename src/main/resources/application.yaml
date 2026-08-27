@@ -328,10 +328,17 @@ app:
       # almacenamiento COMPARTIDO, o la descarga fallara con 410 cuando la sirva una
       # replica distinta de la que genero el fichero.
       export-directory: ${APP_JOBS_PROFILE_EXPORT_DIRECTORY:exports}
-      # Cada cuantos elementos baja el progreso a la base de datos. Escribir en cada
-      # elemento seria duplicar las escrituras de la carga entera para mover un
-      # contador que nadie mira con esa resolucion.
-      progress-flush-interval: 25
+      # Cada cuanto TIEMPO baja el progreso a la base de datos. Por tiempo y no por
+      # numero de elementos: un elemento de una carga masiva es una transaccion
+      # entera, pero uno de una exportacion es una linea de CSV, y acotar por
+      # recuento convertia una via de cien mil perfiles en cuatro mil escrituras
+      # solo para mover un contador.
+      #
+      # OJO al subir los topes de arriba: durante una exportacion este volcado
+      # ocurre DENTRO de la transaccion de solo lectura que recorre la via y pide
+      # una SEGUNDA conexion del pool. La suma de los topes debe quedar holgada
+      # por debajo del tamano del pool de HikariCP.
+      progress-flush-interval: 2s
       # Errores por elemento que se guardan. Una carga de cien mil elementos con un
       # mapeo mal hecho produce cien mil errores identicos: guardarlos todos convierte
       # la fila del trabajo en varios megas y la respuesta del estado en una descarga.

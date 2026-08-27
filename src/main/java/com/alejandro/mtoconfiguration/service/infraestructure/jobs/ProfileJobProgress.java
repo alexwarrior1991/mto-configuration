@@ -4,17 +4,22 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.jobs.JobI
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 /**
  * Contadores de un trabajo en curso, con volcado periodico a la base de datos.
  *
  * <p>Los contadores viven en memoria y solo bajan a la tabla cada
- * {@code app.jobs.profile.progress-flush-interval} elementos. Escribir en cada elemento habria
- * duplicado las escrituras de la carga entera —un UPDATE por cada INSERT— solo para mover un
- * numero que nadie mira con esa resolucion.</p>
+ * {@code app.jobs.profile.progress-flush-interval}, que es un <b>tiempo</b> y no un numero de
+ * elementos. La diferencia importa: un elemento de una carga masiva es una transaccion completa,
+ * de modo que un UPDATE cada 25 es un 4% de coste; un elemento de una exportacion es una linea de
+ * un CSV, y ese mismo 25 significaba cuatro mil escrituras —cada una con su transaccion propia—
+ * para exportar una via de cien mil perfiles. Acotando por tiempo, un unico valor sirve para las
+ * dos clases de trabajo, y el numero de escrituras deja de depender del tamano del trabajo.</p>
  *
  * <p>No es thread-safe, y no necesita serlo: cada trabajo lo recorre un unico hilo de fondo. Lo que
  * si esta protegido es el volcado, que se hace dentro de un {@code try/catch}: <b>un fallo
@@ -24,10 +29,21 @@ import java.util.function.Consumer;
 @Slf4j
 public class ProfileJobProgress {
 
-    private final int flushInterval;
+    /** Cadencia de reserva si la configuracion trae un intervalo ausente o sin sentido. */
+    private static final Duration DEFAULT_FLUSH_INTERVAL = Duration.ofSeconds(2);
+
+    private final long flushIntervalNanos;
     private final int maxItemErrors;
     private final int maxMessageLength;
     private final Consumer<ProfileJobProgress> flusher;
+
+    /**
+     * Reloj monotono. {@code nanoTime} y no {@code currentTimeMillis} porque aqui solo se miden
+     * intervalos, y el reloj de pared puede saltar hacia atras con un ajuste de NTP y dejar el
+     * volcado congelado hasta que el tiempo lo alcance. Es inyectable para que las pruebas puedan
+     * mover el reloj a mano en vez de dormir.
+     */
+    private final LongSupplier nanoTime;
 
     private final List<JobItemErrorDTO> itemErrors = new ArrayList<>();
 
@@ -44,16 +60,36 @@ public class ProfileJobProgress {
     @Getter
     private String outputFileName;
 
-    private int lastFlushedAt;
+    private long lastFlushedAtNanos;
 
     ProfileJobProgress(Integer totalItems,
                        AsyncJobProperties.ProfileJobs settings,
                        Consumer<ProfileJobProgress> flusher) {
+        this(totalItems, settings, flusher, System::nanoTime);
+    }
+
+    ProfileJobProgress(Integer totalItems,
+                       AsyncJobProperties.ProfileJobs settings,
+                       Consumer<ProfileJobProgress> flusher,
+                       LongSupplier nanoTime) {
         this.totalItems = totalItems;
-        this.flushInterval = Math.max(1, settings.getProgressFlushInterval());
+        this.flushIntervalNanos = intervalNanosOf(settings.getProgressFlushInterval());
         this.maxItemErrors = Math.max(0, settings.getMaxItemErrors());
         this.maxMessageLength = Math.max(1, settings.getMaxItemErrorMessageLength());
         this.flusher = flusher;
+        this.nanoTime = nanoTime;
+
+        // Se arranca el contador en el instante de creacion: sin esto el primer elemento caeria
+        // siempre fuera de plazo y provocaria un volcado inmediato con los contadores a cero.
+        this.lastFlushedAtNanos = nanoTime.getAsLong();
+    }
+
+    private static long intervalNanosOf(Duration interval) {
+        if (interval == null || interval.isNegative() || interval.isZero()) {
+            return DEFAULT_FLUSH_INTERVAL.toNanos();
+        }
+
+        return interval.toNanos();
     }
 
     /** Elemento procesado con exito. */
@@ -95,7 +131,7 @@ public class ProfileJobProgress {
 
     /** Vuelca los contadores ahora, pase lo que pase con el intervalo. */
     void flush() {
-        lastFlushedAt = processedItems;
+        lastFlushedAtNanos = nanoTime.getAsLong();
 
         try {
             flusher.accept(this);
@@ -108,7 +144,7 @@ public class ProfileJobProgress {
     }
 
     private void flushIfDue() {
-        if (processedItems - lastFlushedAt >= flushInterval) {
+        if (nanoTime.getAsLong() - lastFlushedAtNanos >= flushIntervalNanos) {
             flush();
         }
     }
