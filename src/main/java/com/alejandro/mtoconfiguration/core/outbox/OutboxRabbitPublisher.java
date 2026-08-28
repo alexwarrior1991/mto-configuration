@@ -96,10 +96,10 @@ public class OutboxRabbitPublisher {
             );
         }
 
-        if (confirm == null || !confirm.isAck()) {
+        if (confirm == null || !confirm.ack()) {
             throw new OutboxPublishException(
                     "RabbitMQ ha rechazado el mensaje (nack): %s".formatted(
-                            confirm == null ? "sin detalle" : confirm.getReason())
+                            confirm == null ? "sin detalle" : confirm.reason())
             );
         }
 
