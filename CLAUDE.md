@@ -13,13 +13,13 @@ Java 25, Spring Boot 4.0.1, Maven **single-module** (sin `<modules>` en `pom.xml
 |---|---|
 | `business` | `commons`, `infrastructure` |
 | `controller` | `synchronous`, `asynchronous`, `commons` |
-| `service` | `commons`, `infraestructure`, `lov`, `audit` |
-| `repository` | `jpa`, `feign` |
-| `entity` | `commons`, `infrastructure`, `configuration`, `lov` |
-| `model` | `commons`, `synchronous`, `audit` |
+| `service` | `commons`, `infraestructure` (+ `asynchronous`, `jobs`), `lov`, `audit` |
+| `repository` | `jpa` (+ `jobs`), `feign` |
+| `entity` | `commons`, `infrastructure`, `configuration`, `lov`, `jobs` |
+| `model` | `commons`, `synchronous` (+ `infrastructure/jobs`), `audit` |
 | `mapper` | `commons`, `infraestructure`, `lov` |
 | `validator` | `commons`, `infrastructure`, `lov` |
-| `enums` | `infrastructure`, `lov` |
+| `enums` | `infrastructure`, `lov`, `jobs` |
 | `configuration` | `cache`, `security` |
 | `core` | `audit`, `exception`, `messaging`, `outbox`, `rabbitmq`, `model` |
 | `masterdata` | `messaging` |
@@ -32,6 +32,7 @@ Tests en `src/test/java`, misma raíz de paquete.
 - `README_FLYWAY.md` — migraciones de BD
 - `README_LOCAL_DOCKER.md` — entorno local con Docker
 - `README_MESSAGING.md` — RabbitMQ / eventos
+- `README_ASYNC_JOBS.md` — trabajos en segundo plano (202 Accepted + jobId), capa paralela a `/async`
 
 ## Reglas específicas
 Reglas por capa (controllers, repositories, tests, etc.) viven en `.claude/rules/`, no aquí.

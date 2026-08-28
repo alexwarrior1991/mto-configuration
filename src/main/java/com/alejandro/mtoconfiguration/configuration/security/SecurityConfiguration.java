@@ -45,13 +45,24 @@ public class SecurityConfiguration {
      */
     private static final String[] QUERY_BY_POST = {
             API + "/*/search", API + "/*/filter",
-            ASYNC_API + "/*/search", ASYNC_API + "/*/filter"
+            ASYNC_API + "/*/search", ASYNC_API + "/*/filter",
+            // Lanzar una exportacion viaja por POST porque crea un trabajo, pero lo que expone son
+            // los mismos datos que el {@code GET .../export} de siempre, que pide lectura. Pedir
+            // permiso de escritura para obtener un CSV obligaria a dar {@code config-write} a
+            // perfiles que solo consultan.
+            API + "/*/jobs/export"
     };
 
     /** Cargas masivas: un solo error afecta a miles de registros, así que llevan permiso propio. */
     private static final String[] BULK = {
             API + "/*/bulk",
-            ASYNC_API + "/*/bulk"
+            ASYNC_API + "/*/bulk",
+            // Las cargas masivas lanzadas como trabajo escriben exactamente lo mismo que las
+            // sincronas, asi que llevan el mismo permiso. Sin estas dos entradas caerian en la
+            // regla general de POST/PUT y bastaria {@code config-write} para cargar en masa,
+            // que es justo la distincion que BULK existe para mantener.
+            API + "/*/jobs/bulk-create",
+            API + "/*/jobs/bulk-update"
     };
 
     private static final String[] API_DOCS = {
@@ -124,6 +135,9 @@ public class SecurityConfiguration {
                     authorize.requestMatchers(HttpMethod.POST, QUERY_BY_POST).hasRole(SecurityRoles.CONFIG_READ);
                     authorize.requestMatchers(HttpMethod.POST, BULK).hasRole(SecurityRoles.CONFIG_IMPORT);
                     authorize.requestMatchers(HttpMethod.PUT, BULK).hasRole(SecurityRoles.CONFIG_IMPORT);
+                    // El seguimiento y la descarga de un trabajo (GET .../jobs/{id} y
+                    // .../jobs/{id}/file) ya los cubre la regla de GET de mas arriba, que pide
+                    // lectura: son consultas del estado y del resultado, no operaciones nuevas.
                     authorize.requestMatchers(HttpMethod.POST, API + "/**").hasRole(SecurityRoles.CONFIG_WRITE);
                     authorize.requestMatchers(HttpMethod.PUT, API + "/**").hasRole(SecurityRoles.CONFIG_WRITE);
                     authorize.requestMatchers(HttpMethod.PATCH, API + "/**").hasRole(SecurityRoles.CONFIG_WRITE);

@@ -309,6 +309,85 @@ app:
       # How long preflight request results can be cached (seconds)
       max-age: 3600
   
+  # Trabajos en segundo plano (202 Accepted + jobId + consulta de estado).
+  #
+  # Los topes NO son una precaucion teorica. Un trabajo de fondo corre en un hilo
+  # virtual, que es barato, pero retiene una conexion de HikariCP mientras dura, y
+  # eso no lo es: sin tope, media docena de exportaciones de vias grandes vacian el
+  # pool y dejan sin conexiones a las peticiones normales. El recurso escaso no es
+  # el hilo, es la conexion.
+  #
+  # Los topes son DE TODO EL DESPLIEGUE: se cuentan contra la tabla async_job, no
+  # contra un semaforo en memoria. Con un semaforo por JVM, "maximo 2 exportaciones"
+  # se convertian en 2 POR REPLICA, es decir, seis con tres replicas contra la misma
+  # base de datos, que es justo lo que el tope existia para impedir.
+  jobs:
+    # Cada cuanto se refresca la foto de ocupacion que publican las metricas. Los
+    # gauges NO consultan la base de datos en cada scrape de Prometheus.
+    metrics-refresh-delay: 30s
+
+    # Señal de vida de los trabajos en curso.
+    #
+    # Es lo que hace viable el tope de clúster: el cupo lo ocupan los trabajos que
+    # LATEN, no los que tienen la fila en RUNNING. Sin esto, una replica que muriera
+    # a mitad de una exportacion se llevaria un hueco para siempre.
+    heartbeat:
+      # Un UPDATE por replica y pasada, no uno por trabajo.
+      interval: 15s
+      # Silencio a partir del cual se da el trabajo por muerto y su hueco se libera.
+      # Holgado respecto al intervalo a proposito: con varios latidos de margen, una
+      # pausa larga de GC no basta para declarar difunto a un trabajo vivo.
+      timeout: 2m
+      # Cada cuanto se marcan como FAILED los que dejaron de latir. No corre prisa:
+      # el hueco ya quedo libre al enfriarse el latido; esto solo corrige el estado
+      # que se le enseña a quien consulta.
+      reaper-fixed-delay: 1m
+
+    # Borrado de los trabajos viejos y de sus CSV. Sin esto async_job solo crece y
+    # el directorio de exportacion acumula ficheros para siempre; de los dos, el
+    # disco es el que da problemas antes.
+    purge:
+      enabled: true
+      retention: 7d
+      batch-size: 200
+      max-batches-per-run: 20
+      fixed-delay: 1h
+
+    profile:
+      # Exportaciones simultaneas. Cada una mantiene abierta una transaccion de
+      # solo lectura mientras recorre la via entera por ventanas.
+      export-max-concurrency: ${APP_JOBS_PROFILE_EXPORT_MAX_CONCURRENCY:2}
+      # Cargas masivas simultaneas. Una: escriben, y varias a la vez multiplican la
+      # contencion sobre las mismas filas sin acabar antes.
+      bulk-max-concurrency: ${APP_JOBS_PROFILE_BULK_MAX_CONCURRENCY:1}
+      # Elementos como maximo en una carga masiva. Ojo: el cuerpo ya esta entero en
+      # memoria cuando esto se comprueba, asi que no protege del cliente que manda un
+      # fichero de un giga —para eso hace falta un limite de tamaño de peticion en el
+      # proxy de entrada—; lo que hace es convertir en 400 lo que si no seria un
+      # trabajo de horas que nadie pidio conscientemente.
+      max-bulk-items: 50000
+      # Directorio de los CSV generados. Con varias replicas debe apuntar a
+      # almacenamiento COMPARTIDO, o la descarga fallara con 410 cuando la sirva una
+      # replica distinta de la que genero el fichero.
+      export-directory: ${APP_JOBS_PROFILE_EXPORT_DIRECTORY:exports}
+      # Cada cuanto TIEMPO baja el progreso a la base de datos. Por tiempo y no por
+      # numero de elementos: un elemento de una carga masiva es una transaccion
+      # entera, pero uno de una exportacion es una linea de CSV, y acotar por
+      # recuento convertia una via de cien mil perfiles en cuatro mil escrituras
+      # solo para mover un contador.
+      #
+      # OJO al subir los topes de arriba: durante una exportacion este volcado
+      # ocurre DENTRO de la transaccion de solo lectura que recorre la via y pide
+      # una SEGUNDA conexion del pool. La suma de los topes debe quedar holgada
+      # por debajo del tamano del pool de HikariCP.
+      progress-flush-interval: 2s
+      # Errores por elemento que se guardan. Una carga de cien mil elementos con un
+      # mapeo mal hecho produce cien mil errores identicos: guardarlos todos convierte
+      # la fila del trabajo en varios megas y la respuesta del estado en una descarga.
+      # El recuento completo sigue en failedItems.
+      max-item-errors: 50
+      max-item-error-message-length: 500
+
   # Firma de los mensajes asincronos
   messaging:
     signature:
