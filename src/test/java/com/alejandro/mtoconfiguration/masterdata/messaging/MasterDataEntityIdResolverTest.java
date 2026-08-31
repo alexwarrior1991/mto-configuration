@@ -78,32 +78,43 @@ class MasterDataEntityIdResolverTest {
     }
 
     /**
-     * BUG DETECTADO POR ESTE TEST, no comportamiento deseado.
-     * <p>
      * Todas las entidades reales de datos maestros (Cantilever, Disconnector,
      * ExecutionPackage, Profile, SectionInsulator, Station, SteadyArm, Track) declaran
-     * {@code @Id} sobre el GETTER (ver {@code CantileverRepository}, que ya documenta
-     * "acceso por propiedad (@Id sobre el getter)"), no sobre el campo. Pero
-     * {@code MasterDataEntityIdResolver} solo mira {@code Class#getDeclaredFields()} y
-     * pregunta {@code field.isAnnotationPresent(Id.class)}: una anotacion puesta en un
-     * metodo NUNCA aparece ahi, son elementos reflejados distintos en la JVM.
-     * <p>
-     * Resultado real hoy: con {@code app.rabbitmq.enabled: true} (el valor por
-     * defecto), crear/modificar/borrar CUALQUIER entidad publicable lanza esta
-     * excepcion dentro de {@code MasterDataEntityChangedEventListener}, en la misma
-     * transaccion de negocio. Este test fija ese comportamiento para que no pase
-     * desapercibido; si se corrige el resolver (por ejemplo tambien mirando los
-     * metodos, o el {@code getId()} de {@code IEntity}), este test debe reescribirse
-     * para esperar {@code "1"} en lugar de la excepcion.
+     * {@code @Id} sobre el GETTER (ver {@code CantileverRepository}, que documenta
+     * "acceso por propiedad (@Id sobre el getter)"), no sobre el campo. Sin el
+     * fallback a metodos, esto no resuelve nada: un campo nunca expone la anotacion
+     * puesta en su getter via reflexion, son elementos reflejados distintos en la JVM.
      */
     @Test
-    void unaEntidadRealConIdEnElGetterFallaHoyPorqueElResolverSoloMiraCampos() {
+    void unaEntidadRealConIdEnElGetterResuelveSuIdViaElFallbackAMetodos() {
         Cantilever cantilever = new Cantilever();
         cantilever.setId(1L);
 
-        assertThatThrownBy(() -> resolver.resolve(cantilever))
+        assertThat(resolver.resolve(cantilever)).isEqualTo("1");
+    }
+
+    private static class ConIdSoloEnElGetter {
+        private final Long id;
+
+        ConIdSoloEnElGetter(Long id) {
+            this.id = id;
+        }
+
+        @Id
+        public Long getId() {
+            return id;
+        }
+    }
+
+    @Test
+    void unCampoIdSinAnotarSeIgnoraSiElGetterSiLaLleva() {
+        assertThat(resolver.resolve(new ConIdSoloEnElGetter(5L))).isEqualTo("5");
+    }
+
+    @Test
+    void unIdNuloDevueltoPorElGetterEsUnErrorDeProgramacion() {
+        assertThatThrownBy(() -> resolver.resolve(new ConIdSoloEnElGetter(null)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("@Id")
-                .hasMessageContaining("Cantilever");
+                .hasMessageContaining("ConIdSoloEnElGetter");
     }
 }
