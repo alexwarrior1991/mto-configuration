@@ -5,17 +5,17 @@ import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
 
+/**
+ * Utilidades de busqueda para los controladores CRUD.
+ *
+ * <p>El endpoint {@code search} no se declara aqui: los controladores concretos lo anotan con
+ * {@code @Valid @RequestBody} y Bean Validation prohibe que un metodo que sobrescribe a otro añada
+ * restricciones a sus parametros. Ver la nota de {@link SaveController}.
+ */
 public interface SearchController<T extends BaseDTO, E extends IEntity> extends BaseController<T, E> {
-
-    default ResponseEntity<Object> search(@RequestBody SearchRequestDTO searchRequestDTO) {
-        return ResponseEntity.ok(getService().search(searchRequestDTO));
-    }
-
 
     default boolean withFilters(SearchRequestDTO searchRequestDTO) {
         if (searchRequestDTO == null || searchRequestDTO.getFilters() == null) {
