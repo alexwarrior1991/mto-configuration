@@ -6,6 +6,7 @@ import com.alejandro.mtoconfiguration.core.exception.web.ErrorCatalog;
 import com.alejandro.mtoconfiguration.core.exception.web.ProblemDetailFactory;
 import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import feign.FeignException;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -79,6 +80,20 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<ProblemDetail> handleNotFound(NotFoundException e, HttpServletRequest request) {
+        return respond(problems.fromCode(ErrorCodes.RESOURCE_NOT_FOUND, e.getMessage(), uriOf(request)));
+    }
+
+    /**
+     * Recurso inexistente expresado con la excepción de JPA. Es la que lanzan
+     * {@code AbstractLovCrudService} y {@code LovRelationResolver} en cada "not found", y también
+     * la que salta al tocar una referencia perezosa cuya fila ya no está.
+     *
+     * <p>Sin este handler caía en el genérico y salía como 500: un identificador equivocado se
+     * presentaba al cliente como una avería del servidor, contradiciendo el 404 que documentan las
+     * propias rutas de las LOV.</p>
+     */
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleEntityNotFound(EntityNotFoundException e, HttpServletRequest request) {
         return respond(problems.fromCode(ErrorCodes.RESOURCE_NOT_FOUND, e.getMessage(), uriOf(request)));
     }
 
