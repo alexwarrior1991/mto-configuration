@@ -2,8 +2,12 @@ package com.alejandro.mtoconfiguration.repository.jpa.commons;
 
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.From;
+import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
+import org.hibernate.query.criteria.HibernateCriteriaBuilder;
+import org.hibernate.query.criteria.JpaExpression;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.BooleanUtils;
@@ -493,13 +497,34 @@ public class PredicateBuilder<E1 extends BaseEntity, E2 extends BaseEntity> {
         String likePattern = "%" + searchValue + "%";
 
         Predicate[] predicates = Arrays.stream(columns)
-                .map(column -> criteriaBuilder.like(
-                        from.get(column).as(String.class),
-                        likePattern
-                ))
+                .map(column -> criteriaBuilder.like(asText(column), likePattern))
                 .toArray(Predicate[]::new);
 
         return criteriaBuilder.or(predicates);
+    }
+
+    /**
+     * La columna convertida a texto, para poder aplicarle un LIKE.
+     *
+     * <p>No sirve {@code path.as(String.class)}: eso solo cambia el tipo <b>en Java</b>, no emite
+     * ninguna conversion en el SQL. Contra PostgreSQL el resultado era
+     * {@code where length like ?}, con {@code length} de tipo bigint, y la consulta moria con
+     * "operator does not exist: bigint ~~ text". Hace falta un CAST de verdad, y quien lo sabe
+     * emitir es el {@code CriteriaBuilder} de Hibernate.
+     *
+     * <p>Si el builder no es el de Hibernate se conserva el comportamiento anterior: fuera de
+     * Hibernate no hay forma portable de pedir el cast, y degradar es preferible a fallar al
+     * construir el predicado.
+     */
+    private Expression<String> asText(String columnName) {
+        Path<?> path = from.get(columnName);
+
+        if (criteriaBuilder instanceof HibernateCriteriaBuilder hibernateBuilder
+                && path instanceof JpaExpression<?> expression) {
+            return hibernateBuilder.cast(expression, String.class);
+        }
+
+        return path.as(String.class);
     }
 
     public Predicate searchBoolean(String... columns) {
@@ -521,10 +546,7 @@ public class PredicateBuilder<E1 extends BaseEntity, E2 extends BaseEntity> {
         String likePattern = "%" + booleanStr + "%";
 
         Predicate[] predicates = Arrays.stream(columns)
-                .map(column -> criteriaBuilder.like(
-                        from.get(column).as(String.class),
-                        likePattern
-                ))
+                .map(column -> criteriaBuilder.like(asText(column), likePattern))
                 .toArray(Predicate[]::new);
 
         return criteriaBuilder.or(predicates);

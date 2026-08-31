@@ -566,6 +566,41 @@ class PredicateBuilderTest {
         }
 
         @Test
+        @DisplayName("searchNumeric pide un CAST real cuando el builder es el de Hibernate")
+        void searchNumericoConCast() {
+            // path.as(String.class) solo cambia el tipo en Java: no emite conversion en el SQL, y
+            // contra PostgreSQL la consulta moria con "operator does not exist: bigint ~~ text".
+            // Con el builder de Hibernate hay que pedir el cast explicitamente.
+            org.hibernate.query.criteria.HibernateCriteriaBuilder hibernateBuilder =
+                    org.mockito.Mockito.mock(org.hibernate.query.criteria.HibernateCriteriaBuilder.class);
+            Path<Object> hibernatePath = org.mockito.Mockito.mock(Path.class,
+                    org.mockito.Mockito.withSettings()
+                            .extraInterfaces(org.hibernate.query.criteria.JpaExpression.class));
+            org.hibernate.query.criteria.JpaExpression<String> casted =
+                    org.mockito.Mockito.mock(org.hibernate.query.criteria.JpaExpression.class);
+
+            From<BaseEntity, BaseEntity> hibernateFrom = org.mockito.Mockito.mock(From.class);
+            doReturn(hibernatePath).when(hibernateFrom).get("length");
+            doReturn(casted).when(hibernateBuilder).cast(any(), eq(String.class));
+            org.hibernate.query.criteria.JpaPredicate hibernateMarker =
+                    org.mockito.Mockito.mock(org.hibernate.query.criteria.JpaPredicate.class);
+            when(hibernateBuilder.like(any(), anyString())).thenReturn(hibernateMarker);
+            doReturn(hibernateMarker).when(hibernateBuilder).or(any(Predicate[].class));
+
+            Map<String, Object> hibernateFilters = new HashMap<>();
+            hibernateFilters.put("searchText", "250");
+
+            PredicateBuilder<BaseEntity, BaseEntity> hibernateAware =
+                    new PredicateBuilder<>(hibernateBuilder, hibernateFrom, hibernateFilters);
+
+            assertThat(hibernateAware.searchNumeric("length")).isSameAs(hibernateMarker);
+
+            verify(hibernateBuilder).cast(any(), eq(String.class));
+            verify(hibernateBuilder).like(casted, "%250%");
+            verify(hibernatePath, never()).as(String.class);
+        }
+
+        @Test
         @DisplayName("searchNumeric ignora un texto no numerico o que empiece por cero")
         void searchNumericoInvalido() {
             filters.put("searchText", "abc");
