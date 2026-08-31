@@ -29,6 +29,7 @@ Tests en `src/test/java`, misma raíz de paquete.
 
 ## Documentación relacionada
 - `README.md` — build, comandos, dependencias, estructura funcional
+- `README_API.md` — uso de los endpoints (alta, modificación, colecciones de hijos, consultas, errores)
 - `README_FLYWAY.md` — migraciones de BD
 - `README_LOCAL_DOCKER.md` — entorno local con Docker
 - `README_MESSAGING.md` — RabbitMQ / eventos
