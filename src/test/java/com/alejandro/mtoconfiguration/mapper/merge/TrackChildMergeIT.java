@@ -55,21 +55,24 @@ class TrackChildMergeIT extends AbstractChildMergeIT {
         via.setExecutionPackage(paquete);
         em.persist(via);
 
+        // Los hijos entran por el adder del padre, no solo con setTrack(via). Track.profiles lleva
+        // @OrderColumn, y esa columna la mantiene la LISTA del padre: si el hijo se persiste
+        // suelto, la fila queda con insertion_order a null y la siguiente lectura de la coleccion
+        // muere con "Illegal null value for list index".
         Profile primero = new Profile();
         primero.setProfileId("P-001");
         primero.setKp(new BigDecimal("10.000"));
-        primero.setTrack(via);
         Cantilever mensula = new Cantilever();
         mensula.setCwHeight(new BigDecimal("5.500"));
         mensula.setStagger(new BigDecimal("200"));
-        mensula.setProfile(primero);
-        primero.setCantilevers(new ArrayList<>(List.of(mensula)));
+        primero.addCantilever(mensula);
+        via.addProfile(primero);
         em.persist(primero);
 
         Profile segundo = new Profile();
         segundo.setProfileId("P-002");
         segundo.setKp(new BigDecimal("20.000"));
-        segundo.setTrack(via);
+        via.addProfile(segundo);
         em.persist(segundo);
 
         flushAndClear();

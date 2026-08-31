@@ -54,12 +54,15 @@ class ProfileChildMergeIT extends AbstractChildMergeIT {
         via.setExecutionPackage(paquete);
         em.persist(via);
 
+        // Por los adders: tanto Track.profiles como Profile.cantilevers llevan @OrderColumn, y esa
+        // columna la mantiene la lista del padre. Un hijo persistido suelto la deja a null.
         Profile perfil = new Profile();
         perfil.setProfileId("P-001");
         perfil.setKp(new BigDecimal("10.000"));
-        perfil.setTrack(via);
-        perfil.setCantilevers(new ArrayList<>(List.of(
-                mensula(perfil, "5.500"), mensula(perfil, "6.000"), mensula(perfil, "6.500"))));
+        perfil.addCantilever(mensula("5.500"));
+        perfil.addCantilever(mensula("6.000"));
+        perfil.addCantilever(mensula("6.500"));
+        via.addProfile(perfil);
         em.persist(perfil);
 
         flushAndClear();
@@ -77,11 +80,10 @@ class ProfileChildMergeIT extends AbstractChildMergeIT {
         return ((Number) em.createNativeQuery("select id from profile limit 1").getSingleResult()).longValue();
     }
 
-    private static Cantilever mensula(Profile perfil, String altura) {
+    private static Cantilever mensula(String altura) {
         Cantilever mensula = new Cantilever();
         mensula.setCwHeight(new BigDecimal(altura));
         mensula.setStagger(new BigDecimal("200"));
-        mensula.setProfile(perfil);
         return mensula;
     }
 
@@ -150,13 +152,31 @@ class ProfileChildMergeIT extends AbstractChildMergeIT {
     @Test
     @DisplayName("una mensula sin id se inserta como fila nueva")
     void anadirInsertaUnaSola() {
+        // Se sustituye la tercera por una nueva en lugar de sumar una cuarta: el perfil admite
+        // como maximo tres (@Size sobre Profile.cantilevers) y pasarse no probaria el alta,
+        // fallaria antes en la validacion de la entidad.
         aplicar(peticion(List.of(
                 mensulaDto(primeraMensulaId, "5.500"),
                 mensulaDto(segundaMensulaId, "6.000"),
-                mensulaDto(terceraMensulaId, "6.500"),
                 mensulaDto(null, "7.777"))));
 
-        assertThat(contarFilas("cantilever")).isEqualTo(4);
+        assertThat(contarFilas("cantilever")).isEqualTo(3);
+        assertThat(em.find(Cantilever.class, terceraMensulaId)).isNull();
+    }
+
+    @Test
+    @DisplayName("pasar de tres mensulas lo rechaza la validacion de la entidad")
+    void masDeTresMensulasSeRechaza() {
+        // El limite lo impone @Size sobre Profile.cantilevers y salta en el flush, no antes.
+        Profile gestionado = em.find(Profile.class, perfilId);
+        mapper.updateEntityFromDTO(peticion(List.of(
+                mensulaDto(primeraMensulaId, "5.500"),
+                mensulaDto(segundaMensulaId, "6.000"),
+                mensulaDto(terceraMensulaId, "6.500"),
+                mensulaDto(null, "7.777"))), gestionado);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> em.flush())
+                .isInstanceOf(jakarta.validation.ConstraintViolationException.class);
     }
 
     @Test

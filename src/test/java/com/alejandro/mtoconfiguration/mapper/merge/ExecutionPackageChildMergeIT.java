@@ -67,10 +67,12 @@ class ExecutionPackageChildMergeIT extends AbstractChildMergeIT {
         segunda.setExecutionPackage(paquete);
         em.persist(segunda);
 
+        // Por el adder del padre: Track.profiles lleva @OrderColumn y esa columna la mantiene la
+        // lista del padre, no el setTrack del hijo.
         Profile perfil = new Profile();
         perfil.setProfileId("P-001");
         perfil.setKp(new BigDecimal("10.000"));
-        perfil.setTrack(primera);
+        primera.addProfile(perfil);
         em.persist(perfil);
 
         flushAndClear();
