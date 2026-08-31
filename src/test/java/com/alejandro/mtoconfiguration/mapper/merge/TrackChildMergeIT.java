@@ -163,13 +163,33 @@ class TrackChildMergeIT extends AbstractChildMergeIT {
         ProfileDTO nuevo = perfilDto(null, "P-003", "30.000");
         nuevo.setCantilevers(new ArrayList<>(List.of(mensulaDto(null, "7.777"))));
 
+        // El perfil que ya existe devuelve SU mensula: la reconciliacion trata la lista de hijos
+        // como estado final, asi que omitirla la borraria. Es lo que hace un cliente real, que
+        // reenvia lo que leyo.
+        ProfileDTO existente = perfilDto(primerPerfilId, "P-001", "10.000");
+        existente.setCantilevers(new ArrayList<>(List.of(mensulaDto(mensulaId, "5.500"))));
+
         aplicar(peticion(List.of(
-                perfilDto(primerPerfilId, "P-001", "10.000"),
+                existente,
                 perfilDto(segundoPerfilId, "P-002", "20.000"),
                 nuevo)));
 
         assertThat(contarFilas("profile")).isEqualTo(3);
         assertThat(contarFilas("cantilever")).as("la del perfil viejo mas la del nuevo").isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("omitir las mensulas de un perfil anidado las borra, tambien dos niveles abajo")
+    void omitirLosNietosLosBorra() {
+        // La regla de "la lista es el estado final" no se queda en el primer nivel: si la via
+        // devuelve un perfil sin su lista de mensulas, esas mensulas desaparecen. Es el error mas
+        // caro que puede cometer un cliente y conviene tenerlo fijado.
+        aplicar(peticion(List.of(
+                perfilDto(primerPerfilId, "P-001", "10.000"),   // sin cantilevers
+                perfilDto(segundoPerfilId, "P-002", "20.000"))));
+
+        assertThat(contarFilas("profile")).isEqualTo(2);
+        assertThat(contarFilas("cantilever")).as("la mensula omitida se borra").isZero();
     }
 
     @Test
