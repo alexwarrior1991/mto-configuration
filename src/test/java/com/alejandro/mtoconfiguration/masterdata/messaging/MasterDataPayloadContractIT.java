@@ -298,11 +298,10 @@ class MasterDataPayloadContractIT {
             profile.addDisconnector(disconnector);
             disconnector("Seccionador 2", station);
 
-            em.persist(executionPackage);
-            em.flush();
-
             SectionInsulator sectionInsulator = sectionInsulator("Aislador 1", station);
             sectionInsulator("Aislador 2", station);
+
+            em.persist(executionPackage);
             em.flush();
 
             return new Ids(
@@ -363,7 +362,7 @@ class MasterDataPayloadContractIT {
             Cantilever cantilever = new Cantilever();
             cantilever.setCwHeight(new BigDecimal(cwHeight));
             cantilever.setCantileverType(lov(new CantileverType(), "MEN" + cwHeight.charAt(0)));
-            addCantilever(profile, cantilever);
+            profile.addCantilever(cantilever);
 
             SteadyArm steadyArm = new SteadyArm();
             steadyArm.setLength(1_200L);
@@ -387,34 +386,8 @@ class MasterDataPayloadContractIT {
             SectionInsulator sectionInsulator = new SectionInsulator();
             sectionInsulator.setName(name);
             sectionInsulator.setEnabled(Boolean.TRUE);
-            sectionInsulator.setStation(station);
-            em.persist(sectionInsulator);
+            station.addSectionInsulator(sectionInsulator);
             return sectionInsulator;
-        }
-
-        /**
-         * Cantilever y SectionInsulator son las dos unicas entidades de infrastructure
-         * que NO redefinen equals, asi que heredan el de BaseEntity, que solo compara
-         * el id. Con dos instancias aun sin persistir ambos ids son null y las dos se
-         * consideran iguales, de modo que Profile.addCantilever y
-         * Station.addSectionInsulator descartan la segunda en silencio.
-         * <p>
-         * El fixture necesita dos elementos por coleccion (con uno solo, un producto
-         * cartesiano pasaria desapercibido), y cada caso se esquiva de una forma:
-         * <ul>
-         *   <li>Cantilever va en una {@code List} con {@code @OrderColumn}, asi que
-         *       basta con saltarse la guarda {@code contains} y montar las dos puntas
-         *       a mano; el orden lo sigue llevando la lista.</li>
-         *   <li>SectionInsulator va en un {@code HashSet}: ahi no vale, porque con el
-         *       id a null el segundo {@code add} tambien es un no-op sobre el propio
-         *       set. Se persiste por el lado propietario (la FK STATION_ID) despues
-         *       de que la estacion tenga id.</li>
-         * </ul>
-         * No se toca el modelo: eso es una decision aparte.
-         */
-        private void addCantilever(Profile profile, Cantilever cantilever) {
-            profile.getCantilevers().add(cantilever);
-            cantilever.setProfile(profile);
         }
 
         private <L extends Lov> L lov(L lov, String code) {
