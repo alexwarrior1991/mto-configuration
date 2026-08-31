@@ -72,6 +72,7 @@ class ProfileMapperTest {
 
         ReflectionTestUtils.setField(impl, "referenceMapper", referenceMapper);
         ReflectionTestUtils.setField(impl, "cantileverMapper", cantileverMapper);
+        ReflectionTestUtils.setField(impl, "cantileverChildMapper", cantileverMapper);
         ReflectionTestUtils.setField(impl, "disconnectorMapper", disconnectorMapper);
         ReflectionTestUtils.setField(impl, "masterDataService", masterDataService);
 
@@ -294,36 +295,100 @@ class ProfileMapperTest {
         }
 
         @Test
-        @DisplayName("DEFECTO: al modificar, cada mensula del DTO se AÑADE en vez de fusionarse")
-        void mensulaEnviadaSeDuplica() {
-            // Test de caracterizacion: fija el comportamiento ACTUAL, que es defectuoso, para que
-            // el dia que se arregle este test falle y haya que cambiarlo a proposito.
-            //
-            // El metodo generado recorre las mensulas del DTO y hace addCantilever(toEntity(dto)).
-            // toEntity NO mapea el id, asi que crea siempre una entidad nueva sin identificador;
-            // addCantilever la acepta porque equals compara por id y null != 1. Despues
-            // linkCollection solo retira las que tienen id NO nulo y no vienen en el DTO, de modo
-            // que la copia sin id sobrevive y al hacer flush se inserta como fila nueva.
-            //
-            // Resultado: modificar un perfil DUPLICA sus mensulas, y cada modificacion vuelve a
-            // duplicarlas. El arreglo correcto es fusionar por id en lugar de añadir, y afecta
-            // igual a Station (tracks, disconnectors, sectionInsulators), Track (profiles) y
-            // ExecutionPackage (tracks, stations).
+        @DisplayName("al modificar, la mensula que llega con id ACTUALIZA su fila en vez de duplicarla")
+        void mensulaEnviadaSeActualiza() {
+            // Este es el caso que antes duplicaba: el cliente devuelve la mensula que ve, con su
+            // id, y el mapeo creaba una copia sin id junto a la original, dejando la original sin
+            // los cambios. mergeCollection vuelca el DTO sobre la instancia que ya esta.
+            Profile entity = new Profile();
+            Cantilever existente = new Cantilever();
+            existente.setId(1L);
+            existente.setCwHeight(new BigDecimal("5.500"));
+            entity.setCantilevers(new ArrayList<>(List.of(existente)));
+
+            ProfileDTO dto = dto();
+            CantileverDTO editada = cantilever(1L);
+            editada.setCwHeight(new BigDecimal("9.999"));
+            dto.setCantilevers(new ArrayList<>(List.of(editada)));
+
+            mapper.updateEntityFromDTO(dto, entity);
+
+            assertThat(entity.getCantilevers()).hasSize(1);
+            assertThat(entity.getCantilevers().getFirst())
+                    .as("la MISMA instancia, no una copia")
+                    .isSameAs(existente);
+            assertThat(existente.getCwHeight()).isEqualByComparingTo("9.999");
+        }
+
+        @Test
+        @DisplayName("modificar varias veces seguidas no acumula filas")
+        void modificacionesRepetidasNoAcumulan() {
             Profile entity = new Profile();
             Cantilever existente = new Cantilever();
             existente.setId(1L);
             entity.setCantilevers(new ArrayList<>(List.of(existente)));
 
+            for (String altura : List.of("6.000", "6.500", "7.000")) {
+                ProfileDTO dto = dto();
+                CantileverDTO editada = cantilever(1L);
+                editada.setCwHeight(new BigDecimal(altura));
+                dto.setCantilevers(new ArrayList<>(List.of(editada)));
+
+                mapper.updateEntityFromDTO(dto, entity);
+            }
+
+            assertThat(entity.getCantilevers()).hasSize(1);
+            assertThat(existente.getCwHeight()).isEqualByComparingTo("7.000");
+        }
+
+        @Test
+        @DisplayName("una misma peticion conserva, edita, añade y borra a la vez")
+        void reconciliacionCompleta() {
+            Profile entity = new Profile();
+            Cantilever editada = new Cantilever();
+            editada.setId(1L);
+            editada.setCwHeight(new BigDecimal("5.500"));
+            Cantilever intacta = new Cantilever();
+            intacta.setId(2L);
+            intacta.setCwHeight(new BigDecimal("6.000"));
+            Cantilever borrada = new Cantilever();
+            borrada.setId(3L);
+            entity.setCantilevers(new ArrayList<>(List.of(editada, intacta, borrada)));
+
             ProfileDTO dto = dto();
-            dto.setCantilevers(new ArrayList<>(List.of(cantilever(1L))));
+            CantileverDTO conCambio = cantilever(1L);
+            conCambio.setCwHeight(new BigDecimal("9.999"));
+            CantileverDTO sinCambio = cantilever(2L);
+            sinCambio.setCwHeight(new BigDecimal("6.000"));
+            CantileverDTO nueva = cantilever(null);
+            nueva.setCwHeight(new BigDecimal("7.777"));
+            dto.setCantilevers(new ArrayList<>(List.of(conCambio, sinCambio, nueva)));
 
             mapper.updateEntityFromDTO(dto, entity);
 
             assertThat(entity.getCantilevers())
-                    .as("la existente mas una copia sin id: la copia se insertaria como fila nueva")
-                    .hasSize(2)
                     .extracting(c -> c.getId())
-                    .containsExactly(1L, null);
+                    .as("la 3 se retira, la nueva entra sin id")
+                    .containsExactly(1L, 2L, null);
+            assertThat(editada.getCwHeight()).isEqualByComparingTo("9.999");
+            assertThat(intacta.getCwHeight()).isEqualByComparingTo("6.000");
+            assertThat(entity.getCantilevers())
+                    .allSatisfy(c -> assertThat(c.getProfile()).isSameAs(entity));
+        }
+
+        @Test
+        @DisplayName("un id que no pertenece a este perfil se ignora, no inserta una fila")
+        void idAjenoSeIgnora() {
+            // Aceptarlo crearia una mensula a partir de datos de otro perfil.
+            Profile entity = new Profile();
+            entity.setCantilevers(new ArrayList<>());
+
+            ProfileDTO dto = dto();
+            dto.setCantilevers(new ArrayList<>(List.of(cantilever(999L))));
+
+            mapper.updateEntityFromDTO(dto, entity);
+
+            assertThat(entity.getCantilevers()).isEmpty();
         }
 
         @Test
