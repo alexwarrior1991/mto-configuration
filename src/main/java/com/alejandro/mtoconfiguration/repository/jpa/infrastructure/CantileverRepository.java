@@ -31,10 +31,16 @@ public interface CantileverRepository extends CRUDRepository<Cantilever>,
      * No entran {@code profile.track} ni {@code steadyArm.steadyArmType}: de ambos el
      * mapper solo lee el id, y con acceso por propiedad ({@code @Id} sobre el getter)
      * leer el id de un proxy no lo inicializa.
+     * <p>
+     * {@code profile.disconnector} tampoco lo pide el mapper, lo impone Hibernate:
+     * Profile.disconnector es el lado INVERSO de un {@code @OneToOne} y no puede ser
+     * perezoso sin bytecode enhancement, asi que al materializar el profile se carga
+     * con un select secundario. Traerlo en el grafo deja la consulta en una sentencia.
      */
     @Override
     @EntityGraph(attributePaths = {
             "profile",
+            "profile.disconnector",
             "cantileverType",
             "steadyArm"
     })

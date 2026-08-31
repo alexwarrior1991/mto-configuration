@@ -195,11 +195,11 @@ class MasterDataPayloadContractIT {
      *   <li><b>station 3</b> y <b>executionPackage 2</b> son deliberados: leen tres y
      *       dos colecciones, y unirlas en un solo grafo multiplicaria las filas entre
      *       si. Si alguien las reagrupa, estos numeros bajan a 1 y el test falla.</li>
-     *   <li><b>cantilever 2</b> y <b>track 3</b> NO son deliberados: son el N+1 de
-     *       Profile.disconnector, que es el lado inverso de un {@code @OneToOne} y
-     *       Hibernate carga con un select por cada Profile materializado. En track
-     *       crece con el numero de perfiles de la via: 3 aqui con dos perfiles, 201
-     *       con doscientos.</li>
+     *   <li><b>cantilever</b> y <b>track</b> valen 1 gracias a traer
+     *       Profile.disconnector en el grafo. Sin esa ruta valdrian 2 y 1+N: es el
+     *       lado inverso de un {@code @OneToOne} y Hibernate lo carga con un select
+     *       por cada Profile materializado. En track crecia con los perfiles de la
+     *       via.</li>
      * </ul>
      */
     @Test
@@ -207,7 +207,7 @@ class MasterDataPayloadContractIT {
     void elNumeroDeSentenciasDeCadaConsultaEstaFijado() {
         assertSoftly(softly -> {
             softly.assertThat(countStatements(() -> cantileverRepository.findByIdForMessaging(ids.cantilever())))
-                    .as("cantilever: 1 + el select de Profile.disconnector").isEqualTo(2);
+                    .as("cantilever").isEqualTo(1);
             softly.assertThat(countStatements(() -> disconnectorRepository.findByIdForMessaging(ids.disconnector())))
                     .as("disconnector").isEqualTo(1);
             softly.assertThat(countStatements(() -> executionPackageRepository.findByIdForMessaging(ids.executionPackage())))
@@ -221,7 +221,7 @@ class MasterDataPayloadContractIT {
             softly.assertThat(countStatements(() -> steadyArmRepository.findByIdForMessaging(ids.steadyArm())))
                     .as("steadyArm").isEqualTo(1);
             softly.assertThat(countStatements(() -> trackRepository.findByIdForMessaging(ids.track())))
-                    .as("track: 1 + un select de Profile.disconnector POR PERFIL").isEqualTo(3);
+                    .as("track: sin profiles.disconnector serian 1 + un select POR PERFIL").isEqualTo(1);
         });
     }
 
