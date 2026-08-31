@@ -48,32 +48,7 @@ class StationMapperTest {
 
     @BeforeEach
     void setUp() {
-        StationMapperImpl impl = new StationMapperImpl();
-
-        TrackMapperImpl trackMapper = new TrackMapperImpl();
-        ReflectionTestUtils.setField(trackMapper, "referenceMapper", referenceMapper);
-        ReflectionTestUtils.setField(trackMapper, "masterDataService", masterDataService);
-
-        DisconnectorMapperImpl disconnectorMapper = new DisconnectorMapperImpl();
-        ReflectionTestUtils.setField(disconnectorMapper, "referenceMapper", referenceMapper);
-        ReflectionTestUtils.setField(disconnectorMapper, "masterDataService", masterDataService);
-
-        SectionInsulatorMapperImpl sectionInsulatorMapper = new SectionInsulatorMapperImpl();
-        ReflectionTestUtils.setField(sectionInsulatorMapper, "referenceMapper", referenceMapper);
-        ReflectionTestUtils.setField(sectionInsulatorMapper, "masterDataService", masterDataService);
-
-        ReflectionTestUtils.setField(impl, "referenceMapper", referenceMapper);
-        ReflectionTestUtils.setField(impl, "masterDataService", masterDataService);
-        // Dos campos por mapper: el privado del impl generado y el protegido del padre, que es el
-        // que usa la reconciliacion del @AfterMapping.
-        ReflectionTestUtils.setField(impl, "trackMapper", trackMapper);
-        ReflectionTestUtils.setField(impl, "trackChildMapper", trackMapper);
-        ReflectionTestUtils.setField(impl, "disconnectorMapper", disconnectorMapper);
-        ReflectionTestUtils.setField(impl, "disconnectorChildMapper", disconnectorMapper);
-        ReflectionTestUtils.setField(impl, "sectionInsulatorMapper", sectionInsulatorMapper);
-        ReflectionTestUtils.setField(impl, "sectionInsulatorChildMapper", sectionInsulatorMapper);
-
-        mapper = impl;
+        mapper = new MapperGraph(masterDataService, referenceMapper).station;
     }
 
     private static Station estacionConDosVias() {

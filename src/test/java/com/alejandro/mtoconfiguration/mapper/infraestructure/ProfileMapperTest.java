@@ -56,27 +56,7 @@ class ProfileMapperTest {
 
     @BeforeEach
     void setUp() {
-        ProfileMapperImpl impl = new ProfileMapperImpl();
-
-        CantileverMapperImpl cantileverMapper = new CantileverMapperImpl();
-        ReflectionTestUtils.setField(cantileverMapper, "referenceMapper", referenceMapper);
-        ReflectionTestUtils.setField(cantileverMapper, "masterDataService", masterDataService);
-
-        SteadyArmMapperImpl steadyArmMapper = new SteadyArmMapperImpl();
-        ReflectionTestUtils.setField(steadyArmMapper, "referenceMapper", referenceMapper);
-        ReflectionTestUtils.setField(cantileverMapper, "steadyArmMapper", steadyArmMapper);
-
-        DisconnectorMapperImpl disconnectorMapper = new DisconnectorMapperImpl();
-        ReflectionTestUtils.setField(disconnectorMapper, "referenceMapper", referenceMapper);
-        ReflectionTestUtils.setField(disconnectorMapper, "masterDataService", masterDataService);
-
-        ReflectionTestUtils.setField(impl, "referenceMapper", referenceMapper);
-        ReflectionTestUtils.setField(impl, "cantileverMapper", cantileverMapper);
-        ReflectionTestUtils.setField(impl, "cantileverChildMapper", cantileverMapper);
-        ReflectionTestUtils.setField(impl, "disconnectorMapper", disconnectorMapper);
-        ReflectionTestUtils.setField(impl, "masterDataService", masterDataService);
-
-        mapper = impl;
+        mapper = new MapperGraph(masterDataService, referenceMapper).profile;
     }
 
     private static ProfileDTO dto() {

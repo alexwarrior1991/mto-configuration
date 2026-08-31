@@ -56,18 +56,7 @@ class CantileverMapperTest {
 
     @BeforeEach
     void setUp() {
-        CantileverMapperImpl impl = new CantileverMapperImpl();
-
-        // El generado recibe estas colaboraciones por inyeccion de campo; masterDataService vive
-        // en la clase abstracta que escribimos nosotros.
-        ReflectionTestUtils.setField(impl, "referenceMapper", referenceMapper);
-        SteadyArmMapperImpl steadyArmMapper = new SteadyArmMapperImpl();
-        ReflectionTestUtils.setField(steadyArmMapper, "referenceMapper", referenceMapper);
-        ReflectionTestUtils.setField(steadyArmMapper, "masterDataService", masterDataService);
-        ReflectionTestUtils.setField(impl, "steadyArmMapper", steadyArmMapper);
-        ReflectionTestUtils.setField(impl, "masterDataService", masterDataService);
-
-        mapper = impl;
+        mapper = new MapperGraph(masterDataService, referenceMapper).cantilever;
     }
 
     private static CantileverType cantileverType(Long id, String code) {
