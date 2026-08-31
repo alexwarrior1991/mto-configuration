@@ -33,8 +33,8 @@ import java.util.Optional;
  * la instancia existente se reutiliza, no aparecen copias y los hijos apuntan a su padre. Lo que
  * no pueden demostrar es lo unico que le importa al usuario: el SQL que Hibernate emite al hacer
  * flush. Que el UPDATE caiga en la fila correcta, que {@code orphanRemoval} borre exactamente la
- * que se quito, que no se cuele ningun INSERT de mas y que el {@code @OrderColumn} se recalcule al
- * sacar un hijo del medio son cosas que solo se ven contra una base de datos.
+ * que se quito, que no se cuele ningun INSERT de mas y que el orden de la coleccion siga siendo el
+ * esperado tras sacar un hijo del medio son cosas que solo se ven contra una base de datos.
  *
  * <p>Por eso cada test sigue siempre el mismo guion: persistir el estado inicial, vaciar el
  * contexto de persistencia, <b>releer</b> el padre como haria el servicio en una peticion nueva,

@@ -22,10 +22,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Reconciliacion de las mensulas de un perfil, contra la base de datos.
  *
- * <p>Es el caso donde el fallo original salia mas caro y el unico con {@code @OrderColumn}, asi
- * que ademas de comprobar que no se duplican filas hay que comprobar que el indice de insercion se
- * recalcula al sacar una mensula del medio: si no, Hibernate deja un hueco y al releer la
- * coleccion aparece un {@code null}.</p>
+ * <p>Es el caso donde el fallo original salia mas caro, asi que ademas de comprobar que no se
+ * duplican filas se comprueba el limite de tres mensulas por perfil y que la coleccion sigue
+ * saliendo ordenada y sin huecos tras sacar una del medio.</p>
  */
 class ProfileChildMergeIT extends AbstractChildMergeIT {
 
@@ -54,8 +53,9 @@ class ProfileChildMergeIT extends AbstractChildMergeIT {
         via.setExecutionPackage(paquete);
         em.persist(via);
 
-        // Por los adders: tanto Track.profiles como Profile.cantilevers llevan @OrderColumn, y esa
-        // columna la mantiene la lista del padre. Un hijo persistido suelto la deja a null.
+        // Por los adders, que mantienen los dos lados de la relacion en memoria. Ya no es
+        // obligatorio —las colecciones se ordenan con @OrderBy y no hay columna que rellenar—,
+        // pero deja el grafo coherente sin depender de una relectura.
         Profile perfil = new Profile();
         perfil.setProfileId("P-001");
         perfil.setKp(new BigDecimal("10.000"));
@@ -194,10 +194,11 @@ class ProfileChildMergeIT extends AbstractChildMergeIT {
     }
 
     @Test
-    @DisplayName("quitar la mensula del medio no deja huecos en el orden de insercion")
+    @DisplayName("quitar la mensula del medio deja el resto en orden y sin huecos")
     void ordenSinHuecos() {
-        // Profile.cantilevers lleva @OrderColumn: si el indice no se recalcula, Hibernate deja un
-        // hueco y al releer la coleccion aparece un null en su lugar.
+        // Profile.cantilevers se ordena con @OrderBy("id ASC"): el orden sale del ORDER BY de la
+        // consulta, asi que quitar una del medio no puede dejar un hueco. Con el @OrderColumn que
+        // habia antes, si el indice no se recalculaba aparecia un null en su lugar.
         aplicar(peticion(List.of(
                 mensulaDto(primeraMensulaId, "5.500"),
                 mensulaDto(terceraMensulaId, "6.500"))));
@@ -206,8 +207,8 @@ class ProfileChildMergeIT extends AbstractChildMergeIT {
 
         assertThat(releido.getCantilevers()).doesNotContainNull();
         assertThat(releido.getCantilevers())
-                .extracting(Cantilever::getCwHeight)
-                .containsExactly(new BigDecimal("5.500"), new BigDecimal("6.500"));
+                .extracting(c -> c.getId())
+                .containsExactly(primeraMensulaId, terceraMensulaId);
     }
 
     @Test

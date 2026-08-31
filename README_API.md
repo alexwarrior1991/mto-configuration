@@ -184,6 +184,17 @@ cuerpo desde cero ni le quites campos.
 Y **anida**: en un `PUT $BASE/execution-packages/{id}` puedes traer vías, y dentro de cada vía sus
 perfiles, y dentro de cada perfil sus ménsulas. Cada nivel se reconcilia con la misma regla.
 
+### En qué orden te llegan los hijos
+
+El orden lo decide el servidor, no la posición en la que los mandaste:
+
+- **Perfiles de una vía** → por punto kilométrico (`kp`), y el `id` desempata. Es el orden físico a
+  lo largo de la vía, y el mismo que devuelven `/profiles/track/{id}/keyset` y `/range`.
+- **Resto de colecciones** → por `id`, que es simplemente un orden estable.
+
+Mandar los hijos en otro orden no cambia nada: no hay forma de reordenarlos desde la API. Si
+necesitas mover un perfil dentro de la vía, lo que se cambia es su `kp`.
+
 La relación 1:1 (`profiles.disconnector`, `cantilevers.steadyArm`) va aparte: mandar el objeto lo
 crea o actualiza, mandar `null` lo desvincula.
 
