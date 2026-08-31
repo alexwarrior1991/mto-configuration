@@ -28,6 +28,19 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Autowired
     protected MasterDataService masterDataService;
 
+    /**
+     * Hace falta aqui, y no solo en el {@code uses} del @Mapper, porque la reconciliacion de
+     * mensulas vive en el {@code @AfterMapping} de esta clase y necesita volcar cada DTO sobre la
+     * mensula que ya existe.
+     *
+     * <p>El nombre lleva el sufijo {@code Child} a proposito: el impl generado declara su propio
+     * campo {@code cantileverMapper}, y un campo del mismo nombre en la subclase <b>sombrea</b> a
+     * este. Spring inyecta los dos, pero cualquier cableado por reflexion —un test que instancia
+     * el impl a mano— alcanzaria solo el de la subclase y dejaria este a null.
+     */
+    @Autowired
+    protected CantileverMapper cantileverChildMapper;
+
     @Override
     @Mapping(target = "trackId", source = "track.id")
     @Mapping(target = "anchorage", ignore = true)
@@ -42,6 +55,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
 
     @Override
     @Mapping(target = "track", source = "trackId")
+    @Mapping(target = "cantilevers", ignore = true) // se reconcilia en mapDtoToEntity
     @Mapping(target = "anchorage", ignore = true)
     @Mapping(target = "anchorageFoundation", ignore = true)
     @Mapping(target = "foundation", ignore = true)
@@ -55,6 +69,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
 
     @Override
     @Mapping(target = "track", source = "trackId")
+    @Mapping(target = "cantilevers", ignore = true) // se reconcilia en mapDtoToEntity
     @Mapping(target = "anchorage", ignore = true)
     @Mapping(target = "anchorageFoundation", ignore = true)
     @Mapping(target = "foundation", ignore = true)
@@ -96,13 +111,18 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
             entity.setSectioning(masterDataService.getSectioningByCode(dto.getSectioning().getCode()));
         }
 
-        // 2. Sincronización de la colección de Cantilevers
-        linkCollection(
+        // 2. Reconciliación de la colección de Cantilevers.
+        //
+        // mergeCollection y no linkCollection: la mensula que el cliente devuelve con su id tiene
+        // que actualizar ESA fila. Añadirla, que es lo que hacia el codigo generado, insertaba una
+        // copia sin id junto a la original y dejaba la original sin los cambios.
+        mergeCollection(
                 dto.getCantilevers(),
                 entity.getCantilevers(),
                 entity,
-                Cantilever::setProfile,
-                true
+                cantileverChildMapper::toEntity,
+                (childDto, child) -> cantileverChildMapper.updateEntityFromDTO(childDto, child),
+                Cantilever::setProfile
         );
 
         // 3. Sincronización de relación 1:1 con Disconnector (Bidireccional)
