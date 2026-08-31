@@ -72,11 +72,23 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
 
 
 
+    /**
+     * {@code cantilevers.steadyArm} y {@code disconnector} son obligatorios: son el
+     * lado INVERSO de un {@code @OneToOne}, que Hibernate no puede proxear, asi que
+     * sin ellos se paga un select por fila.
+     * <p>
+     * Las rutas anidadas de las que el mapper solo lee el id se quedan fuera
+     * ({@code track.station}, {@code track.executionPackage},
+     * {@code cantilevers.cantileverType}, {@code cantilevers.steadyArm.steadyArmType}
+     * y {@code disconnector.disconnectorFunction}): con acceso por propiedad, leer el
+     * id de un proxy no lo inicializa.
+     * <p>
+     * {@code cantilevers} es la UNICA coleccion del grafo, y eso es intencionado: en
+     * cuanto entra una segunda, el join pasa a producir un producto cartesiano.
+     */
     @Override
     @EntityGraph(attributePaths = {
             "track",
-            "track.station",
-            "track.executionPackage",
             "anchorage",
             "anchorageFoundation",
             "foundation",
@@ -86,11 +98,8 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
             "returnSupport",
             "sectioning",
             "cantilevers",
-            "cantilevers.cantileverType",
             "cantilevers.steadyArm",
-            "cantilevers.steadyArm.steadyArmType",
-            "disconnector",
-            "disconnector.disconnectorFunction"
+            "disconnector"
     })
     @Query("select p from Profile p where p.id = :id")
     Optional<Profile> findByIdForMessaging(@Param("id") Long id);

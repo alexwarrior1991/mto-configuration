@@ -14,10 +14,14 @@ import java.util.Optional;
 public interface SteadyArmRepository extends CRUDRepository<SteadyArm>, MessagingEntityGraphRepository<SteadyArm> {
     Optional<SteadyArm> findByCantileverId(Long cantileverId);
 
+    /**
+     * {@code cantilever} no entra: el mapper solo publica su id y SteadyArm es el lado
+     * PROPIETARIO de la relacion (la FK CANTILEVER_ID vive en STEADY_ARM), asi que el
+     * id se lee del proxy sin inicializarlo.
+     */
     @Override
     @EntityGraph(attributePaths = {
-            "steadyArmType",
-            "cantilever"
+            "steadyArmType"
     })
     @Query("select s from SteadyArm s where s.id = :id")
     Optional<SteadyArm> findByIdForMessaging(@Param("id") Long id);

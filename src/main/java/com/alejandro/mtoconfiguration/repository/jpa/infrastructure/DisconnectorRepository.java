@@ -17,11 +17,14 @@ public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
     List<Disconnector> findByStationId(Long stationId);
     List<Disconnector> findByStationNameContainingIgnoreCase(String stationName);
 
+    /**
+     * {@code profile.track} no entra: DisconnectorMasterDataPayloadMapper no lee nada
+     * de la via.
+     */
     @Override
     @EntityGraph(attributePaths = {
             "station",
             "profile",
-            "profile.track",
             "disconnectorFunction"
     })
     @Query("select d from Disconnector d where d.id = :id")
