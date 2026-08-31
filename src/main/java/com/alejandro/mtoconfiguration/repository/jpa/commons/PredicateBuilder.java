@@ -104,7 +104,7 @@ public class PredicateBuilder<E1 extends BaseEntity, E2 extends BaseEntity> {
 
     public Predicate isNotBlank(String column) {
         return StringUtils.isNotBlank(column)
-                ? criteriaBuilder.isNotNull(from.get("column"))
+                ? criteriaBuilder.isNotNull(from.get(column))
                 : null;
     }
 
@@ -185,7 +185,7 @@ public class PredicateBuilder<E1 extends BaseEntity, E2 extends BaseEntity> {
     }
 
     public Predicate startWith(String columnName) {
-        return like(columnName, null);
+        return startWith(columnName, null);
     }
 
     /**
@@ -200,7 +200,7 @@ public class PredicateBuilder<E1 extends BaseEntity, E2 extends BaseEntity> {
     }
 
     public Predicate endWith(String columnName) {
-        return like(columnName, null);
+        return endWith(columnName, null);
     }
 
     /**
