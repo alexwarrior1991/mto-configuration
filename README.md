@@ -232,8 +232,26 @@ Compilar el proyecto:
 Ejecutar tests:
 
 ```bash
-./mvnw test
+./mvnw test              # solo los unitarios
+./mvnw verify            # unitarios + los *IT, que necesitan Docker (Testcontainers)
 ```
+
+### Informe de fallos
+
+Maven deja un informe por clase en `target/surefire-reports` (unitarios) y `target/failsafe-reports`
+(los `*IT`), pero son decenas de ficheros y la mayoría corresponden a clases que han pasado. Para
+juntar en uno solo los que han fallado:
+
+```bash
+./mvnw clean verify -DtrimStackTrace=false
+./scripts/test-report.sh                      # escribe test-failures.txt
+```
+
+`-DtrimStackTrace=false` importa: sin él Maven recorta la traza y a veces se lleva justo la línea
+que dice dónde falló de verdad.
+
+Si no hay informes, los tests no llegaron a ejecutarse —normalmente porque falló la compilación— y
+el script lo dice: en ese caso lo que hace falta es la salida de Maven.
 
 Arrancar la aplicación:
 
