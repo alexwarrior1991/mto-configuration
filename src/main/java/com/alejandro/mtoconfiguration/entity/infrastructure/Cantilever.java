@@ -11,6 +11,7 @@ import lombok.Setter;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
+import java.util.Objects;
 import java.math.BigDecimal;
 
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.ARM_ANGLE_FRACTION_DIGITS;
@@ -161,5 +162,45 @@ public class Cantilever extends CRUDEntity {
 
     public boolean containsSteadyArm(SteadyArm steadyArm) {
         return this.steadyArm != null;
+    }
+
+    /**
+     * Cantilever heredaba el equals de BaseEntity, que compara SOLO el id. Con dos
+     * instancias aun sin persistir los dos ids son null y BaseEntity las daba por
+     * IGUALES, asi que Profile.addCantilever descartaba la segunda. Los mappers
+     * generados por MapStruct anaden los hijos uno a uno con ese adder, de modo que un
+     * alta anidada con dos meniscos nuevos persistia uno solo, sin error.
+     * <p>
+     * A diferencia de las demas entidades de infrastructure, aqui no se usa una
+     * business key porque Cantilever no tiene ninguna: dentro de un perfil
+     * lo unico que distingue a un menisco de otro es su posicion en la lista. Mientras falte el id la unica respuesta correcta es que
+     * dos instancias distintas son distintas, que es justo lo que hace falta para no
+     * perder hijos.
+     */
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+
+        // instanceof, no getClass(), para soportar los proxies de Hibernate.
+        if (!(o instanceof Cantilever that)) {
+            return false;
+        }
+
+        // Sin id en alguno de los dos no hay nada que comparar: son el mismo objeto
+        // (caso ya resuelto arriba) o son distintos.
+        return getId() != null && that.getId() != null && Objects.equals(getId(), that.getId());
+    }
+
+    /**
+     * Constante a proposito. El hashCode no puede depender del id, porque cambiaria al
+     * persistir la entidad: un hijo metido en un HashSet antes del flush quedaria en el
+     * cubo equivocado y dejaria de encontrarse. Constante es consistente con equals en
+     * los dos estados, que es lo que exige el contrato.
+     */
+    @Override
+    public int hashCode() {
+        return Cantilever.class.hashCode();
     }
 }
