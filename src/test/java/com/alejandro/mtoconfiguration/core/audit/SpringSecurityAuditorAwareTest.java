@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.core.audit;
 import com.alejandro.mtoconfiguration.configuration.security.CurrentUserService;
 import com.alejandro.mtoconfiguration.configuration.security.JwtClaimNames;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -27,6 +28,15 @@ class SpringSecurityAuditorAwareTest {
     private final SpringSecurityAuditorAware auditorAware =
             new SpringSecurityAuditorAware(new CurrentUserService());
 
+    /**
+     * Tanto el contexto de seguridad como los atributos de peticion son estado global del hilo, y
+     * este test se apoya en su ausencia para distinguir un proceso de fondo de una peticion HTTP.
+     * Cualquier test previo de la misma JVM que use MockMvc deja los atributos puestos
+     * ({@code MockMvc.perform} no los limpia al terminar), asi que la precondicion se establece
+     * aqui en lugar de darla por buena: si no, que este test pase o falle depende del orden en el
+     * que surefire ejecute las clases.
+     */
+    @BeforeEach
     @AfterEach
     void limpiar() {
         SecurityContextHolder.clearContext();

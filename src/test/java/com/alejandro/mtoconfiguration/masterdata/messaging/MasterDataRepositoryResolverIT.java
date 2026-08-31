@@ -70,10 +70,20 @@ class MasterDataRepositoryResolverIT {
     }
 
     @Test
+    void cantileverTieneVariosRepositoriosParaElMismoTipoDeDominio() {
+        // Es la razon de ser del test siguiente: Repositories indexa por tipo de dominio,
+        // asi que con dos candidatos gana el ultimo registrado y cual sea eso depende del
+        // orden de escaneo del classpath.
+        assertThat(applicationContext.getBeanNamesForType(JpaRepository.class))
+                .contains("cantileverRepository", "cantileverCriteriaSearchRepository");
+    }
+
+    @Test
     void elRepositorioResueltoParaCantileverEsElMismoQueUsaElListenerParaCargarElGrafoDeMensajeria() {
         // Es exactamente esta comprobacion (instanceof MessagingEntityGraphRepository)
-        // la que hace MasterDataEntityChangedEventListener con lo que este resolver
-        // le devuelve.
+        // la que hace MasterDataEntityChangedEventListener con lo que este resolver le
+        // devuelve: si sale el repositorio de busqueda, el listener se salta el
+        // @EntityGraph y publica la entidad con las relaciones sin inicializar.
         Optional<JpaRepository<IEntity, Long>> repository = resolver().resolve(new Cantilever());
 
         assertThat(repository).get().isInstanceOf(MessagingEntityGraphRepository.class);
