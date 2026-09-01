@@ -26,6 +26,17 @@ public abstract class TrackMapper implements BaseMapper<TrackDTO, Track> {
     @Autowired
     protected MasterDataService masterDataService;
 
+    /**
+     * Hace falta aqui, y no solo en el {@code uses} del @Mapper, porque la reconciliacion de
+     * perfiles vive en el {@code @AfterMapping} de esta clase y necesita volcar cada DTO sobre el
+     * perfil que ya existe.
+     *
+     * <p>El sufijo {@code Child} es deliberado: el impl generado declara su propio campo
+     * {@code profileMapper} y un homonimo en la subclase sombrearia a este.
+     */
+    @Autowired
+    protected ProfileMapper profileChildMapper;
+
     @Override
     @Mapping(target = "executionPackageId", source = "executionPackage.id")
     @Mapping(target = "stationId", source = "station.id")
@@ -34,12 +45,14 @@ public abstract class TrackMapper implements BaseMapper<TrackDTO, Track> {
     @Override
     @Mapping(target = "executionPackage", source = "executionPackageId")
     @Mapping(target = "station", source = "stationId")
+    @Mapping(target = "profiles", ignore = true) // se reconcilian en mapDtoToEntity
     @ToEntityIgnoreAudit
     public abstract Track toEntity(TrackDTO dto);
 
     @Override
     @Mapping(target = "executionPackage", source = "executionPackageId")
     @Mapping(target = "station", source = "stationId")
+    @Mapping(target = "profiles", ignore = true) // se reconcilian en mapDtoToEntity
     @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(TrackDTO dto, @MappingTarget Track entity);
 
@@ -47,14 +60,16 @@ public abstract class TrackMapper implements BaseMapper<TrackDTO, Track> {
     @AfterMapping
     protected void mapDtoToEntity(TrackDTO dto, @MappingTarget Track entity) {
 
-        // Sincronización de Profiles (Bidireccional + Borrado de huérfanos)
-        // Se asegura de que cada Profile apunte a la vía (Track) correspondiente.
-        linkCollection(
-                dto.getProfiles(),      // DTOs origen
-                entity.getProfiles(),   // Colección actual en BD
-                entity,                 // Padre (Track)
-                Profile::setTrack,      // Linker
-                true                    // Sincronización total
+        // Reconciliación de Profiles: fusiona por id, no añade.
+        // Un perfil que el cliente devuelve con su id actualiza ESA fila; añadirlo insertaba una
+        // copia sin id junto a la original y dejaba la original sin los cambios.
+        mergeCollection(
+                dto.getProfiles(),
+                entity.getProfiles(),
+                entity,
+                profileChildMapper::toEntity,
+                (childDto, child) -> profileChildMapper.updateEntityFromDTO(childDto, child),
+                Profile::setTrack
         );
 
         // Añadir aqui resolución de LOVs si Track tuviera alguno

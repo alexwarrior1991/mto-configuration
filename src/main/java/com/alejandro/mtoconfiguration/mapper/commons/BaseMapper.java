@@ -7,9 +7,11 @@ import org.springframework.data.domain.Page;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
@@ -134,6 +136,90 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
             // 2. Vinculación bidireccional
             entities.forEach(child -> linker.accept(child, parent));
         }
+    }
+
+
+    /**
+     * Reconcilia una coleccion de hijos contra los DTO recibidos, <b>fusionando por id</b>.
+     *
+     * <p>Es la alternativa a dejar que MapStruct toque la coleccion. El codigo generado solo sabe
+     * hacer dos cosas con una coleccion: reemplazarla entera o ir añadiendo. Añadir duplica —cada
+     * hijo que el cliente devuelve nace otra vez porque {@code toEntity} no copia el id— y
+     * reemplazar es peor todavia, porque borra e inserta filas que ya existian y con ellas su id,
+     * su numero de version y su historico de auditoria.
+     *
+     * <p>Lo que hace falta es lo que ningun mapeo automatico puede deducir: que un DTO <b>con</b>
+     * id se refiere a una fila concreta y hay que volcarlo <b>sobre esa instancia</b>. De ahi los
+     * tres pasos:
+     *
+     * <ol>
+     *   <li>se retiran los hijos existentes cuyo id no viene en la peticion (el cliente los ha
+     *       quitado; {@code orphanRemoval} los borrara);</li>
+     *   <li>cada DTO con id se vuelca sobre el hijo que ya esta en la coleccion, de modo que la
+     *       fila se actualiza en lugar de duplicarse;</li>
+     *   <li>cada DTO sin id se mapea a un hijo nuevo y se añade.</li>
+     * </ol>
+     *
+     * <p>Un DTO con un id que no pertenece a este padre se ignora: aceptarlo insertaria una fila
+     * a partir de datos de otro registro.
+     *
+     * @param dtos           hijos que manda el cliente; {@code null} equivale a "ninguno", asi que
+     *                       vacia la coleccion
+     * @param entities       coleccion viva de la entidad padre, que se modifica en el sitio
+     * @param parent         entidad padre
+     * @param toNewEntity    mapea un DTO sin id a un hijo nuevo
+     * @param updateExisting vuelca un DTO sobre el hijo existente que le corresponde
+     * @param linker         establece el lado inverso de la relacion en cada hijo
+     */
+    default <D extends BaseDTO, C extends IEntity, P extends IEntity> void mergeCollection(
+            Collection<D> dtos,
+            Collection<C> entities,
+            P parent,
+            Function<D, C> toNewEntity,
+            BiConsumer<D, C> updateExisting,
+            BiConsumer<C, P> linker
+    ) {
+
+        if (entities == null || parent == null) {
+            return;
+        }
+
+        List<D> incoming = dtos == null ? List.of() : dtos.stream().filter(Objects::nonNull).toList();
+
+        Set<Long> incomingIds = incoming.stream()
+                .map(BaseDTO::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // 1. Los que el cliente ha quitado. Solo se miran los que ya tienen id: un hijo sin id es
+        //    uno recien añadido en esta misma peticion y no puede estar en la lista de ids.
+        entities.removeIf(entity -> entity.getId() != null && !incomingIds.contains(entity.getId()));
+
+        Map<Long, C> byId = entities.stream()
+                .filter(entity -> entity.getId() != null)
+                .collect(Collectors.toMap(IEntity::getId, entity -> entity, (a, b) -> a));
+
+        for (D dto : incoming) {
+            if (dto.getId() == null) {
+                // 3. Alta: hijo nuevo.
+                C created = toNewEntity.apply(dto);
+
+                if (created != null) {
+                    entities.add(created);
+                }
+
+                continue;
+            }
+
+            // 2. Modificacion sobre la instancia que ya esta en la coleccion.
+            C existing = byId.get(dto.getId());
+
+            if (existing != null) {
+                updateExisting.accept(dto, existing);
+            }
+        }
+
+        entities.forEach(child -> linker.accept(child, parent));
     }
 
 

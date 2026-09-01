@@ -35,3 +35,6 @@ build/
 ### Credenciales locales ###
 # Se versiona .env.example, nunca .env
 .env
+
+# Informe agregado de fallos de tests (scripts/test-report.sh)
+test-failures.txt

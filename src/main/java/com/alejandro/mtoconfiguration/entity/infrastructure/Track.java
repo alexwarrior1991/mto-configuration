@@ -6,6 +6,7 @@ import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEven
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.Setter;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
@@ -71,8 +72,25 @@ public class Track extends CRUDEntity {
         return station;
     }
 
+    /**
+     * Perfiles de la via, ordenados por su punto kilometrico.
+     *
+     * <p>{@code @OrderBy} y no {@code @OrderColumn}: el orden que importa aqui es el fisico a lo
+     * largo de la via, que es el KP, no el orden en que se dieron de alta. Ademas es el orden que
+     * ya usa todo lo demas ({@code findByTrackIdOrderByKpAscIdAsc}, la paginacion por keyset, la
+     * exportacion), asi que antes convivian dos ordenes distintos para los mismos datos.
+     *
+     * <p>Y sobre todo: {@code @OrderBy} se resuelve con un ORDER BY en la consulta, sin columna
+     * que mantener. La que habia, {@code insertion_order}, la rellenaba la LISTA del padre, no la
+     * clave ajena del hijo, de modo que un perfil creado suelto —{@code POST /profiles} con un
+     * {@code trackId}, que es lo que hace el mapeo: {@code profile.setTrack(...)} sin tocar
+     * {@code track.getProfiles()}— entraba con la columna a null y la siguiente lectura de la via
+     * moria con "Illegal null value for list index". Un 500 al abrir la via, provocado por una
+     * peticion anterior que no habia fallado.
+     */
     @OneToMany(mappedBy = "track", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderColumn(name = "insertion_order") // Columna para persistir el orden de la lista
+    @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
+    @OrderBy("kp ASC, id ASC")
     @Audited(targetAuditMode = NOT_AUDITED)
     public List<Profile> getProfiles() {
         return profiles;

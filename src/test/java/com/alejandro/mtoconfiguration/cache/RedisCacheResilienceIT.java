@@ -80,7 +80,16 @@ class RedisCacheResilienceIT {
     static void redisProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", redis::getFirstMappedPort);
-        registry.add("spring.data.redis.timeout", () -> "500ms");
+        // 2s y no 500ms: con el contenedor recien arrancado, la escritura que puebla la cache en
+        // shouldKeepServingFromDatabaseWhenRedisGoesDown se pasaba a veces de ese margen. Cuando
+        // ocurre, ResilientCacheErrorHandler se traga el fallo —que es su cometido— y la segunda
+        // llamada vuelve al repositorio, de modo que el test fallaba por una carrera con el
+        // arranque y no por lo que pretende comprobar.
+        //
+        // No encarece la parte de degradacion: en cuanto Redis cae, la disponibilidad se marca
+        // como perdida y las llamadas siguientes cortocircuitan sin intentar conectarse, asi que
+        // el timeout se paga una vez por test, no en cada operacion.
+        registry.add("spring.data.redis.timeout", () -> "2s");
         registry.add("cache.redis.degraded-retry-window", () -> "30s");
         registry.add("cache.redis.allowed-subtypes[0]", () -> "java.util");
         registry.add("cache.redis.allowed-subtypes[1]", () -> "org.springframework.data.domain");

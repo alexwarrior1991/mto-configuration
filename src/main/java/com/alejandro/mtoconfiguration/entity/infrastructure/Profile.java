@@ -10,6 +10,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import lombok.Setter;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
@@ -175,8 +176,20 @@ public class Profile extends CRUDEntity {
     }
 
     @Size(max = PROFILE_MAX_CANTILEVERS, message = "The profile must have between 0 and 3 cantilevers")
+    /**
+     * Mensulas del perfil, en orden estable por id.
+     *
+     * <p>El orden entre las mensulas de un perfil no significa nada, asi que basta con que sea
+     * <b>estable</b> —que dos lecturas devuelvan lo mismo— y para eso sirve el id.
+     *
+     * <p>{@code @OrderBy} y no {@code @OrderColumn} por el mismo motivo que en
+     * {@code Track.getProfiles()}: la columna de orden la mantenia la lista del padre, de manera
+     * que una mensula creada suelta ({@code POST /cantilevers} con un {@code profileId}) la dejaba
+     * a null y rompia la siguiente lectura del perfil.
+     */
     @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderColumn(name = "insertion_order") // Crea una columna física para guardar el índice [0, 1, 2...]
+    @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
+    @OrderBy("id ASC")
     @Audited(targetAuditMode = NOT_AUDITED)
     public List<Cantilever> getCantilevers() {
         return cantilevers;
@@ -201,6 +214,7 @@ public class Profile extends CRUDEntity {
     }
 
 
+    @SQLRestriction("deleted = false") // ver CRUDEntity
     @OneToOne(
             mappedBy = "profile",
             cascade = {CascadeType.PERSIST, CascadeType.MERGE},

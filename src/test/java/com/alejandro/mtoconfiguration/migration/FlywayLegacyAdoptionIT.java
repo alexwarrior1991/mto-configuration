@@ -92,7 +92,7 @@ class FlywayLegacyAdoptionIT {
         // Esta lista crece con cada migracion nueva. Es a proposito que haya que tocarla: obliga a
         // comprobar que la migracion tambien se aplica limpiamente sobre un esquema PREEXISTENTE,
         // que es el caso que este test cubre y el unico donde V1 no se ejecuta.
-        assertThat(appliedVersions()).containsExactly("1", "2", "3", "4", "5", "6", "7");
+        assertThat(appliedVersions()).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
         assertThat(queryForString(
                 "select type from " + SCHEMA + ".flyway_schema_history where version = '1'"))
                 .as("V1 debe quedar marcada como baseline, no ejecutada sobre un esquema que ya existe")
