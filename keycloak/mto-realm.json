@@ -156,6 +156,16 @@
             "access.token.claim": "true",
             "id.token.claim": "false"
           }
+        },
+        {
+          "name": "audiencia-mto-stock-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "mto-stock-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
         }
       ]
     },

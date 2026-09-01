@@ -8,6 +8,7 @@ para que los entornos no diverjan por lo que alguien pinchó un día en la conso
 |---|---|
 | `mto-realm.json` | Definición de referencia, la que se lleva a un entorno desplegado. Sin usuarios y sin secretos. |
 | `mto-realm-local.json` | La misma configuración para el stack de `docker compose` de este repositorio. Añade usuarios de desarrollo y fija el secreto de la cuenta de servicio. |
+| `mto-ops-cross-service.json` | Importación parcial que extiende el perfil `mto-ops` a las dos aplicaciones. Se aplica **después** de que `mto-stock` haya creado su cliente. |
 
 `mto-realm.json` no contiene ningún secreto: los de los clientes confidenciales los genera Keycloak
 al importar. `mto-realm-local.json` sí trae uno, pero es el del stack local y sirve exactamente
@@ -23,7 +24,7 @@ para eso; nada de lo que hay en él debe acercarse a un entorno desplegado.
 | Cliente | Tipo | Para qué |
 |---|---|---|
 | `mto-configuration-api` | Confidencial, sin flujos | No inicia ninguna autenticación. Existe para declarar los permisos como roles de cliente y para ser la **audiencia** de los tokens. |
-| `mto-frontend` | Público, PKCE S256 | La aplicación de navegador. Lleva el *audience mapper* que nombra a la API. |
+| `mto-frontend` | Público, PKCE S256 | La aplicación de navegador. Lleva un *audience mapper* por cada API del dominio a la que llama: `mto-configuration-api` y `mto-stock-api`. |
 | `mto-configuration-svc` | Confidencial, cuenta de servicio | `client_credentials` para las llamadas salientes a otros servicios. |
 
 ### Permisos y perfiles
@@ -119,6 +120,45 @@ resueltas por `mto-realm-local.json`:
 
 4. **Crear los usuarios y asignarles su perfil.** `mto-realm.json` no trae ninguno a propósito;
    los de desarrollo están solo en `mto-realm-local.json`.
+
+## El perfil `mto-ops` y las dos aplicaciones
+
+`mto-ops` es el perfil de quien explota la plataforma, y explotar la plataforma es explotar las dos
+aplicaciones. Pero los permisos son roles de **cliente**, y el converter solo lee los del cliente
+propio de cada aplicación:
+
+```java
+authorities.addAll(extractClientRoles(jwt, securityProperties.clientId()));
+```
+
+`ops-metrics` existe en `mto-configuration-api` y en `mto-stock-api` como dos permisos distintos que
+se llaman igual. Por eso `mto-ops` tal y como lo define `mto-realm.json` abre el Actuator de esta
+aplicación y no el de `mto-stock`.
+
+Lo que lo arregla no puede ir dentro de `mto-realm.json`: un compuesto solo puede nombrar roles de
+clientes que existan en el realm que se está importando, y `mto-realm.json` es justo el fichero que
+**crea** el realm, cuando `mto-stock-api` todavía no está. Keycloak aborta la importación entera con
+*App doesn't exist in role definitions* y el realm se queda sin crear. En `mto-realm-local.json` el
+cliente no llega a existir nunca. `RealmDefinitionsTest` comprueba que ningún compuesto de los dos
+ficheros nombre un cliente ausente, precisamente para que nadie lo intente.
+
+De ahí `mto-ops-cross-service.json`, que se aplica como importación parcial cuando las dos
+aplicaciones ya están en el realm:
+
+```bash
+curl -X POST "$KC_URL/admin/realms/mto/partialImport" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  --data-binary @keycloak/mto-ops-cross-service.json
+```
+
+Una importación parcial **reescribe el rol entero**, así que el fichero repite los permisos que
+`mto-realm.json` ya da a `mto-ops` sobre `mto-configuration-api`. Olvidarlos dejaría al perfil de
+explotación sin el Actuator de esta aplicación — es la razón por la que `mto-stock` no metió
+`mto-ops` en su propia importación parcial, y `RealmDefinitionsTest` lo vigila.
+
+Los *audience mapper* no tienen ese problema: su destino se resuelve al emitir el token, no al
+importar, así que sí pueden nombrar un cliente que aún no existe. Por eso el de `mto-stock-api` vive
+directamente en `mto-frontend`.
 
 ## Un realm por entorno
 
