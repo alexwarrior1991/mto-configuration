@@ -6,6 +6,7 @@ import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEven
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.Setter;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
@@ -88,6 +89,7 @@ public class Track extends CRUDEntity {
      * peticion anterior que no habia fallado.
      */
     @OneToMany(mappedBy = "track", cascade = CascadeType.ALL, orphanRemoval = true)
+    @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @OrderBy("kp ASC, id ASC")
     @Audited(targetAuditMode = NOT_AUDITED)
     public List<Profile> getProfiles() {

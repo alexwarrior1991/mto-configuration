@@ -7,6 +7,7 @@ import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEven
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.Setter;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
@@ -95,6 +96,7 @@ public class ExecutionPackage extends CRUDEntity {
     }
 
     @OneToMany(mappedBy = "executionPackage", cascade = CascadeType.ALL, orphanRemoval = true)
+    @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @Audited(targetAuditMode = NOT_AUDITED)
     public Set<Track> getTracks() {
         return tracks;
@@ -119,6 +121,7 @@ public class ExecutionPackage extends CRUDEntity {
     }
 
     @OneToMany(mappedBy = "executionPackage", cascade = CascadeType.ALL, orphanRemoval = true)
+    @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @Audited(targetAuditMode = NOT_AUDITED)
     public Set<Station> getStations() {
         return stations;

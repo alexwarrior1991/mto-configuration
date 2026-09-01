@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
 import jakarta.persistence.*;
 import lombok.Setter;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
@@ -58,6 +59,7 @@ public class Station extends CRUDEntity {
     }
 
     @OneToMany(mappedBy = "station", cascade = CascadeType.ALL, orphanRemoval = true)
+    @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @Audited(targetAuditMode = NOT_AUDITED)
     public Set<Track> getTracks() {
         return tracks;
@@ -83,6 +85,7 @@ public class Station extends CRUDEntity {
 
 
     @OneToMany(mappedBy = "station", cascade = CascadeType.ALL, orphanRemoval = true)
+    @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @Audited(targetAuditMode = NOT_AUDITED)
     public Set<Disconnector> getDisconnectors() {
         return disconnectors == null ? Collections.emptySet() : disconnectors;
@@ -107,6 +110,7 @@ public class Station extends CRUDEntity {
     }
 
     @OneToMany(mappedBy = "station", cascade = CascadeType.ALL, orphanRemoval = true)
+    @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @Audited(targetAuditMode = NOT_AUDITED)
     public Set<SectionInsulator> getSectionInsulators() {
         return sectionInsulators == null ? Collections.emptySet() : sectionInsulators;

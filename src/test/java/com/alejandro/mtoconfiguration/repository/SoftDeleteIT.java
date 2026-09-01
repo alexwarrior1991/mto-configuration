@@ -1,6 +1,10 @@
 package com.alejandro.mtoconfiguration.repository;
 
+import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
+import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackCriteriaSearchRepository;
@@ -28,6 +32,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * de la busqueda por criteria y de la coleccion del padre, y que sin embargo <b>sigue estando</b>
  * en la tabla. Esa ultima parte importa igual: si el borrado fuese fisico se perderia el historico
  * de auditoria y se romperia cualquier referencia que apuntase a la fila.
+ *
+ * <p>La parte de las colecciones no era teorica: la restriccion de clase de {@code CRUDEntity} no
+ * se aplica al cargar un {@code @OneToMany}, asi que una via borrada seguia devolviendose dentro
+ * de su paquete. Cada asociacion repite ahora la restriccion, y estos tests son lo que impide que
+ * se olvide en la siguiente que se añada.
  */
 class SoftDeleteIT extends AbstractCriteriaSearchIT {
 
@@ -181,6 +190,116 @@ class SoftDeleteIT extends AbstractCriteriaSearchIT {
                         "select deleted from profile where id = " + perfil.getId()).getSingleResult())
                 .as("el perfil sigue sin marcar")
                 .isEqualTo(false);
+    }
+
+    @Test
+    @DisplayName("un aislador borrado desaparece de la coleccion de su estacion")
+    void desapareceDeLaColeccionDeStation() {
+        Station estacion = new Station();
+        estacion.setName("ATOCHA");
+        estacion.setExecutionPackage(em.find(ExecutionPackage.class, paqueteId));
+        em.persist(estacion);
+
+        SectionInsulator aislador = new SectionInsulator();
+        aislador.setName("AISL-1");
+        aislador.setEnabled(true);
+        estacion.addSectionInsulator(aislador);
+        em.persist(aislador);
+        flushAndClear();
+
+        SectionInsulator persistido = em.find(SectionInsulator.class, aislador.getId());
+        persistido.delete();
+        em.merge(persistido);
+        flushAndClear();
+
+        assertThat(em.find(Station.class, estacion.getId()).getSectionInsulators()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("una mensula borrada desaparece de la coleccion de su perfil")
+    void desapareceDeLaColeccionDeProfile() {
+        Track via = em.find(Track.class, viaVivaId);
+        Profile perfil = new Profile();
+        perfil.setProfileId("P-001");
+        perfil.setKp(new BigDecimal("10.000"));
+        via.addProfile(perfil);
+        em.persist(perfil);
+
+        Cantilever mensula = new Cantilever();
+        mensula.setCwHeight(new BigDecimal("5.500"));
+        mensula.setStagger(new BigDecimal("200"));
+        perfil.addCantilever(mensula);
+        flushAndClear();
+
+        Cantilever persistida = em.find(Cantilever.class, mensula.getId());
+        persistida.delete();
+        em.merge(persistida);
+        flushAndClear();
+
+        assertThat(em.find(Profile.class, perfil.getId()).getCantilevers()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("un seccionador borrado desaparece de la relacion uno a uno de su perfil")
+    void desapareceDeLaRelacionUnoAUno() {
+        // La restriccion tambien hace falta en el lado inverso de un @OneToOne: si no, el perfil
+        // sigue devolviendo un seccionador que ya no existe para el resto de la aplicacion.
+        Track via = em.find(Track.class, viaVivaId);
+        Profile perfil = new Profile();
+        perfil.setProfileId("P-001");
+        perfil.setKp(new BigDecimal("10.000"));
+        via.addProfile(perfil);
+        em.persist(perfil);
+
+        Disconnector seccionador = new Disconnector();
+        seccionador.setName("SECC-1");
+        seccionador.setOnLoad(true);
+        seccionador.setProfile(perfil);
+        perfil.setDisconnector(seccionador);
+        em.persist(seccionador);
+        flushAndClear();
+
+        Disconnector persistido = em.find(Disconnector.class, seccionador.getId());
+        persistido.delete();
+        em.merge(persistido);
+        flushAndClear();
+
+        assertThat(em.find(Profile.class, perfil.getId()).getDisconnector()).isNull();
+    }
+
+    @Test
+    @DisplayName("un hijo borrado no lo ve la reconciliacion, asi que no se borra fisicamente")
+    void elHijoBorradoNoSeBorraFisicamenteAlModificarElPadre() {
+        // La consecuencia menos evidente de que la coleccion arrastrase hijos borrados: la
+        // reconciliacion de los mappers retira lo que el cliente no manda, y el cliente no manda
+        // lo que no ve. Con el hijo borrado dentro de la coleccion, orphanRemoval lo habria
+        // borrado FISICAMENTE en la siguiente modificacion del padre, convirtiendo un borrado
+        // logico en uno definitivo.
+        Track via = em.find(Track.class, viaVivaId);
+        Profile perfil = new Profile();
+        perfil.setProfileId("P-001");
+        perfil.setKp(new BigDecimal("10.000"));
+        via.addProfile(perfil);
+        em.persist(perfil);
+        flushAndClear();
+
+        Profile persistido = em.find(Profile.class, perfil.getId());
+        persistido.delete();
+        em.merge(persistido);
+        flushAndClear();
+
+        // Modificacion del padre: la coleccion se relee y se vuelve a volcar.
+        Track releida = em.find(Track.class, viaVivaId);
+        releida.setName("VIA RENOMBRADA");
+        em.merge(releida);
+        flushAndClear();
+
+        assertThat(contarFilasReales("profile"))
+                .as("el perfil borrado sigue en la tabla, solo marcado")
+                .isEqualTo(1);
+        assertThat(em.createNativeQuery(
+                        "select deleted from profile where id = " + perfil.getId()).getSingleResult())
+                .isEqualTo(true);
     }
 
     @Test

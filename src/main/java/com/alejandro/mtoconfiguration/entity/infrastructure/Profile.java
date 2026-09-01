@@ -10,6 +10,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import lombok.Setter;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
@@ -187,6 +188,7 @@ public class Profile extends CRUDEntity {
      * a null y rompia la siguiente lectura del perfil.
      */
     @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL, orphanRemoval = true)
+    @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @OrderBy("id ASC")
     @Audited(targetAuditMode = NOT_AUDITED)
     public List<Cantilever> getCantilevers() {
@@ -212,6 +214,7 @@ public class Profile extends CRUDEntity {
     }
 
 
+    @SQLRestriction("deleted = false") // ver CRUDEntity
     @OneToOne(
             mappedBy = "profile",
             cascade = {CascadeType.PERSIST, CascadeType.MERGE},

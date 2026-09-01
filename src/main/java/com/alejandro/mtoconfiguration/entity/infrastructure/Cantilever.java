@@ -8,6 +8,7 @@ import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import lombok.Setter;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
@@ -142,6 +143,7 @@ public class Cantilever extends CRUDEntity {
     }
 
     @OneToOne(mappedBy = "cantilever", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @SQLRestriction("deleted = false") // ver CRUDEntity
     public SteadyArm getSteadyArm() {
         return steadyArm;
     }
