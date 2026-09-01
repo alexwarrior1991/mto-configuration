@@ -81,7 +81,15 @@ services:
     # estricto (el de por defecto) es justo lo que se quiere, porque fija el 'iss' de los tokens
     # a http://auth.mto.local:8082 sea cual sea la cabecera Host de la peticion. Un emisor que
     # variase segun quien llama no coincidiria con KEYCLOAK_ISSUER_URI y la validacion fallaria.
-    command: start-dev --hostname=http://auth.mto.local:8082
+    #
+    # --import-realm carga /opt/keycloak/data/import al arrancar, de modo que el realm queda listo
+    # sin tocar la consola. Si el realm ya existe, no lo pisa.
+    command: start-dev --hostname=http://auth.mto.local:8082 --import-realm
+    # Se monta mto-realm-local.json y no mto-realm.json: el primero es la variante local, que trae
+    # usuarios de desarrollo y el secreto fijo de la cuenta de servicio. El segundo es la definicion
+    # de referencia para entornos desplegados y no debe traer ni una cosa ni la otra.
+    volumes:
+      - ./keycloak/mto-realm-local.json:/opt/keycloak/data/import/mto-realm-local.json:ro
     # Variables de entorno para configurar las credenciales de administrador de Keycloak
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin

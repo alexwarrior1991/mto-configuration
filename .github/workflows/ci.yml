@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # GitHub-hosted Ubuntu runners ship with a running Docker daemon, which is
+      # what the Testcontainers-backed tests need: KeycloakAuthorizationIT starts
+      # quay.io/keycloak/keycloak:26.1 and imports its realm with --import-realm.
+      - name: Build and run the test suite
+        run: ./mvnw -B --no-transfer-progress verify
+
+      # Los *IT corren bajo failsafe y dejan su informe en un directorio aparte, asi que se suben
+      # los dos: sin failsafe-reports un fallo de KeycloakAuthorizationIT no deja rastro que leer.
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-reports
+          path: |
+            target/surefire-reports/
+            target/failsafe-reports/
+          if-no-files-found: ignore
+          retention-days: 7
