@@ -276,6 +276,27 @@ RabbitMQ: guest / guest
 PostgreSQL: mto_configuration_user / mto_configuration_password
 ```
 
+El realm no hay que importarlo: el servicio `keycloak` monta `keycloak/mto-realm-local.json` y
+arranca con `--import-realm`, así que el realm `mto` llega con sus clientes, permisos, perfiles y
+cinco usuarios de desarrollo (contraseña `local`):
+
+```text
+config.lector       mto-viewer
+config.editor       mto-editor
+config.responsable  mto-admin
+config.auditor      mto-auditor
+config.ops          mto-ops
+```
+
+Para comprobar que quedó importado:
+
+```text
+http://auth.mto.local:8082/realms/mto/.well-known/openid-configuration
+```
+
+Keycloak no reimporta sobre un realm que ya existe. Si cambias el JSON, hay que partir de cero con
+`docker compose down -v`. El detalle del realm está en `keycloak/README.md`.
+
 ### Paso 3: arrancar la aplicación desde Maven
 
 Ejecuta:
@@ -664,6 +685,21 @@ Si ves errores `401 Unauthorized`, `invalid issuer` o problemas de JWT, revisa:
 - Que la app usa `KEYCLOAK_ISSUER_URI=http://auth.mto.local:8082/realms/mto`.
 - Que existe `127.0.0.1 auth.mto.local` en el archivo `hosts` de Windows.
 - Que `extra_hosts` existe en el servicio `app` de Docker Compose.
+
+### El realm `mto` no existe
+
+Si `http://auth.mto.local:8082/realms/mto/.well-known/openid-configuration` da 404, la importación
+no llegó a ejecutarse. Lo habitual es que el volumen venga de un arranque anterior a que el compose
+importara el realm: Keycloak no importa sobre un realm que ya existe, ni sobre una base de datos ya
+inicializada. Se arregla partiendo de cero:
+
+```powershell
+docker compose down -v
+docker compose up -d postgres redis rabbitmq keycloak
+```
+
+Si aun así falla, mira `docker compose logs keycloak`: un JSON mal formado aborta el arranque y lo
+dice ahí.
 
 ### Flyway no ejecuta migraciones
 

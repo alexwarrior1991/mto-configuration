@@ -1,0 +1,284 @@
+{
+  "realm": "mto",
+  "enabled": true,
+  "displayName": "MTO (local)",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "sslRequired": "none",
+  "roles": {
+    "client": {
+      "mto-configuration-api": [
+        {
+          "name": "config-read",
+          "description": "Lectura de infraestructura y listas de valores"
+        },
+        {
+          "name": "config-write",
+          "description": "Alta y modificacion de infraestructura, registro a registro"
+        },
+        {
+          "name": "config-delete",
+          "description": "Borrado y cancelacion"
+        },
+        {
+          "name": "config-import",
+          "description": "Cargas masivas: un error afecta a miles de registros"
+        },
+        {
+          "name": "lov-manage",
+          "description": "Mantenimiento de listas de valores"
+        },
+        {
+          "name": "config-audit",
+          "description": "Consulta del historico de revisiones"
+        },
+        {
+          "name": "ops-metrics",
+          "description": "Lectura de los endpoints de Actuator"
+        },
+        {
+          "name": "ops-write",
+          "description": "Operaciones de Actuator que modifican estado, como el redrive del outbox"
+        }
+      ]
+    },
+    "realm": [
+      {
+        "name": "mto-viewer",
+        "description": "Consulta general e integraciones de solo lectura",
+        "composite": true,
+        "composites": {
+          "client": {
+            "mto-configuration-api": [
+              "config-read"
+            ]
+          }
+        }
+      },
+      {
+        "name": "mto-editor",
+        "description": "Trabajo diario sobre datos maestros",
+        "composite": true,
+        "composites": {
+          "client": {
+            "mto-configuration-api": [
+              "config-read",
+              "config-write",
+              "config-import"
+            ]
+          }
+        }
+      },
+      {
+        "name": "mto-admin",
+        "description": "Responsables del dominio",
+        "composite": true,
+        "composites": {
+          "client": {
+            "mto-configuration-api": [
+              "config-read",
+              "config-write",
+              "config-import",
+              "config-delete",
+              "lov-manage",
+              "config-audit"
+            ]
+          }
+        }
+      },
+      {
+        "name": "mto-auditor",
+        "description": "Auditoria y cumplimiento: ve todo, no toca nada",
+        "composite": true,
+        "composites": {
+          "client": {
+            "mto-configuration-api": [
+              "config-read",
+              "config-audit"
+            ]
+          }
+        }
+      },
+      {
+        "name": "mto-ops",
+        "description": "Explotacion y monitorizacion",
+        "composite": true,
+        "composites": {
+          "client": {
+            "mto-configuration-api": [
+              "config-read",
+              "ops-metrics",
+              "ops-write"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "mto-configuration-api",
+      "name": "API de configuracion MTO",
+      "description": "Resource server. No inicia ningun flujo: existe para declarar los permisos como roles de cliente y para ser la audiencia de los tokens.",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false
+    },
+    {
+      "clientId": "mto-frontend",
+      "name": "Frontal MTO",
+      "description": "Aplicacion de navegador. Authorization Code con PKCE. El grant de acceso directo queda abierto solo en local, para poder pedir un token con curl.",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "redirectUris": [
+        "http://localhost:4200/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4200"
+      ],
+      "protocolMappers": [
+        {
+          "name": "audiencia-mto-configuration-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "mto-configuration-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "mto-configuration-svc",
+      "name": "Cuenta de servicio de mto-configuration",
+      "description": "Llamadas salientes a otros servicios del dominio mediante client_credentials. En local el secreto viene fijado para que coincida con .env.example y no haya que copiarlo de la consola.",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "audiencia-mto-stock-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "mto-stock-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ],
+      "secret": "mto-configuration-svc-secret"
+    }
+  ],
+  "users": [
+    {
+      "username": "config.lector",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Lucia",
+      "lastName": "Lectora",
+      "email": "config.lector@mto.local",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "mto-viewer"
+      ]
+    },
+    {
+      "username": "config.editor",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Elena",
+      "lastName": "Editora",
+      "email": "config.editor@mto.local",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "mto-editor"
+      ]
+    },
+    {
+      "username": "config.responsable",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Rosa",
+      "lastName": "Responsable",
+      "email": "config.responsable@mto.local",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "mto-admin"
+      ]
+    },
+    {
+      "username": "config.auditor",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Andres",
+      "lastName": "Auditor",
+      "email": "config.auditor@mto.local",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "mto-auditor"
+      ]
+    },
+    {
+      "username": "config.ops",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Oscar",
+      "lastName": "Operaciones",
+      "email": "config.ops@mto.local",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "mto-ops"
+      ]
+    }
+  ]
+}

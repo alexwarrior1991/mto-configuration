@@ -1,10 +1,20 @@
 # Realm de Keycloak para `mto-configuration`
 
-`mto-realm.json` es la definición del realm que espera la aplicación. Se versiona para que la
+Estos ficheros son la definición del realm que espera la aplicación. Se versionan para que la
 configuración del servidor de identidad se revise en pull request como cualquier otro cambio, y
 para que los entornos no diverjan por lo que alguien pinchó un día en la consola.
 
-No contiene ningún secreto: los de los clientes confidenciales los genera Keycloak al importar.
+| Fichero | Cuándo |
+|---|---|
+| `mto-realm.json` | Definición de referencia, la que se lleva a un entorno desplegado. Sin usuarios y sin secretos. |
+| `mto-realm-local.json` | La misma configuración para el stack de `docker compose` de este repositorio. Añade usuarios de desarrollo y fija el secreto de la cuenta de servicio. |
+
+`mto-realm.json` no contiene ningún secreto: los de los clientes confidenciales los genera Keycloak
+al importar. `mto-realm-local.json` sí trae uno, pero es el del stack local y sirve exactamente
+para eso; nada de lo que hay en él debe acercarse a un entorno desplegado.
+
+`mto-stock` vive en este mismo realm y añade lo suyo con su propio fichero de importación parcial
+(`mto-stock/keycloak/mto-stock-partial-import.json`).
 
 ## Qué hay dentro
 
@@ -36,24 +46,67 @@ La ventaja de separarlos: cambiar lo que puede hacer un perfil se hace aquí, si
 Los roles de realm **nunca** deben llamarse igual que un permiso. El converter emite los de realm
 solo como `ROLE_REALM_*` precisamente para que no se confundan, pero conviene no tentar a la suerte.
 
-## Importar
+## Cómo cargarlo
 
-En un Keycloak nuevo:
+### Automático: el stack local de este repositorio
+
+No hay que hacer nada. El servicio `keycloak` de `docker-compose.yaml` monta
+`mto-realm-local.json` en `/opt/keycloak/data/import` y arranca con `--import-realm`:
+
+```bash
+cp .env.example .env    # define al menos KC_BOOTSTRAP_ADMIN_PASSWORD
+docker compose up -d postgres redis rabbitmq keycloak
+```
+
+Keycloak queda en `http://auth.mto.local:8082` (consola: `admin` / lo que pusieras en
+`KC_BOOTSTRAP_ADMIN_PASSWORD`) con el realm `mto` importado y cinco usuarios de desarrollo, todos
+con contraseña `local`:
+
+| Usuario | Perfil |
+|---|---|
+| `config.lector` | `mto-viewer` |
+| `config.editor` | `mto-editor` |
+| `config.responsable` | `mto-admin` |
+| `config.auditor` | `mto-auditor` |
+| `config.ops` | `mto-ops` |
+
+Esos usuarios existen **solo** en `mto-realm-local.json`; `mto-realm.json` no trae ninguno a
+propósito.
+
+La importación solo actúa si el realm no existe todavía: Keycloak no la repite sobre uno ya creado.
+Para recoger un cambio del JSON hay que partir de cero con `docker compose down -v`.
+
+En local, `mto-frontend` lleva además `directAccessGrantsEnabled`, de modo que se puede pedir un
+token con `curl` sin montar el flujo del navegador:
+
+```bash
+curl -s -X POST http://auth.mto.local:8082/realms/mto/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=mto-frontend \
+  -d username=config.editor -d password=local
+```
+
+En `mto-realm.json` ese grant está cerrado, que es como debe estar fuera de local.
+
+### Automático: un Keycloak nuevo, fuera de compose
 
 ```bash
 kc.sh start --import-realm     # con el fichero en /opt/keycloak/data/import/
 ```
 
-En uno que ya está en marcha, desde la consola: **Realm settings → Partial import**, con la
-estrategia de conflicto en *Skip* si solo se quieren añadir las piezas que falten.
+### Sobre un realm que ya existe
+
+Desde la consola: **Realm settings → Partial import**, con la estrategia de conflicto en *Skip* si
+solo se quieren añadir las piezas que falten.
 
 ## Después de importar
 
-Cuatro cosas que el fichero no puede traer:
+Cuatro cosas que `mto-realm.json` no puede traer. En el stack local, las dos primeras vienen ya
+resueltas por `mto-realm-local.json`:
 
 1. **Leer los secretos generados.** Clients → `mto-configuration-svc` → Credentials. Ese valor va
    al gestor de secretos del entorno como `KEYCLOAK_SERVICE_CLIENT_SECRET`, nunca a un fichero del
-   repositorio.
+   repositorio. En local no hace falta: `mto-realm-local.json` fija ese secreto con el mismo valor
+   que trae `.env.example`.
 
 2. **Ajustar el destino de la cuenta de servicio.** El *audience mapper* de
    `mto-configuration-svc` apunta a `mto-stock-api` como ejemplo. Debe nombrar al servicio al que
@@ -64,7 +117,8 @@ Cuatro cosas que el fichero no puede traer:
    `http://localhost:4200`. En un entorno desplegado deben ser los dominios reales, enumerados y
    sin comodín final.
 
-4. **Crear los usuarios y asignarles su perfil.** El realm no trae ninguno a propósito.
+4. **Crear los usuarios y asignarles su perfil.** `mto-realm.json` no trae ninguno a propósito;
+   los de desarrollo están solo en `mto-realm-local.json`.
 
 ## Un realm por entorno
 
@@ -72,7 +126,11 @@ Cuatro cosas que el fichero no puede traer:
 mismos para `mto-configuration` y para `mto-stock`, y un realm compartido evita duplicar
 identidades. El aislamiento entre servicios lo dan los roles de cliente, no los realms.
 
-Para cambiar el nombre, el campo `realm` de la primera línea del JSON.
+Para cambiar el nombre, el campo `realm` de la primera línea del JSON — en los dos ficheros.
+
+Permisos y perfiles deben ser idénticos en ambos: `mto-realm-local.json` es `mto-realm.json` más
+usuarios, el secreto local y el grant de acceso directo. Un cambio de permisos que se haga solo en
+uno de los dos deja el stack local probando algo distinto de lo que se despliega.
 
 El realm `master` se reserva para administrar Keycloak. Alojar ahí la aplicación pondría a
 cualquiera de sus usuarios a un rol de distancia de administrar todo el servidor de identidad.
