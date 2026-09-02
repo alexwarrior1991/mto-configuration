@@ -62,7 +62,12 @@ public class SecurityConfiguration {
             // regla general de POST/PUT y bastaria {@code config-write} para cargar en masa,
             // que es justo la distincion que BULK existe para mantener.
             API + "/*/jobs/bulk-create",
-            API + "/*/jobs/bulk-update"
+            API + "/*/jobs/bulk-update",
+            // La importacion del catalogo maestro escribe sobre TODAS las tablas LOV de una
+            // vez, asi que lleva el mismo permiso que el resto de cargas masivas. Sin esta
+            // entrada caeria en la regla general de POST y bastaria config-write, que es
+            // justo la distincion que BULK existe para mantener.
+            API + "/*/jobs/import"
     };
 
     private static final String[] API_DOCS = {
