@@ -60,31 +60,37 @@ ALTER TABLE support_type_aud              ALTER COLUMN code TYPE varchar(40);
 -- ---------------------------------------------------------------------------
 -- 2. Unicidad del codigo en las 16 tablas base.
 --
--- Se crea condicionalmente para que la migracion sea aplicable tanto a un
--- esquema recien creado como a uno adoptado con baseline-on-migrate, donde el
--- indice podria existir ya. Si hubiese duplicados previos la creacion falla, y
--- eso es lo correcto: hay que limpiarlos antes de seguir.
+-- Sin el indice, reimportar el catalogo duplicaria filas y findByCode --que
+-- devuelve un unico resultado-- reventaria con NonUniqueResultException.
+--
+-- IF NOT EXISTS en lugar de consultar pg_indexes: hace falta que la migracion sea
+-- reaplicable sobre un esquema adoptado con baseline-on-migrate, donde el indice
+-- puede existir ya. Un guard contra pg_indexes filtrando por current_schema() NO
+-- vale, y el fallo es sutil: con un search_path de varios esquemas --como el que
+-- monta FlywayLegacyAdoptionIT, "esquema_legado, public"-- current_schema()
+-- devuelve el primero mientras que la tabla y su indice se resuelven en el
+-- segundo. El guard no ve el indice, intenta crearlo y choca con el que ya
+-- estaba. IF NOT EXISTS resuelve el nombre igual que lo hace el propio CREATE.
+--
+-- Solo en las 16 tablas base: las gemelas _aud de Envers guardan una fila por
+-- revision, asi que alli el codigo se repite por diseno.
+--
+-- Si hubiese duplicados previos la creacion falla, y es lo correcto: hay que
+-- limpiarlos antes de seguir.
 -- ---------------------------------------------------------------------------
-DO $$
-DECLARE
-    lov_table text;
-BEGIN
-    FOREACH lov_table IN ARRAY ARRAY[
-        'anchorage', 'anchorage_foundation', 'anchorage_foundation_type',
-        'cantilever_type', 'comercial_entity_type', 'disconnector_function',
-        'foundation', 'foundation_type', 'pole_type', 'portal', 'portal_type',
-        'profile_status', 'return_support', 'sectioning', 'steady_arm_type',
-        'support_type'
-    ]
-    LOOP
-        IF NOT EXISTS (
-            SELECT 1 FROM pg_indexes
-            WHERE schemaname = current_schema()
-              AND tablename = lov_table
-              AND indexname = 'ux_' || lov_table || '_code'
-        ) THEN
-            EXECUTE format('CREATE UNIQUE INDEX %I ON %I (code)',
-                           'ux_' || lov_table || '_code', lov_table);
-        END IF;
-    END LOOP;
-END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_anchorage_code                 ON anchorage                 (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_anchorage_foundation_code      ON anchorage_foundation      (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_anchorage_foundation_type_code ON anchorage_foundation_type (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_cantilever_type_code           ON cantilever_type           (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_comercial_entity_type_code     ON comercial_entity_type     (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_disconnector_function_code     ON disconnector_function     (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_foundation_code                ON foundation                (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_foundation_type_code           ON foundation_type           (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_pole_type_code                 ON pole_type                 (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_portal_code                    ON portal                    (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_portal_type_code               ON portal_type               (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_profile_status_code            ON profile_status            (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_return_support_code            ON return_support            (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_sectioning_code                ON sectioning                (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_steady_arm_type_code           ON steady_arm_type           (code);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_support_type_code              ON support_type              (code);

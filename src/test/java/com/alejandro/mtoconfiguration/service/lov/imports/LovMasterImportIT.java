@@ -5,10 +5,12 @@ import com.alejandro.mtoconfiguration.repository.jpa.lov.FoundationRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.FoundationTypeRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.SectioningRepository;
 import com.alejandro.mtoconfiguration.support.PostgresTestDatabase;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -16,6 +18,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assumptions.assumeThat;
@@ -42,6 +47,34 @@ class LovMasterImportIT {
         PostgresTestDatabase.registerProperties(registry);
         // La siembra automatica se apaga: este test controla cuando se importa.
         registry.add("app.lov.seed-on-startup", () -> "false");
+    }
+
+    /**
+     * Las tablas que toca la importacion, con sus gemelas _aud de Envers.
+     *
+     * <p>Hay que vaciarlas al terminar. Este es el UNICO {@code @SpringBootTest} de los que
+     * comparten la base de datos de {@link PostgresTestDatabase}: el resto son
+     * {@code @DataJpaTest} y deshacen sus escrituras al acabar, pero aqui las altas se
+     * confirman de verdad. Dejarlas puestas romperia a cualquier otro test que diera de alta
+     * una LOV con un codigo del catalogo —{@code C3R}, por ejemplo—, porque desde V9 hay un
+     * indice UNIQUE sobre {@code code}.
+     */
+    private static final List<String> LOV_TABLES = List.of(
+            "foundation", "foundation_type", "portal", "portal_type",
+            "anchorage", "anchorage_foundation", "anchorage_foundation_type",
+            "pole_type", "support_type", "cantilever_type", "steady_arm_type",
+            "return_support", "disconnector_function", "sectioning");
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @AfterEach
+    void limpiaElCatalogo() {
+        String tables = LOV_TABLES.stream()
+                .flatMap(table -> Stream.of(table, table + "_aud"))
+                .collect(Collectors.joining(", "));
+
+        jdbcTemplate.execute("truncate table " + tables + " restart identity cascade");
     }
 
     @Autowired
