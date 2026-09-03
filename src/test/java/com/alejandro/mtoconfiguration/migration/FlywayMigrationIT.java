@@ -90,7 +90,64 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+    }
+
+    /**
+     * V9 amplia LOV.code a varchar(40).
+     *
+     * <p>Se comprueba aqui porque {@code ddl-auto: validate} <b>no</b> mira las longitudes
+     * de varchar: si la migracion y la anotacion {@code @Size} de
+     * {@link com.alejandro.mtoconfiguration.entity.lov.commons.Lov} se separasen, la
+     * aplicacion arrancaria tan tranquila y el fallo saldria al insertar el primer codigo
+     * largo del catalogo, como {@code CP/TX-P/1100} o {@code 2HEB-300 V (CP)}.
+     */
+    @Test
+    void elCodigoDeLasLovAceptaLosCodigosLargosDelCatalogo() {
+        List<String> cortas = jdbc().queryForList(
+                "select table_name from information_schema.columns"
+                        + " where table_schema = ? and column_name = 'code'"
+                        + " and character_maximum_length < 40 order by table_name",
+                String.class, SCHEMA);
+
+        assertThat(cortas)
+                .as("ninguna tabla con columna code deberia quedarse por debajo de 40")
+                .isEmpty();
+    }
+
+    /**
+     * V9 anade unicidad por codigo en las 16 tablas LOV base, pero NO en sus gemelas _aud.
+     *
+     * <p>Sin el indice unico, reimportar el catalogo duplicaria filas y
+     * {@code LovRepository.findByCode}, que devuelve un unico resultado, reventaria con
+     * {@code NonUniqueResultException}. En las tablas _aud el indice seria justo lo
+     * contrario de lo que hace falta: Envers guarda una fila por revision.
+     */
+    @Test
+    void elCodigoDeLasLovEsUnicoEnLasTablasBasePeroNoEnLasDeAuditoria() {
+        List<String> conIndiceUnico = jdbc().queryForList(
+                "select tablename from pg_indexes"
+                        + " where schemaname = ? and indexname like 'ux_%_code' order by tablename",
+                String.class, SCHEMA);
+
+        assertThat(conIndiceUnico)
+                .hasSize(16)
+                .contains("foundation", "pole_type", "sectioning", "anchorage")
+                .as("las tablas _aud guardan una fila por revision: alli el codigo se repite")
+                .noneMatch(tabla -> tabla.endsWith("_aud"));
+    }
+
+    /**
+     * V10 amplia el CHECK de {@code async_job.job_type} con {@code LOV_IMPORT}.
+     *
+     * <p>Mismo motivo que {@link #elEstadoDeUnTrabajoEstaAcotadoPorLaBaseDeDatos()}: los CHECK
+     * no los valida Hibernate, asi que sin la migracion el fallo aparece al lanzar la primera
+     * importacion, no al arrancar.
+     */
+    @Test
+    void elTipoDeTrabajoAdmiteLaImportacionDeLov() {
+        assertThatCode(() -> jdbc().update(insertAsyncJob("LOV_IMPORT", "PENDING")))
+                .doesNotThrowAnyException();
     }
 
     @Test
@@ -151,14 +208,14 @@ class FlywayMigrationIT {
     void elEstadoDeUnTrabajoEstaAcotadoPorLaBaseDeDatos() {
         // ddl-auto: validate NO comprueba los CHECK, asi que si la migracion se olvidara de
         // ampliarlos al anadir un estado nuevo, el fallo saldria en el primer INSERT en produccion.
-        assertThatCode(() -> jdbc().update(
-                """
-                insert into """ + SCHEMA + """
-                .async_job (id, job_type, status, created_at, heartbeat_at,
-                            processed_items, successful_items, failed_items)
-                values (gen_random_uuid(), 'PROFILE_EXPORT', 'ESTADO_INVENTADO', now(), now(), 0, 0, 0)
-                """))
-                .isInstanceOf(Exception.class);
+        // OJO: la SQL se compone concatenando y no con un bloque de texto. En un text block
+        // de Java los espacios FINALES se eliminan, asi que "insert into " se quedaba en
+        // "insert into" y la sentencia moria de un error de sintaxis antes de llegar al CHECK.
+        // El test pasaba igual (solo exigia "que lance algo") y habria seguido pasando con la
+        // restriccion borrada, que es justo lo que venia a comprobar.
+        assertThatCode(() -> jdbc().update(insertAsyncJob("PROFILE_EXPORT", "ESTADO_INVENTADO")))
+                .isInstanceOf(Exception.class)
+                .hasMessageContaining("async_job_status_check");
     }
 
     @Test
@@ -294,4 +351,17 @@ class FlywayMigrationIT {
             throw new IllegalStateException("No se ha podido preparar el schema de migracion", exception);
         }
     }
+
+    /**
+     * INSERT minimo en {@code async_job}. Compuesto por concatenacion a proposito: ver la
+     * nota de {@link #elEstadoDeUnTrabajoEstaAcotadoPorLaBaseDeDatos()}.
+     */
+    private String insertAsyncJob(String jobType, String status) {
+        return "insert into " + SCHEMA + ".async_job"
+                + " (id, job_type, status, created_at, heartbeat_at,"
+                + "  processed_items, successful_items, failed_items)"
+                + " values (gen_random_uuid(), '" + jobType + "', '" + status + "',"
+                + "         now(), now(), 0, 0, 0)";
+    }
+
 }

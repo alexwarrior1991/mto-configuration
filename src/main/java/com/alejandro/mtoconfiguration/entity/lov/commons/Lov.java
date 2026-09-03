@@ -31,9 +31,17 @@ public abstract class Lov extends BaseEntity implements ILov {
     private String description;
     private boolean enabled;
 
+    /**
+     * Longitud alineada con {@code V9__widen_lov_code_and_unique.sql}. Los codigos
+     * reales de los workbooks de Execution Package no caben en 10 caracteres:
+     * {@code CP/TX-P/1100}, {@code 2HEB-300 V (CP)}, {@code AnMC/Tunnel}.
+     *
+     * <p>Si se cambia aqui hay que cambiar la migracion: {@code ddl-auto: validate}
+     * no comprueba longitudes de varchar y la discrepancia no saldria al arrancar.
+     */
     @NotNull(message = ErrorCodes.VALIDATION_REQUIRED_FIELD)
-    @Size(max = 10)
-    @Column(length = 10, nullable = false)
+    @Size(max = 40)
+    @Column(length = 40, nullable = false)
     @Override
     public String getCode() {
         return code;

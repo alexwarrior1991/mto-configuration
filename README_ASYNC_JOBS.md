@@ -44,6 +44,29 @@ Prefijo: `ConfigurationApiPaths.BASE_PATH + "/profiles/jobs"` → `/api/v1/confi
 `mapperType`: `basic` (por defecto), `default`, `technical`. Un valor desconocido cae en `basic`,
 igual que hacía el endpoint antiguo.
 
+### Importación del catálogo maestro de LOVs
+
+Prefijo propio: `ConfigurationApiPaths.BASE_PATH + "/lovs/jobs"` → `/api/v1/configuration/lovs/jobs`
+
+| Método | Ruta | Permiso | Respuesta |
+|---|---|---|---|
+| POST | `/import?dryRun=false` (multipart, campo `file`) | `CONFIG_IMPORT` + rol `LOV_MANAGE` | 202 · 400 · 429 |
+| GET | `/{jobId}` | `CONFIG_READ` | 200 · 404 |
+| GET | `/{jobId}/file` | `CONFIG_READ` | 200 · 404 · 409 · 410 |
+
+Carga `data/lov-master.xlsx` (ver `data/README.md`): da de alta o actualiza cada LOV **por su
+código**, así que reimportar el mismo fichero es idempotente. Solo se cargan las filas marcadas
+`ENABLED=SI`. Con `dryRun=true` no se escribe nada y el informe describe exactamente lo que haría
+la carga real, que es la forma prevista de revisarla antes de aplicarla.
+
+El fichero descargable en `/{jobId}/file` es el informe en JSON, y está disponible **también
+cuando el trabajo termina con errores**: es justo entonces cuando hace falta leerlo. A diferencia
+de las exportaciones, aquí `409` significa "aún no ha terminado", no "no está COMPLETED".
+
+El catálogo también puede sembrarse al arrancar con `app.lov.seed-on-startup=true`
+(desactivado por defecto: escribir en base de datos al levantar el proceso es algo que hay que
+pedir explícitamente). Ambas vías pasan por el mismo `LovMasterImporter`.
+
 ### Arranque de un trabajo
 
 ```
@@ -118,7 +141,7 @@ PENDING ──▶ RUNNING ──┬──▶ COMPLETED               (nada fall�
 REJECTED  (estado terminal de entrada: nunca llegó a encolarse)
 ```
 
-Tipos: `PROFILE_EXPORT`, `PROFILE_BULK_CREATE`, `PROFILE_BULK_UPDATE`.
+Tipos: `PROFILE_EXPORT`, `PROFILE_BULK_CREATE`, `PROFILE_BULK_UPDATE`, `LOV_IMPORT`.
 
 > Añadir un valor a `JobStatus` o `JobType` exige **una migración de Flyway** que amplíe el `CHECK`
 > de `async_job`. `ddl-auto: validate` no comprueba los `CHECK`, así que el fallo no saldría al

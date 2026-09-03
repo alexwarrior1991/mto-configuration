@@ -1,0 +1,372 @@
+# Tablas de alias para build_lov_master.py
+#
+# Este fichero existe para que ampliar el mapeo NO sea tocar el script. Cuando el
+# generador encuentra algo que no esta aqui NO lo descarta en silencio: lo vuelca en
+# la hoja NO_RECONOCIDO del maestro y termina con codigo de salida != 0.
+#
+# Asi se detectaron 13 categorias (~107 filas) que aparecian solo en los workbooks
+# EP9B / EP14A / EP14B / EP15 y que se habrian perdido sin avisar.
+
+# --------------------------------------------------------------------------------
+# Categoria de la columna "Cat." del BOQ (Recuento Conjuntos) -> entidad LOV.
+# La clave se compara en MAYUSCULAS y con espacios colapsados.
+# --------------------------------------------------------------------------------
+boq_categories:
+  # --- Foundation
+  FOUNDATIONS: Foundation
+  L FOUNDATIONS: Foundation
+  FOUNDATION IN L: Foundation
+  POLES SUPPORTS IN LATERAL WALL: Foundation
+  SUPPORTS IN LATERAL WALLS: Foundation
+  SUPPORTS IN WALLS: Foundation
+  POLES SUPPORTS IN WALLS: Foundation          # EP15
+  POLES SUPPORTS ON TOP WALL: Foundation
+  SUPPORTS IN TOP WALLS: Foundation
+  SUPPORTS ON TOP WALLS: Foundation            # EP14A, EP14B
+  POLES SUPPORTS IN DRAINAGE: Foundation
+  SUPPORTS IN DRENAIGE: Foundation             # sic, erratа en el origen
+  BRIDGE SUPPORTS: Foundation
+  VIADUCTO: Foundation
+  VIADUCTO EXISTENTE: Foundation
+
+  # --- AnchorageFoundation
+  ANCHOR FOUND.: AnchorageFoundation
+  L ANCHOR FOUND.: AnchorageFoundation
+  ANC.SUP. L.WALL: AnchorageFoundation
+  ANC.SUP. T.WALL: AnchorageFoundation
+  TUNNEL ANCHOR: AnchorageFoundation
+  ANCLAJES: AnchorageFoundation
+  ANCLAJES EN TUNEL: AnchorageFoundation
+  ANCLAJE TX TUNEL / MURO: AnchorageFoundation
+
+  # --- PoleType
+  POLES: PoleType
+  POSTES: PoleType
+  POSTES SIMPLES: PoleType                     # EP9B
+  POSTES DOBLES: PoleType                      # EP9B
+  POSTES ESPECIALES: PoleType                  # EP9B
+
+  # --- Portal
+  PORTALS: Portal
+  PORTICOS: Portal
+  "HEADSPAN\nSPRC": Portal
+  HEADSPAN SPRC: Portal
+  HEADSPAN LOD STATION AND DEPOT: Portal       # EP9B
+  SEMIPÓRTICO: Portal                          # EP9B
+  GANTRIES: Portal
+  PÓRTICOS-F: Portal
+
+  # --- SupportType
+  CANTILEVER SUPPORTS: SupportType
+  SILLETAS: SupportType
+
+  # --- CantileverType
+  CANTILEVERS: CantileverType
+
+  # --- SteadyArmType
+  STEADY ARMS: SteadyArmType
+  BRAZOS MENS: SteadyArmType
+
+  # --- ReturnSupport
+  RW ASSEMBLIES: ReturnSupport
+
+  # --- DisconnectorFunction
+  DISCONNECTORS ASSEMBLIES: DisconnectorFunction
+  APARELLAJES: DisconnectorFunction
+  SECCIONADORES: DisconnectorFunction
+  AUTOVALV.: DisconnectorFunction
+
+  # --- Anchorage
+  ANCHOR TIES: Anchorage
+  TIRANTES: Anchorage
+  BALANCE/TENSOREX EQUIPMENTS: Anchorage
+  COMPENSACION: Anchorage
+  TENSOREX: Anchorage
+
+# --------------------------------------------------------------------------------
+# Categorias del BOQ que SI conocemos pero que NO son LOVs del modelo Profile:
+# son catalogo de materiales/conjuntos (mas cercano a mto-stock). Se ignoran a
+# proposito y no ensucian NO_RECONOCIDO.
+# --------------------------------------------------------------------------------
+material_categories:
+  - PROTECTIONS
+  - PROTECCIONES
+  - WIRES AND CONDUCTORS
+  - CONECTIONS
+  - CONEXIONES
+  - FEEDERS ASSEMBLIES
+  - FEEDER/RETURN
+  - OCR
+  - RAIL CAT.
+  - OCS SIDINGS
+  - SWIVEL BRACKET
+  - SOPORTES DE GIRO
+  - O.C.S
+  - ACCIONAMIENTOS
+  - SPECIAL
+  - SECT.INSUL
+  - AISLADOR SECCION
+  - S.EQUIP.
+  - SIGN
+  - SENALIZ.
+  - SEÑALES
+  - AISLAMIENTO
+  - CABLES
+  - ANTIESCALADA
+  - SUSPENSIONES
+  - FUNICULAR
+
+# --------------------------------------------------------------------------------
+# Valores que pertenecen a la columna "Obs." pero que en algunos ficheros (EP9B)
+# aparecen escritos en la columna "Cat.". Como "Cat." se arrastra hacia abajo, si
+# los tomasemos por categoria contaminariamos todas las filas siguientes.
+# Al detectar uno de estos, se CONSERVA la categoria anterior.
+# --------------------------------------------------------------------------------
+obs_leaked_into_category:
+  - MANUAL
+  - CHECK
+  - COMPROBACION
+  - FORMULA
+  - FÓRMULA
+  - AUXILIARES
+  - RECUENTO ESPECIAL
+  - INDICAR CADA COLA
+  - SE PONE 1 POR CADA COLA
+  - SE PONE 1 POR CADA 2 COLAS -- 2X
+  - (LÁMINAS DE AIRE)
+  - (LÁMINAS DE AIRE CON AC)
+  - .-LAS CUENTAS DE PP SOLO SE HACEN EN V1
+  - FOUNDATION WITH SCADA
+  - FOUNDATION WITHOUT SCADA
+
+# --------------------------------------------------------------------------------
+# Hoja Legend: seccion -> entidad LOV.
+#   __TYPE_Foundation / __TYPE_Portal  ->  catalogos de tipos, no LOVs finales
+#   __SPLIT_POLE_SUPPORT               ->  HEB* va a PoleType, el resto a SupportType
+#   null                               ->  seccion conocida pero fuera de alcance
+# --------------------------------------------------------------------------------
+legend_sections:
+  SECTIONNING: Sectioning
+  ANCHORAGE: Anchorage
+  ANCHORAGE FOUNDATIONS: AnchorageFoundation
+  CANTILEVERS: CantileverType
+  FEEDING: DisconnectorFunction
+  STEADY ARMS TYPE: SteadyArmType
+  RETURN SUPPORT: ReturnSupport
+  POLE FOUNDATION: __TYPE_Foundation
+  PORTALS: __TYPE_Portal
+  POLE / SUPPORTS TYPE: __SPLIT_POLE_SUPPORT
+  COLORS: null                  # singularidades del trazado, no hay entidad LOV
+  TEXT WORKBOOK: null           # se cubre con el enum ProfileStatusValue
+  SEMI TENSION LENGTH: null     # es una medida, no un catalogo
+  LEGEND: null                  # titulo de la hoja
+
+# Filas del Legend que abren una subseccion aunque no vayan en MAYUSCULAS.
+legend_subsection_headers:
+  - Return Support
+  - Text Workbook
+
+# --------------------------------------------------------------------------------
+# Cabeceras de la fila 2 de las hojas "HR Track" -> entidad LOV.
+# Comparadas en minusculas con espacios colapsados. Verificado: estas 11 columnas
+# aparecen en 176/176 hojas Track de los 11 workbooks.
+# --------------------------------------------------------------------------------
+track_headers:
+  sectionning: Sectioning
+  anchorage: Anchorage
+  anchorage foundation: AnchorageFoundation
+  pole type: PoleType
+  foundation: Foundation
+  cantilevers: CantileverType        # ocupa 3 columnas (M1/M2/M3)
+  arm type: SteadyArmType
+  sectioning feeding: DisconnectorFunction
+  supports: SupportType
+  portals: Portal
+  return support: ReturnSupport
+
+# Columnas de las hojas Track que conocemos y que NO son LOVs. Estan aqui solo para
+# que no ensucien NO_RECONOCIDO.
+track_headers_ignored:
+  - survey
+  - profile
+  - kp
+  - k.p. (m)
+  - other kp
+  - other pk
+  - theorical cant (mm)
+  - theorical cant
+  - theorical k.p. (m)
+  - track layout (m)
+  - track layout
+  - span (m)
+  - span
+  - th. span
+  - th span
+  - anchorage kp
+  - anchorage pk
+  - anchorages pk
+  - current cant (mm)
+  - current cant
+  - current track layout (m)
+  - current track layout
+  - current span (m)
+  - current span
+  - current track pk
+  - stagger (cm)
+  - stagger
+  - catenary height (m)
+  - catenary height
+  - catenary heigh
+  - elevation cw (m)
+  - elevation cw
+  - height cant. support (mm)
+  - height cantilever support
+  - track kp
+  - track pk
+  - pole gauge location (mm)
+  - gauge pole location
+  - rail-pole distance (mm)
+  - distance rail-pole
+  - cw height (m)
+  - cw height
+  - cw heigh
+  - contact wire height
+  - wind deflection
+  - arm angle
+  - soil found
+  - terrain geometry
+  - embankment
+  - embank.
+  - depth pole f. (m)
+  - depth found
+  - depth anchor f. (m)
+  - depth anchor
+  - approved by kedmor
+  - pole calculation reference
+  - "yellow: new yellow: revised white: approved"
+  - pole/support
+  - portal
+  - legend
+  - cantones la 280
+  - zona la 280
+  - cantones de cables la 280
+  - pki
+  - pkf
+  - nº cables
+  - total
+
+# --------------------------------------------------------------------------------
+# Textos que ocupan la celda del codigo pero no son codigos: marcadores de "esto
+# esta sin definir" y alguna fuga de la columna Obs. Se descartan con motivo.
+# --------------------------------------------------------------------------------
+code_rejections:
+  - NON DEFINED
+  - N.D.
+  - UNIQUE SOLUTION
+  - U.S.
+  - U.S. N.D.
+  - EJECUTADO
+  - MANUAL
+  - CHECK
+  - PENDIENTE
+  - TIRANTE DE ANCLAJE      # descripcion escrita en la celda del codigo
+
+# --------------------------------------------------------------------------------
+# Reenrutado por codigo. Algunas categorias del BOQ son cajones de sastre y meten
+# codigos que pertenecen a otra entidad:
+#   - ANCLAJES (EP6/EP9A) mezcla anclajes reales con material C-5xx y algun poste.
+#   - HEADSPAN LOD STATION AND DEPOT (EP9B) mezcla portico con cimentaciones.
+#   - Las categorias de FOUNDATIONS incluyen a veces el anclaje asociado (AnM/PL).
+# Se evalua en orden; "to: null" descarta la fila.
+# --------------------------------------------------------------------------------
+code_reassignment:
+  - {from: Foundation, regex: "^ANMC?/", to: AnchorageFoundation}
+  - {from: AnchorageFoundation, regex: "^C-\\d", to: null}          # material
+  - {from: AnchorageFoundation, regex: "^HEB-", to: PoleType}
+  - {from: AnchorageFoundation, regex: "^(SF_|SSF_|SS2F_|FW-D)", to: null}
+  - {from: Portal, regex: "^2?C\\d*[A-Z]*R?T?$", to: Foundation}    # 2C4FR, C12FRT
+  - {from: Portal, regex: "^T-SIGN", to: Foundation}
+
+# --------------------------------------------------------------------------------
+# Derivacion de las relaciones @ManyToOne obligatorias hacia los catalogos *Type.
+# El BOQ no trae el tipo, asi que se deduce del prefijo del codigo. Las reglas se
+# evaluan EN ORDEN y gana la primera que casa.
+# --------------------------------------------------------------------------------
+type_rules:
+  Foundation:
+    - {suffix: "_L", type: CXR_L}
+    - {prefix: ["WT", "2WT"], type: WTX}
+    - {prefix: ["WD", "2WD"], type: WDX}
+    - {prefix: ["W", "2W"], type: WX}
+    - {prefix: ["PL"], type: PLX}
+    - {regex: "^2?C", type: CX}
+  Portal:
+    - {regex: "^2?PR1", type: PR1X}
+    - {regex: "^2?PR[A-F]?-", type: PR1X}
+    - {prefix: ["SP"], type: SP1R}
+    - {equals: ["B7"], type: B7}
+    - {equals: ["HEADSPAN"], type: HEADSPAN}
+    - {regex: "^F-?120", type: HEADSPAN}    # vanos de headspan de EP9B
+    - {prefix: ["C-"], type: GANTRY}
+  AnchorageFoundation:
+    - {prefix: ["ANMC"], type: AnMC}
+    - {prefix: ["ANM", "ANRW", "ANFW", "ANMP"], type: AnM}
+
+# Casos que las reglas por prefijo no resuelven bien (filas cruzadas de categoria y
+# sueltos). Clave = codigo en MAYUSCULAS.
+type_overrides:
+  Foundation:
+    T-SIGN FOUND.: CX
+    T-SIGN FOUND: CX
+    P8R: CX
+    P8RT: CX
+    P9R: CX
+    P9RT: CX
+  AnchorageFoundation:
+    PL*: AnM
+    WT3: AnM
+
+# Catalogo de tipos que se siembra ANTES que las LOVs que lo referencian.
+# Las descripciones salen de la hoja Legend (secciones POLE FOUNDATION y PORTALS).
+type_catalog:
+  FoundationType:
+    CX: Pole foundation Type CX
+    CXR_L: Pole foundation Type CX in L
+    PLX: Base for pole in viaduct
+    WX: Base for pole in Lateral wall
+    WDX: Base for pole with drainage
+    WTX: Base for pole in Top wall
+  PortalType:
+    PR1X: Portal type X
+    SP1R: Semi Portal
+    B7: Semi Portal type B7
+    HEADSPAN: Headspan
+    GANTRY: Gantry
+  AnchorageFoundationType:
+    AnMC: Messenger and contact wire anchorage foundation
+    AnM: Return, Feeder and Midpoint anchorage foundation
+
+# Entidades que llevan columna drawing_number en la entidad JPA.
+entities_with_drawing_number:
+  - Anchorage
+  - AnchorageFoundation
+  - CantileverType
+  - Foundation
+  - PoleType
+  - Portal
+  - ReturnSupport
+  - SupportType
+
+# Entidades LOV en el alcance de este catalogo, en orden de carga.
+entities:
+  - Sectioning
+  - Anchorage
+  - AnchorageFoundation
+  - Foundation
+  - PoleType
+  - Portal
+  - SupportType
+  - CantileverType
+  - SteadyArmType
+  - ReturnSupport
+  - DisconnectorFunction

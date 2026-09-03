@@ -28,6 +28,7 @@ public class AsyncJobProperties {
     private final Heartbeat heartbeat = new Heartbeat();
     private final Purge purge = new Purge();
     private final ProfileJobs profile = new ProfileJobs();
+    private final LovJobs lov = new LovJobs();
 
     /** Cada cuanto se refresca la foto que publican las metricas. */
     private Duration metricsRefreshDelay = Duration.ofSeconds(30);
@@ -170,4 +171,37 @@ public class AsyncJobProperties {
         /** Longitud maxima del mensaje de cada error por elemento. */
         private int maxItemErrorMessageLength = 500;
     }
+
+    /**
+     * Ajustes de la importacion del catalogo maestro de LOVs ({@code app.jobs.lov.*}).
+     *
+     * <p>Es un trabajo de administracion que se lanza muy de vez en cuando —los datos
+     * maestros, por definicion, casi no cambian—, asi que los numeros son deliberadamente
+     * conservadores: lo que importa aqui es no estorbar al trafico normal, no acabar rapido.</p>
+     */
+    @Getter
+    @Setter
+    public static class LovJobs {
+
+        // El tope de simultaneidad NO se configura aqui: LOV_IMPORT pertenece al grupo de
+        // cupo BULK, asi que lo gobierna app.jobs.profile.bulk-max-concurrency junto con las
+        // cargas masivas de perfiles. Es lo que se quiere —dos escrituras masivas a la vez
+        // sobre las mismas tablas solo se estorban—, y anadir aqui una segunda perilla que
+        // AsyncJobStore.maxConcurrencyOf no consulta seria un ajuste muerto.
+
+        /**
+         * Directorio donde se deja el informe descargable.
+         *
+         * <p>Mismo aviso que el de las exportaciones de perfiles: con varias replicas tiene que
+         * apuntar a almacenamiento COMPARTIDO, o la descarga dara 410 cuando la atienda una
+         * replica distinta de la que genero el informe.</p>
+         */
+        private Path reportDirectory = Path.of("lov-imports");
+
+        // El volcado de progreso y el tope de errores por fila tampoco se configuran aqui: el
+        // trabajo reutiliza ProfileJobProgress, que lee app.jobs.profile.progress-flush-interval
+        // y app.jobs.profile.max-item-errors. Duplicarlos aqui daria dos perillas para lo mismo
+        // y solo una de ellas tendria efecto.
+    }
+
 }

@@ -4,6 +4,17 @@ spring:
   application:
     name: mto-configuration
 
+  # Subida de ficheros. Solo la usa la importacion del catalogo maestro de LOVs.
+  #
+  # Hay que fijarlo: el defecto de Spring es 1 MB por fichero, y con el la subida
+  # falla en el propio parseo del multipart —antes de llegar al controlador— con un
+  # error que no dice que el problema sea el tamano. 20 MB da margen de sobra: el
+  # maestro ronda los 100 KB.
+  servlet:
+    multipart:
+      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:20MB}
+      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:20MB}
+
   # Cache provider configuration - using Redis as the caching mechanism
   cache:
     type: redis
@@ -387,6 +398,23 @@ app:
       # El recuento completo sigue en failedItems.
       max-item-errors: 50
       max-item-error-message-length: 500
+
+    lov:
+      # Directorio de los informes de importacion del catalogo maestro. Mismo aviso
+      # que el de las exportaciones: con varias replicas debe apuntar a almacenamiento
+      # COMPARTIDO, o la descarga dara 410 cuando la atienda una replica distinta de
+      # la que genero el informe.
+      report-directory: ${APP_JOBS_LOV_REPORT_DIRECTORY:lov-imports}
+
+  # Catalogo maestro de LOVs (datos maestros de infraestructura).
+  lov:
+    # Sembrar el catalogo al arrancar. DESACTIVADO por defecto a proposito: escribir en
+    # base de datos al levantar el proceso es algo que hay que pedir explicitamente.
+    # La operacion es idempotente —el importador hace upsert por codigo—, asi que
+    # encenderlo en un entorno no supone riesgo de duplicar nada.
+    seed-on-startup: ${APP_LOV_SEED_ON_STARTUP:false}
+    # Ubicacion del maestro. Admite prefijos de Spring: file:, classpath:.
+    master-location: ${APP_LOV_MASTER_LOCATION:file:data/lov-master.xlsx}
 
   # Firma de los mensajes asincronos
   messaging:

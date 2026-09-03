@@ -20,7 +20,16 @@ public enum JobType {
     PROFILE_BULK_CREATE(JobSlotGroup.BULK),
 
     /** Modificacion masiva de perfiles, elemento a elemento y con progreso parcial. */
-    PROFILE_BULK_UPDATE(JobSlotGroup.BULK);
+    PROFILE_BULK_UPDATE(JobSlotGroup.BULK),
+
+    /**
+     * Carga del catalogo maestro de LOVs desde {@code lov-master.xlsx}.
+     *
+     * <p>Va en el cupo de cargas masivas porque es lo que es: una rafaga de escrituras
+     * sobre las tablas LOV. Compartir cupo con las cargas de perfiles es deliberado,
+     * ya que ambas compiten por las mismas conexiones y por la invalidacion de cache.
+     */
+    LOV_IMPORT(JobSlotGroup.BULK);
 
     private final JobSlotGroup slotGroup;
 
