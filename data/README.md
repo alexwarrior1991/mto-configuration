@@ -111,7 +111,40 @@ También salen marcadas las filas cuyo `TIPO` no se ha podido deducir del códig
 - **`Soil Found`, `Terrain Geometry`, `Survey`**: son columnas reales de las hojas
   Track pero hoy no tienen entidad LOV en el proyecto.
 
-## Un aviso sobre `workbook/`
+## El tamaño de `workbook/`
 
-Son unos 60 MB de binarios versionados en git. Si la carpeta sigue creciendo,
-conviene valorar Git LFS.
+Son ~60 MB de binarios en el árbol y **29,1 de los 32 MB del `.git`**, todos en un
+único commit (`af82953`). **Decisión tomada: no se toca de momento.** Esta sección
+existe para que se pueda reconsiderar con datos en lugar de por intuición.
+
+El malentendido a evitar: **activar Git LFS «solo hacia adelante» no recupera nada**.
+Los blobs ya están en el historial y LFS solo intercepta lo que se añade después.
+Peor aún, no es ni siquiera un estado estable: en cuanto se añade la regla
+`data/workbook/** filter=lfs`, git marca los 11 workbooks como modificados de forma
+permanente, así que hay que convertirlos a punteros. Y al hacerlo el clon **empeora**,
+porque los blobs viejos siguen ahí y encima se descargan los objetos LFS.
+
+| Escenario | Tamaño de un clon nuevo |
+|---|---|
+| Hoy, sin tocar nada | 32 MB |
+| Sin LFS, tras 1 re-subida de los 11 workbooks | ~61 MB |
+| Sin LFS, tras 2 re-subidas | ~90 MB |
+| LFS convertido, sin reescribir historia | ~92 MB, y ya no crece |
+| LFS + reescritura de historia | ~63 MB, y ya no crece |
+
+Conclusión: LFS a medias solo compensa a partir de la **tercera** re-subida, y aun así
+queda peor que hacerlo bien. **Si llega ese momento, la opción correcta es la completa**:
+
+```bash
+git lfs install
+git lfs migrate import --include="data/workbook/**" --everything
+git push --force-with-lease origin master
+```
+
+Coste de esa vía, que hay que coordinar con el equipo: cambia el SHA de los commits
+afectados, obliga a todo el mundo a re-clonar, y rompe la base de cualquier PR abierto.
+Cuanto antes se haga, más barato sale: hoy solo hay un commit implicado.
+
+Alternativa a considerar en ese punto: los workbooks son **entrada** del generador y la
+aplicación no los abre nunca —solo necesita `lov-master.xlsx`, que son 124 KB—, así que
+podrían vivir fuera del repo con su ubicación documentada aquí.
