@@ -16,6 +16,10 @@
               "stock-read",
               "ops-metrics",
               "ops-write"
+            ],
+            "mto-gateway-api": [
+              "ops-metrics",
+              "ops-write"
             ]
           }
         }

@@ -24,7 +24,7 @@ para eso; nada de lo que hay en él debe acercarse a un entorno desplegado.
 | Cliente | Tipo | Para qué |
 |---|---|---|
 | `mto-configuration-api` | Confidencial, sin flujos | No inicia ninguna autenticación. Existe para declarar los permisos como roles de cliente y para ser la **audiencia** de los tokens. |
-| `mto-frontend` | Público, PKCE S256 | La aplicación de navegador. Lleva un *audience mapper* por cada API del dominio a la que llama: `mto-configuration-api` y `mto-stock-api`. |
+| `mto-frontend` | Público, PKCE S256 | La aplicación de navegador. Lleva un *audience mapper* por cada API del dominio a la que llama: `mto-configuration-api`, `mto-stock-api` y `mto-gateway-api`. |
 | `mto-configuration-svc` | Confidencial, cuenta de servicio | `client_credentials` para las llamadas salientes a otros servicios. |
 
 ### Permisos y perfiles
@@ -157,8 +157,30 @@ explotación sin el Actuator de esta aplicación — es la razón por la que `mt
 `mto-ops` en su propia importación parcial, y `RealmDefinitionsTest` lo vigila.
 
 Los *audience mapper* no tienen ese problema: su destino se resuelve al emitir el token, no al
-importar, así que sí pueden nombrar un cliente que aún no existe. Por eso el de `mto-stock-api` vive
-directamente en `mto-frontend`.
+importar, así que sí pueden nombrar un cliente que aún no existe. Por eso los de `mto-stock-api` y
+`mto-gateway-api` viven directamente en `mto-frontend`.
+
+### Y con el gateway, tres
+
+`mto-gateway` entra por la misma puerta que `mto-stock`: aporta su cliente `mto-gateway-api` y sus
+roles `ops-metrics` / `ops-write` con `keycloak/mto-gateway-partial-import.json`, **en su propio
+repositorio**. Aquí solo hay dos cosas suyas:
+
+- el *audience mapper* de `mto-frontend`, que ya emite `mto-gateway-api` para que activar
+  `KEYCLOAK_AUDIENCE_VALIDATION_ENABLED` en el gateway sea cambiar una variable y no tocar el realm
+  con prisa;
+- `mto-gateway-api` dentro del compuesto de `mto-ops-cross-service.json`, porque explotar la
+  plataforma es explotar **las tres** cosas. Sin esa entrada, quien tiene el perfil `mto-ops` lee
+  `/actuator/prometheus` de las dos aplicaciones pero no el del gateway, que es justo donde se ven
+  las métricas de todo el tráfico de entrada.
+
+El gateway no declara ningún perfil de realm propio: no tiene permisos de negocio que agrupar. Su
+autorización se acaba en su propio Actuator — quién puede leer o escribir qué lo siguen decidiendo
+`mto-configuration` y `mto-stock`.
+
+Orden de aplicación: primero la importación parcial del gateway (crea el cliente), después
+`mto-ops-cross-service.json` (lo nombra). Al revés, Keycloak responde *App doesn't exist in role
+definitions*.
 
 ## Un realm por entorno
 
