@@ -459,6 +459,10 @@ Dos detalles que suelen confundir:
 - **Muestrear poco no rompe la cadena.** Un span no muestreado sigue propagando su `traceparent`, con el flag a `00`. La correlación entre servicios se mantiene aunque no se exporte.
 - **Las métricas siguen yendo por Prometheus.** El starter de OpenTelemetry arrastra también un registro OTLP de métricas; se desactiva su exportación explícitamente para no duplicar el camino que ya se montó en `/actuator/prometheus`.
 
+**Dónde acaban las trazas.** El colector es un **Jaeger** *all-in-one* que se levanta en el stack de este repositorio (`docker-compose.yaml`, servicio `jaeger`): habla OTLP de forma nativa, así que no hace falta un OpenTelemetry Collector delante. Interfaz en http://localhost:16686, ingesta OTLP HTTP en el `4318`. Lo comparten los tres servicios del dominio, que lo alcanzan por el nombre `otel.mto.local` resuelto por el host — el mismo idioma que `auth.mto.local` para Keycloak. Los tres stacks de compose son independientes, y un colector por stack dejaría cada traza partida entre visores distintos.
+
+**Y el otro extremo ya escucha.** Desde que `mto-stock` lleva el mismo starter y activa `spring.rabbitmq.listener.simple.observation-enabled`, las cabeceras que escribe `OutboxRabbitPublisher` (ver 10.4) no acaban en el vacío: el consumidor las lee y **continúa** la traza en lugar de abrir una nueva. Una operación que empieza como una petición HTTP en `mto-gateway` y termina cambiando una fila en `mto-stock` es **una sola traza**, salto por la cola incluido.
+
 ### 10.3. Qué pasa sin trazabilidad
 
 Si `management.tracing.enabled=false` no hay beans `Tracer` ni `Propagator`, y el outbox usa `NoOpOutboxTracing`: no captura nada, no abre ningún ámbito y publica exactamente igual. **Publicar eventos es el trabajo del outbox; trazarlos es un extra que no puede condicionar su arranque.** Lo mismo vale para un contexto corrupto en la tabla: se registra un aviso y el mensaje sale.

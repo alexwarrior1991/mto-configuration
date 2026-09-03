@@ -37,6 +37,7 @@ postgres  → PostgreSQL 17
 redis     → Redis 7.4
 rabbitmq  → RabbitMQ 4 con panel de administración
 keycloak  → Keycloak 26.1
+jaeger    → Jaeger all-in-one, colector de trazas y visor
 app       → mto-configuration-api
 ```
 
@@ -48,8 +49,19 @@ Redis:                localhost:6379
 RabbitMQ AMQP:        localhost:5672
 RabbitMQ Management:  http://localhost:15672
 Keycloak:             http://auth.mto.local:8082
+Jaeger (interfaz):    http://localhost:16686
+Jaeger (OTLP HTTP):   localhost:4318
 Aplicación:           http://localhost:8081 cuando corre en Docker
 ```
+
+El colector de trazas se levanta **en este stack** y lo comparten los tres servicios del dominio:
+`mto-configuration`, `mto-stock` y `mto-gateway` exportan todos aquí. Los otros dos lo alcanzan por
+el nombre `otel.mto.local`, resuelto por el host igual que `auth.mto.local` (ver el apartado 4). Un
+colector por stack haría que cada uno viera solo sus propios tramos y una traza que empieza en el
+gateway y termina en `mto-stock` no se vería entera en ningún sitio.
+
+Las trazas viven en memoria: se pierden al parar el contenedor. Persistirlas pediría Elasticsearch o
+Cassandra detrás, mucho aparato para mirar una traza mientras se depura.
 
 ## 2. Requisitos previos
 
@@ -245,7 +257,7 @@ Este es el modo recomendado para desarrollar normalmente.
 Desde la raíz del proyecto ejecuta:
 
 ```powershell
-docker compose up -d postgres redis rabbitmq keycloak
+docker compose up -d postgres redis rabbitmq keycloak jaeger
 ```
 
 Esto levanta solo:
@@ -255,6 +267,7 @@ postgres
 redis
 rabbitmq
 keycloak
+jaeger
 ```
 
 No levanta `app`, porque la aplicación la vas a ejecutar desde IntelliJ o Maven.
@@ -266,6 +279,7 @@ Comprueba estas URLs:
 ```text
 Keycloak: http://auth.mto.local:8082
 RabbitMQ Management: http://localhost:15672
+Jaeger: http://localhost:16686
 ```
 
 Credenciales por defecto:

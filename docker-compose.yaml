@@ -122,6 +122,33 @@ services:
       # sondeos cuentan como fallo.
       start_period: 30s
 
+  # Colector de trazas y visor, todo en uno. Jaeger habla OTLP nativo desde la 1.35, asi que no
+  # hace falta un OpenTelemetry Collector delante: los tres servicios exportan aqui directamente.
+  #
+  # Se levanta en ESTE stack y los demas lo alcanzan por el host con el nombre otel.mto.local, igual
+  # que ya hacen con Keycloak a traves de auth.mto.local. Sin un colector compartido cada stack
+  # veria solo sus propios tramos, y una traza que empieza en el gateway y termina en mto-stock no
+  # se veria entera en ningun sitio, que es justo lo que se quiere evitar.
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    container_name: mto-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    # Mapeo de puertos: 16686 la interfaz web, 4318 la ingesta OTLP por HTTP y 4317 la de gRPC
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+      - "4317:4317"
+    # Sin volumen a proposito: las trazas de desarrollo se quedan en memoria y se pierden al parar
+    # el contenedor. Persistirlas pediria Elasticsearch o Cassandra detras, que es mucho aparato
+    # para mirar una traza mientras se depura.
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   # Servicio principal de la aplicación Spring Boot
   app:
     # Configuración de construcción del contenedor Docker
@@ -146,6 +173,7 @@ services:
       SPRING_RABBITMQ_USERNAME: guest
       SPRING_RABBITMQ_PASSWORD: ${SPRING_RABBITMQ_PASSWORD:?falta en .env, copiese .env.example}
 
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://otel.mto.local:4318/v1/traces}
       KEYCLOAK_ISSUER_URI: http://auth.mto.local:8082/realms/mto
       KEYCLOAK_CLIENT_ID: mto-configuration-api
       KEYCLOAK_AUDIENCE: mto-configuration-api
@@ -154,6 +182,9 @@ services:
       APP_CORS_ALLOWED_ORIGIN: http://localhost:4200
     extra_hosts:
       - "auth.mto.local:host-gateway"
+      # El colector vive en este mismo stack, pero se alcanza por el host para que los otros dos
+      # servicios del dominio puedan usar exactamente la misma URL desde sus propios stacks.
+      - "otel.mto.local:host-gateway"
     # Mapeo de puertos: puerto del host:puerto del contenedor
     ports:
       - "8081:8080"
