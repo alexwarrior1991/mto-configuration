@@ -84,7 +84,7 @@ Antes de arrancar el proyecto necesitas:
 - Docker Desktop funcionando.
 - Java compatible con el proyecto.
 - Maven Wrapper disponible mediante `mvnw.cmd`.
-- El archivo `hosts` de Windows configurado para Keycloak.
+- El archivo `hosts` de Windows configurado para Keycloak y el colector de trazas.
 - El proyecto abierto desde la raíz `mto-configuration`.
 
 La raíz del proyecto debe contener:
@@ -100,12 +100,13 @@ src/main/resources/application-docker.yaml
 src/main/resources/application-schema-generation.yaml
 ```
 
-## 3. Configuración del archivo `hosts` para Keycloak
+## 3. Configuración del archivo `hosts`
 
-Para evitar problemas de `issuer` entre navegador, aplicación local y aplicación dockerizada, Keycloak usa un hostname único:
+Para evitar problemas de `issuer` entre navegador, aplicación local y aplicación dockerizada, Keycloak usa un hostname único. El colector de trazas usa otro por el mismo motivo:
 
 ```text
 auth.mto.local
+otel.mto.local
 ```
 
 En Windows debes editar como administrador este archivo:
@@ -117,8 +118,14 @@ C:\Windows\System32\drivers\etc\hosts
 Añade esta línea:
 
 ```text
-127.0.0.1 auth.mto.local
+127.0.0.1 auth.mto.local otel.mto.local
 ```
+
+Los dos nombres los resuelven por su cuenta los contenedores, con `extra_hosts`. Aquí hacen falta
+para lo que corre FUERA de compose: el navegador, un `curl` que pida un token, y sobre todo la
+aplicación arrancada desde el IDE, que es el flujo habitual con la infraestructura de
+`mto-platform`. Sin `otel.mto.local` el exportador no encuentra el colector y las trazas se pierden
+dejando solo un aviso en el log.
 
 No borres las líneas añadidas por Docker Desktop, por ejemplo:
 
