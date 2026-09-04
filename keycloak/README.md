@@ -4,18 +4,25 @@ Estos ficheros son la definición del realm que espera la aplicación. Se versio
 configuración del servidor de identidad se revise en pull request como cualquier otro cambio, y
 para que los entornos no diverjan por lo que alguien pinchó un día en la consola.
 
-| Fichero | Cuándo |
+El realm base lo crea y lo posee
+[`mto-platform`](https://github.com/alexwarrior1991/mto-platform), y cada servicio aporta desde su
+propio repositorio lo suyo. Aquí quedan dos ficheros:
+
+| Fichero | Qué aporta |
 |---|---|
-| `mto-realm.json` | Definición de referencia, la que se lleva a un entorno desplegado. Sin usuarios y sin secretos. |
-| `mto-realm-local.json` | La misma configuración para el stack de `docker compose` de este repositorio. Añade usuarios de desarrollo y fija el secreto de la cuenta de servicio. |
-| `mto-ops-cross-service.json` | Importación parcial que extiende el perfil `mto-ops` a las dos aplicaciones. Se aplica **después** de que `mto-stock` haya creado su cliente. |
+| `mto-configuration-partial-import.json` | Los clientes `mto-configuration-api` y `mto-configuration-svc`, los permisos y los perfiles `mto-viewer`/`mto-editor`/`mto-admin`/`mto-auditor`. Sin usuarios y sin secretos: vale para cualquier entorno. |
+| `mto-configuration-dev.json` | Los cinco usuarios de desarrollo y el secreto fijo de la cuenta de servicio. Aparte a propósito, para poder aplicar lo anterior en un entorno desplegado sin arrastrarlos. |
 
-`mto-realm.json` no contiene ningún secreto: los de los clientes confidenciales los genera Keycloak
-al importar. `mto-realm-local.json` sí trae uno, pero es el del stack local y sirve exactamente
-para eso; nada de lo que hay en él debe acercarse a un entorno desplegado.
+Que los roles vivan aquí y no en el repositorio de plataforma es deliberado: así un permiso se
+cambia en el mismo commit que el código que lo comprueba (`SecurityRoles`).
 
-`mto-stock` vive en este mismo realm y añade lo suyo con su propio fichero de importación parcial
-(`mto-stock/keycloak/mto-stock-partial-import.json`).
+Los aplica `mto-platform/keycloak/apply-partials.sh`, junto a los de los otros dos servicios y **en
+orden**: primero las parciales que crean los clientes, después `mto-ops-cross-service.json`, que los
+nombra. Ese guion es la única forma soportada de obtener el realm completo.
+
+Antes esto estaba repartido en cinco ficheros de tres repositorios y no lo ensamblaba nadie: los
+dos `mto-realm-local.json` habían divergido hasta ser realms distintos con el mismo nombre, así que
+ganaba el stack que arrancases primero y el otro servicio se quedaba sin su cliente.
 
 ## Qué hay dentro
 
@@ -42,26 +49,32 @@ La ventaja de separarlos: cambiar lo que puede hacer un perfil se hace aquí, si
 | `mto-editor` | `config-read`, `config-write`, `config-import` |
 | `mto-admin` | los de editor + `config-delete`, `lov-manage`, `config-audit` |
 | `mto-auditor` | `config-read`, `config-audit` |
-| `mto-ops` | `config-read`, `ops-metrics`, `ops-write` |
+
+`mto-ops` no está en esta lista: es el perfil de quien explota la plataforma entera y lo define
+`mto-platform/keycloak/mto-ops-cross-service.json`, que agrupa el Actuator de los tres servicios.
+Ver más abajo.
 
 Los roles de realm **nunca** deben llamarse igual que un permiso. El converter emite los de realm
 solo como `ROLE_REALM_*` precisamente para que no se confundan, pero conviene no tentar a la suerte.
 
 ## Cómo cargarlo
 
-### Automático: el stack local de este repositorio
-
-No hay que hacer nada. El servicio `keycloak` de `docker-compose.yaml` monta
-`mto-realm-local.json` en `/opt/keycloak/data/import` y arranca con `--import-realm`:
+### Lo normal: el guion de `mto-platform`
 
 ```bash
+cd ../mto-platform
 cp .env.example .env    # define al menos KC_BOOTSTRAP_ADMIN_PASSWORD
-docker compose up -d postgres redis rabbitmq keycloak
+docker compose up -d
+./keycloak/apply-partials.sh                 # con los usuarios de desarrollo
+./keycloak/apply-partials.sh --no-dev-users  # solo clientes, permisos y perfiles
 ```
 
+El contenedor importa el realm base al arrancar; el guion aplica encima las parciales de los tres
+servicios, en orden y con `ifResourceExists: OVERWRITE`, de modo que se puede reejecutar.
+
 Keycloak queda en `http://auth.mto.local:8082` (consola: `admin` / lo que pusieras en
-`KC_BOOTSTRAP_ADMIN_PASSWORD`) con el realm `mto` importado y cinco usuarios de desarrollo, todos
-con contraseña `local`:
+`KC_BOOTSTRAP_ADMIN_PASSWORD`) con el realm `mto` completo y, salvo `--no-dev-users`, cinco usuarios
+de desarrollo de este servicio, todos con contraseña `local`:
 
 | Usuario | Perfil |
 |---|---|
@@ -71,14 +84,16 @@ con contraseña `local`:
 | `config.auditor` | `mto-auditor` |
 | `config.ops` | `mto-ops` |
 
-Esos usuarios existen **solo** en `mto-realm-local.json`; `mto-realm.json` no trae ninguno a
-propósito.
+Esos usuarios existen **solo** en `mto-configuration-dev.json`;
+`mto-configuration-partial-import.json` no trae ninguno a propósito.
 
-La importación solo actúa si el realm no existe todavía: Keycloak no la repite sobre uno ya creado.
-Para recoger un cambio del JSON hay que partir de cero con `docker compose down -v`.
+La importación del realm **base** solo actúa si el realm no existe todavía: Keycloak no la repite
+sobre uno ya creado, así que un cambio en él exige partir de cero con
+`docker compose --profile all down -v` en `mto-platform`. Las parciales no tienen esa limitación:
+`apply-partials.sh` las aplica con `OVERWRITE` cuantas veces haga falta.
 
-En local, `mto-frontend` lleva además `directAccessGrantsEnabled`, de modo que se puede pedir un
-token con `curl` sin montar el flujo del navegador:
+Para pedir un token con `curl` sin montar el flujo del navegador hace falta que `mto-frontend`
+tenga `directAccessGrantsEnabled`, que fuera de local debe estar cerrado:
 
 ```bash
 curl -s -X POST http://auth.mto.local:8082/realms/mto/protocol/openid-connect/token \
@@ -86,28 +101,21 @@ curl -s -X POST http://auth.mto.local:8082/realms/mto/protocol/openid-connect/to
   -d username=config.editor -d password=local
 ```
 
-En `mto-realm.json` ese grant está cerrado, que es como debe estar fuera de local.
+### A mano, sobre un realm que ya existe
 
-### Automático: un Keycloak nuevo, fuera de compose
-
-```bash
-kc.sh start --import-realm     # con el fichero en /opt/keycloak/data/import/
-```
-
-### Sobre un realm que ya existe
-
-Desde la consola: **Realm settings → Partial import**, con la estrategia de conflicto en *Skip* si
-solo se quieren añadir las piezas que falten.
+Desde la consola: **Realm settings → Partial import**, subiendo
+`mto-configuration-partial-import.json`. La estrategia de conflicto por defecto es *Fail*: para
+reaplicarlo sobre un realm que ya tiene parte de esto, úsese *Overwrite*.
 
 ## Después de importar
 
-Cuatro cosas que `mto-realm.json` no puede traer. En el stack local, las dos primeras vienen ya
-resueltas por `mto-realm-local.json`:
+Cuatro cosas que `mto-configuration-partial-import.json` no puede traer. En local, las dos primeras
+vienen ya resueltas por `mto-configuration-dev.json`:
 
 1. **Leer los secretos generados.** Clients → `mto-configuration-svc` → Credentials. Ese valor va
    al gestor de secretos del entorno como `KEYCLOAK_SERVICE_CLIENT_SECRET`, nunca a un fichero del
-   repositorio. En local no hace falta: `mto-realm-local.json` fija ese secreto con el mismo valor
-   que trae `.env.example`.
+   repositorio. En local no hace falta: `mto-configuration-dev.json` fija ese secreto con el mismo
+   valor que trae `.env.example`.
 
 2. **Ajustar el destino de la cuenta de servicio.** El *audience mapper* de
    `mto-configuration-svc` apunta a `mto-stock-api` como ejemplo. Debe nombrar al servicio al que
@@ -118,43 +126,33 @@ resueltas por `mto-realm-local.json`:
    `http://localhost:4200`. En un entorno desplegado deben ser los dominios reales, enumerados y
    sin comodín final.
 
-4. **Crear los usuarios y asignarles su perfil.** `mto-realm.json` no trae ninguno a propósito;
-   los de desarrollo están solo en `mto-realm-local.json`.
+4. **Crear los usuarios y asignarles su perfil.** `mto-configuration-partial-import.json` no trae
+   ninguno a propósito; los de desarrollo están solo en `mto-configuration-dev.json`.
 
-## El perfil `mto-ops` y las dos aplicaciones
+## El perfil `mto-ops` y los tres servicios
 
-`mto-ops` es el perfil de quien explota la plataforma, y explotar la plataforma es explotar las dos
-aplicaciones. Pero los permisos son roles de **cliente**, y el converter solo lee los del cliente
+`mto-ops` es el perfil de quien explota la plataforma, y explotar la plataforma es explotar los tres
+servicios. Pero los permisos son roles de **cliente**, y el converter solo lee los del cliente
 propio de cada aplicación:
 
 ```java
 authorities.addAll(extractClientRoles(jwt, securityProperties.clientId()));
 ```
 
-`ops-metrics` existe en `mto-configuration-api` y en `mto-stock-api` como dos permisos distintos que
-se llaman igual. Por eso `mto-ops` tal y como lo define `mto-realm.json` abre el Actuator de esta
-aplicación y no el de `mto-stock`.
+`ops-metrics` existe en `mto-configuration-api`, en `mto-stock-api` y en `mto-gateway-api` como tres
+permisos distintos que se llaman igual. Un `mto-ops` que solo llevara los de esta aplicación
+recibiría un 403 en el Actuator de las otras dos.
 
-Lo que lo arregla no puede ir dentro de `mto-realm.json`: un compuesto solo puede nombrar roles de
-clientes que existan en el realm que se está importando, y `mto-realm.json` es justo el fichero que
-**crea** el realm, cuando `mto-stock-api` todavía no está. Keycloak aborta la importación entera con
-*App doesn't exist in role definitions* y el realm se queda sin crear. En `mto-realm-local.json` el
-cliente no llega a existir nunca. `RealmDefinitionsTest` comprueba que ningún compuesto de los dos
-ficheros nombre un cliente ausente, precisamente para que nadie lo intente.
+Por eso `mto-ops` no se define aquí, sino en `mto-platform/keycloak/mto-ops-cross-service.json`, que
+se aplica **cuando los tres clientes ya están en el realm**: un compuesto solo puede nombrar roles
+de clientes que existan, y si no existen Keycloak aborta la importación entera con *App doesn't
+exist in role definitions*.
 
-De ahí `mto-ops-cross-service.json`, que se aplica como importación parcial cuando las dos
-aplicaciones ya están en el realm:
-
-```bash
-curl -X POST "$KC_URL/admin/realms/mto/partialImport" \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  --data-binary @keycloak/mto-ops-cross-service.json
-```
-
-Una importación parcial **reescribe el rol entero**, así que el fichero repite los permisos que
-`mto-realm.json` ya da a `mto-ops` sobre `mto-configuration-api`. Olvidarlos dejaría al perfil de
-explotación sin el Actuator de esta aplicación — es la razón por la que `mto-stock` no metió
-`mto-ops` en su propia importación parcial, y `RealmDefinitionsTest` lo vigila.
+Una importación parcial **reescribe el rol entero**, así que ese fichero es la definición completa
+del perfil: lo que no esté allí, no lo tiene nadie. `mto-platform/scripts/check_realm_consistency.py`
+recorre todos los ficheros en el orden en que se aplican y falla si un compuesto nombra un cliente o
+un rol que todavía no existe, si `mto-ops` se define en más de un sitio, o si un servicio declara un
+rol `ops-*` que el perfil no cubre.
 
 Los *audience mapper* no tienen ese problema: su destino se resuelve al emitir el token, no al
 importar, así que sí pueden nombrar un cliente que aún no existe. Por eso los de `mto-stock-api` y
@@ -162,9 +160,10 @@ importar, así que sí pueden nombrar un cliente que aún no existe. Por eso los
 
 ### Y con el gateway, tres
 
-`mto-gateway` entra por la misma puerta que `mto-stock`: aporta su cliente `mto-gateway-api` y sus
-roles `ops-metrics` / `ops-write` con `keycloak/mto-gateway-partial-import.json`, **en su propio
-repositorio**. Aquí solo hay dos cosas suyas:
+`mto-gateway` entra por la misma puerta que `mto-stock` y que esta aplicación: aporta su cliente
+`mto-gateway-api` y sus roles `ops-metrics` / `ops-write` con
+`keycloak/mto-gateway-partial-import.json`, **en su propio repositorio**. Lo suyo que vive fuera de
+él son dos cosas, las dos en `mto-platform`:
 
 - el *audience mapper* de `mto-frontend`, que ya emite `mto-gateway-api` para que activar
   `KEYCLOAK_AUDIENCE_VALIDATION_ENABLED` en el gateway sea cambiar una variable y no tocar el realm
@@ -178,9 +177,9 @@ El gateway no declara ningún perfil de realm propio: no tiene permisos de negoc
 autorización se acaba en su propio Actuator — quién puede leer o escribir qué lo siguen decidiendo
 `mto-configuration` y `mto-stock`.
 
-Orden de aplicación: primero la importación parcial del gateway (crea el cliente), después
-`mto-ops-cross-service.json` (lo nombra). Al revés, Keycloak responde *App doesn't exist in role
-definitions*.
+Orden de aplicación: primero las importaciones parciales de los tres servicios (crean los
+clientes), después `mto-ops-cross-service.json` (los nombra). Al revés, Keycloak responde *App
+doesn't exist in role definitions*. Lo fija `mto-platform/keycloak/apply-partials.sh`.
 
 ## Un realm por entorno
 
@@ -188,11 +187,10 @@ definitions*.
 mismos para `mto-configuration` y para `mto-stock`, y un realm compartido evita duplicar
 identidades. El aislamiento entre servicios lo dan los roles de cliente, no los realms.
 
-Para cambiar el nombre, el campo `realm` de la primera línea del JSON — en los dos ficheros.
-
-Permisos y perfiles deben ser idénticos en ambos: `mto-realm-local.json` es `mto-realm.json` más
-usuarios, el secreto local y el grant de acceso directo. Un cambio de permisos que se haga solo en
-uno de los dos deja el stack local probando algo distinto de lo que se despliega.
+Para cambiar el nombre, el campo `realm` de `mto-platform/keycloak/mto-realm.json` y de
+`mto-realm-local.json`. Los dos deben declarar lo mismo salvo los ajustes propios de local; que no
+se separen lo vigila `mto-platform/scripts/check_realm_consistency.py`, porque un cambio hecho en
+uno solo deja el entorno local probando algo distinto de lo que se despliega.
 
 El realm `master` se reserva para administrar Keycloak. Alojar ahí la aplicación pondría a
 cualquiera de sus usuarios a un rol de distancia de administrar todo el servidor de identidad.

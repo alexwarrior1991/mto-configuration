@@ -1,0 +1,105 @@
+{
+  "clients": [
+    {
+      "clientId": "mto-configuration-svc",
+      "secret": "mto-configuration-svc-secret"
+    }
+  ],
+  "users": [
+    {
+      "username": "config.lector",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Lucia",
+      "lastName": "Lectora",
+      "email": "config.lector@mto.local",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "mto-viewer"
+      ]
+    },
+    {
+      "username": "config.editor",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Elena",
+      "lastName": "Editora",
+      "email": "config.editor@mto.local",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "mto-editor"
+      ]
+    },
+    {
+      "username": "config.responsable",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Rosa",
+      "lastName": "Responsable",
+      "email": "config.responsable@mto.local",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "mto-admin"
+      ]
+    },
+    {
+      "username": "config.auditor",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Andres",
+      "lastName": "Auditor",
+      "email": "config.auditor@mto.local",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "mto-auditor"
+      ]
+    },
+    {
+      "username": "config.ops",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Oscar",
+      "lastName": "Operaciones",
+      "email": "config.ops@mto.local",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "mto-ops"
+      ]
+    }
+  ]
+}

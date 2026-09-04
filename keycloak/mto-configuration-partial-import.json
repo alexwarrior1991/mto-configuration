@@ -1,11 +1,4 @@
 {
-  "realm": "mto",
-  "enabled": true,
-  "displayName": "MTO",
-  "accessTokenLifespan": 300,
-  "ssoSessionIdleTimeout": 1800,
-  "ssoSessionMaxLifespan": 36000,
-  "sslRequired": "external",
   "roles": {
     "client": {
       "mto-configuration-api": [
@@ -99,20 +92,6 @@
             ]
           }
         }
-      },
-      {
-        "name": "mto-ops",
-        "description": "Explotacion y monitorizacion",
-        "composite": true,
-        "composites": {
-          "client": {
-            "mto-configuration-api": [
-              "config-read",
-              "ops-metrics",
-              "ops-write"
-            ]
-          }
-        }
       }
     ]
   },
@@ -127,57 +106,6 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false
-    },
-    {
-      "clientId": "mto-frontend",
-      "name": "Frontal MTO",
-      "description": "Aplicacion de navegador. Authorization Code con PKCE.",
-      "enabled": true,
-      "publicClient": true,
-      "standardFlowEnabled": true,
-      "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
-      "attributes": {
-        "pkce.code.challenge.method": "S256"
-      },
-      "redirectUris": [
-        "http://localhost:4200/*"
-      ],
-      "webOrigins": [
-        "http://localhost:4200"
-      ],
-      "protocolMappers": [
-        {
-          "name": "audiencia-mto-configuration-api",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "config": {
-            "included.client.audience": "mto-configuration-api",
-            "access.token.claim": "true",
-            "id.token.claim": "false"
-          }
-        },
-        {
-          "name": "audiencia-mto-stock-api",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "config": {
-            "included.client.audience": "mto-stock-api",
-            "access.token.claim": "true",
-            "id.token.claim": "false"
-          }
-        },
-        {
-          "name": "audiencia-mto-gateway-api",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "config": {
-            "included.client.audience": "mto-gateway-api",
-            "access.token.claim": "true",
-            "id.token.claim": "false"
-          }
-        }
-      ]
     },
     {
       "clientId": "mto-configuration-svc",

@@ -78,7 +78,7 @@ src/main/resources/application.yaml
 src/main/resources/application-local.yaml
 src/main/resources/application-docker.yaml
 src/main/resources/application-schema-generation.yaml
-docker-compose.yaml
+compose.yaml
 target/generated-schema/db_create.sql
 target/generated-schema/db_drop.sql
 ```
@@ -197,7 +197,7 @@ Este es el flujo correcto cuando empiezas el proyecto o cuando todavía no has c
 Si vas a ejecutar la aplicación desde IntelliJ o Maven, levanta solo infraestructura:
 
 ```powershell
-docker compose up -d postgres redis rabbitmq keycloak
+cd ../mto-platform && docker compose up -d && cd -
 ```
 
 Esto levanta:
@@ -373,7 +373,7 @@ docker compose down -v
 Después levanta infraestructura:
 
 ```powershell
-docker compose up -d postgres redis rabbitmq keycloak
+cd ../mto-platform && docker compose up -d && cd -
 ```
 
 Arranca la aplicación con perfil `local`:
@@ -552,7 +552,7 @@ Solución en desarrollo inicial:
 
 ```powershell
 docker compose down -v
-docker compose up -d postgres redis rabbitmq keycloak
+cd ../mto-platform && docker compose up -d && cd -
 .\mvnw.cmd spring-boot:run '-Dspring-boot.run.profiles=local'
 ```
 
@@ -582,7 +582,7 @@ Solución en local:
 
 ```powershell
 docker compose down -v
-docker compose up -d postgres
+cd ../mto-platform && docker compose up -d postgres && cd -
 ```
 
 ### Error `role does not exist`
@@ -617,7 +617,7 @@ Dentro de un contenedor, `localhost` es el propio contenedor, no PostgreSQL.
 ### Generar SQL inicial con Hibernate
 
 ```powershell
-docker compose up -d postgres redis rabbitmq keycloak
+cd ../mto-platform && docker compose up -d && cd -
 .\mvnw.cmd spring-boot:run '-Dspring-boot.run.profiles=local,schema-generation'
 ```
 
@@ -625,7 +625,7 @@ docker compose up -d postgres redis rabbitmq keycloak
 
 ```powershell
 docker compose down -v
-docker compose up -d postgres redis rabbitmq keycloak
+cd ../mto-platform && docker compose up -d && cd -
 .\mvnw.cmd spring-boot:run '-Dspring-boot.run.profiles=local'
 ```
 
