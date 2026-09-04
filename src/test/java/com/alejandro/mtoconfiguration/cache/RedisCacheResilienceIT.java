@@ -20,6 +20,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
@@ -27,7 +29,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -76,6 +81,9 @@ class RedisCacheResilienceIT {
     @Autowired
     private MeterRegistry meterRegistry;
 
+    @Autowired
+    private RedisConnectionFactory connectionFactory;
+
     @DynamicPropertySource
     static void redisProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.data.redis.host", redis::getHost);
@@ -96,9 +104,44 @@ class RedisCacheResilienceIT {
         registry.add("cache.redis.allowed-subtypes[2]", () -> "com.alejandro.mtoconfiguration");
     }
 
+    /**
+     * Abre y cierra una conexión antes de tocar la caché.
+     * <p>
+     * No es precaución de más: con el contenedor recién arrancado, la primera operación contra
+     * Redis paga la conexión en frío de Lettuce, y si se pasa de {@code spring.data.redis.timeout}
+     * el {@code ResilientCacheErrorHandler} se la traga —su cometido— pero además
+     * {@link RedisCacheAvailability#markDegraded} arma el cortocircuito durante
+     * {@code cache.redis.degraded-retry-window}, aquí 30 segundos. A partir de ahí
+     * {@code ResilientCache} corta ANTES de llamar a Redis, así que la segunda llamada del test
+     * vuelve al repositorio y la aserción falla con "was 2 times" por una carrera de arranque y no
+     * por lo que el test pretende comprobar.
+     * <p>
+     * Pagando ese coste aquí, fuera del camino de la caché, una conexión lenta no puede armar el
+     * cortocircuito. Subir el timeout —que es lo que se intentó antes— solo baja la probabilidad.
+     */
+    private void calentarLaConexion() {
+        await().atMost(Duration.ofSeconds(15))
+                .pollInterval(Duration.ofMillis(200))
+                .ignoreExceptions()
+                .untilAsserted(() -> {
+                    try (RedisConnection connection = connectionFactory.getConnection()) {
+                        assertThat(connection.ping()).isEqualTo("PONG");
+                    }
+                });
+    }
+
     @Test
     @Order(1)
     void shouldKeepServingFromDatabaseWhenRedisGoesDown() {
+        calentarLaConexion();
+
+        assertThat(availability.isAvailable())
+                .withFailMessage("El cortocircuito ya estaba armado antes de empezar: alguna "
+                        + "operación falló durante el calentamiento y la caché se considera "
+                        + "degradada durante la ventana de reintento, de modo que este test no "
+                        + "estaría comprobando lo que cree.")
+                .isTrue();
+
         when(repository.load("K")).thenReturn(new TestValue("K", "desde-bd"));
 
         // Con Redis vivo: primera llamada puebla la caché, la segunda es un acierto.
