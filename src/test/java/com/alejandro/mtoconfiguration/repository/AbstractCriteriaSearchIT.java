@@ -50,7 +50,7 @@ public abstract class AbstractCriteriaSearchIT {
      * este start() falla al cargar la clase y los tests fallan en voz alta, que es lo
      * que queremos. Nada de saltarselos en silencio.
      */
-    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine");
 
     static {
         postgres.start();

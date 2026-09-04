@@ -47,3 +47,106 @@ jobs:
             target/failsafe-reports/
           if-no-files-found: ignore
           retention-days: 7
+
+  image:
+    name: Build image
+    needs: test
+    runs-on: ubuntu-latest
+
+    # El smoke test necesita una base de datos de verdad: Hibernate corre con ddl-auto validate y
+    # el contexto no levanta sin conexion.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: mto_configuration_db
+          POSTGRES_USER: mto_configuration_user
+          POSTGRES_PASSWORD: mto_configuration_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mto_configuration_user -d mto_configuration_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    permissions:
+      contents: read
+      # Solo hace falta para publicar. En un pull request desde un fork el token es de solo lectura
+      # de todas formas, por eso el login y el push van condicionados mas abajo.
+      packages: write
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # La imagen se construye SIEMPRE, tambien en los pull request, de modo que un Dockerfile roto
+      # se descubre antes de fusionar y no despues, cuando ya no hay nadie mirando. Lo que queda
+      # condicionado es la publicacion.
+      - name: Log in to GHCR
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # Una rama de trabajo no debe publicar una imagen que alguien pueda desplegar por error.
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+          # Sin publicar, la imagen se queda en el demonio local del runner: basta para saber que el
+          # Dockerfile construye y que el jar entra donde el ENTRYPOINT lo espera.
+          load: ${{ github.event_name != 'push' || github.ref != 'refs/heads/master' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Construir no prueba que el contenedor arranque. Esto lo comprueba: levanta la imagen recien
+      # construida contra el PostgreSQL de arriba y espera a que /actuator/health responda. Redis y
+      # RabbitMQ se quedan fuera; la aplicacion arranca sin ellos.
+      #
+      # Con --network host, 'localhost' significa lo mismo dentro del contenedor y para el servicio
+      # que el runner ha publicado.
+      - name: Smoke test the image
+        if: ${{ github.event_name != 'push' || github.ref != 'refs/heads/master' }}
+        run: |
+          IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+          docker run -d --name mto-configuration-smoke --network host \
+            -e SPRING_PROFILES_ACTIVE=docker \
+            -e MTO_CONFIGURATION_DATASOURCE_URL=jdbc:postgresql://localhost:5432/mto_configuration_db \
+            -e MTO_CONFIGURATION_DATASOURCE_USERNAME=mto_configuration_user \
+            -e MTO_CONFIGURATION_DATASOURCE_PASSWORD=mto_configuration_password \
+            -e SPRING_DATA_REDIS_HOST=localhost \
+            -e SPRING_RABBITMQ_HOST=localhost \
+            -e MANAGEMENT_HEALTH_REDIS_ENABLED=false \
+            -e MANAGEMENT_HEALTH_RABBIT_ENABLED=false \
+            -e KEYCLOAK_ISSUER_URI=http://localhost:8082/realms/mto \
+            "$IMAGE"
+          for i in $(seq 1 45); do
+            if curl -fsS http://localhost:8080/actuator/health > /dev/null; then
+              echo "El contenedor responde en /actuator/health"
+              docker rm -f mto-configuration-smoke
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "La imagen no respondio en 90s. Log del contenedor:"
+          docker logs mto-configuration-smoke
+          docker rm -f mto-configuration-smoke
+          exit 1

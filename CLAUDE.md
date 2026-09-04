@@ -5,6 +5,8 @@
 
 ⚠️ `mto-stock` es un **proyecto hermano independiente** (otro repo, otro `pom.xml`), no un módulo de este. No buscar ni mezclar código de stock aquí.
 
+⚠️ La infraestructura local (PostgreSQL, Redis, RabbitMQ, Keycloak, colector OTLP) la levanta `mto-platform`, otro repo hermano. `compose.yaml` de aquí trae **solo la aplicación**. Un único broker compartido: mientras cada repo levantaba el suyo, los eventos de datos maestros no llegaban a `mto-stock` y no fallaba nada.
+
 ## Stack
 Java 25, Spring Boot 4.0.1, Maven **single-module** (sin `<modules>` en `pom.xml`). Detalle completo de dependencias en `README.md`.
 
@@ -31,8 +33,9 @@ Tests en `src/test/java`, misma raíz de paquete.
 - `README.md` — build, comandos, dependencias, estructura funcional
 - `README_API.md` — uso de los endpoints (alta, modificación, colecciones de hijos, consultas, errores)
 - `README_FLYWAY.md` — migraciones de BD
-- `README_LOCAL_DOCKER.md` — entorno local con Docker
+- `README_LOCAL_DOCKER.md` — entorno local con Docker (la infraestructura vive en `mto-platform`)
 - `README_MESSAGING.md` — RabbitMQ / eventos
+- `keycloak/README.md` — qué aporta este repo al realm (`mto-configuration-partial-import.json` y `mto-configuration-dev.json`); el realm base y el orden de ensamblado son de `mto-platform`
 - `README_ASYNC_JOBS.md` — trabajos en segundo plano (202 Accepted + jobId), capa paralela a `/async`
 
 ## Reglas específicas

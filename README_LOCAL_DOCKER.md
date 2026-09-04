@@ -5,20 +5,31 @@ Esta guía explica cómo arrancar el proyecto `mto-configuration` en dos modos d
 ```text
 Modo local:
   La aplicación Spring Boot se ejecuta desde IntelliJ o Maven.
-  PostgreSQL, Redis, RabbitMQ y Keycloak se ejecutan en Docker.
+  La infraestructura la levanta mto-platform.
 
 Modo Docker completo:
   La aplicación Spring Boot también se ejecuta dentro de Docker Compose.
-  PostgreSQL, Redis, RabbitMQ y Keycloak se ejecutan en Docker.
+  La infraestructura la levanta mto-platform.
 ```
+
+> **La infraestructura ya no vive aquí.** PostgreSQL, Redis, RabbitMQ, Keycloak y el colector de
+> trazas los levanta [`mto-platform`](https://github.com/alexwarrior1991/mto-platform), que es el
+> único entorno local compartido del dominio. Este repositorio solo trae `compose.yaml` con la
+> aplicación.
+>
+> No es una cuestión de orden. Mientras cada repositorio levantaba su propio RabbitMQ, esta
+> aplicación publicaba los eventos de datos maestros en un broker y `mto-stock` escuchaba en otro:
+> no llegaba nada y no fallaba nada. Con un solo broker no puede pasar.
 
 ## 0. Antes de nada: credenciales
 
-Las contraseñas del stack local viven en un fichero `.env` que **no se versiona**. Antes del
-primer arranque:
+Hay **dos** ficheros `.env`, ninguno versionado. El de `mto-platform` define las credenciales de la
+infraestructura; el de aquí, con qué credenciales se conecta esta aplicación a ella. Tienen que
+coincidir.
 
 ```bash
-cp .env.example .env
+cd ../mto-platform && cp .env.example .env
+cd ../mto-configuration && cp .env.example .env
 ```
 
 Si falta, `docker compose` se niega a arrancar y dice qué variable no encuentra, en lugar de
@@ -30,16 +41,20 @@ que arranque con la credencial de ejemplo y nadie lo note.
 
 ## 1. Arquitectura local del proyecto
 
-El stack definido en `docker-compose.yaml` contiene estos servicios:
+El stack de `mto-platform/compose.yaml` contiene estos servicios:
 
 ```text
-postgres  → PostgreSQL 17
+postgres  → PostgreSQL 17, con las bases de las dos aplicaciones
 redis     → Redis 7.4
 rabbitmq  → RabbitMQ 4 con panel de administración
 keycloak  → Keycloak 26.1
 jaeger    → Jaeger all-in-one, colector de trazas y visor
-app       → mto-configuration-api
 ```
+
+La infraestructura no lleva perfil, así que arranca siempre; cada aplicación lleva el suyo
+(`--profile configuration`, `--profile stock`, `--profile gateway`, o `--profile all` para las
+tres). El `compose.yaml` de este repositorio contiene un único servicio, `app`, y sirve para probar
+una construcción local contra esa infraestructura.
 
 Puertos publicados en tu máquina:
 
@@ -54,11 +69,10 @@ Jaeger (OTLP HTTP):   localhost:4318
 Aplicación:           http://localhost:8081 cuando corre en Docker
 ```
 
-El colector de trazas se levanta **en este stack** y lo comparten los tres servicios del dominio:
-`mto-configuration`, `mto-stock` y `mto-gateway` exportan todos aquí. Los otros dos lo alcanzan por
-el nombre `otel.mto.local`, resuelto por el host igual que `auth.mto.local` (ver el apartado 4). Un
-colector por stack haría que cada uno viera solo sus propios tramos y una traza que empieza en el
-gateway y termina en `mto-stock` no se vería entera en ningún sitio.
+El colector de trazas lo comparten los tres servicios del dominio, que lo alcanzan por el nombre
+`otel.mto.local`, resuelto por el host igual que `auth.mto.local` (ver el apartado 4). Un colector
+por stack haría que cada uno viera solo sus propios tramos y una traza que empieza en el gateway y
+termina en `mto-stock` no se vería entera en ningún sitio.
 
 Las trazas viven en memoria: se pierden al parar el contenedor. Persistirlas pediría Elasticsearch o
 Cassandra detrás, mucho aparato para mirar una traza mientras se depura.
@@ -77,7 +91,7 @@ La raíz del proyecto debe contener:
 
 ```text
 Dockerfile
-docker-compose.yaml
+compose.yaml
 mvnw.cmd
 pom.xml
 src/main/resources/application.yaml
@@ -254,13 +268,14 @@ Este es el modo recomendado para desarrollar normalmente.
 
 ### Paso 1: levantar infraestructura
 
-Desde la raíz del proyecto ejecuta:
+Desde `mto-platform`:
 
 ```powershell
-docker compose up -d postgres redis rabbitmq keycloak jaeger
+docker compose up -d
+./keycloak/apply-partials.sh
 ```
 
-Esto levanta solo:
+Sin perfil levanta solo la infraestructura:
 
 ```text
 postgres
@@ -270,7 +285,10 @@ keycloak
 jaeger
 ```
 
-No levanta `app`, porque la aplicación la vas a ejecutar desde IntelliJ o Maven.
+No levanta ninguna aplicación, porque esta la vas a ejecutar desde IntelliJ o Maven.
+
+`apply-partials.sh` completa el realm: el contenedor de Keycloak solo importa el realm base, y los
+clientes y roles de cada servicio los aportan sus importaciones parciales, en orden.
 
 ### Paso 2: comprobar servicios
 
@@ -290,9 +308,10 @@ RabbitMQ: guest / guest
 PostgreSQL: mto_configuration_user / mto_configuration_password
 ```
 
-El realm no hay que importarlo: el servicio `keycloak` monta `keycloak/mto-realm-local.json` y
-arranca con `--import-realm`, así que el realm `mto` llega con sus clientes, permisos, perfiles y
-cinco usuarios de desarrollo (contraseña `local`):
+El realm lo trae `mto-platform`: el contenedor de Keycloak importa el realm base al arrancar y
+`./keycloak/apply-partials.sh` aplica encima lo que aporta cada servicio. Al terminar, el realm
+`mto` tiene sus clientes, permisos, perfiles y los cinco usuarios de desarrollo de esta aplicación
+(contraseña `local`):
 
 ```text
 config.lector       mto-viewer
@@ -372,20 +391,20 @@ Este modo sirve para probar el proyecto como se ejecutaría de forma más pareci
 
 ### Paso 1: levantar todo
 
-Desde la raíz del proyecto ejecuta:
+Lo habitual es no usar el `compose.yaml` de este repositorio: `mto-platform` levanta la imagen ya
+publicada en GHCR.
+
+```powershell
+cd ..\mto-platform
+docker compose --profile configuration up -d
+.\keycloak\apply-partials.sh
+```
+
+Para probar una **construcción local** de esta aplicación contra esa misma infraestructura, con el
+stack de `mto-platform` ya en marcha:
 
 ```powershell
 docker compose up -d --build
-```
-
-Esto levanta:
-
-```text
-postgres
-redis
-rabbitmq
-keycloak
-app
 ```
 
 La app queda publicada en:
@@ -394,11 +413,11 @@ La app queda publicada en:
 http://localhost:8081
 ```
 
-porque en `docker-compose.yaml` está configurado:
+porque en `compose.yaml` está configurado:
 
 ```yaml
 ports:
-  - "8081:8080"
+  - "${APP_PORT:-8081}:8080"
 ```
 
 Esto significa:
@@ -435,7 +454,7 @@ Keycloak issuer: http://auth.mto.local:8082/realms/mto
 
 ### Paso 4: por qué existe `extra_hosts`
 
-En `docker-compose.yaml`, el servicio `app` tiene:
+En `compose.yaml`, el servicio `app` tiene:
 
 ```yaml
 extra_hosts:
@@ -494,7 +513,7 @@ target/generated-schema/db_drop.sql
 Comando:
 
 ```powershell
-docker compose up -d postgres redis rabbitmq keycloak
+cd ..\mto-platform; docker compose up -d; cd ..\mto-configuration
 .\mvnw.cmd spring-boot:run '-Dspring-boot.run.profiles=local,schema-generation'
 ```
 
@@ -519,7 +538,7 @@ No uses `schema-generation` para probar Flyway, porque ese perfil desactiva Flyw
 Usa este modo:
 
 ```powershell
-docker compose up -d postgres redis rabbitmq keycloak
+cd ..\mto-platform; docker compose up -d; cd ..\mto-configuration
 .\mvnw.cmd spring-boot:run '-Dspring-boot.run.profiles=local'
 ```
 
@@ -532,7 +551,7 @@ Ventajas:
 
 ### Prueba completa dockerizada
 
-Usa este modo:
+Usa este modo, con la infraestructura de `mto-platform` ya en marcha:
 
 ```powershell
 docker compose up -d --build
@@ -556,7 +575,7 @@ docker compose down -v
 Después levanta de nuevo:
 
 ```powershell
-docker compose up -d postgres redis rabbitmq keycloak
+cd ../mto-platform && docker compose up -d && cd -
 ```
 
 o:
@@ -663,7 +682,7 @@ KEYCLOAK_ISSUER_URI=http://auth.mto.local:8082/realms/mto
 Comprueba que arrancaste:
 
 ```powershell
-docker compose up -d postgres
+cd ../mto-platform && docker compose up -d postgres && cd -
 ```
 
 Comprueba que el perfil activo es:
@@ -685,10 +704,10 @@ docker
 Comprueba que la URL es:
 
 ```text
-jdbc:postgresql://postgres:5432/mto_configuration_db
+jdbc:postgresql://host.docker.internal:5432/mto_configuration_db
 ```
 
-No debe ser `localhost` dentro del contenedor.
+No debe ser `localhost` dentro del contenedor: PostgreSQL lo publica `mto-platform` en el host.
 
 ### Error de Keycloak issuer
 
@@ -698,22 +717,27 @@ Si ves errores `401 Unauthorized`, `invalid issuer` o problemas de JWT, revisa:
 - Que el token tiene `iss=http://auth.mto.local:8082/realms/mto`.
 - Que la app usa `KEYCLOAK_ISSUER_URI=http://auth.mto.local:8082/realms/mto`.
 - Que existe `127.0.0.1 auth.mto.local` en el archivo `hosts` de Windows.
-- Que `extra_hosts` existe en el servicio `app` de Docker Compose.
+- Que `extra_hosts` existe en el servicio `app` de `compose.yaml`.
 
 ### El realm `mto` no existe
 
 Si `http://auth.mto.local:8082/realms/mto/.well-known/openid-configuration` da 404, la importación
-no llegó a ejecutarse. Lo habitual es que el volumen venga de un arranque anterior a que el compose
-importara el realm: Keycloak no importa sobre un realm que ya existe, ni sobre una base de datos ya
-inicializada. Se arregla partiendo de cero:
+del realm base no llegó a ejecutarse. Lo habitual es que el volumen venga de un arranque anterior:
+Keycloak no importa sobre un realm que ya existe. Se arregla partiendo de cero, desde
+`mto-platform`:
 
 ```powershell
-docker compose down -v
-docker compose up -d postgres redis rabbitmq keycloak
+cd ..\mto-platform
+docker compose --profile all down -v
+docker compose up -d
+.\keycloak\apply-partials.sh
 ```
 
 Si aun así falla, mira `docker compose logs keycloak`: un JSON mal formado aborta el arranque y lo
 dice ahí.
+
+Caso distinto: el realm existe pero falta el cliente `mto-configuration-api` o algún perfil. Eso no
+es el realm base, sino que no se ejecutó `apply-partials.sh`. Ejecútalo; es reejecutable.
 
 ### Flyway no ejecuta migraciones
 
@@ -751,7 +775,9 @@ Puerto: 6379
 ### Levantar solo infraestructura
 
 ```powershell
-docker compose up -d postgres redis rabbitmq keycloak
+cd ..\mto-platform
+docker compose up -d
+.\keycloak\apply-partials.sh
 ```
 
 ### Arrancar app local
@@ -766,17 +792,22 @@ docker compose up -d postgres redis rabbitmq keycloak
 docker compose up -d --build
 ```
 
-### Parar contenedores sin borrar datos
+### Parar la aplicación
 
 ```powershell
 docker compose down
 ```
 
-### Parar contenedores borrando volúmenes
+### Parar la infraestructura borrando volúmenes
 
 ```powershell
-docker compose down -v
+cd ..\mto-platform
+docker compose --profile all down -v
 ```
+
+Las bases y sus usuarios los crea `postgres/init/01-databases.sql`, que PostgreSQL ejecuta **solo**
+en la primera inicialización del volumen: cambiar un nombre o una credencial de base exige
+precisamente este `down -v`.
 
 ### Generar scripts de schema
 
@@ -789,7 +820,7 @@ docker compose down -v
 Para el día a día:
 
 ```text
-1. Levantar infraestructura Docker.
+1. Levantar la infraestructura de mto-platform.
 2. Arrancar mto-configuration en local con perfil local.
 3. Desarrollar y depurar desde IntelliJ.
 4. Crear migraciones Flyway para cambios de base de datos.
@@ -800,14 +831,13 @@ Para el día a día:
 Comandos:
 
 ```powershell
-docker compose up -d postgres redis rabbitmq keycloak
+cd ..\mto-platform; docker compose up -d; cd ..\mto-configuration
 .\mvnw.cmd spring-boot:run '-Dspring-boot.run.profiles=local'
 ```
 
-Antes de considerar algo terminado, prueba también:
+Antes de considerar algo terminado, prueba también la imagen:
 
 ```powershell
-docker compose down -v
 docker compose up -d --build
 ```
 

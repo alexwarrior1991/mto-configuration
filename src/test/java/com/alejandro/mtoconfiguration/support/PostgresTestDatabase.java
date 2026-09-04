@@ -79,7 +79,7 @@ public final class PostgresTestDatabase {
 
         // Sin gestion de ciclo de vida a proposito: si Docker no responde, el fallo se
         // ve al cargar la clase y los tests fallan en voz alta. Nada de saltarselos.
-        PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:16-alpine");
+        PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:17-alpine");
         container.start();
         return container;
     }

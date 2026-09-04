@@ -1,55 +1,62 @@
-# Perfil de desarrollo. Las credenciales de este fichero son desechables y solo valen contra
-# el stack local que levanta docker-compose. Ningun valor de un entorno desplegado debe
-# escribirse aqui: la configuracion base (application.yaml) no lleva valores por defecto para
-# los secretos justamente para que un despliegue sin gestor de secretos no arranque.
+# Perfil de desarrollo. Las credenciales de este fichero son desechables y solo valen contra el
+# stack local. Ningun valor de un entorno desplegado debe escribirse aqui: la configuracion base
+# (application.yaml) no lleva valores por defecto para los secretos justamente para que un
+# despliegue sin gestor de secretos no arranque.
+#
+# Todo va con ${VARIABLE:-valor}: sin eso, un valor literal aqui gana a la variable de entorno que
+# le pase el compose -este fichero se carga despues de application.yaml- y la aplicacion acababa
+# ignorando lo que se le pedia. Los defectos son los del stack de este repositorio, de modo que
+# 'docker compose up' sigue funcionando sin definir nada; mto-platform los sobrescribe con los
+# suyos.
 spring:
   datasource:
-    url: jdbc:postgresql://postgres:5432/mto_configuration_db
-    username: mto_configuration_user
-    password: mto_configuration_password
+    url: ${MTO_CONFIGURATION_DATASOURCE_URL:jdbc:postgresql://postgres:5432/mto_configuration_db}
+    username: ${MTO_CONFIGURATION_DATASOURCE_USERNAME:mto_configuration_user}
+    password: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD:mto_configuration_password}
     driver-class-name: org.postgresql.Driver
 
   flyway:
-    url: jdbc:postgresql://postgres:5432/mto_configuration_db
-    user: mto_configuration_user
-    password: mto_configuration_password
-    default-schema: mto_configuration
-    schemas: mto_configuration
+    url: ${MTO_CONFIGURATION_DATASOURCE_URL:jdbc:postgresql://postgres:5432/mto_configuration_db}
+    user: ${MTO_CONFIGURATION_DATASOURCE_USERNAME:mto_configuration_user}
+    password: ${MTO_CONFIGURATION_DATASOURCE_PASSWORD:mto_configuration_password}
+    default-schema: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
+    schemas: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
 
   jpa:
     properties:
       hibernate:
-        default_schema: mto_configuration
+        default_schema: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
 
   data:
     redis:
-      host: redis
-      port: 6379
+      host: ${SPRING_DATA_REDIS_HOST:redis}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
 
   rabbitmq:
-    host: rabbitmq
-    port: 5672
-    username: guest
-    password: guest
+    host: ${SPRING_RABBITMQ_HOST:rabbitmq}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+    virtual-host: ${SPRING_RABBITMQ_VIRTUAL_HOST:/}
 
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://auth.mto.local:8082/realms/mto
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://auth.mto.local:8082/realms/mto}
       client:
-        # Cuenta de servicio para las llamadas salientes. Valor local; en docker-compose lo pisa
-        # la variable de entorno, que tiene mas precedencia que este fichero.
+        # Cuenta de servicio para las llamadas salientes.
         registration:
           mto-services:
-            client-secret: mto-configuration-svc-secret
+            client-secret: ${KEYCLOAK_SERVICE_CLIENT_SECRET:mto-configuration-svc-secret}
 
 app:
   security:
-    client-id: mto-configuration-api
-    required-audience: mto-configuration-api
+    client-id: ${KEYCLOAK_CLIENT_ID:mto-configuration-api}
+    required-audience: ${KEYCLOAK_AUDIENCE:mto-configuration-api}
     # Entorno de desarrollo: la documentacion interactiva es la forma habitual de probar la API.
-    expose-api-docs: true
+    expose-api-docs: ${APP_SECURITY_EXPOSE_API_DOCS:true}
     cors:
       allowed-origins:
-        - http://localhost:4200
+        - ${APP_CORS_ALLOWED_ORIGIN:http://localhost:4200}

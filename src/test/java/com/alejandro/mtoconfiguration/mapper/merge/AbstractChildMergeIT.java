@@ -67,7 +67,7 @@ public abstract class AbstractChildMergeIT {
      * el contexto entre clases y ese contexto resolvio @DynamicPropertySource una unica vez, asi
      * que un contenedor por clase dejaria el DataSource apuntando a un puerto ya cerrado.
      */
-    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine");
 
     static {
         postgres.start();
