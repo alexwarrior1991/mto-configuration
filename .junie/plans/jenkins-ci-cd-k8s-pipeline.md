@@ -41,8 +41,19 @@ El objetivo es implementar un pipeline de Integración Continua y Despliegue Con
 ### Current Implementation
 El proyecto `mto-configuration` dispone de:
 - `Dockerfile` multi-etapa que utiliza `maven:3.9.11-eclipse-temurin-25` para la construcción y `eclipse-temurin:25-jre` para la imagen final de producción, ejecutándose bajo un usuario no-root `spring`.
-- `docker-compose.yaml` local que documenta las dependencias del servicio: PostgreSQL 17, Redis 7.4, RabbitMQ 4, y Keycloak 26.1 con autenticación OAuth2/JWT.
+- `compose.yaml` local que levanta **solo la aplicación**. La infraestructura del servicio —PostgreSQL 17, Redis 7.4, RabbitMQ 4 y Keycloak 26.1 con autenticación OAuth2/JWT— vive desde la migración a [`mto-platform`](https://github.com/alexwarrior1991/mto-platform), el entorno local compartido del dominio, y ya no la levanta este repositorio.
 - Configuración Maven basada en Java 25 y Spring Boot 4.0.1.
+
+> **Nota posterior a la redacción de este plan.** El repositorio ya tiene CI real en **GitHub
+> Actions** (`.github/workflows/ci.yml`): compila, ejecuta la suite y, al entrar en `master`,
+> construye la imagen y la publica en **GHCR** (`ghcr.io/alexwarrior1991/mto-configuration`). Es
+> decir, la parte de CI y de publicación de imagen que este documento propone **ya está resuelta por
+> otro medio**.
+>
+> Este plan sigue **sin implementar**: no existe `Jenkinsfile` ni manifiestos de Kubernetes en el
+> repositorio. Se conserva como propuesta de despliegue en K8s, que es lo que GitHub Actions no
+> cubre hoy. Antes de retomarlo hay que decidir si Jenkins sustituye al CI actual o solo añade el
+> despliegue por debajo, porque tal y como está redactado duplica etapas que ya existen.
 
 ### Key Decisions
 1. **Pipeline Declarativo con Agentes Docker**: Ejecutar las etapas dentro de contenedores efímeros para no depender de herramientas instaladas en los nodos de Jenkins.
