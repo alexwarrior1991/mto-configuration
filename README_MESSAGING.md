@@ -108,6 +108,29 @@ Lógica específica para eventos de entidades de infraestructura.
 *   **`MasterDataRabbitMqNames`**:
     Genera las routing-keys siguiendo el estándar: `mto.master-data.{entity}.{operation}`.
 
+#### Cambios en el contrato del evento `profile`
+
+El payload de `profile` incorpora cinco claves nuevas. **El cambio es compatible hacia atrás**: sólo
+añade claves, no renombra ni quita ninguna, y `mto-stock` hoy registra el evento `profile` sin
+tratarlo (no tiene `MasterDataEntityHandler` para esa entidad).
+
+| Clave nueva | Tipo | Contenido |
+|---|---|---|
+| `span` | número o `null` | Vano hasta el perfil siguiente, en metros |
+| `heightCantileverSupport` | número o `null` | Altura del soporte de ménsula, en milímetros |
+| `poleGaugeLocation` | número o `null` | Separación del poste al gálibo, en milímetros |
+| `railPoleDistance` | número o `null` | Distancia carril-poste, en milímetros, **con signo** |
+| `sectioningFeeding` | `{ "id", "code" }` o `null` | Elemento de seccionamiento y alimentación |
+
+`sectioningFeeding` sale con `id` **y** `code`, como el resto de LOV del perfil y a diferencia de
+`disconnector.disconnectorFunction`, que viaja sólo como `disconnectorFunctionId`: el consumidor
+necesita el código para interpretarlo sin resolver la referencia. Ambos apuntan al mismo catálogo,
+`DisconnectorFunction`.
+
+Que salga con código obliga a que la relación venga inicializada, así que `sectioningFeeding` entra
+en el `@EntityGraph` de `ProfileRepository.findByIdForMessaging`. Es un join a-uno, no multiplica
+filas, y `MasterDataPayloadContractIT` sigue exigiendo **una** sentencia por evento.
+
 ---
 
 ## 3. Infraestructura de RabbitMQ (Exchanges, Colas y Dead Letter)

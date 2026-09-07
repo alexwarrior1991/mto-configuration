@@ -90,7 +90,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
     }
 
     /**
@@ -148,6 +148,52 @@ class FlywayMigrationIT {
     void elTipoDeTrabajoAdmiteLaImportacionDeLov() {
         assertThatCode(() -> jdbc().update(insertAsyncJob("LOV_IMPORT", "PENDING")))
                 .doesNotThrowAnyException();
+    }
+
+    /**
+     * V11 anade a profile los cuatro campos tecnicos y la clave ajena de sectioning_feeding.
+     *
+     * <p>El tipo si lo mira {@code ddl-auto: validate}, pero <b>la gemela de auditoria no</b>:
+     * Envers no participa en esa validacion, asi que si {@code profile_aud} se quedara sin estas
+     * columnas la aplicacion arrancaria igual y el fallo saldria al guardar la primera revision de
+     * un perfil, con el dato ya perdido para el historico.
+     */
+    @Test
+    void elPerfilYSuGemelaDeAuditoriaTienenLosCamposTecnicos() {
+        List<String> esperadas = List.of("span", "height_cantilever_support", "pole_gauge_location",
+                "rail_pole_distance", "sectioning_feeding_id");
+
+        for (String tabla : List.of("profile", "profile_aud")) {
+            List<String> columnas = jdbc().queryForList(
+                    "select column_name from information_schema.columns"
+                            + " where table_schema = ? and table_name = ?",
+                    String.class, SCHEMA, tabla);
+
+            assertThat(columnas).as(tabla).containsAll(esperadas);
+        }
+    }
+
+    /**
+     * {@code sectioningFeeding} reutiliza el catalogo DisconnectorFunction en lugar de tener una
+     * LOV propia. Sin la clave ajena, un codigo inexistente se guardaria como un id huerfano y el
+     * evento de datos maestros saldria con una referencia rota.
+     */
+    @Test
+    void laAlimentacionDelPerfilApuntaAlCatalogoDeFuncionesDeSeccionador() {
+        List<String> referenciadas = jdbc().queryForList(
+                """
+                select ccu.table_name
+                from information_schema.table_constraints tc
+                join information_schema.key_column_usage kcu
+                  on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
+                join information_schema.constraint_column_usage ccu
+                  on ccu.constraint_name = tc.constraint_name and ccu.table_schema = tc.table_schema
+                where tc.table_schema = ? and tc.table_name = 'profile'
+                  and tc.constraint_type = 'FOREIGN KEY'
+                  and kcu.column_name = 'sectioning_feeding_id'
+                """, String.class, SCHEMA);
+
+        assertThat(referenciadas).containsExactly("disconnector_function");
     }
 
     @Test

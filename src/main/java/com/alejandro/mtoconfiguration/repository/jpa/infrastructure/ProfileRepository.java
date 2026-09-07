@@ -97,6 +97,7 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
             "profileStatus",
             "returnSupport",
             "sectioning",
+            "sectioningFeeding",
             "cantilevers",
             "cantilevers.steadyArm",
             "disconnector"

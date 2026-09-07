@@ -16,11 +16,19 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.HEIGHT_CANTILEVER_SUPPORT_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.HEIGHT_CANTILEVER_SUPPORT_INTEGER_DIGITS;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_FRACTION_DIGITS;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.POLE_GAUGE_LOCATION_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.POLE_GAUGE_LOCATION_INTEGER_DIGITS;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.PROFILE_ID_MAX_LENGTH;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.PROFILE_ID_MIN_LENGTH;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.PROFILE_MAX_CANTILEVERS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.RAIL_POLE_DISTANCE_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.RAIL_POLE_DISTANCE_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.SPAN_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.SPAN_INTEGER_DIGITS;
 
 @Component
 @RequiredArgsConstructor
@@ -34,6 +42,10 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
     private static final String FIELD_PROFILES = "profiles";
     private static final String FIELD_CANTILEVERS = "cantilevers";
     private static final String FIELD_DISCONNECTOR = "disconnector";
+    private static final String FIELD_SPAN = "span";
+    private static final String FIELD_HEIGHT_CANTILEVER_SUPPORT = "heightCantileverSupport";
+    private static final String FIELD_POLE_GAUGE_LOCATION = "poleGaugeLocation";
+    private static final String FIELD_RAIL_POLE_DISTANCE = "railPoleDistance";
 
     /**
      * El DTO transporta el punto kilométrico como texto pero la columna es {@code NUMERIC(12,3)} y
@@ -63,6 +75,39 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
                         ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_KP)
                 .validateMaxSize(dto.getCantilevers(), PROFILE_MAX_CANTILEVERS,
                         ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_CANTILEVERS);
+
+        validateTechnicalFields(dto, alerts);
+    }
+
+    /**
+     * Los cuatro campos técnicos del perfil son <b>opcionales</b>: en los workbooks aparecen entre
+     * el 30 % y el 95 % de las filas según cuál, así que exigirlos dejaría fuera la mayor parte del
+     * catálogo. Lo que sí se comprueba, cuando vienen, es que quepan en su columna: aceptar aquí
+     * más de lo que admite la columna solo cambia el 400 con el campo señalado por un 500 del
+     * driver.
+     *
+     * <p>{@code railPoleDistance} es la única sin mínimo, porque el signo indica a qué lado de la
+     * vía queda el poste.
+     */
+    private void validateTechnicalFields(ProfileDTO dto, List<Alert> alerts) {
+        check(alerts)
+                .validateBigDecimalWithPrecision(dto.getSpan(), SPAN_INTEGER_DIGITS, SPAN_FRACTION_DIGITS,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_SPAN)
+                .validateRange(dto.getSpan(), BigDecimal.ZERO, null,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_SPAN)
+                .validateBigDecimalWithPrecision(dto.getHeightCantileverSupport(),
+                        HEIGHT_CANTILEVER_SUPPORT_INTEGER_DIGITS, HEIGHT_CANTILEVER_SUPPORT_FRACTION_DIGITS,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_HEIGHT_CANTILEVER_SUPPORT)
+                .validateRange(dto.getHeightCantileverSupport(), BigDecimal.ZERO, null,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_HEIGHT_CANTILEVER_SUPPORT)
+                .validateBigDecimalWithPrecision(dto.getPoleGaugeLocation(),
+                        POLE_GAUGE_LOCATION_INTEGER_DIGITS, POLE_GAUGE_LOCATION_FRACTION_DIGITS,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_POLE_GAUGE_LOCATION)
+                .validateRange(dto.getPoleGaugeLocation(), BigDecimal.ZERO, null,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_POLE_GAUGE_LOCATION)
+                .validateBigDecimalWithPrecision(dto.getRailPoleDistance(),
+                        RAIL_POLE_DISTANCE_INTEGER_DIGITS, RAIL_POLE_DISTANCE_FRACTION_DIGITS,
+                        ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_RAIL_POLE_DISTANCE);
     }
 
     @Override

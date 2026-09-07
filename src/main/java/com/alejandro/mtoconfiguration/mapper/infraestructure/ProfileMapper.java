@@ -51,6 +51,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
     @Mapping(target = "sectioning", ignore = true)
+    @Mapping(target = "sectioningFeeding", ignore = true)
     public abstract ProfileDTO toDTO(Profile entity);
 
     @Override
@@ -64,6 +65,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
     @Mapping(target = "sectioning", ignore = true)
+    @Mapping(target = "sectioningFeeding", ignore = true)
     @ToEntityIgnoreAudit
     public abstract Profile toEntity(ProfileDTO dto);
 
@@ -78,6 +80,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
     @Mapping(target = "sectioning", ignore = true)
+    @Mapping(target = "sectioningFeeding", ignore = true)
     @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(ProfileDTO dto, @MappingTarget Profile entity);
 
@@ -109,6 +112,9 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         }
         if (dto.getSectioning() != null) {
             entity.setSectioning(masterDataService.getSectioningByCode(dto.getSectioning().getCode()));
+        }
+        if (dto.getSectioningFeeding() != null) {
+            entity.setSectioningFeeding(masterDataService.getDisconnectorFunctionByCode(dto.getSectioningFeeding().getCode()));
         }
 
         // 2. Reconciliación de la colección de Cantilevers.
@@ -160,6 +166,9 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         }
         if (entity.getSectioning() != null) {
             dto.setSectioning(masterDataService.getSectioningByIdAndMapToDTO(entity.getSectioning().getId()));
+        }
+        if (entity.getSectioningFeeding() != null) {
+            dto.setSectioningFeeding(masterDataService.getDisconnectorFunctionByIdAndMapToDTO(entity.getSectioningFeeding().getId()));
         }
     }
 }

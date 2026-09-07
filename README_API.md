@@ -200,6 +200,38 @@ crea o actualiza, mandar `null` lo desvincula.
 
 ---
 
+## 4 bis. Campos técnicos del perfil
+
+Además de `profileId`, `kp` y sus listas de valores, un perfil admite cuatro medidas, **todas
+opcionales**:
+
+| Campo | Unidad | Columna | Nota |
+|---|---|---|---|
+| `span` | metros | `NUMERIC(6,3)`, ≥ 0 | Vano **hasta el perfil siguiente**, no del perfil en sí |
+| `heightCantileverSupport` | milímetros | `NUMERIC(6,0)`, ≥ 0 | Sin decimales |
+| `poleGaugeLocation` | milímetros | `NUMERIC(6,0)`, ≥ 0 | Sin decimales |
+| `railPoleDistance` | milímetros | `NUMERIC(6,0)` | **Con signo**: indica a qué lado de la vía queda el poste |
+
+```jsonc
+{
+  "profileId": "P-001",
+  "kp": "10.500",
+  "trackId": 3,
+  "span": "47.970",
+  "heightCantileverSupport": "200",
+  "poleGaugeLocation": "1475",
+  "railPoleDistance": "-4960",
+  "sectioningFeeding": { "code": "Disc/IO" }
+}
+```
+
+`span` es el único con una sutileza de modelado: en los workbooks de origen el vano no está en la
+fila del perfil sino en la intermedia, entre ese perfil y el siguiente, así que pertenece al tramo
+que arranca en el perfil. Si necesitas el vano *anterior* a un perfil, es el `span` del perfil que
+lo precede por `kp`.
+
+---
+
 ## 5. Listas de valores
 
 Las LOV van por código, no por id. Al referenciarlas desde otra entidad basta el `code`:
@@ -210,6 +242,17 @@ Las LOV van por código, no por id. Al referenciarlas desde otra entidad basta e
 
 El servidor resuelve el código contra el catálogo. Lo que mandes en `description` u otros campos de
 la LOV **se ignora**: manda el catálogo, no la petición.
+
+Un caso a tener presente: **`profile.sectioningFeeding` usa el catálogo `DisconnectorFunction`**, el
+mismo que `disconnector.disconnectorFunction`. No es un catálogo propio, y no lo necesita: el bloque
+`FEEDING` de la leyenda de los workbooks define 22 códigos (`Disc`, `Disc/NS`, `Disc/IO`, `Disc/SI`,
+`Disc/t`, `LoadB` y sus variantes, `ED`, `ED/T`, `SurgeA`, `VoltageD`, `SECT-I`, `CurrentT`, `FS-1`,
+`FS-1D`, `FS/PP-2`, `FS/PP-3`, `PP-2`, `PP-3`, `PP-4`) y los 22 ya están ahí. El campo se llama por
+su papel; el catálogo no se duplica.
+
+```jsonc
+{ "profileId": "P-001", "sectioningFeeding": { "code": "Disc/IO" } }
+```
 
 Endpoints propios de cada LOV (`anchorages`, `pole-types`, `profile-statuses`, `sectionings`,
 `portals`, `foundations`, `cantilever-types`, `steady-arm-types`, …):

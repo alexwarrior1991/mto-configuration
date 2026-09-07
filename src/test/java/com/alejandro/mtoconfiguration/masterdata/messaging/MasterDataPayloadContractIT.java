@@ -144,6 +144,11 @@ class MasterDataPayloadContractIT {
 
         assertThat(asList(payload, "cantilevers")).hasSize(2);
         assertThat(payload).containsKeys("track", "foundation", "poleType", "disconnector");
+        // sectioningFeeding entra en el grafo como una LOV mas del perfil: si se cayera de
+        // findByIdForMessaging, leer su codigo aqui reventaria con la entidad ya desatachada.
+        assertThat(payload).containsKeys("span", "heightCantileverSupport", "poleGaugeLocation",
+                "railPoleDistance", "sectioningFeeding");
+        assertThat(asMap(payload, "sectioningFeeding")).containsEntry("code", "ALI1");
     }
 
     @Test
@@ -259,6 +264,11 @@ class MasterDataPayloadContractIT {
         return (List<Map<String, Object>>) payload.get(key);
     }
 
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(Map<String, Object> payload, String key) {
+        return (Map<String, Object>) payload.get(key);
+    }
+
     private record Ids(Long cantilever, Long disconnector, Long executionPackage, Long profile,
                        Long sectionInsulator, Long station, Long steadyArm, Long track) {
     }
@@ -354,6 +364,7 @@ class MasterDataPayloadContractIT {
             profile.setProfileStatus(lov(new ProfileStatus(), "EST" + profileId.charAt(4)));
             profile.setReturnSupport(lov(new ReturnSupport(), "RET" + profileId.charAt(4)));
             profile.setSectioning(lov(new Sectioning(), "SEC" + profileId.charAt(4)));
+            profile.setSectioningFeeding(lov(new DisconnectorFunction(), "ALI" + profileId.charAt(4)));
             track.addProfile(profile);
             return profile;
         }

@@ -28,6 +28,10 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         values.put("id", profile.getId());
         values.put("profileId", profile.getProfileId());
         values.put("kp", profile.getKp());
+        values.put("span", profile.getSpan());
+        values.put("heightCantileverSupport", profile.getHeightCantileverSupport());
+        values.put("poleGaugeLocation", profile.getPoleGaugeLocation());
+        values.put("railPoleDistance", profile.getRailPoleDistance());
         values.put("track", toTrackPayload(profile.getTrack()));
         values.put("anchorage", toLovPayload(profile.getAnchorage()));
         values.put("anchorageFoundation", toLovPayload(profile.getAnchorageFoundation()));
@@ -37,6 +41,7 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         values.put("profileStatus", toLovPayload(profile.getProfileStatus()));
         values.put("returnSupport", toLovPayload(profile.getReturnSupport()));
         values.put("sectioning", toLovPayload(profile.getSectioning()));
+        values.put("sectioningFeeding", toLovPayload(profile.getSectioningFeeding()));
         values.put("cantilevers", toCantileverPayload(profile.getCantilevers()));
         values.put("disconnector", toDisconnectorPayload(profile.getDisconnector()));
 
@@ -142,6 +147,23 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", sectioning.getId());
         values.put("code", sectioning.getCode());
+        return values;
+    }
+
+    /**
+     * {@code sectioningFeeding} usa el catálogo {@code DisconnectorFunction}, igual que
+     * {@code disconnector.disconnectorFunction}, pero aquí se publica como una LOV más del perfil
+     * —id y código— y no solo con el id: el consumidor necesita el código para interpretarlo sin
+     * tener que resolver la referencia.
+     */
+    private Map<String, Object> toLovPayload(DisconnectorFunction disconnectorFunction) {
+        if (disconnectorFunction == null) {
+            return null;
+        }
+
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("id", disconnectorFunction.getId());
+        values.put("code", disconnectorFunction.getCode());
         return values;
     }
 

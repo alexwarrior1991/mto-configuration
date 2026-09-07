@@ -4,12 +4,14 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
+import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
 import com.alejandro.mtoconfiguration.entity.lov.PoleType;
 import com.alejandro.mtoconfiguration.entity.lov.ProfileStatus;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.PoleTypeDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
@@ -103,6 +105,41 @@ class ProfileMapperTest {
             assertThat(mapper.toEntity(null)).isNull();
             assertThat(mapper.toDTO(null)).isNull();
         }
+
+        @Test
+        @DisplayName("los cuatro campos tecnicos viajan en los dos sentidos sin transformacion")
+        void camposTecnicos() {
+            ProfileDTO dto = dto();
+            dto.setSpan(new BigDecimal("47.970"));
+            dto.setHeightCantileverSupport(new BigDecimal("200"));
+            dto.setPoleGaugeLocation(new BigDecimal("1475"));
+            dto.setRailPoleDistance(new BigDecimal("-4960"));
+
+            Profile entity = mapper.toEntity(dto);
+
+            assertThat(entity.getSpan()).isEqualByComparingTo("47.970");
+            assertThat(entity.getHeightCantileverSupport()).isEqualByComparingTo("200");
+            assertThat(entity.getPoleGaugeLocation()).isEqualByComparingTo("1475");
+            assertThat(entity.getRailPoleDistance()).isEqualByComparingTo("-4960");
+
+            ProfileDTO back = mapper.toDTO(entity);
+
+            assertThat(back.getSpan()).isEqualByComparingTo("47.970");
+            assertThat(back.getHeightCantileverSupport()).isEqualByComparingTo("200");
+            assertThat(back.getPoleGaugeLocation()).isEqualByComparingTo("1475");
+            assertThat(back.getRailPoleDistance()).isEqualByComparingTo("-4960");
+        }
+
+        @Test
+        @DisplayName("los campos tecnicos son opcionales: sin ellos el perfil se mapea igual")
+        void camposTecnicosAusentes() {
+            Profile entity = mapper.toEntity(dto());
+
+            assertThat(entity.getSpan()).isNull();
+            assertThat(entity.getHeightCantileverSupport()).isNull();
+            assertThat(entity.getPoleGaugeLocation()).isNull();
+            assertThat(entity.getRailPoleDistance()).isNull();
+        }
     }
 
     @Nested
@@ -184,7 +221,44 @@ class ProfileMapperTest {
             assertThat(entity.getPoleType()).isNull();
             assertThat(entity.getProfileStatus()).isNull();
             assertThat(entity.getAnchorage()).isNull();
+            assertThat(entity.getSectioningFeeding()).isNull();
             verifyNoInteractions(masterDataService);
+        }
+
+        @Test
+        @DisplayName("sectioningFeeding se resuelve contra el catalogo DisconnectorFunction, que es el que usa")
+        void sectioningFeedingPorCodigo() {
+            DisconnectorFunction feeding = new DisconnectorFunction();
+            feeding.setId(7L);
+            feeding.setCode("Disc/IO");
+            when(masterDataService.getDisconnectorFunctionByCode("Disc/IO")).thenReturn(feeding);
+
+            ProfileDTO dto = dto();
+            DisconnectorFunctionDTO feedingDto = new DisconnectorFunctionDTO();
+            feedingDto.setCode("Disc/IO");
+            dto.setSectioningFeeding(feedingDto);
+
+            assertThat(mapper.toEntity(dto).getSectioningFeeding()).isSameAs(feeding);
+        }
+
+        @Test
+        @DisplayName("de entidad a DTO, sectioningFeeding tambien se enriquece por id")
+        void sectioningFeedingDeVuelta() {
+            DisconnectorFunctionDTO oficial = new DisconnectorFunctionDTO();
+            oficial.setId(7L);
+            oficial.setCode("Disc/IO");
+            oficial.setDescription("Insulated Overlap disconnector");
+            when(masterDataService.getDisconnectorFunctionByIdAndMapToDTO(7L)).thenReturn(oficial);
+
+            DisconnectorFunction feeding = new DisconnectorFunction();
+            feeding.setId(7L);
+            feeding.setCode("Disc/IO");
+
+            Profile entity = new Profile();
+            entity.setProfileId("P-001");
+            entity.setSectioningFeeding(feeding);
+
+            assertThat(mapper.toDTO(entity).getSectioningFeeding()).isSameAs(oficial);
         }
 
         @Test
