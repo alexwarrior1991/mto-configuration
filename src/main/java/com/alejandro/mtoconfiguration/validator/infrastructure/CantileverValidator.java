@@ -52,19 +52,30 @@ public class CantileverValidator extends NormalEntityValidator<CantileverDTO> {
         return ENTITY_NAME;
     }
 
+    /**
+     * Solo el tipo de ménsula es obligatorio.
+     *
+     * <h2>Por qué las seis medidas son opcionales</h2>
+     *
+     * <p>Las columnas ya admitían nulo; lo que exigía las seis era este validador. Los
+     * workbooks de Execution Package demuestran que ese requisito no se corresponde con
+     * el dato real: de las 14.592 ménsulas del origen, {@code cwElevation} viene en el
+     * 17 % y {@code windDeflection} practicamente en ninguna. Exigir las seis dejaba
+     * fuera casi el catálogo entero, y la alternativa —rellenar los huecos con ceros—
+     * mete 14.000 medidas inventadas que nadie puede distinguir de las medidas de
+     * verdad. Un hueco es un hueco.
+     *
+     * <p>Lo mismo con {@code steadyArm}: 4.816 ménsulas del origen no traen ningún dato
+     * de brazo. La relación tampoco era obligatoria en base de datos.
+     *
+     * <p><b>Lo que no se relaja es el rango ni la precisión.</b> Un valor que no cabe en
+     * su columna sigue siendo un 400 con el campo señalado, que es justo lo que evita
+     * que se convierta en un 500 del driver.
+     */
     @Override
     protected void validateRequiredFields(CantileverDTO dto, List<Alert> alerts) {
         check(alerts)
-                .validateRequiredField(dto.getCwHeight(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_CW_HEIGHT)
-                .validateRequiredField(dto.getStagger(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_STAGGER)
-                .validateRequiredField(dto.getCatenaryHeight(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_CATENARY_HEIGHT)
-                .validateRequiredField(dto.getCwElevation(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_CW_ELEVATION)
-                .validateRequiredField(dto.getWindDeflection(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_WIND_DEFLECTION)
-                .validateRequiredField(dto.getArmAngle(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_ARM_ANGLE)
                 .validateRequiredLovDTO(dto.getCantileverType(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_CANTILEVER_TYPE)
-                // La asociación es obligatoria, pero no que ya exista: SteadyArm cascadea desde
-                // Cantilever, así que una ménsula nueva (sin id) es un alta perfectamente válida.
-                .validateRequiredField(dto.getSteadyArm(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_STEADY_ARM)
                 // Precisiones tomadas de las columnas: aceptar más aquí solo cambia el 400 por un 500.
                 .validateBigDecimalWithPrecision(dto.getCwHeight(), CW_HEIGHT_INTEGER_DIGITS, CW_HEIGHT_FRACTION_DIGITS,
                         ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_CW_HEIGHT)

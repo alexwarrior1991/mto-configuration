@@ -7,7 +7,6 @@ import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEven
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
 import lombok.Setter;
 import org.hibernate.envers.Audited;
 
@@ -48,10 +47,20 @@ public class SteadyArm extends CRUDEntity {
         this.id = id;
     }
 
-    @NotNull
+    /**
+     * Longitud del brazo, en milimetros. <b>Opcional.</b>
+     *
+     * <p>De las 14.592 mensulas de los workbooks de Execution Package, 5.691 traen el
+     * tipo de brazo pero no su longitud ({@code PH}, {@code PHQ}, {@code PH-C}...). No
+     * es un dato que falte por descuido: no se conoce. Con la columna obligatoria habia
+     * que elegir entre tirar el tipo —que si se conoce— o inventarse una longitud, y
+     * las dos son peores que admitir el nulo.
+     *
+     * <p>El rango se sigue validando cuando el valor viene.
+     */
     @Min(0)
     @Max(STEADY_ARM_LENGTH_MAX)
-    @Column(name = "LENGTH", nullable = false)
+    @Column(name = "LENGTH")
     public Long getLength() {
         return length;
     }

@@ -83,6 +83,23 @@ class ProfileJobAuthorizationTest {
     }
 
     @Test
+    @DisplayName("la importacion del maestro pide el permiso de carga, no el de escritura")
+    void importacionPidePermisoDeCarga() throws Exception {
+        // La ruta ya la cubre el patron API + "/*/jobs/import" de SecurityConfiguration.BULK,
+        // que se anadio para la importacion de LOV. Esto lo comprueba contra la cadena de
+        // filtros real: si alguien reordenase esas reglas, la importacion caeria en la regla
+        // generica de escritura y bastaria CONFIG_WRITE para cargar 11.715 perfiles.
+        mockMvc.perform(post(JOBS + "/import").with(withRoles(SecurityRoles.CONFIG_IMPORT)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(JOBS + "/import").with(withRoles(SecurityRoles.CONFIG_WRITE)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post(JOBS + "/import").with(withRoles(SecurityRoles.CONFIG_READ)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("las cargas masivas como trabajo piden el permiso de carga, no el de escritura")
     void cargasPidenPermisoDeCarga() throws Exception {
         mockMvc.perform(post(JOBS + "/bulk-create")
@@ -148,6 +165,11 @@ class ProfileJobAuthorizationTest {
 
         @PostMapping("/bulk-update")
         String startBulkUpdate() {
+            return "ok";
+        }
+
+        @PostMapping("/import")
+        String startImport() {
             return "ok";
         }
 

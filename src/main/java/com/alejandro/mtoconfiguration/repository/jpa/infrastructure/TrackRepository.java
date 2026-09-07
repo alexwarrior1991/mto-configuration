@@ -8,11 +8,24 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface TrackRepository extends CRUDRepository<Track>,
         MessagingEntityGraphRepository<Track> {
+
+    /**
+     * Busqueda por la clave natural, para el find-or-create del importador.
+     *
+     * <p>Ignora mayusculas porque el origen no es consistente ({@code HR TRACK 3 HAD} y
+     * {@code HR Track 3 BIN} conviven en el mismo workbook) y porque es lo que indexa
+     * {@code ux_track_ep_name} (V12). El borrado logico lo filtra la
+     * {@code @SQLRestriction} de {@code CRUDEntity}, igual que ese indice parcial.
+     */
+    Optional<Track> findByExecutionPackageIdAndNameIgnoreCase(Long executionPackageId, String name);
+
+    List<Track> findByExecutionPackageId(Long executionPackageId);
 
     /**
      * {@code profiles.disconnector} no lo pide TrackMasterDataPayloadMapper, lo impone

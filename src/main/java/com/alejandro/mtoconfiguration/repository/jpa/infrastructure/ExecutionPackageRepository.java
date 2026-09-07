@@ -15,6 +15,16 @@ public interface ExecutionPackageRepository extends
         CRUDRepository<ExecutionPackage>, MessagingEntityGraphRepository<ExecutionPackage> {
 
     /**
+     * Busqueda por la clave natural, para el find-or-create del importador.
+     *
+     * <p>Ignora mayusculas porque el origen no es consistente ({@code HR TRACK 3 HAD} y
+     * {@code HR Track 3 BIN} conviven en el mismo workbook) y porque es lo que indexa
+     * {@code ux_execution_package_name} (V12). El borrado logico lo filtra la
+     * {@code @SQLRestriction} de {@code CRUDEntity}, igual que ese indice parcial.
+     */
+    Optional<ExecutionPackage> findByNameIgnoreCase(String name);
+
+    /**
      * Mismo motivo que en StationRepository: ExecutionPackageMasterDataPayloadMapper
      * lee dos colecciones (tracks y stations) y en un unico {@code @EntityGraph}
      * Hibernate las une en la misma sentencia, multiplicando las filas entre si. Un

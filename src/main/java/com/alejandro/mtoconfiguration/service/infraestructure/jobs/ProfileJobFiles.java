@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.service.infraestructure.jobs;
 
 import com.alejandro.mtoconfiguration.entity.jobs.AsyncJob;
+import com.alejandro.mtoconfiguration.enums.jobs.JobType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.FileSystemResource;
@@ -68,17 +69,45 @@ public class ProfileJobFiles {
                 .map(FileSystemResource::new);
     }
 
-    /** Borra el fichero de un trabajo purgado. Silencioso si ya no estaba. */
+    /** Borra el CSV de un trabajo purgado. Silencioso si ya no estaba. */
     public void delete(String fileName) {
-        resolve(fileName).ifPresent(path -> {
+        delete(JobType.PROFILE_EXPORT, fileName);
+    }
+
+    /**
+     * Borra el fichero de un trabajo purgado, sea del tipo que sea.
+     *
+     * <p>Hace falta el tipo porque <b>no todos los ficheros viven en el mismo directorio</b>: las
+     * exportaciones dejan su CSV en {@code export-directory} y las dos importaciones dejan su
+     * informe JSON en el suyo. Borrando todo contra el directorio de exportacion, los informes no
+     * se borraban nunca y el disco crecia en silencio, que es exactamente el fallo que esta clase
+     * existe para evitar.
+     */
+    public void delete(JobType type, String fileName) {
+        resolve(directoryOf(type), fileName).ifPresent(path -> {
             try {
                 Files.deleteIfExists(path);
             } catch (IOException e) {
                 // No se propaga: el fichero es lo accesorio y la fila es lo que hay que borrar. Si
                 // el borrado del fichero falla, la siguiente pasada lo reintenta.
-                log.warn("No se ha podido borrar el fichero de exportacion {}", fileName, e);
+                log.warn("No se ha podido borrar el fichero {} del trabajo tipo {}", fileName, type, e);
             }
         });
+    }
+
+    /**
+     * Directorio en el que deja su fichero cada tipo de trabajo.
+     *
+     * <p>Los tipos que no producen ninguno caen en el de exportacion, y da igual: la purga solo
+     * llega aqui con un nombre de fichero guardado, y esos no lo tienen.
+     */
+    private Path directoryOf(JobType type) {
+        return switch (type) {
+            case LOV_IMPORT -> properties.getLov().getReportDirectory().toAbsolutePath().normalize();
+            case PROFILE_IMPORT -> properties.getProfile().getImportReportDirectory()
+                    .toAbsolutePath().normalize();
+            default -> directory();
+        };
     }
 
     /**
@@ -121,15 +150,18 @@ public class ProfileJobFiles {
      * cambio futuro— pueda escaparse del directorio con un {@code ../}.</p>
      */
     private Optional<Path> resolve(String fileName) {
+        return resolve(directory(), fileName);
+    }
+
+    private Optional<Path> resolve(Path directory, String fileName) {
         if (fileName == null || fileName.isBlank()) {
             return Optional.empty();
         }
 
-        Path directory = directory();
         Path candidate = directory.resolve(fileName).normalize();
 
         if (!candidate.startsWith(directory)) {
-            log.warn("Nombre de fichero fuera del directorio de exportacion: {}", fileName);
+            log.warn("Nombre de fichero fuera de su directorio: {}", fileName);
             return Optional.empty();
         }
 

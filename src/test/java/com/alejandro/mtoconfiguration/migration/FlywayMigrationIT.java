@@ -19,6 +19,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -90,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
     }
 
     /**
@@ -194,6 +195,64 @@ class FlywayMigrationIT {
                 """, String.class, SCHEMA);
 
         assertThat(referenciadas).containsExactly("disconnector_function");
+    }
+
+    /**
+     * V12 anade los indices unicos que hacen idempotente la importacion masiva.
+     *
+     * <p>El {@code WHERE deleted = false} no es un detalle: estas cuatro tablas llevan
+     * borrado logico, asi que un indice unico plano chocaria con las filas ya borradas e
+     * impediria volver a dar de alta una via que se borro en su dia.
+     */
+    @Test
+    void lasClavesNaturalesDeInfraestructuraSonUnicasSalvoLoBorrado() {
+        Map<String, String> indices = new java.util.HashMap<>();
+        jdbc().query("select indexname, indexdef from pg_indexes"
+                        + " where schemaname = ? and indexname like 'ux_%'", rs -> {
+            indices.put(rs.getString("indexname"), rs.getString("indexdef"));
+        }, SCHEMA);
+
+        for (String nombre : List.of("ux_execution_package_name", "ux_station_ep_name",
+                "ux_track_ep_name", "ux_profile_track_profile_id")) {
+            assertThat(indices).containsKey(nombre);
+            assertThat(indices.get(nombre))
+                    .as("%s tiene que ser UNIQUE y parcial", nombre)
+                    .contains("UNIQUE")
+                    .contains("deleted = false");
+        }
+    }
+
+    /**
+     * V12 hace opcional la longitud del brazo.
+     *
+     * <p>5.691 de las 14.592 mensulas de los workbooks traen el tipo pero no la longitud.
+     * No es un dato que falte por descuido: no se conoce.
+     */
+    @Test
+    void laLongitudDelBrazoAdmiteNulo() {
+        String nullable = jdbc().queryForObject(
+                "select is_nullable from information_schema.columns"
+                        + " where table_schema = ? and table_name = 'steady_arm'"
+                        + " and column_name = 'length'",
+                String.class, SCHEMA);
+
+        assertThat(nullable).isEqualTo("YES");
+    }
+
+    /**
+     * V12 siembra profile_status, que estaba VACIO.
+     *
+     * <p>Sin estas tres filas el fallo es silencioso: {@code ProfileValidator} exige
+     * {@code profileStatus}, mandar {@code {"code":"DEFINITIVE"}} pasa la validacion,
+     * {@code MasterDataService} resuelve el codigo a null sin quejarse y el perfil se
+     * guarda con {@code profile_status_id} nulo.
+     */
+    @Test
+    void elCatalogoDeEstadosDePerfilEstaSembrado() {
+        List<String> codigos = jdbc().queryForList(
+                "select code from " + SCHEMA + ".profile_status order by code", String.class);
+
+        assertThat(codigos).containsExactly("DEFINITIVE", "DRAFT", "PROVISIONAL");
     }
 
     @Test

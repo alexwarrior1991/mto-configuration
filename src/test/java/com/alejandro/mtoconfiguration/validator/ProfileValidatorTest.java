@@ -164,12 +164,13 @@ class ProfileValidatorTest {
     @DisplayName("los errores de los hijos llegan con su índice y su ruta completa")
     void propagaLosErroresDeLosCantileversConSuRuta() {
         CantileverDTO malo = ValidDtos.newCantilever();
-        malo.setArmAngle(null);
+        malo.setCantileverType(null);   // armAngle ya no vale: es opcional desde V12
 
         ProfileDTO dto = ValidDtos.rootProfile();
         dto.setCantilevers(ValidDtos.listOf(ValidDtos.newCantilever(), malo));
 
-        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD, "cantilevers[1].armAngle");
+        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD,
+                "cantilevers[1].cantileverType");
     }
 
     @Test

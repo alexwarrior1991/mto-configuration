@@ -13,6 +13,8 @@ import com.alejandro.mtoconfiguration.entity.jobs.AsyncJob;
 import com.alejandro.mtoconfiguration.enums.jobs.JobStatus;
 import com.alejandro.mtoconfiguration.enums.jobs.JobType;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.jobs.ProfileJobResponse;
+import com.alejandro.mtoconfiguration.service.infraestructure.jobs.ProfileImportJobService;
+import com.alejandro.mtoconfiguration.service.infraestructure.jobs.ProfileImportJobSubmission;
 import com.alejandro.mtoconfiguration.service.infraestructure.jobs.ProfileJobFiles;
 import com.alejandro.mtoconfiguration.service.infraestructure.jobs.ProfileJobService;
 import com.alejandro.mtoconfiguration.service.infraestructure.jobs.ProfileJobResponseMapper;
@@ -36,6 +38,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.file.Files;
@@ -47,9 +50,12 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -95,6 +101,8 @@ class ProfileJobControllerTest {
     private ProfileJobResponseMapper responseMapper;
     @MockitoBean
     private ProfileJobFiles profileJobFiles;
+    @MockitoBean
+    private ProfileImportJobService profileImportJobService;
 
     @TempDir
     Path tempDir;
@@ -132,6 +140,118 @@ class ProfileJobControllerTest {
                 .andExpect(jsonPath("$.id").value(JOB_ID.toString()))
                 .andExpect(jsonPath("$.type").value("PROFILE_EXPORT"))
                 .andExpect(jsonPath("$.status").value("PENDING"));
+    }
+
+    @Test
+    @DisplayName("lanzar una importacion responde 202 con Location y jobId")
+    void importacionAceptada() throws Exception {
+        AsyncJob job = job(JobType.PROFILE_IMPORT, JobStatus.PENDING);
+        when(profileImportJobService.submit(any(), anyBoolean()))
+                .thenReturn(ProfileImportJobSubmission.accepted(job));
+
+        mockMvc.perform(multipart(JOBS + "/import").file(master()))
+                .andExpect(status().isAccepted())
+                .andExpect(header().string("Location", "http://localhost" + JOBS + "/" + JOB_ID))
+                .andExpect(jsonPath("$.id").value(JOB_ID.toString()))
+                .andExpect(jsonPath("$.type").value("PROFILE_IMPORT"));
+    }
+
+    @Test
+    @DisplayName("dryRun llega al servicio: una simulacion que escribiera seria el peor fallo posible")
+    void importacionEnSimulacion() throws Exception {
+        AsyncJob job = job(JobType.PROFILE_IMPORT, JobStatus.PENDING);
+        when(profileImportJobService.submit(any(), anyBoolean()))
+                .thenReturn(ProfileImportJobSubmission.accepted(job));
+
+        mockMvc.perform(multipart(JOBS + "/import").file(master()).param("dryRun", "true"))
+                .andExpect(status().isAccepted());
+
+        org.mockito.Mockito.verify(profileImportJobService).submit(any(), eq(true));
+    }
+
+    @Test
+    @DisplayName("sin el parametro, la importacion NO es una simulacion")
+    void importacionRealPorDefecto() throws Exception {
+        AsyncJob job = job(JobType.PROFILE_IMPORT, JobStatus.PENDING);
+        when(profileImportJobService.submit(any(), anyBoolean()))
+                .thenReturn(ProfileImportJobSubmission.accepted(job));
+
+        mockMvc.perform(multipart(JOBS + "/import").file(master()))
+                .andExpect(status().isAccepted());
+
+        org.mockito.Mockito.verify(profileImportJobService).submit(any(), eq(false));
+    }
+
+    @Test
+    @DisplayName("una importacion sin capacidad tambien responde 429")
+    void importacionRechazadaPorCapacidad() throws Exception {
+        AsyncJob job = job(JobType.PROFILE_IMPORT, JobStatus.REJECTED);
+        when(profileImportJobService.submit(any(), anyBoolean()))
+                .thenReturn(ProfileImportJobSubmission.rejected(job));
+
+        mockMvc.perform(multipart(JOBS + "/import").file(master()))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "30"))
+                .andExpect(header().string("Location", "http://localhost" + JOBS + "/" + JOB_ID));
+    }
+
+    @Test
+    @DisplayName("un fichero vacio se rechaza antes de crear ningun trabajo")
+    void importacionSinFichero() throws Exception {
+        mockMvc.perform(multipart(JOBS + "/import")
+                        .file(new MockMultipartFile("file", "vacio.xlsx",
+                                "application/vnd.ms-excel", new byte[0])))
+                .andExpect(status().isBadRequest());
+
+        org.mockito.Mockito.verifyNoInteractions(profileImportJobService);
+    }
+
+    @Test
+    @DisplayName("el informe de una importacion se sirve tambien cuando hubo errores por fila")
+    void descargaDelInformeConErrores() throws Exception {
+        // Su fichero ES el informe de esos errores: negarlo justo cuando los hay dejaria al
+        // cliente sin lo unico que le dice que fila fallo.
+        AsyncJob job = job(JobType.PROFILE_IMPORT, JobStatus.COMPLETED_WITH_ERRORS);
+        job.setFileName("profile-import-" + JOB_ID + ".json");
+        Path report = Files.writeString(tempDir.resolve(job.getFileName()), "{\"dryRun\":false}");
+
+        when(profileJobService.getJob(JOB_ID)).thenReturn(job);
+        when(profileImportJobService.reportPath(job.getFileName())).thenReturn(report);
+
+        mockMvc.perform(get(JOBS + "/" + JOB_ID + "/file"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"" + job.getFileName() + "\""));
+    }
+
+    @Test
+    @DisplayName("un informe que ya no esta en disco da 410, no 404")
+    void informeDesaparecido() throws Exception {
+        AsyncJob job = job(JobType.PROFILE_IMPORT, JobStatus.COMPLETED);
+        job.setFileName("profile-import-" + JOB_ID + ".json");
+
+        when(profileJobService.getJob(JOB_ID)).thenReturn(job);
+        when(profileImportJobService.reportPath(job.getFileName()))
+                .thenReturn(tempDir.resolve("no-existe.json"));
+
+        mockMvc.perform(get(JOBS + "/" + JOB_ID + "/file")).andExpect(status().isGone());
+    }
+
+    @Test
+    @DisplayName("una importacion en curso da 409: el informe todavia no existe")
+    void informeAunNoDisponible() throws Exception {
+        AsyncJob job = job(JobType.PROFILE_IMPORT, JobStatus.RUNNING);
+
+        when(profileJobService.getJob(JOB_ID)).thenReturn(job);
+
+        mockMvc.perform(get(JOBS + "/" + JOB_ID + "/file")).andExpect(status().isConflict());
+    }
+
+    private MockMultipartFile master() {
+        return new MockMultipartFile("file", "profile-master.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "contenido".getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     @Test

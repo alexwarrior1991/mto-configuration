@@ -225,6 +225,10 @@ opcionales**:
 }
 ```
 
+Los cinco llegan también por la importación masiva del maestro
+(`POST /profiles/jobs/import`, ver `README_ASYNC_JOBS.md`), que es como se cargan los 11.715
+perfiles de los workbooks de ingeniería.
+
 `span` es el único con una sutileza de modelado: en los workbooks de origen el vano no está en la
 fila del perfil sino en la intermedia, entre ese perfil y el siguiente, así que pertenece al tramo
 que arranca en el perfil. Si necesitas el vano *anterior* a un perfil, es el `span` del perfil que
