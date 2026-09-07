@@ -8,7 +8,8 @@ data/
 ├── workbook/               # Workbooks de Execution Package (fuente, tal cual los entrega ingeniería)
 ├── tools/
 │   ├── build_lov_master.py # Generador
-│   └── aliases.yml         # Tablas de mapeo — se amplía aquí, no en el script
+│   ├── aliases.yml         # Tablas de mapeo — se amplía aquí, no en el script
+│   └── tests/              # Pruebas de las reglas de mapeo (unittest, sin dependencias)
 └── lov-master.xlsx         # Catálogo consolidado (generado). Es lo que importa la aplicación.
 ```
 
@@ -81,8 +82,10 @@ Una fila por valor de LOV. Columnas:
 ### Qué hay que revisar
 
 Las filas con `ORIGEN=TRACK` salen con **`ENABLED=NO`**: son códigos que se usan en
-las hojas de trazado pero que ningún catálogo curado recoge. Para aceptarlas basta
-poner `ENABLED=SI`.
+las hojas de trazado pero que ningún catálogo curado recoge. Para aceptarlas, añade
+el código a `track_accepted` en `tools/aliases.yml` y vuelve a generar — **no basta
+con poner `ENABLED=SI` a mano**, porque la siguiente regeneración se lo lleva por
+delante. Ver «Las dos tablas que deciden por ti» más abajo.
 
 `USOS_EN_TRACKS` es la columna que permite decidir de un vistazo:
 
@@ -100,6 +103,58 @@ También salen marcadas las filas cuyo `TIPO` no se ha podido deducir del códig
 | `USO_TRACKS` | Qué columna de las hojas Track alimenta cada entidad |
 | `DESCARTADOS` | Todo lo rechazado, con el motivo |
 | `NO_RECONOCIDO` | Lo que el generador no supo mapear. **Si tiene filas, el catálogo está incompleto** |
+
+## Las dos tablas que deciden por ti
+
+Además de las tablas de alias de cabeceras y categorías, `aliases.yml` tiene dos secciones que
+resuelven problemas distintos y conviene no confundir.
+
+### `code_canonical` — varias grafías del mismo código
+
+Una tabla por entidad, de la grafía que aparece en el origen a la forma canónica. Se aplica **antes
+de agrupar**, así que los usos se suman en una única fila en lugar de repartirse.
+
+Las diferencias de solo mayúsculas **no hacen falta aquí**: la clave del catálogo ya es
+`(entidad, CÓDIGO en mayúsculas)`, de modo que `DISC/IO` y `Disc/IO` colapsan solas. Esto es para lo
+que además cambia de caracteres.
+
+El caso que lo justifica: la columna `Sectioning Feeding` escribe el mismo *feeder wire* como
+`FW-25` (99 usos), `FW25` (14), `FW+25` (11) y `F-25` (2). Repartido así, ninguna de las tres
+últimas llega al umbral en el que alguien se fija; junto, es un código de 126 usos que estaba sin
+catalogar. Lo mismo con `LoadB/NZ` y `LoadB/NS`, que son el mismo equipo: la leyenda de `EP9B` llama
+«N.Z. Disconnector» justo al código `Disc/NS`.
+
+### `track_accepted` — códigos de trazado ya revisados
+
+Un código que solo aparece en las hojas `HR Track` sale con `ENABLED=NO`: está en uso real pero
+ningún catálogo curado lo recoge, y aceptarlo es una decisión humana.
+
+**Esa decisión se declara aquí, no poniendo `ENABLED=SI` en el Excel generado.** El maestro se
+regenera y se lleva por delante cualquier edición manual; en `aliases.yml` queda versionada y
+revisable en el PR.
+
+Lo que no está aceptado se queda con `ENABLED=NO` y `REVISAR=SI`, que es exactamente el estado
+«pendiente de decidir»: a la vista, sin romper la generación. Hoy están ahí los siete códigos de
+`DisconnectorFunction` con sufijo `-pr` / `-pp` (`Disc/IO-pr`, `Disc-pr`, …), a la espera de saber
+qué significa el sufijo.
+
+> Nota de coherencia pendiente: `LoadB/IO-pr` y `LoadB/PP-pr` **sí** están habilitados, porque vienen
+> del BOQ y no solo de las hojas Track. Es la misma familia con dos tratamientos distintos; se
+> resolverá cuando se decida qué es el sufijo.
+
+## Probar el generador
+
+```bash
+python3 -m unittest discover -s data/tools/tests -v
+```
+
+Sin dependencias: usa `unittest` de la biblioteca estándar. Las pruebas de mecanismo
+(canonicalización, aceptación, descartes, decisión de `ENABLED`) corren contra un `aliases.yml`
+construido en el propio test, así que ampliar el catálogo no las rompe. La última clase contrasta el
+`lov-master.xlsx` ya generado y se salta sola si no está o si falta `openpyxl`.
+
+CI las ejecuta en su propio paso, antes de `./mvnw verify`: el generador queda fuera de Maven y sin
+ese paso no las correría nadie.
 
 ## Qué queda fuera a propósito
 

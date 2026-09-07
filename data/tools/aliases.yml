@@ -256,6 +256,68 @@ track_headers_ignored:
   - total
 
 # --------------------------------------------------------------------------------
+# Grafias distintas del MISMO codigo. La clave es como aparece en el origen; el
+# valor, la forma canonica. Se aplica antes de agrupar, asi que los usos se suman
+# en una unica fila en lugar de repartirse entre variantes.
+#
+# Las diferencias de solo mayusculas NO hacen falta aqui: la clave del catalogo ya
+# es (entidad, CODIGO en mayusculas), asi que 'DISC/IO' y 'Disc/IO' colapsan solos.
+# Esto es para lo que ademas cambia de caracteres.
+# --------------------------------------------------------------------------------
+code_canonical:
+  DisconnectorFunction:
+    # Familia FW (feeder wire): cuatro formas de escribir dos codigos.
+    FW25: FW-25
+    FW+25: FW-25
+    F-25: FW-25
+    2-25FW: 2xFW-25
+
+    # NZ (neutral zone) y NS (neutral section) son lo mismo. Lo confirma la leyenda
+    # de EP9B, que llama "N.Z. Disconnector" justo al codigo Disc/NS.
+    LoadB/NZ: LoadB/NS
+    DISC/NZ: Disc/NS
+
+    # Erratas de tecleo sobre codigos que ya estan en el catalogo.
+    SECT-1: SECT-I          # I mayuscula de "Insulator", no un uno
+    PP/2: PP-2
+    FS/PP2: FS/PP-2
+    Load/IO: LoadB/IO
+    Voltage: VoltageD
+    Voltage D: VoltageD
+    Current: CurrentT
+    Surge A: SurgeA
+    LoadB/IO_pr: LoadB/IO-pr   # guion bajo por guion; el destino ya existe
+
+    # Grafia preferida cuando el catalogo curado no la fija.
+    DISC/PP: Disc/PP
+
+# --------------------------------------------------------------------------------
+# Codigos que SOLO aparecen en las hojas Track y que una persona ha revisado y
+# aceptado. Sin estar aqui saldrian con ENABLED=NO, que es el valor por defecto de
+# ORIGEN=TRACK: son codigos en uso real que ningun catalogo curado recoge.
+#
+# La decision vive aqui y no en el Excel generado a proposito: el maestro se
+# regenera y se llevaria por delante cualquier ENABLED=SI puesto a mano.
+#
+# Lo que NO esta aceptado se queda con ENABLED=NO y REVISAR=SI, que es justo el
+# estado "pendiente de decidir" y lo deja a la vista sin romper la generacion.
+# --------------------------------------------------------------------------------
+track_accepted:
+  DisconnectorFunction:
+    # Feeder wire: no aparece en ningun bloque FEEDING de las leyendas, pero son
+    # ~360 usos reales repartidos por todos los EP.
+    - FW
+    - FW-25
+    - FW-D
+    - FW-DV
+    - 2xFW-25
+    # Variantes de equipos que si estan en la leyenda, con su matiz propio.
+    - Disc/PP
+    - LoadB/t
+    - LoadB/ED
+    - MW/CW-ISusp
+
+# --------------------------------------------------------------------------------
 # Textos que ocupan la celda del codigo pero no son codigos: marcadores de "esto
 # esta sin definir" y alguna fuga de la columna Obs. Se descartan con motivo.
 # --------------------------------------------------------------------------------
@@ -286,6 +348,12 @@ code_reassignment:
   - {from: AnchorageFoundation, regex: "^(SF_|SSF_|SS2F_|FW-D)", to: null}
   - {from: Portal, regex: "^2?C\\d*[A-Z]*R?T?$", to: Foundation}    # 2C4FR, C12FRT
   - {from: Portal, regex: "^T-SIGN", to: Foundation}
+
+  # 'Sectioning Feeding' es una FK y no puede con dos valores: la celda que lleva
+  # dos equipos no se puede importar y hay que mirarla a mano.
+  - {from: DisconnectorFunction, regex: "^(DISC SECT-I|FS-1 VOLTAGED|LOADB/NS FS-1|LOADB/PP FS-1)$", to: null}
+  # Fugas de otras columnas: PHQ-1150 es un brazo y FP un anclaje (FP+AnMC).
+  - {from: DisconnectorFunction, regex: "^(PHQ-\\d+|FP)$", to: null}
 
 # --------------------------------------------------------------------------------
 # Derivacion de las relaciones @ManyToOne obligatorias hacia los catalogos *Type.

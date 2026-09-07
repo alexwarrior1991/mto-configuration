@@ -205,6 +205,10 @@ class Catalogue:
                          detalle=boq_category)
             return
 
+        # Despues del enrutado, no antes: la forma canonica depende de la entidad
+        # de destino, que es la que route_code acaba de decidir.
+        code = canonical_code(entity, code, self.cfg)
+
         key = self._key(entity, code)
         row = self.rows.get(key)
         if row is None:
@@ -474,6 +478,65 @@ def route_code(entity, code, cfg):
     return entity, None
 
 
+def canonical_code(entity, code, cfg):
+    """Forma canonica de un codigo que el origen escribe de varias maneras.
+
+    Las diferencias de solo mayusculas no llegan aqui: la clave del catalogo ya es
+    (entidad, CODIGO en mayusculas), asi que 'DISC/IO' y 'Disc/IO' colapsan solos.
+    Esto resuelve lo que ademas cambia de caracteres —'FW25' frente a 'FW-25', o
+    'LoadB/NZ' frente a 'LoadB/NS'— y que si no repartiria los usos de un mismo
+    equipo entre varias filas, cada una por debajo del umbral de atencion.
+    """
+    table = cfg.get("code_canonical", {}).get(entity, {})
+    if not table:
+        return code
+
+    upper = code.upper()
+    for source, target in table.items():
+        if squash(source).upper() == upper:
+            return squash(target)
+    return code
+
+
+def is_track_accepted(entity, code, cfg):
+    """True si una persona ya ha revisado y aceptado este codigo de hoja Track.
+
+    Un codigo que solo aparece en las hojas de trazado sale con ENABLED=NO por
+    defecto: esta en uso pero ningun catalogo curado lo recoge, y aceptarlo es una
+    decision humana. Esa decision vive en aliases.yml y no en el Excel generado,
+    que se regenera y se llevaria por delante cualquier ENABLED=SI puesto a mano.
+    """
+    accepted = cfg.get("track_accepted", {}).get(entity, [])
+    upper = code.upper()
+    return any(squash(value).upper() == upper for value in accepted)
+
+
+def decide_enabled(row, cfg) -> bool:
+    """Fija 'type', 'revisar' y 'enabled' de una fila. Devuelve False si falta el tipo.
+
+    Dos motivos independientes piden revision humana:
+
+    1. El codigo solo aparece en hojas Track (ORIGEN=TRACK): esta en uso real pero
+       ningun catalogo curado lo recoge. Deja de pedirla en cuanto alguien lo acepta
+       en 'track_accepted' de aliases.yml.
+    2. La entidad exige un *Type obligatorio y no se ha podido deducir del codigo.
+       Aqui no hay atajo: cargarlo dejaria una relacion obligatoria sin resolver.
+    """
+    entity = row["entity"]
+    only_track = row["sources"] == {"TRACK"}
+    pending_track = only_track and not is_track_accepted(entity, row["code"], cfg)
+
+    needs_type = entity in TYPED_ENTITIES
+    type_code = resolve_type(entity, row["code"], cfg) if needs_type else None
+    if needs_type:
+        row["type"] = type_code or ""
+
+    missing_type = needs_type and type_code is None
+    row["revisar"] = bool(pending_track or missing_type)
+    row["enabled"] = not row["revisar"]
+    return not missing_type
+
+
 def resolve_type(entity, code, cfg):
     overrides = cfg.get("type_overrides", {}).get(entity, {})
     upper = code.upper()
@@ -680,16 +743,8 @@ def main():
     # Derivacion de tipos y decision de ENABLED / REVISAR.
     unresolved_types = 0
     for row in cat.rows.values():
-        entity = row["entity"]
-        only_track = row["sources"] == {"TRACK"}
-        needs_type = entity in TYPED_ENTITIES
-        type_code = resolve_type(entity, row["code"], cfg) if needs_type else None
-        if needs_type:
-            row["type"] = type_code or ""
-            if type_code is None:
-                unresolved_types += 1
-        row["revisar"] = bool(only_track or (needs_type and type_code is None))
-        row["enabled"] = not row["revisar"]
+        if not decide_enabled(row, cfg):
+            unresolved_types += 1
 
     ordered, unknown = write_master(args.output, cat, cfg, cfg["entities"])
 
