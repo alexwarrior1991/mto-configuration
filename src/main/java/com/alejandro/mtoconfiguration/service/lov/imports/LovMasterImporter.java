@@ -1,5 +1,7 @@
 package com.alejandro.mtoconfiguration.service.lov.imports;
 
+import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
+import com.alejandro.mtoconfiguration.model.commons.LovDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.imports.LovImportReport;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.imports.LovMasterRow;
 import org.slf4j.Logger;
@@ -37,7 +39,8 @@ public class LovMasterImporter {
     }
 
     public LovImportReport importFrom(InputStream inputStream, boolean dryRun) {
-        return importFrom(inputStream, dryRun, ok -> { });
+        return importFrom(inputStream, dryRun, ok -> {
+        });
     }
 
     /**
@@ -91,7 +94,7 @@ public class LovMasterImporter {
      * generador marcadas para revision y que nadie ha aceptado todavia.
      */
     private Map<String, List<LovMasterRow>> groupEnabledByEntity(List<LovMasterRow> rows,
-                                                                LovImportReport report) {
+                                                                 LovImportReport report) {
         return rows.stream()
                 .filter(row -> {
                     if (row.enabled()) {
@@ -110,9 +113,7 @@ public class LovMasterImporter {
      * la factoria que se le paso, asi que los tipos casan siempre dentro de un objetivo.
      */
     @SuppressWarnings("unchecked")
-    private LovImportTarget<com.alejandro.mtoconfiguration.model.commons.LovDTO,
-            com.alejandro.mtoconfiguration.entity.lov.commons.Lov> cast(LovImportTarget<?, ?> target) {
-        return (LovImportTarget<com.alejandro.mtoconfiguration.model.commons.LovDTO,
-                com.alejandro.mtoconfiguration.entity.lov.commons.Lov>) target;
+    private LovImportTarget<LovDTO, Lov> cast(LovImportTarget<?, ?> target) {
+        return (LovImportTarget<LovDTO, Lov>) target;
     }
 }
