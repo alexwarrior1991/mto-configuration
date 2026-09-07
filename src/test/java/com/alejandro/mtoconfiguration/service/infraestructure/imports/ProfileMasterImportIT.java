@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.service.infraestructure.imports;
 
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileImportReport;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
@@ -65,6 +66,9 @@ class ProfileMasterImportIT {
             "steady_arm", "cantilever", "disconnector", "profile", "track",
             "section_insulator", "station", "execution_package");
 
+    /** Se siembran para que los paquetes puedan resolver su empresa; se limpian igual. */
+    private static final List<String> COMPANY_TABLES = List.of("business_entity", "comercial_entity_type");
+
     private static final List<String> LOV_TABLES = List.of(
             "foundation", "foundation_type", "portal", "portal_type",
             "anchorage", "anchorage_foundation", "anchorage_foundation_type",
@@ -76,6 +80,8 @@ class ProfileMasterImportIT {
     @Autowired
     private ProfileMasterImporter importer;
     @Autowired
+    private ProfileMasterParser parser;
+    @Autowired
     private LovMasterImporter lovImporter;
     @Autowired
     private ExecutionPackageRepository executionPackageRepository;
@@ -86,7 +92,7 @@ class ProfileMasterImportIT {
 
     @AfterEach
     void limpia() {
-        String tables = Stream.concat(TABLES.stream(), LOV_TABLES.stream())
+        String tables = Stream.of(TABLES, LOV_TABLES, COMPANY_TABLES).flatMap(List::stream)
                 .flatMap(table -> Stream.of(table, table + "_aud"))
                 .collect(Collectors.joining(", "));
 
@@ -96,13 +102,7 @@ class ProfileMasterImportIT {
     @Test
     @DisplayName("carga el maestro y reimportarlo no crea nada nuevo")
     void importaYEsIdempotente() throws IOException {
-        assumeThat(Files.isReadable(PROFILE_MASTER))
-                .as("data/profile-master.xlsx tiene que estar generado")
-                .isTrue();
-
-        // El catalogo va PRIMERO: los perfiles referencian sus codigos, y una LOV que no
-        // esta se resuelve a null en silencio.
-        importLovMaster();
+        prepara();
 
         ProfileImportReport first = importMaster(false);
 
@@ -132,8 +132,7 @@ class ProfileMasterImportIT {
     void todoPerfilTieneEstado() throws IOException {
         // Es el fallo silencioso que tapa V12: sin las tres filas de profile_status, el
         // codigo se resuelve a null sin quejarse y el perfil entra con la FK vacia.
-        assumeThat(Files.isReadable(PROFILE_MASTER)).isTrue();
-        importLovMaster();
+        prepara();
         importMaster(false);
 
         Integer sinEstado = jdbcTemplate.queryForObject(
@@ -147,8 +146,7 @@ class ProfileMasterImportIT {
     void hojaConDosTramos() throws IOException {
         // EP9A / HR Track 1 lleva dos tramos concatenados con 47 codigos de perfil
         // repetidos. Sin el corte de topology.yml chocarian por (via, profileId).
-        assumeThat(Files.isReadable(PROFILE_MASTER)).isTrue();
-        importLovMaster();
+        prepara();
         importMaster(false);
 
         Integer duplicados = jdbcTemplate.queryForObject("""
@@ -167,8 +165,7 @@ class ProfileMasterImportIT {
     @Test
     @DisplayName("la simulacion no escribe nada")
     void laSimulacionNoEscribe() throws IOException {
-        assumeThat(Files.isReadable(PROFILE_MASTER)).isTrue();
-        importLovMaster();
+        prepara();
 
         ProfileImportReport report = importMaster(true);
 
@@ -182,6 +179,72 @@ class ProfileMasterImportIT {
         assertThat(executionPackageRepository.count()).isZero();
     }
 
+    /**
+     * Deja el entorno listo, o salta el test si el maestro todavia es un borrador.
+     *
+     * <p>Los metadatos de los paquetes no estan en los workbooks: los declara una persona en
+     * {@code data/tools/topology.yml}. Mientras esa declaracion no este completa, el maestro
+     * trae marcadores de relleno y {@code ExecutionPackageValidator} rechaza los once
+     * paquetes, con lo que no se carga NADA. Saltar es lo honesto: el test no puede
+     * comprobar una carga que aun no se puede hacer, y fallar solo diria que el fichero de
+     * declaracion sigue a medias, que ya se sabe.
+     */
+    private void prepara() throws IOException {
+        assumeThat(Files.isReadable(PROFILE_MASTER))
+                .as("data/profile-master.xlsx tiene que estar generado")
+                .isTrue();
+
+        List<String> companies = declaredCompanies();
+        assumeThat(companies)
+                .as("topology.yml todavia es un borrador: los paquetes no declaran empresa "
+                        + "(company_identification_number), asi que el maestro no se puede cargar")
+                .isNotEmpty();
+
+        seedCompanies(companies);
+
+        // El catalogo va PRIMERO: los perfiles referencian sus codigos, y una LOV que no
+        // esta se resuelve a null en silencio.
+        importLovMaster();
+    }
+
+    /** Los NIF que declara el maestro, que son los que el importador va a buscar. */
+    private List<String> declaredCompanies() throws IOException {
+        try (InputStream in = Files.newInputStream(PROFILE_MASTER)) {
+            return parser.parseAll(in).executionPackages().stream()
+                    .filter(ExecutionPackageMasterRow::enabled)
+                    .map(ExecutionPackageMasterRow::companyIdentificationNumber)
+                    .filter(nif -> nif != null && !nif.isBlank())
+                    .distinct()
+                    .toList();
+        }
+    }
+
+    /**
+     * Las empresas vienen de un maestro externo y no se dan de alta aqui, asi que en una base
+     * limpia no existen y el paquete se quedaria sin {@code companyId}. Se siembran con SQL
+     * para que el test pruebe la importacion y no la ausencia de datos de referencia.
+     */
+    private void seedCompanies(List<String> identificationNumbers) {
+        jdbcTemplate.update("""
+                insert into comercial_entity_type (id, code, description, enabled,
+                        create_date, create_user, version_date, version_user, version_number)
+                values (-1, 'IT-CET', 'Tipo de entidad para el test', true,
+                        now(), 'test', now(), 'test', 1)
+                on conflict (id) do nothing
+                """);
+
+        for (int index = 0; index < identificationNumbers.size(); index++) {
+            jdbcTemplate.update("""
+                    insert into business_entity (id, name, code, identification_number,
+                            comercial_entity_type_id, deleted,
+                            create_date, create_user, version_date, version_user, version_number)
+                    values (?, ?, ?, ?, -1, false, now(), 'test', now(), 'test', 1)
+                    on conflict (id) do nothing
+                    """, -(index + 1L), "Empresa " + (index + 1), "IT-" + (index + 1),
+                    identificationNumbers.get(index));
+        }
+    }
+
     private ProfileImportReport importMaster(boolean dryRun) throws IOException {
         try (InputStream in = Files.newInputStream(PROFILE_MASTER)) {
             return importer.importFrom(in, dryRun);
@@ -189,7 +252,9 @@ class ProfileMasterImportIT {
     }
 
     private void importLovMaster() throws IOException {
-        assumeThat(Files.isReadable(LOV_MASTER)).isTrue();
+        assumeThat(Files.isReadable(LOV_MASTER))
+                .as("data/lov-master.xlsx tiene que estar generado")
+                .isTrue();
         try (InputStream in = Files.newInputStream(LOV_MASTER)) {
             lovImporter.importFrom(in, false);
         }

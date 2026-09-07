@@ -41,17 +41,12 @@ ALTER TABLE profile_aud ADD COLUMN IF NOT EXISTS sectioning_feeding_id     bigin
 -- La clave ajena solo en la tabla base. profile_aud no lleva ninguna, igual que las
 -- otras ocho LOV del perfil: apuntaria a filas que pueden haber cambiado desde la
 -- revision que se esta guardando.
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint con
-        JOIN pg_class rel ON rel.oid = con.conrelid
-        JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
-        WHERE rel.relname = 'profile'
-          AND nsp.nspname = current_schema()
-          AND con.conname = 'fk_profile_sectioning_feeding'
-    ) THEN
-        ALTER TABLE profile ADD CONSTRAINT fk_profile_sectioning_feeding
-            FOREIGN KEY (sectioning_feeding_id) REFERENCES disconnector_function;
-    END IF;
-END $$;
+--
+-- DROP IF EXISTS + ADD, y no un DO con un SELECT sobre pg_constraint: ese SELECT hay
+-- que acotarlo a un esquema, y en cuanto la tabla se resuelve por search_path desde OTRO
+-- —que es lo que pasa al adoptar Flyway sobre una base que ya existia— la comprobacion
+-- mira donde no es, no encuentra la restriccion y el ALTER revienta por duplicada.
+-- Asi es idempotente sin depender de en que esquema se este.
+ALTER TABLE profile DROP CONSTRAINT IF EXISTS fk_profile_sectioning_feeding;
+ALTER TABLE profile ADD CONSTRAINT fk_profile_sectioning_feeding
+    FOREIGN KEY (sectioning_feeding_id) REFERENCES disconnector_function;

@@ -6,21 +6,12 @@
 --
 -- Se recrea el CHECK entero porque PostgreSQL no permite alterar la expresion de una
 -- restriccion en sitio.
+--
+-- DROP IF EXISTS y no un DO con un SELECT sobre pg_constraint acotado a current_schema():
+-- en cuanto la tabla se resuelve por search_path desde otro esquema —lo que pasa al
+-- adoptar Flyway sobre una base que ya existia— esa comprobacion mira donde no es.
 
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_constraint con
-        JOIN pg_class rel ON rel.oid = con.conrelid
-        JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
-        WHERE rel.relname = 'async_job'
-          AND nsp.nspname = current_schema()
-          AND con.conname = 'async_job_type_check'
-    ) THEN
-        ALTER TABLE async_job DROP CONSTRAINT async_job_type_check;
-    END IF;
-
-    ALTER TABLE async_job ADD CONSTRAINT async_job_type_check
-        CHECK (job_type IN ('PROFILE_EXPORT', 'PROFILE_BULK_CREATE', 'PROFILE_BULK_UPDATE',
-                            'LOV_IMPORT', 'PROFILE_IMPORT'));
-END $$;
+ALTER TABLE async_job DROP CONSTRAINT IF EXISTS async_job_type_check;
+ALTER TABLE async_job ADD CONSTRAINT async_job_type_check
+    CHECK (job_type IN ('PROFILE_EXPORT', 'PROFILE_BULK_CREATE', 'PROFILE_BULK_UPDATE',
+                        'LOV_IMPORT', 'PROFILE_IMPORT'));

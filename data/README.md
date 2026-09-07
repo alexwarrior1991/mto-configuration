@@ -232,6 +232,13 @@ execution_packages:
 **Toda hoja `HR Track` tiene que estar declarada**, con `name` o con `skip`. Una hoja
 sin declarar hace terminar el generador con código distinto de cero.
 
+**Una vía tampoco puede colgar de una estación que su paquete no declara.** Si `station:`
+nombra algo que no está en la lista `stations:` de ese EP, el generador lo saca en
+`NO_RECONOCIDO` y termina con código distinto de cero. Sin esa comprobación el error
+aparecía mucho más tarde: el importador rechazaba la vía y se quedaba sin cargar, con el
+trabajo ya a medias. La comparación ignora mayúsculas y espacios sobrantes; `station: null`
+no se comprueba, porque es una respuesta válida.
+
 Para arrancar:
 
 ```bash

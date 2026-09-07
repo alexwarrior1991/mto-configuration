@@ -290,6 +290,42 @@ class LecturaDeUnaHojaDeTrazado(unittest.TestCase):
         self.assertEqual(master.profiles[0]["REVISAR"], "SI")
 
 
+class EstacionesDeclaradas(unittest.TestCase):
+    """Una via no puede colgar de una estacion que su paquete no declara.
+
+    El importador la rechaza y esa via se queda sin cargar, asi que vale mas enterarse
+    generando el maestro que descubrirlo con el trabajo a medias.
+    """
+
+    def check(self, stations, tracks):
+        master = bpm.Master()
+        bpm.check_declared_stations("EP6", {"stations": stations, "tracks": tracks}, master)
+        return master
+
+    def test_una_estacion_declarada_pasa(self):
+        master = self.check(["HERZLIYA"], [{"sheet": "H", "station": "HERZLIYA"}])
+        self.assertEqual(master.unknown, {})
+
+    def test_ignora_mayusculas_y_espacios(self):
+        master = self.check(["HERZLIYA"], [{"sheet": "H", "station": " herzliya "}])
+        self.assertEqual(master.unknown, {})
+
+    def test_una_estacion_inventada_no_pasa_en_silencio(self):
+        master = self.check(["HERZLIYA"], [{"sheet": "H", "station": "NO EXISTE"}])
+        self.assertEqual(len(master.unknown), 1)
+        self.assertIn("estacion no declarada", next(iter(master.unknown))[0])
+
+    def test_sin_estacion_es_una_respuesta_valida(self):
+        # TRACK.STATION_ID es anulable a proposito: una via de tramo entre estaciones
+        # cuelga del paquete de ejecucion.
+        master = self.check([], [{"sheet": "H", "station": None}])
+        self.assertEqual(master.unknown, {})
+
+    def test_una_hoja_omitida_no_se_comprueba(self):
+        master = self.check([], [{"sheet": "H", "station": "NO EXISTE", "skip": "vacia"}])
+        self.assertEqual(master.unknown, {})
+
+
 class PrimitivasCompartidas(unittest.TestCase):
     """Lo que los dos generadores tienen que entender igual."""
 
@@ -395,6 +431,25 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
     def test_un_perfil_no_lleva_mas_de_tres_mensulas(self):
         # Es el limite de la entidad y del origen.
         self.assertTrue(all(1 <= c["SLOT"] <= 3 for c in self.cantilevers))
+
+    def test_toda_estacion_usada_por_una_via_esta_declarada(self):
+        import openpyxl
+        wb = openpyxl.load_workbook(MASTER, read_only=True, data_only=True)
+        try:
+            def sheet(name):
+                iterator = wb[name].iter_rows(values_only=True)
+                header = list(next(iterator))
+                return [dict(zip(header, row)) for row in iterator
+                        if row and any(v is not None for v in row)]
+
+            declared = {(r["EP"], str(r["NOMBRE"]).upper()) for r in sheet("STATIONS")}
+        finally:
+            wb.close()
+
+        usadas = {(t["EP"], str(t["ESTACION"]).upper())
+                  for t in self.tracks if t["ESTACION"]}
+
+        self.assertEqual(usadas - declared, set())
 
     def test_los_tipos_de_brazo_son_los_del_catalogo(self):
         used = {c["STEADY_ARM_TYPE"] for c in self.cantilevers if c["STEADY_ARM_TYPE"]}

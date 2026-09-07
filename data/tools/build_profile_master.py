@@ -617,6 +617,25 @@ def write_master(path, master: Master):
 # Entrada
 # --------------------------------------------------------------------------------
 
+def check_declared_stations(ep, declared, master: Master):
+    """Comprueba que cada via cuelgue de una estacion declarada en su paquete.
+
+    'station: null' es una respuesta valida y no se toca: la columna TRACK.STATION_ID es
+    anulable a proposito y una via de tramo entre estaciones cuelga del paquete.
+    """
+    stations = {squash(name).upper() for name in (declared.get("stations") or []) if squash(name)}
+
+    for track in declared.get("tracks") or []:
+        if track.get("skip"):
+            continue
+        station = squash(track.get("station"))
+        if not station:
+            continue
+        if station.upper() not in stations:
+            master.unrecognised("estacion no declarada en el paquete", station, ep,
+                                squash(track.get("sheet")))
+
+
 def load_declared(topology, ep):
     return topology.get("execution_packages", {}).get(ep)
 
@@ -677,6 +696,11 @@ def main():
         by_sheet = collections.defaultdict(list)
         for track in declared.get("tracks") or []:
             by_sheet[squash(track.get("sheet"))].append(track)
+
+        # Una via no puede inventarse una estacion: si la que declara no esta en la lista
+        # del paquete, el importador la rechaza y esa via se queda sin cargar. Vale mas
+        # enterarse aqui, generando, que descubrirlo con el trabajo a medias.
+        check_declared_stations(ep, declared, master)
 
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
         sheets = profiles = cantilevers = 0
