@@ -1,4 +1,9 @@
-# Tablas de alias para build_lov_master.py
+# Tablas de alias de los generadores de data/tools.
+#
+# Las usan los dos: build_lov_master.py (catalogo de LOVs) y build_profile_master.py
+# (perfiles, vias, estaciones y EPs). Comparten fichero a proposito, porque leen LAS
+# MISMAS hojas: si una grafia de cabecera nueva aparece, los dos tienen que conocerla
+# y en dos ficheros acabarian discrepando.
 #
 # Este fichero existe para que ampliar el mapeo NO sea tocar el script. Cuando el
 # generador encuentra algo que no esta aqui NO lo descarta en silencio: lo vuelca en
@@ -254,6 +259,136 @@ track_headers_ignored:
   - pkf
   - nº cables
   - total
+
+# --------------------------------------------------------------------------------
+# Tipos de brazo, para poder partir la columna 'Arm Type'.
+#
+# El origen escribe el tipo y la longitud juntos ('PH-1150', 'BTC-1651') pero el
+# catalogo SteadyArmType solo tiene el tipo base. La regla para separarlos es
+# "sufijo numerico = longitud", y hace falta esta lista porque 'PH-C' y 'PH-Q' son
+# tipos que TAMBIEN llevan guion: sin saber cuales existen, 'PH-C' se partiria mal.
+#
+# Tiene que coincidir con los codigos habilitados de SteadyArmType en
+# lov-master.xlsx. Hay un test que lo comprueba.
+# --------------------------------------------------------------------------------
+steady_arm_types:
+  - BC
+  - BCE
+  - BTC
+  - PH
+  - PH-C
+  - PH-Q
+  - PHC
+  - PHQ
+
+# --------------------------------------------------------------------------------
+# Cabeceras de las hojas HR Track -> campo del maestro de perfiles.
+#
+# Las 177 hojas escriben las mismas ~36 columnas logicas de 66 formas distintas, y
+# hay una hoja (EP6 / HR Track 1 HER) sin columna 'Sectionning' que desplaza todo lo
+# posterior una posicion. Por eso el generador resuelve POR NOMBRE y nunca por
+# indice: leer por posicion corromperia esa hoja en silencio.
+#
+# La clave se compara en minusculas y con espacios colapsados. Una cabecera que no
+# este en ninguna de las tres listas va a NO_RECONOCIDO y el generador termina con
+# codigo != 0.
+# --------------------------------------------------------------------------------
+profile_columns:
+
+  # Una columna por perfil.
+  profile:
+    profile: PROFILE_ID
+
+    kp: KP
+    k.p. (m): KP
+    theorical k.p. (m): KP
+
+    # El vano vive en la fila INTERMEDIA, entre este perfil y el siguiente: 11.475
+    # de los 11.490 valores medidos estan ahi. Es el vano hasta el perfil siguiente.
+    span: SPAN
+    span (m): SPAN
+    th. span: SPAN
+    th span: SPAN
+
+    height cantilever support: HEIGHT_CANTILEVER_SUPPORT
+    height cant. support (mm): HEIGHT_CANTILEVER_SUPPORT
+
+    gauge pole location: POLE_GAUGE_LOCATION
+    pole gauge location (mm): POLE_GAUGE_LOCATION
+
+    distance rail-pole: RAIL_POLE_DISTANCE
+    rail-pole distance (mm): RAIL_POLE_DISTANCE
+
+    # Listas de valores: se resuelven por codigo contra el catalogo.
+    sectionning: SECTIONING
+    anchorage: ANCHORAGE
+    anchorage foundation: ANCHORAGE_FOUNDATION
+    pole type: POLE_TYPE
+    foundation: FOUNDATION
+    portals: PORTAL
+    return support: RETURN_SUPPORT
+    sectioning feeding: SECTIONING_FEEDING
+
+  # Grupos de TRES columnas (subcabecera M1/M2/M3, D1/D2/D3, ...): una mensula por
+  # slot ocupado. Un perfil admite tres como maximo, que es justo lo que da el
+  # origen y lo que impone la entidad.
+  cantilever:
+    cantilevers: CANTILEVER_TYPE
+    arm type: STEADY_ARM          # lleva tipo y longitud juntos: 'PH-1150'
+
+    stagger: STAGGER
+    stagger (cm): STAGGER
+
+    catenary height: CATENARY_HEIGHT
+    catenary height (m): CATENARY_HEIGHT
+    catenary heigh: CATENARY_HEIGHT
+
+    elevation cw: CW_ELEVATION
+    elevation cw (m): CW_ELEVATION
+
+    cw height: CW_HEIGHT
+    cw height (m): CW_HEIGHT
+    cw heigh: CW_HEIGHT
+    contact wire height: CW_HEIGHT
+
+    wind deflection: WIND_DEFLECTION
+    arm angle: ARM_ANGLE
+
+  # Columnas reales del origen que HOY no tienen campo en el dominio. No se
+  # descartan: van a la hoja NO_MAPEADO con su EP, via, perfil y fila de origen, de
+  # modo que ampliar el modelo mas adelante sea un cambio de esquema y no volver a
+  # analizar 60 MB de Excel.
+  unmapped:
+    - survey
+    - other pk
+    - other kp
+    - theorical cant
+    - theorical cant (mm)
+    - track layout
+    - track layout (m)
+    - anchorage kp
+    - anchorage pk
+    - anchorages pk
+    - current cant
+    - current cant (mm)
+    - current track layout
+    - current track layout (m)
+    - current span
+    - current span (m)
+    - track kp
+    - track pk
+    - current track pk
+    - supports
+    - soil found
+    - embankment
+    - embank.
+    - terrain geometry
+    - depth found
+    - depth pole f. (m)
+    - depth anchor
+    - depth anchor f. (m)
+    - approved by kedmor
+    - pole calculation reference
 
 # --------------------------------------------------------------------------------
 # Grafias distintas del MISMO codigo. La clave es como aparece en el origen; el

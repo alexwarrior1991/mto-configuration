@@ -1,17 +1,28 @@
-# `data/` — Catálogo maestro de LOVs
+# `data/` — Maestros generados desde los workbooks
 
-Esta carpeta contiene los datos maestros (LOVs) del dominio de infraestructura y la
-herramienta que los consolida.
+Esta carpeta contiene los workbooks de origen y las dos herramientas que los
+consolidan: una produce el **catálogo de LOVs** y otra los **datos de infraestructura**
+(paquetes, estaciones, vías, perfiles y ménsulas).
 
 ```
 data/
-├── workbook/               # Workbooks de Execution Package (fuente, tal cual los entrega ingeniería)
+├── workbook/                   # Workbooks de Execution Package (fuente, tal cual los entrega ingeniería)
 ├── tools/
-│   ├── build_lov_master.py # Generador
-│   ├── aliases.yml         # Tablas de mapeo — se amplía aquí, no en el script
-│   └── tests/              # Pruebas de las reglas de mapeo (unittest, sin dependencias)
-└── lov-master.xlsx         # Catálogo consolidado (generado). Es lo que importa la aplicación.
+│   ├── workbook_common.py      # Primitivas compartidas por los dos generadores
+│   ├── build_lov_master.py     # Generador del catálogo de LOVs
+│   ├── build_profile_master.py # Generador de los datos de infraestructura
+│   ├── aliases.yml             # Tablas de mapeo — se amplía aquí, no en los scripts
+│   ├── topology.yml            # Lo que solo puede decir una persona (ver más abajo)
+│   └── tests/                  # Pruebas de las reglas de mapeo (unittest, sin dependencias)
+├── lov-master.xlsx             # Catálogo consolidado (generado)
+└── profile-master.xlsx         # Infraestructura consolidada (generado)
 ```
+
+Los dos maestros son lo único que lee la aplicación: los workbooks no los abre nunca.
+El de LOVs va **primero**, porque los perfiles referencian sus códigos.
+
+El resto de este documento describe el catálogo de LOVs. El maestro de perfiles tiene
+su propia sección al final.
 
 ## Por qué hay dos pasos
 
@@ -165,6 +176,141 @@ ese paso no las correría nadie.
 - **`ProfileStatus`**: ya se cubre con el enum `enums/infrastructure/ProfileStatusValue`.
 - **`Soil Found`, `Terrain Geometry`, `Survey`**: son columnas reales de las hojas
   Track pero hoy no tienen entidad LOV en el proyecto.
+
+---
+
+# El maestro de perfiles
+
+`profile-master.xlsx` lleva los datos de infraestructura: paquetes de ejecución,
+estaciones, vías, perfiles y ménsulas con sus brazos. Lo genera
+`tools/build_profile_master.py` y es lo que importa la aplicación.
+
+## Lo que hace falta declarar a mano: `topology.yml`
+
+Hay conocimiento que **no está en los ficheros** y que solo puede aportar una persona:
+
+- **Los metadatos de cada paquete**: nombre, fechas, longitud y empresa. Los workbooks
+  no los traen; la hoja `Revision Data` solo tiene el histórico de revisiones.
+- **Qué vía es cada hoja.** La celda A1 da un título legible que expande las
+  abreviaturas del nombre de hoja (`HR Track 1 HER` → `TRACK 1 HERZLIYA`, `RIS` →
+  `RISHPON`, `TSA` → `TLV SAVIDOR`), pero **miente**: `EP14B / HR Track 6` dice
+  «TRACK 5» y `EP14B / HR Track 41` dice «TRACK 4», que además chocan con las hojas
+  que sí se llaman así. Sirve de semilla, no de fuente de verdad.
+- **Si una vía cuelga de una estación o del paquete.** No se deduce de ninguna parte, y
+  `TRACK.STATION_ID` es anulable a propósito: `station: null` es una respuesta válida.
+- **Dónde se parte una hoja que lleva dos tramos.** `EP9A / HR Track 1` y `HR Track 2`
+  tienen el KP reiniciado a mitad y 47 y 46 códigos de perfil repetidos. Sin el corte,
+  los dos tramos caerían en la misma vía y chocarían por `(vía, profileId)`.
+
+```yaml
+execution_packages:
+  EP9A:
+    file: EP9A.xlsm
+    name: "EP-09A"
+    initial_package: false
+    length: 21000
+    start_date: 2017-08-13
+    end_date: 2020-12-31
+    company_identification_number: "B12345678"
+    stations: [TEL AVIV SOUTH, LOD]
+    tracks:
+      - sheet: "HR Track 1TLV S."
+        name: "TRACK 1 TEL AVIV SOUTH"
+        station: TEL AVIV SOUTH
+      - sheet: "HR Track 1"              # esta hoja lleva DOS tramos
+        name: "TRACK 1 (5+421 a 8+948)"
+        station: null                    # cuelga del paquete, no de una estación
+        rows: [5, 135]
+      - sheet: "HR Track 1"
+        name: "TRACK 1 (0+270 a 10+758)"
+        station: null
+        rows: [137, 785]
+      - sheet: "HR Track X AAA"
+        skip: "hoja vacía"
+```
+
+**Toda hoja `HR Track` tiene que estar declarada**, con `name` o con `skip`. Una hoja
+sin declarar hace terminar el generador con código distinto de cero.
+
+Para arrancar:
+
+```bash
+python3 data/tools/build_profile_master.py --seed-topology
+```
+
+Recorre las 177 hojas y escribe un `topology.yml` inicial con el nombre tomado de A1 y
+todo marcado `# REVISAR`. Se corrige a mano y queda versionado, diffable en el PR.
+
+## Generar
+
+```bash
+pip install openpyxl pyyaml
+python3 data/tools/build_profile_master.py
+```
+
+Como el de LOVs, **termina con código distinto de cero si encuentra algo que no sabe
+mapear**: una hoja sin declarar o una cabecera desconocida van a `NO_RECONOCIDO`.
+
+## Las hojas
+
+| Hoja | Contenido |
+|---|---|
+| `LEEME` | La explicación de las columnas, dentro del propio Excel |
+| `EPS` / `STATIONS` / `TRACKS` | Lo declarado en `topology.yml`, ya resuelto |
+| `PROFILES` | Una fila por perfil: identificador, KP, las 8 LOV y los 4 campos técnicos |
+| `CANTILEVERS` | Una fila por ménsula, con su `SLOT` (1..3) y el brazo ya partido en tipo y longitud |
+| `DISCONNECTORS` / `SECTION_INSULATORS` | Cabeceras y **ninguna fila**: la costura para cuando lleguen esos datos |
+| `NO_MAPEADO` | Columnas reales del origen que hoy no tienen campo en el dominio |
+| `DESCARTADOS` | Todo lo rechazado, con motivo y celda de origen |
+| `NO_RECONOCIDO` | Lo que no se supo mapear. **Si tiene filas, el maestro está incompleto** |
+
+`ENABLED` (`SI`/`NO`) decide si la fila se carga; `REVISAR` resalta lo que necesita ojo
+humano.
+
+## Las tres trampas del origen
+
+1. **Las columnas se resuelven por nombre, nunca por índice.** Las 177 hojas escriben
+   las mismas ~36 columnas lógicas de 66 formas distintas, y `EP6 / HR Track 1 HER` no
+   tiene columna `Sectionning`: todo lo posterior queda desplazado una posición. Leer
+   por índice corrompería esa hoja **en silencio**.
+2. **El vano vive en la fila intermedia.** Las filas alternan perfil / fila intermedia,
+   y el `Span` está en la segunda: 11.475 de los 11.490 valores. Es el vano **hasta el
+   perfil siguiente**, y por eso `Profile.span` significa eso.
+3. **`'0'` es el marcador de hueco**, en todas las columnas, incluida la del
+   identificador del perfil. Tratarlo como un valor metería ~320 perfiles fantasma y
+   miles de medidas de cero inventadas.
+
+## El brazo viene con la longitud dentro
+
+La columna `Arm Type` trae tipo y longitud juntos (`PH-1150`, `BTC-1651`) pero el
+catálogo `SteadyArmType` solo tiene el tipo base. La regla es «sufijo numérico =
+longitud», y necesita la lista `steady_arm_types` de `aliases.yml` porque `PH-C` y
+`PH-Q` son tipos que **también** llevan guion.
+
+De las 14.592 ménsulas: 4.085 traen tipo y longitud, 5.691 solo el tipo y 4.816 no
+traen brazo. **Que falte la longitud no es un error**: no se conoce, y por eso
+`steady_arm.length` es opcional.
+
+## Qué se importa y qué no
+
+De las ~36 columnas del origen, 16 tienen campo en el dominio. Las demás —`Survey`,
+`Other KP`, `Theorical/Current Cant`, `Track Layout`, `Anchorage KP`, `Track KP`,
+`Supports`, `Soil Found`, `Terrain Geometry`, `Depth Pole/Anchor F.` y `Approved by`—
+se conservan en `NO_MAPEADO` con su EP, vía, perfil y fila de origen. No se importan,
+pero tampoco se pierden: ampliar el modelo más adelante es un cambio de esquema y un
+mapper, no volver a analizar 60 MB de Excel.
+
+## Probar
+
+```bash
+python3 -m unittest discover -s data/tools/tests -v
+```
+
+Las pruebas de mecanismo construyen las hojas en memoria, sin abrir ningún workbook.
+Las dos últimas clases contrastan los maestros ya generados y se saltan solas si no
+están.
+
+---
 
 ## El tamaño de `workbook/`
 

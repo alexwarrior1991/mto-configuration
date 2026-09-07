@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import glob
 import os
 import re
 import sys
@@ -41,18 +40,27 @@ import yaml
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from workbook_common import (  # noqa: E402  (necesita el sys.path de arriba)
+    MAX_CODE_LEN,
+    MAX_COLS,
+    MAX_ROWS_TRACK,
+    discover,
+    is_noise,
+    norm_category,
+    norm_header,
+    squash,
+)
+
 # La hoja BOQ buena se llama exactamente asi. EP15 trae ademas "Recuento Conjuntos-OLD"
 # y ocho ficheros traen "Recuento Especiales": ninguna de las dos debe leerse.
 BOQ_SHEET = "Recuento Conjuntos"
 LEGEND_SHEET = "Legend"
 TRACK_PREFIX = "HR TRACK"
 
-# Tope de filas por hoja. Protege de las hojas con formato aplicado a toda la
-# cuadricula (EP9A/sheet3 declara 1.048.576 filas). La hoja Track mas larga que
-# hemos medido tiene ~5.200 filas reales.
-MAX_ROWS_TRACK = 20_000
+# Tope de filas de la hoja BOQ. Los de las hojas Track viven en workbook_common,
+# que es donde los comparte con el generador de perfiles.
 MAX_ROWS_BOQ = 5_000
-MAX_COLS = 140
 
 # Primera fila con datos en cada tipo de hoja (1-based).
 BOQ_HEADER_ROW = 2
@@ -60,53 +68,12 @@ BOQ_FIRST_DATA_ROW = 3
 TRACK_HEADER_ROW = 2
 TRACK_FIRST_DATA_ROW = 4
 
-# Valores que aparecen en las celdas de las hojas Track y que no son codigos:
-# marcas de columna vacia, subcabeceras de la fila 3 y errores de formula.
-TRACK_NOISE = {
-    "0", "-", "TRUE", "FALSE", "P", "Ü",
-    "M1", "M2", "M3", "D1", "D2", "D3", "H1", "H2", "H3",
-    "E1", "E2", "E3", "B1", "B2", "B3", "W1", "W2", "W3", "A1", "A2", "A3",
-}
-
-MAX_CODE_LEN = 40
 MAX_DESC_LEN = 200
 
 
 # --------------------------------------------------------------------------------
 # Utilidades de normalizacion
 # --------------------------------------------------------------------------------
-
-def squash(value) -> str:
-    """Colapsa espacios y saltos de linea. Devuelve '' para None."""
-    if value is None:
-        return ""
-    return re.sub(r"\s+", " ", str(value)).strip()
-
-
-def norm_header(value) -> str:
-    return squash(value).lower()
-
-
-def norm_category(value) -> str:
-    return squash(value).upper()
-
-
-def is_noise(code: str) -> bool:
-    """True si la celda no puede ser un codigo de LOV."""
-    if not code:
-        return True
-    if code.upper() in TRACK_NOISE:
-        return True
-    if code.startswith("#"):                       # #REF!, #NAME?, #N/A
-        return True
-    if re.fullmatch(r"[-+]?\d+([.,]\d+)?", code):  # numeros sueltos
-        return True
-    if re.search(r"\d{2}:\d{2}:\d{2}", code):      # fechas serializadas
-        return True
-    if re.fullmatch(r"\d{1,2}/\d{1,2}/\d{2,4}", code):  # fechas tecleadas a mano
-        return True
-    return False
-
 
 def is_pseudo_code(code: str) -> str | None:
     """Motivo por el que un texto del BOQ no es un codigo, o None si si lo es.
@@ -687,17 +654,6 @@ def write_master(path, cat: Catalogue, cfg, entity_order):
 # --------------------------------------------------------------------------------
 # Orquestacion
 # --------------------------------------------------------------------------------
-
-def discover(folder):
-    """Todos los workbooks de la carpeta, sin depender de mayusculas.
-
-    EP14A.XLSM y EP14B.XLSM traen la extension en mayusculas.
-    """
-    found = set()
-    for pattern in ("*.xlsm", "*.xlsx", "*.XLSM", "*.XLSX"):
-        found.update(glob.glob(os.path.join(folder, pattern)))
-    return sorted(found)
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
