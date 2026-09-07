@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.service.infraestructure.imports;
 
 import com.alejandro.mtoconfiguration.model.commons.Alert;
+import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.CantileverMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
@@ -133,6 +134,29 @@ class ProfileMasterImporterTest {
         verify(upsertService, never()).upsertProfile(any(), anyLong(), any(), anyBoolean());
         assertThat(report.getErrors()).hasSize(4);
         assertThat(report.getErrors().get(1).message()).contains("EP6").contains("no se ha podido cargar");
+    }
+
+    /**
+     * El motivo tiene que llegar ENTERO al informe. {@code messageOf} no usa
+     * {@code getMessage()} cuando la excepcion trae alertas, y las de un solo mensaje las
+     * construye {@code BaseException} por su cuenta: si esa ruta perdiera el texto, quien
+     * lee el informe se quedaria con un codigo y sin saber que NIF esta mal.
+     */
+    @Test
+    @DisplayName("el motivo de un NIF sin empresa llega al informe con el NIF dentro")
+    void elMotivoDelNifLlegaEntero() {
+        when(upsertService.upsertExecutionPackage(any(), anyBoolean()))
+                .thenThrow(new NotFoundException(
+                        "no existe ninguna empresa con NIF 'B12345678' en business_entity"));
+
+        givenMaster(List.of(ep("EP6")), List.of(), List.of(), List.of(), List.of());
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        assertThat(report.getErrors()).hasSize(1);
+        assertThat(report.getErrors().getFirst().message())
+                .contains("B12345678")
+                .contains("business_entity");
     }
 
     @Test

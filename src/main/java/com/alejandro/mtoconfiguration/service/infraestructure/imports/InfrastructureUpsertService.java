@@ -25,6 +25,8 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.ReturnSupportDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SteadyArmTypeDTO;
+import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
+import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.BusinessEntityRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
@@ -250,13 +252,34 @@ public class InfrastructureUpsertService {
      * a entorno. Si no existe se deja a null y lo rechaza el validador, que dira que
      * falta {@code companyId}.
      */
+    /**
+     * Traduce el NIF que declara el maestro al identificador de la empresa.
+     *
+     * <p><b>Busca, no da de alta.</b> Las empresas vienen de un maestro externo: este
+     * repositorio no tiene migracion que siembre {@code business_entity} ni servicio ni
+     * endpoint que la escriba, asi que un NIF que no este ahi no se puede resolver.
+     *
+     * <p>Por eso los dos casos fallan aqui, con su nombre y su motivo, en vez de devolver
+     * {@code null} y dejar que el validador diga <i>«companyId es obligatorio»</i>: ese
+     * mensaje nombra un campo que quien edita {@code topology.yml} no ve —alli se escribe
+     * un NIF, no un id— y no distingue el hueco del NIF equivocado. Con once paquetes
+     * apuntando a la misma empresa, un NIF mal tecleado tumbaba los once y el informe
+     * repetia once veces que faltaba un campo que si estaba puesto.
+     */
     private Long resolveCompany(String identificationNumber) {
         if (StringUtils.isBlank(identificationNumber)) {
-            return null;
+            throw new ValidationException(
+                    "el paquete no declara company_identification_number: rellenalo en "
+                            + "data/tools/topology.yml y vuelve a generar el maestro");
         }
-        return businessEntityRepository.findByIdentificationNumber(identificationNumber.trim())
+        String nif = identificationNumber.trim();
+        return businessEntityRepository.findByIdentificationNumber(nif)
                 .map(entity -> entity.getId())
-                .orElse(null);
+                .orElseThrow(() -> new NotFoundException(
+                        "no existe ninguna empresa con NIF '" + nif + "' en business_entity; "
+                                + "las empresas vienen de un maestro externo, asi que revisa el "
+                                + "NIF en data/tools/topology.yml o da de alta la empresa antes "
+                                + "de importar"));
     }
 
     private <T extends BaseDTO> UpsertResult write(

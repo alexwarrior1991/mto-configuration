@@ -239,6 +239,23 @@ aparecía mucho más tarde: el importador rechazaba la vía y se quedaba sin car
 trabajo ya a medias. La comparación ignora mayúsculas y espacios sobrantes; `station: null`
 no se comprueba, porque es una respuesta válida.
 
+**El `company_identification_number` se busca, no se da de alta.** Es el NIF de la
+empresa, no su id: el importador lo traduce contra `business_entity`, y esa tabla viene de
+un maestro externo — este repositorio no tiene migración que la siembre, ni servicio, ni
+endpoint que la escriba. Un NIF que no esté ahí **no se puede resolver**, así que
+comprueba antes que existe:
+
+```sql
+SELECT id, identification_number, name FROM business_entity;
+```
+
+El importador distingue los dos fallos y los dice con ese nombre: si el campo está vacío,
+que hay que rellenarlo aquí; si el NIF no corresponde a ninguna empresa, **cuál es el NIF**
+que no encontró. Antes devolvía `null` en silencio y el paquete moría más abajo con
+«companyId es un campo obligatorio», que nombra un campo inexistente en este fichero y no
+distingue el hueco del NIF mal escrito — con once paquetes apuntando a la misma empresa,
+un NIF mal tecleado tumbaba los once sin decir cuál era.
+
 Para arrancar:
 
 ```bash
