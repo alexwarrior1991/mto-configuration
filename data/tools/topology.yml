@@ -27,7 +27,7 @@ execution_packages:
     length: 0                     # REVISAR: longitud en metros
     start_date: 1970-01-01        # REVISAR
     end_date: 1970-01-01          # REVISAR
-    company_identification_number: ""   # REVISAR: NIF de la empresa
+    company_identification_number: "B10744258"   # REVISAR: NIF de la empresa
     # Candidatas derivadas de los titulos de la celda A1 de cada hoja.
     # REVISAR: confirma los nombres reales y anade las que falten.
     stations:
@@ -45,7 +45,7 @@ execution_packages:
         station: "MOM"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 4 MOM"
         name: "TRACK 4 MOM"          # REVISAR: derivado de A1
-        station: "MOM"     # REVISAR: derivado del titulo A1
+        station: "MOM"               # REVISAR: derivado del titulo A1
       - sheet: "HR Track 4 PMO"
         name: "TRACK 4 PMO"          # REVISAR: derivado de A1
         station: "PMO"     # REVISAR: derivado del titulo A1
@@ -60,7 +60,10 @@ execution_packages:
     start_date: 1970-01-01        # REVISAR
     end_date: 1970-01-01          # REVISAR
     company_identification_number: ""   # REVISAR: NIF de la empresa
-    stations: []                  # REVISAR: estaciones del paquete
+    stations:                     # REVISAR: estaciones del paquete
+      - "DNL"
+      - "BMO"
+      - "MSMR"
     tracks:
       - sheet: "HR Track 1"
         name: "TRACK 1"          # REVISAR: derivado de A1
@@ -70,120 +73,125 @@ execution_packages:
         station: null            # REVISAR
       - sheet: "HR Track 3"
         name: "TRACK 3"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "BMO"            # REVISAR
       - sheet: "HR Track 4"
         name: "TRACK 4"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "BMO"            # REVISAR
       - sheet: "HR Track 5"
         name: "TRACK 5"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "BMO"            # REVISAR
       - sheet: "HR Track 6"
         name: "TRACK 6"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "BMO"            # REVISAR
   EP14A:
     file: EP14A.XLSM
-    name: "EP14A"                  # REVISAR: nombre real del paquete
+    name: "EP14 Ashkelon Station-Depot"                  # REVISAR: nombre real del paquete
     initial_package: false        # REVISAR
     length: 0                     # REVISAR: longitud en metros
     start_date: 1970-01-01        # REVISAR
     end_date: 1970-01-01          # REVISAR
     company_identification_number: ""   # REVISAR: NIF de la empresa
-    stations: []                  # REVISAR: estaciones del paquete
+    stations:
+      - "ASK-D"
     tracks:
       - sheet: "HR Track 1"
         name: "TRACK 1"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 2"
         name: "TRACK 2"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 31"
         name: "TRACK 31"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 3"
         name: "TRACK 3"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 41"
         name: "TRACK 41"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 4"
         name: "TRACK 4"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 101"
         name: "TRACK 101"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 102"
         name: "TRACK 102"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 61"
         name: "TRACK 61"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 6"
         name: "TRACK 6"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 8"
         name: "TRACK 8"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 104"
         name: "TRACK 104"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 106"
         name: "TRACK 106"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 108"
         name: "TRACK 108"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 110"
         name: "TRACK 110"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 112"
         name: "TRACK 112"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 114"
         name: "TRACK 114"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 120"
         name: "TRACK 120"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 122"
         name: "TRACK 122"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 124"
         name: "TRACK 124"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"           # REVISAR
       - sheet: "HR Track 126"
         name: "TRACK 126"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 63"
         name: "TRACK 63"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 136"
         name: "TRACK 136"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 138"
         name: "TRACK 138"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HTrack 46"
         name: "TRACK 46"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
       - sheet: "HR Track 140"
         name: "TRACK 140"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK-D"            # REVISAR
   EP14B:
     file: EP14B.XLSM
-    name: "EP14B"                  # REVISAR: nombre real del paquete
+    name: "EP14"                  # REVISAR: nombre real del paquete
     initial_package: false        # REVISAR
     length: 0                     # REVISAR: longitud en metros
     start_date: 1970-01-01        # REVISAR
     end_date: 1970-01-01          # REVISAR
     company_identification_number: ""   # REVISAR: NIF de la empresa
-    stations: []                  # REVISAR: estaciones del paquete
+    stations:
+      - "PST"
+      - "ASH"
+      - "NIZ"
+      - "ASK"
     tracks:
       - sheet: "HR Track 1.1"
         name: "TRACK 1.1"          # REVISAR: derivado de A1
         station: null            # REVISAR
       - sheet: "HR Track 3"
         name: "TRACK 3"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASH"            # REVISAR
       - sheet: "HR Track 1.2"
         name: "TRACK 1.2"          # REVISAR: derivado de A1
         station: null            # REVISAR
@@ -192,37 +200,37 @@ execution_packages:
         station: null            # REVISAR
       - sheet: "HR Track 12"
         name: "TRACK 12"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "PST"            # REVISAR
       - sheet: "HR Track 22"
         name: "TRACK 22"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "PST"            # REVISAR
       - sheet: "HR Track 4"
         name: "TRACK 4"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASH"            # REVISAR
       - sheet: "HR Track 1"
-        name: "TRACK 1"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        name: "TRACK 1 Ashdod"          # REVISAR: derivado de A1
+        station: "ASH"            # REVISAR
       - sheet: "HR Track 5"
-        name: "TRACK 5"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        name: "TRACK 5 Ashdod"          # REVISAR: derivado de A1
+        station: "ASH"            # REVISAR
       - sheet: "HR Track 6"
-        name: "TRACK 6"          # A1 dice "TRACK 5": es copia-pega, choca con HR Track 5
-        station: null            # REVISAR
+        name: "TRACK 6 Ashdod"          # A1 dice "TRACK 5": es copia-pega, choca con HR Track 5
+        station: "ASH"            # REVISAR
       - sheet: "HR Track 3(2)"
-        name: "TRACK 3(2)"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        name: "TRACK 3 Nizanim"          # REVISAR: derivado de A1
+        station: "NIZ"            # REVISAR
       - sheet: "HR Track 31 "
         name: "TRACK 31"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "ASK"            # REVISAR
       - sheet: "HR Track 3(3)"
-        name: "TRACK 3(3)"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        name: "TRACK 3 Ashkelon"          # REVISAR: derivado de A1
+        station: "ASK"            # REVISAR
       - sheet: "HR Track 41"
-        name: "TRACK 41"         # A1 dice "TRACK 4": es copia-pega, choca con HR Track 4
-        station: null            # REVISAR
+        name: "TRACK 41 Ashkelon"         # A1 dice "TRACK 4": es copia-pega, choca con HR Track 4
+        station: "ASK"            # REVISAR
       - sheet: "HR Track 4(2)"
-        name: "TRACK 4(2)"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        name: "TRACK 4 Ashkelon"          # REVISAR: derivado de A1
+        station: "ASK"            # REVISAR
   EP15:
     file: EP15.xlsm
     name: "EP15"                  # REVISAR: nombre real del paquete
@@ -231,7 +239,8 @@ execution_packages:
     start_date: 1970-01-01        # REVISAR
     end_date: 1970-01-01          # REVISAR
     company_identification_number: ""   # REVISAR: NIF de la empresa
-    stations: []                  # REVISAR: estaciones del paquete
+    stations:
+      - "BUMA"# REVISAR: estaciones del paquete
     tracks:
       - sheet: "HR Track 1"
         name: "TRACK 1"          # REVISAR: derivado de A1
@@ -241,10 +250,10 @@ execution_packages:
         station: null            # REVISAR
       - sheet: "HR Track 3"
         name: "TRACK 3"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "BUMA"            # REVISAR
       - sheet: "HR Track 4"
         name: "TRACK 4"          # REVISAR: derivado de A1
-        station: null            # REVISAR
+        station: "BUMA"            # REVISAR
       - sheet: "HR Track 5"
         name: "TRACK 5"          # REVISAR: derivado de A1
         station: null            # REVISAR
@@ -343,7 +352,7 @@ execution_packages:
     # Candidatas derivadas de los titulos de la celda A1 de cada hoja.
     # REVISAR: confirma los nombres reales y anade las que falten.
     stations:
-      - "HERZLIYA"
+      - "HER"
       - "TLV SAVIDOR"
     tracks:
       - sheet: "HR Track 1 RIS-HER"
@@ -360,16 +369,16 @@ execution_packages:
         station: null            # REVISAR: tramo entre estaciones
       - sheet: "HR Track 1 HER"
         name: "TRACK 1 HERZLIYA"          # REVISAR: derivado de A1
-        station: "HERZLIYA"     # REVISAR: derivado del titulo A1
+        station: "HER"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 2 HER"
         name: "TRACK 2 HERZLIYA"          # REVISAR: derivado de A1
-        station: "HERZLIYA"     # REVISAR: derivado del titulo A1
+        station: "HER"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 3 HER"
         name: "TRACK 3 HERZLIYA"          # REVISAR: derivado de A1
-        station: "HERZLIYA"     # REVISAR: derivado del titulo A1
+        station: "HER"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 4 HER"
         name: "TRACK 4 HERZLIYA"          # REVISAR: derivado de A1
-        station: "HERZLIYA"     # REVISAR: derivado del titulo A1
+        station: "HER"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 2 HER-TSA "
         name: "TRACK 2 HERZLIYA-TLV SAVIDOR"          # REVISAR: derivado de A1
         station: null            # REVISAR: tramo entre estaciones
@@ -411,22 +420,22 @@ execution_packages:
         station: null            # REVISAR: tramo entre estaciones
       - sheet: "HR Track 1 TSA"
         name: "TRACK 1 TLV SAVIDOR"          # REVISAR: derivado de A1
-        station: "TLV SAVIDOR"     # REVISAR: derivado del titulo A1
+        station: "TSA"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 2 TSA"
         name: "TRACK 2 TLV SAVIDOR"          # REVISAR: derivado de A1
-        station: "TLV SAVIDOR"     # REVISAR: derivado del titulo A1
+        station: "TSA"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 3 TSA"
         name: "TRACK 3 TLV SAVIDOR"          # REVISAR: derivado de A1
-        station: "TLV SAVIDOR"     # REVISAR: derivado del titulo A1
+        station: "TSA"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 4 TSA"
         name: "TRACK 4 TLV SAVIDOR"          # REVISAR: derivado de A1
-        station: "TLV SAVIDOR"     # REVISAR: derivado del titulo A1
+        station: "TSA"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 5 TSA"
         name: "TRACK 5 TLV SAVIDOR"          # REVISAR: derivado de A1
-        station: "TLV SAVIDOR"     # REVISAR: derivado del titulo A1
+        station: "TSA"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 6 TSA"
         name: "TRACK 6 TLV SAVIDOR"          # REVISAR: derivado de A1
-        station: "TLV SAVIDOR"     # REVISAR: derivado del titulo A1
+        station: "TSA"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 1 TSA-THA"
         name: "TRACK 1 TLV SAVIDOR-TLV HAHAGANA"          # REVISAR: derivado de A1
         station: null            # REVISAR: tramo entre estaciones
@@ -453,7 +462,7 @@ execution_packages:
     # Candidatas derivadas de los titulos de la celda A1 de cada hoja.
     # REVISAR: confirma los nombres reales y anade las que falten.
     stations:
-      - "BNEI BRAK"
+      - "BBR"
     tracks:
       - sheet: "HR Track INT NORTH (1)"
         name: "TRACK INT NORTH (1)"          # REVISAR: derivado de A1
@@ -484,13 +493,13 @@ execution_packages:
         station: null            # REVISAR: tramo entre estaciones
       - sheet: "HR Track 3 BNEI-BRAK "
         name: "TRACK 3 BNEI BRAK"          # REVISAR: derivado de A1
-        station: "BNEI BRAK"     # REVISAR: derivado del titulo A1
+        station: "BBR"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 4 BNEI-BRAK"
         name: "TRACK 4 BNEI BRAK"          # REVISAR: derivado de A1
-        station: "BNEI BRAK"     # REVISAR: derivado del titulo A1
+        station: "BBR"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 5 BNEI-BRAK"
         name: "TRACK 5 BNEI BRAK"          # REVISAR: derivado de A1
-        station: "BNEI BRAK"     # REVISAR: derivado del titulo A1
+        station: "BBR"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 3 ET-EXT (2)"
         name: "TRACK 3 END TRACK WITH EXT NORTH (2)"          # REVISAR: derivado de A1
         station: null            # REVISAR: A1 no nombra estacion
@@ -508,40 +517,40 @@ execution_packages:
     # Candidatas derivadas de los titulos de la celda A1 de cada hoja.
     # REVISAR: confirma los nombres reales y anade las que falten.
     stations:
-      - "TEL AVIV SOUTH"
+      - "TSO"
       - "LOD"
       - "GANOT"
     tracks:
       - sheet: "HR Track 1TLV S."
         name: "TRACK 1 TEL AVIV SOUTH"          # REVISAR: derivado de A1
-        station: "TEL AVIV SOUTH"     # REVISAR: derivado del titulo A1
+        station: "TSO"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 2TLV S."
         name: "TRACK 2 TEL AVIV SOUTH"          # REVISAR: derivado de A1
-        station: "TEL AVIV SOUTH"     # REVISAR: derivado del titulo A1
+        station: "TSO"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 3TLV S."
         name: "TRACK 3 TEL AVIV SOUTH"          # REVISAR: derivado de A1
-        station: "TEL AVIV SOUTH"     # REVISAR: derivado del titulo A1
+        station: "TSO"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 4TLV S."
         name: "TRACK 4 TEL AVIV SOUTH"          # REVISAR: derivado de A1
-        station: "TEL AVIV SOUTH"     # REVISAR: derivado del titulo A1
+        station: "TSO"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 5TLV S."
         name: "TRACK 5 TEL AVIV SOUTH"          # REVISAR: derivado de A1
-        station: "TEL AVIV SOUTH"     # REVISAR: derivado del titulo A1
+        station: "TSO"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 6TLV S."
         name: "TRACK 6 TEL AVIV SOUTH"          # REVISAR: derivado de A1
-        station: "TEL AVIV SOUTH"     # REVISAR: derivado del titulo A1
+        station: "TSO"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 5TLV S(SIDING)."
         name: "TRACK 5 TEL AVIV SOUTH (TRACKS SIDING)"          # REVISAR: derivado de A1
-        station: null            # REVISAR: A1 no nombra estacion
+        station: "TSO"            # REVISAR: A1 no nombra estacion
       - sheet: "HR Track 8TLV S."
         name: "TRACK 8 TEL AVIV SOUTH"          # REVISAR: derivado de A1
-        station: "TEL AVIV SOUTH"     # REVISAR: derivado del titulo A1
+        station: "TSO"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 9TLV S."
         name: "TRACK 9 TEL AVIV SOUTH"          # REVISAR: derivado de A1
-        station: "TEL AVIV SOUTH"     # REVISAR: derivado del titulo A1
+        station: "TSO"     # REVISAR: derivado del titulo A1
       - sheet: "HR Track 10TLV S."
         name: "TRACK 10 TEL AVIV SOUTH"          # REVISAR: derivado de A1
-        station: "TEL AVIV SOUTH"     # REVISAR: derivado del titulo A1
+        station: "TSO"     # REVISAR: derivado del titulo A1
       # Estas dos hojas llevan DOS tramos concatenados: el KP reinicia a mitad y los
       # codigos de perfil se repiten (47 y 46 respectivamente). Sin el corte, ambos
       # tramos caerian en la misma via y chocarian por (via, profileId).
