@@ -384,6 +384,11 @@ curl -X POST "$BASE/profiles/search" \
 `sortBy` va contra una **lista blanca** por recurso. Una columna no permitida no da error: se
 ignora y se aplica el orden por defecto.
 
+En `tracks`, `station.name` **sale de esa lista** con `V17`: una vía puede estar en varias
+estaciones, y no hay forma de ordenar una fila por un valor del que tiene tres. Filtrar por
+`stationName` sí sigue funcionando —devuelve las vías que pasan por esa estación—, y como el
+filtro salta a una colección, ahí una vía puede aparecer una vez por estación suya.
+
 Cuidado con los filtros booleanos, que no se comportan igual en todos los recursos:
 
 - `disconnectors` → `onLoad: true` filtra; **`onLoad: false` no filtra nada** (devuelve todo).

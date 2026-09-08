@@ -33,11 +33,11 @@ public interface TrackCriteriaSearchRepository extends
                 b.like("name"),
                 b.eq("enabled"),
                 JoinPredicates.like(cb, root, filters, "executionPackageName", "executionPackage", "name"),
-                JoinPredicates.like(cb, root, filters, "stationName", "station", "name"),
+                JoinPredicates.like(cb, root, filters, "stationName", "stations", "name"),
                 b.or(
                         b.search("name"),
                         JoinPredicates.searchText(cb, root, filters, "executionPackage", "name"),
-                        JoinPredicates.searchText(cb, root, filters, "station", "name")
+                        JoinPredicates.searchText(cb, root, filters, "stations", "name")
                 )
 
         );
@@ -47,7 +47,7 @@ public interface TrackCriteriaSearchRepository extends
     default <B extends BaseEntity> Path<B> getSortPath(EntityManager entityManager, Root<Track> entityRoot, String sortBy) {
         return SortPaths.resolve(entityRoot, sortBy, Set.of(
                 "name", "enabled", "createDate", "versionDate",
-                "executionPackage.name", "station.name"));
+                "executionPackage.name"));
     }
 
     @Override

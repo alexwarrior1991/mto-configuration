@@ -30,7 +30,7 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
 
     List<Profile> findByTrackNameContainingIgnoreCase(String trackName);
 
-    List<Profile> findByTrackStationNameContainingIgnoreCase(String stationName);
+    List<Profile> findByTrackStationsNameContainingIgnoreCase(String stationName);
 
     // Método para la primera página (o búsqueda normal)
     // 1. Añade JOIN FETCH a la consulta de la primera página

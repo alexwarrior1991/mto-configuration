@@ -55,8 +55,12 @@ public interface ProfileCriteriaSearchRepository extends
     }
 
     /**
-     * stationName cuelga de track.station: dos saltos, así que no lo cubre
+     * stationName cuelga de track.stations: dos saltos, así que no lo cubre
      * JoinPredicates.like, que sólo navega una asociación.
+     *
+     * <p>Desde V17 el segundo salto es a una COLECCION, asi que el join puede devolver el
+     * mismo perfil una vez por estacion de su via. Lo mismo que ya pasaba en la busqueda de
+     * estaciones por nombre de via, que tambien salta a una coleccion.
      */
     private static Predicate stationNamePredicate(CriteriaBuilder cb, Root<Profile> root,
                                                   Map<String, Object> filters) {
@@ -67,7 +71,7 @@ public interface ProfileCriteriaSearchRepository extends
         }
 
         Join<Profile, Track> track = root.join("track", JoinType.LEFT);
-        Join<Track, Station> station = track.join("station", JoinType.LEFT);
+        Join<Track, Station> station = track.join("stations", JoinType.LEFT);
 
         return cb.like(cb.upper(station.get("name")), "%" + value.toUpperCase() + "%");
     }
