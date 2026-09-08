@@ -410,21 +410,99 @@ def resolve_lov_single(field, text, cfg, ep, sheet, row, master: Master):
     return text
 
 
-def read_track(ws, ep, decl, cfg, master: Master):
-    """Vuelca una hoja (o el tramo declarado de una hoja) al maestro."""
+# El plano de una hoja: sus filas y donde cae cada cosa. Se resuelve UNA vez por hoja
+# aunque la hoja lleve varios tramos declarados; antes se resolvia una vez por tramo.
+TrackLayout = collections.namedtuple(
+    "TrackLayout", "sheet rows header_index single multi unmapped")
+
+
+def track_layout(ws, ep, cfg, master: Master):
+    """Plano de la hoja, o None si no hay cabecera o no hay columna de perfil."""
     sheet = ws.title
-    track_name = decl["name"]
     rows = list(ws.iter_rows(min_row=1, max_row=min(ws.max_row, MAX_ROWS_TRACK),
                              max_col=TRACK_DATA_MAX_COL, values_only=True))
     header_index = find_header_row(rows)
     if header_index is None:
         master.discard(motivo="hoja sin cabecera reconocible", ep=ep, hoja=sheet, fila=1)
-        return 0, 0
+        return None
 
-    single, multi, unmapped_cols = resolve_columns(rows[header_index], cfg, ep, sheet, master)
+    single, multi, unmapped = resolve_columns(rows[header_index], cfg, ep, sheet, master)
     if "PROFILE_ID" not in single:
         master.unrecognised("hoja sin columna PROFILE", sheet, ep, sheet, header_index + 1)
-        return 0, 0
+        return None
+
+    return TrackLayout(sheet, rows, header_index, single, multi, unmapped)
+
+
+def profile_rows(layout: TrackLayout, start=None, end=None):
+    """Numeros de fila (los que enseña Excel) que llevan un perfil de verdad."""
+    first = layout.header_index + 1 if start is None else start
+    last = len(layout.rows) if end is None else end
+    found = []
+    for offset in range(first, last):
+        raw_id = cell(layout.rows[offset], layout.single["PROFILE_ID"])
+        if not is_blank(raw_id) and not is_noise(squash(raw_id)):
+            found.append(offset + 1)
+    return found
+
+
+def ranges_text(numbers):
+    """[121, 122, 123, 130] -> '121-123, 130'. Un listado de 79 filas no lo lee nadie."""
+    grupos, inicio, previo = [], None, None
+    for number in numbers:
+        if inicio is None:
+            inicio = previo = number
+        elif number == previo + 1:
+            previo = number
+        else:
+            grupos.append((inicio, previo))
+            inicio = previo = number
+    if inicio is not None:
+        grupos.append((inicio, previo))
+    return ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in grupos)
+
+
+def check_sheet_coverage(layout: TrackLayout, ep, declarations, master: Master):
+    """Toda fila con perfil tiene que caer en UN tramo declarado. Ni cero, ni dos.
+
+    Solo aplica a las hojas que se cortan con 'rows'. Sin esto, declarar [4, 120] y
+    [200, 400] en una hoja que llega a la 400 se traga las 79 filas de en medio sin
+    decir nada: el maestro sale con menos perfiles y cuadra consigo mismo, que es la
+    peor forma de perder datos. Y al reves, dos tramos que se pisan cargan el mismo
+    perfil en dos vias.
+    """
+    tramos = [(decl["rows"][0], decl["rows"][1]) for decl in declarations
+              if decl.get("rows") and not decl.get("skip")]
+    if not tramos:
+        return
+
+    veces = collections.Counter()
+    for first, last in tramos:
+        veces.update(range(first, last + 1))
+
+    todas = profile_rows(layout)
+    fuera = [number for number in todas if veces[number] == 0]
+    repetidas = [number for number in todas if veces[number] > 1]
+
+    if fuera:
+        master.unrecognised("filas con perfil fuera de los tramos declarados",
+                            ranges_text(fuera), ep, layout.sheet, fuera[0])
+    if repetidas:
+        master.unrecognised("filas con perfil en dos tramos a la vez",
+                            ranges_text(repetidas), ep, layout.sheet, repetidas[0])
+
+
+def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
+    """Vuelca una hoja (o el tramo declarado de una hoja) al maestro."""
+    if layout is None:
+        layout = track_layout(ws, ep, cfg, master)
+        if layout is None:
+            return 0, 0
+
+    sheet = layout.sheet
+    track_name = decl["name"]
+    rows, header_index = layout.rows, layout.header_index
+    single, multi, unmapped_cols = layout.single, layout.multi, layout.unmapped
 
     # La fila siguiente a la cabecera es la subcabecera de grupos (M1/M2/M3): no trae
     # identificador de perfil, asi que se descarta sola por el filtro de mas abajo.
@@ -882,6 +960,10 @@ def main():
                 if not declarations:
                     master.unrecognised("hoja Track sin declarar", ws.title, ep, ws.title)
                     continue
+                layout = track_layout(ws, ep, cfg, master)
+                if layout is None:
+                    continue
+                check_sheet_coverage(layout, ep, declarations, master)
                 for decl in declarations:
                     if decl.get("skip"):
                         master.discard(motivo=f"hoja omitida: {decl['skip']}", ep=ep,
@@ -894,7 +976,7 @@ def main():
                         "ENABLED": "SI", "HOJA_ORIGEN": ws.title,
                         "FILA_INICIO": rows[0], "FILA_FIN": rows[1],
                     })
-                    written, arms = read_track(ws, ep, decl, cfg, master)
+                    written, arms = read_track(ws, ep, decl, cfg, master, layout)
                     profiles += written
                     cantilevers += arms
                 sheets += 1

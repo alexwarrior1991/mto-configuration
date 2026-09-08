@@ -670,3 +670,65 @@ class CoherenciaConElCatalogoDeLov(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CoberturaDeLosTramosDeclarados(unittest.TestCase):
+    """Una hoja partida en tramos tiene que quedar cubierta ENTERA, y una sola vez.
+
+    Partir una hoja con 'rows' es como se declara que un trozo de via esta dentro de
+    una estacion y el siguiente ya no. El riesgo es aritmetico: si los rangos no
+    cubren toda la hoja, las filas de en medio no salen en el maestro y el maestro
+    cuadra consigo mismo, asi que nadie se entera hasta que alguien echa de menos un
+    poste en obra.
+    """
+
+    @staticmethod
+    def hoja():
+        # Perfiles en las filas 4, 6 y 8; las intermedias llevan el vano.
+        filas = [["TRACK 1"], HEADER, [None] * len(HEADER)]
+        for numero in ("30-1.15", "30-1.16", "30-1.17"):
+            filas.append([None, numero, 30675, None, "A/S", "S1T", "EMT-2T",
+                          None, None, 20, None, None, "PH-950"])
+            filas.append([None, None, None, 45.5])
+        return FakeSheet("HR Track 1", [pad(r) for r in filas])
+
+    def comprueba(self, tramos):
+        master = bpm.Master()
+        sheet = self.hoja()
+        layout = bpm.track_layout(sheet, "EP1", CFG, master)
+        declaraciones = [{"name": f"VIA {i}", "rows": r} for i, r in enumerate(tramos, 1)]
+        bpm.check_sheet_coverage(layout, "EP1", declaraciones, master)
+        return master
+
+    def test_los_tramos_que_cubren_toda_la_hoja_no_dicen_nada(self):
+        self.assertEqual(len(self.comprueba([[4, 5], [6, 9]]).unknown), 0)
+
+    def test_una_fila_con_perfil_fuera_de_todo_tramo_no_pasa_en_silencio(self):
+        master = self.comprueba([[4, 5], [8, 9]])          # la 6 se queda fuera
+        tipos = [k[0] for k in master.unknown]
+        self.assertIn("filas con perfil fuera de los tramos declarados", tipos)
+        self.assertEqual(next(iter(master.unknown.values()))["valor"], "6")
+
+    def test_dos_tramos_que_se_pisan_cargarian_el_perfil_dos_veces(self):
+        master = self.comprueba([[4, 9], [6, 9]])
+        tipos = [k[0] for k in master.unknown]
+        self.assertIn("filas con perfil en dos tramos a la vez", tipos)
+
+    def test_una_hoja_sin_partir_no_se_comprueba(self):
+        """Sin 'rows' el tramo es la hoja entera: no hay nada que cubrir."""
+        master = bpm.Master()
+        layout = bpm.track_layout(self.hoja(), "EP1", CFG, master)
+        bpm.check_sheet_coverage(layout, "EP1", [{"name": "VIA 1"}], master)
+        self.assertEqual(len(master.unknown), 0)
+
+    def test_las_filas_perdidas_se_resumen_en_rangos(self):
+        """Un listado de 79 numeros sueltos no lo lee nadie."""
+        self.assertEqual(bpm.ranges_text([121, 122, 123, 130, 131, 200]),
+                         "121-123, 130-131, 200")
+
+    def test_el_plano_de_la_hoja_se_resuelve_una_sola_vez(self):
+        """Antes se resolvia una vez por tramo: la hoja de EP9A, dos veces."""
+        master = bpm.Master()
+        layout = bpm.track_layout(self.hoja(), "EP1", CFG, master)
+        self.assertEqual(layout.sheet, "HR Track 1")
+        self.assertEqual(bpm.profile_rows(layout), [4, 6, 8])
