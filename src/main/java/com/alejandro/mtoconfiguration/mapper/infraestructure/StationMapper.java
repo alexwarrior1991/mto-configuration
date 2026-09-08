@@ -44,6 +44,10 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
      * a este. Spring inyecta los dos, pero cualquier cableado por reflexion —un test que instancia
      * el impl a mano— alcanzaria solo el de la subclase y dejaria estos a null.
      */
+    /** Ver TrackMapper.referenceResolver: el nombre corto lo ocupa el impl generado. */
+    @Autowired
+    protected ReferenceMapper referenceResolver;
+
     @Autowired
     protected TrackMapper trackChildMapper;
     @Autowired
@@ -148,8 +152,15 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
                 // la via ya lo hubiera puesto: updateEntityFromDTO no lo toca, porque un TrackDTO
                 // anidado en una estacion no trae stationIds.
                 ligada.addStation(entity);
+            } else if (childDto.getId() != null) {
+                // Una via que YA existe y todavia no estaba en esta estacion. Hay que ligar la
+                // fila, no una copia: toEntity devolveria un objeto desatachado con el mismo id
+                // que Hibernate no reconoce como la fila, de modo que el vinculo no se guardaba
+                // y la peticion respondia 200 sin haber hecho nada.
+                Track existente = referenceResolver.resolve(childDto.getId(), Track.class);
+                trackChildMapper.updateEntityFromDTO(childDto, existente);
+                entity.addTrack(existente);
             } else {
-                // Via nueva, o una que ya existia y todavia no estaba ligada a esta estacion.
                 entity.addTrack(trackChildMapper.toEntity(childDto));
             }
         }

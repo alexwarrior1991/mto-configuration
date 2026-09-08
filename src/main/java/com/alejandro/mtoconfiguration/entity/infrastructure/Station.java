@@ -62,13 +62,16 @@ public class Station extends CRUDEntity {
      * Vias que pasan por la estacion. Lado INVERSO de la N:M: la duena es
      * {@code Track.stations}, que es la que tiene la tabla de union.
      *
-     * <p>Sin {@code cascade} ni {@code orphanRemoval}, a diferencia de los seccionadores y los
-     * aisladores de aqui abajo, y no es un descuido: una via puede pertenecer a tres
-     * estaciones, asi que quitarla de esta coleccion tiene que desligarla, nunca borrarla.
-     * Con {@code orphanRemoval} un PUT sobre ZIC que no mencionara 'TRACK 1' habria borrado la
-     * via entera, con sus perfiles, tambien para BIN y para HAD.
+     * <p>Sin {@code orphanRemoval} y sin {@code CascadeType.REMOVE}, a diferencia de los
+     * seccionadores y los aisladores de aqui abajo, y no es un descuido: una via puede
+     * pertenecer a tres estaciones, asi que quitarla de esta coleccion tiene que desligarla,
+     * nunca borrarla. Con {@code orphanRemoval} un PUT sobre ZIC que no mencionara 'TRACK 1'
+     * habria borrado la via entera, con sus perfiles, tambien para BIN y para HAD.
+     *
+     * <p>{@code PERSIST} y {@code MERGE} si se quedan: sin ellos, una via NUEVA creada dentro
+     * de un alta de estacion no se guardaria, y no daria ningun error. Se perdia en silencio.
      */
-    @ManyToMany(mappedBy = "stations")
+    @ManyToMany(mappedBy = "stations", cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @Audited(targetAuditMode = NOT_AUDITED)
     public Set<Track> getTracks() {

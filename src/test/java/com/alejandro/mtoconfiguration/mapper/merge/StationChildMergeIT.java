@@ -162,9 +162,16 @@ class StationChildMergeIT extends AbstractChildMergeIT {
                 List.of(seccionadorDto(seccionadorId, "SECC-RENOMBRADO")),
                 List.of(aisladorDto(null, "AISL-1"))));          // aislador nuevo
 
-        assertThat(contarFilas("track")).isEqualTo(2);
+        // Tres vias, no dos: VIA 2 no viene en la peticion y con la N:M de V17 eso la DESLIGA
+        // de ATOCHA, no la borra. La que se crea es VIA 3.
+        assertThat(contarFilas("track")).isEqualTo(3);
         assertThat(em.find(Track.class, primeraViaId).getName()).isEqualTo("VIA PRINCIPAL");
-        assertThat(em.find(Track.class, segundaViaId)).isNull();
+        assertThat(em.find(Track.class, segundaViaId))
+                .as("la via que no viene sobrevive, solo pierde el vinculo")
+                .isNotNull();
+        assertThat(contarFilas("track_station"))
+                .as("quedan ligadas VIA PRINCIPAL y VIA 3")
+                .isEqualTo(2);
         assertThat(em.find(Disconnector.class, seccionadorId).getName()).isEqualTo("SECC-RENOMBRADO");
         assertThat(contarFilas("section_insulator")).isEqualTo(1);
     }
