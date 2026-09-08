@@ -325,6 +325,22 @@ class TrackMapperTest {
         }
 
         @Test
+        @DisplayName("un TrackDTO recien construido NO trae la lista, y por eso no borra nada")
+        void porDefectoNoTraeLaLista() {
+            // Es el default del DTO, no una manía: una via anidada dentro de una estacion se
+            // construye asi, sin tocar stationIds. Cuando el campo se inicializaba a lista
+            // vacia, esa via llegaba al mapper pidiendo "quitame todas las estaciones" y se
+            // llevaba por delante las otras dos por las que pasa. Un PUT sobre ZIC dejaba a
+            // 'TRACK 1' fuera de BIN y de HAD sin que nadie lo pidiera.
+            Track track = new Track();
+            track.setStations(new LinkedHashSet<>(List.of(station(7L), station(8L))));
+
+            mapper.updateEntityFromDTO(new TrackDTO(), track);
+
+            assertThat(track.getStations()).hasSize(2);
+        }
+
+        @Test
         @DisplayName("no mandar el campo no toca nada, que no es lo mismo que mandarlo vacio")
         void campoAusente() {
             // La diferencia importa: un cliente que solo renombra la via manda el nombre y no
