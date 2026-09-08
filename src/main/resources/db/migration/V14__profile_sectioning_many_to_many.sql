@@ -42,9 +42,30 @@ ALTER TABLE profile_sectioning_aud ADD CONSTRAINT fk_profile_sectioning_aud_rev
     FOREIGN KEY (rev) REFERENCES audit_revision;
 
 -- Lo que ya estaba cargado se conserva: cada perfil con seccionamiento pasa a tener uno.
-insert into profile_sectioning (profile_id, sectioning_id)
-select id, sectioning_id from profile where sectioning_id is not null
-on conflict do nothing;
+--
+-- Guardado, y no por gusto: la columna puede NO existir. Cuando el esquema se crea desde
+-- las entidades actuales —que es lo que hace la adopcion de Flyway sobre una base que ya
+-- existia— profile.sectioning_id no llego a existir nunca, porque la entidad ya declara la
+-- tabla de union. El EXECUTE mantiene la sentencia sin analizar hasta que se sabe que hay
+-- de donde copiar; escrita en linea, PL/pgSQL la analizaria igualmente y fallaria.
+--
+-- 'profile'::regclass resuelve por search_path, no por current_schema(): el mismo detalle
+-- que hizo fallar el guardado de V11 en este mismo test.
+DO $$
+BEGIN
+    -- to_regclass y no 'profile'::regclass: el cast lanza si la tabla no existe, y aqui
+    -- puede no existir. to_regclass devuelve NULL y el guardado sigue siendo un guardado.
+    IF to_regclass('profile') IS NOT NULL
+       AND EXISTS (SELECT 1 FROM pg_attribute
+                    WHERE attrelid = to_regclass('profile')
+                      AND attname = 'sectioning_id'
+                      AND attnum > 0
+                      AND NOT attisdropped) THEN
+        EXECUTE 'insert into profile_sectioning (profile_id, sectioning_id)'
+             || ' select id, sectioning_id from profile where sectioning_id is not null'
+             || ' on conflict do nothing';
+    END IF;
+END $$;
 
 -- Y se retira la columna, para que no queden dos sitios donde mirar.
 alter table profile     drop column if exists sectioning_id;
