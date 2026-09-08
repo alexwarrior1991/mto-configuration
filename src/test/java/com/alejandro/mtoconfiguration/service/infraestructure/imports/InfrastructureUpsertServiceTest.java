@@ -4,12 +4,19 @@ import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
+import com.alejandro.mtoconfiguration.entity.lov.CantileverType;
+import com.alejandro.mtoconfiguration.entity.lov.PoleType;
+import com.alejandro.mtoconfiguration.entity.lov.ProfileStatus;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.CantileverMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileLovCodes;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.BusinessEntityRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.StationRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackRepository;
+import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ExecutionPackageService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ProfileService;
 import com.alejandro.mtoconfiguration.service.infraestructure.StationService;
@@ -26,11 +33,13 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -66,6 +75,8 @@ class InfrastructureUpsertServiceTest {
     private ProfileRepository profileRepository;
     @Mock
     private BusinessEntityRepository businessEntityRepository;
+    @Mock
+    private MasterDataService masterDataService;
 
     @InjectMocks
     private InfrastructureUpsertService service;
@@ -172,6 +183,117 @@ class InfrastructureUpsertServiceTest {
                     .hasMessageContaining("B99999999");
 
             verify(executionPackageService, never()).create(any());
+        }
+    }
+
+
+    @Nested
+    @DisplayName("Resolucion de las listas de valores")
+    class ResolucionDeLasListasDeValores {
+
+        /**
+         * El fallo que esto corta es el mas caro de todos porque no se ve: MasterDataService
+         * resuelve un codigo desconocido a null SIN QUEJARSE y ProfileValidator no consulta
+         * ningun catalogo, asi que el perfil se guardaba con la clave ajena vacia y el informe
+         * lo contaba como cargado. Medido sobre el maestro real eran 5.814 asignaciones.
+         */
+        @Test
+        @DisplayName("un codigo que no existe impide cargar el perfil y sale nombrado")
+        void elCodigoDesconocidoTumbaLaFilaConSuNombre() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(masterDataService.getPoleTypeByCode("S1T")).thenReturn(null);
+
+            assertThatThrownBy(() -> service.upsertProfile(profile("S1T"), 1L, List.of(), false))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("poleType")
+                    .hasMessageContaining("S1T");
+
+            verify(profileService, never()).create(any());
+        }
+
+        /**
+         * Quien corrige el maestro quiere la lista entera de una pasada. Parar en el primero
+         * obliga a una ejecucion por codigo malo, y son miles.
+         */
+        @Test
+        @DisplayName("se acumulan TODOS los codigos que fallan, no solo el primero")
+        void seAcumulanTodosLosQueFallan() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+
+            ProfileMasterRow row = new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1+000",
+                    "DEFINITIVE",
+                    new ProfileLovCodes("SEC-X", "", "", "", "PT-X", "", "", ""),
+                    null, null, null, null, true, 5);
+
+            assertThatThrownBy(() -> service.upsertProfile(row, 1L, List.of(), false))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("sectioning='SEC-X'")
+                    .hasMessageContaining("poleType='PT-X'");
+        }
+
+        @Test
+        @DisplayName("un hueco no se comprueba: la mayoria de columnas vienen vacias")
+        void elHuecoNoSeComprueba() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+                    .thenReturn(Optional.empty());
+            when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            service.upsertProfile(profile(""), 1L, List.of(), false);
+
+            verify(masterDataService, never()).getPoleTypeByCode(any());
+            verify(profileService).create(any());
+        }
+
+        @Test
+        @DisplayName("tambien se comprueban los codigos de la mensula, con su slot")
+        void tambienLosDeLaMensula() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(masterDataService.getCantileverTypeByCode("H-ARM")).thenReturn(null);
+
+            CantileverMasterRow cantilever = new CantileverMasterRow("EP6", "TRACK 1", "83-1.02",
+                    2, "H-ARM", null, null, null, null, null, null, "", null, true, 5);
+
+            assertThatThrownBy(() -> service.upsertProfile(profile(""), 1L, List.of(cantilever), false))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("cantilever[2].cantileverType")
+                    .hasMessageContaining("H-ARM");
+        }
+
+        @Test
+        @DisplayName("con todos los codigos resueltos el perfil se carga")
+        void conTodoResueltoSeCarga() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(masterDataService.getPoleTypeByCode("S1T")).thenReturn(new PoleType());
+            when(masterDataService.getCantileverTypeByCode("EMT-1")).thenReturn(new CantileverType());
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+                    .thenReturn(Optional.empty());
+            when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            CantileverMasterRow cantilever = new CantileverMasterRow("EP6", "TRACK 1", "83-1.02",
+                    1, "EMT-1", null, null, null, null, null, null, "", null, true, 5);
+
+            service.upsertProfile(profile("S1T"), 1L, List.of(cantilever), false);
+
+            verify(profileService).create(any());
+        }
+
+        /** La simulacion no escribe, pero comprueba igual: si no, aprobaria lo que luego falla. */
+        @Test
+        @DisplayName("la simulacion tambien exige que los codigos existan")
+        void laSimulacionTambienComprueba() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(masterDataService.getPoleTypeByCode("S1T")).thenReturn(null);
+
+            assertThatThrownBy(() -> service.upsertProfile(profile("S1T"), 1L, List.of(), true))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("S1T");
+        }
+
+        private ProfileMasterRow profile(String poleType) {
+            return new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1+000", "DEFINITIVE",
+                    new ProfileLovCodes("", "", "", "", poleType, "", "", ""),
+                    null, null, null, null, true, 5);
         }
     }
 

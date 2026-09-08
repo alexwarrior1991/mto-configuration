@@ -32,6 +32,7 @@ import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPac
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.StationRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackRepository;
+import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ExecutionPackageService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ProfileService;
 import com.alejandro.mtoconfiguration.service.infraestructure.StationService;
@@ -84,6 +85,7 @@ public class InfrastructureUpsertService {
     private final TrackRepository trackRepository;
     private final ProfileRepository profileRepository;
     private final BusinessEntityRepository businessEntityRepository;
+    private final MasterDataService masterDataService;
 
     public UpsertResult upsertExecutionPackage(ExecutionPackageMasterRow row, boolean dryRun) {
         Optional<Long> existing = executionPackageRepository.findByNameIgnoreCase(row.name())
@@ -154,6 +156,7 @@ public class InfrastructureUpsertService {
         dto.setHeightCantileverSupport(row.heightCantileverSupport());
         dto.setPoleGaugeLocation(row.poleGaugeLocation());
         dto.setRailPoleDistance(row.railPoleDistance());
+        requireResolvableCodes(row, cantilevers);
         applyLovCodes(dto, row.profileStatus(), row.lov());
         dto.setCantilevers(buildCantilevers(cantilevers,
                 existing.map(ProfileDTO::getCantilevers).orElse(List.of())));
@@ -266,6 +269,63 @@ public class InfrastructureUpsertService {
      * apuntando a la misma empresa, un NIF mal tecleado tumbaba los once y el informe
      * repetia once veces que faltaba un campo que si estaba puesto.
      */
+    /**
+     * Comprueba que TODO codigo de lista de valores que trae la fila existe en su catalogo.
+     *
+     * <p>Sin esto la carga es peor que un fallo: {@code MasterDataService} resuelve un codigo
+     * desconocido a {@code null} en silencio, el validador no consulta ningun catalogo —solo
+     * exige que {@code profileStatus} venga informado— y el perfil se guarda con la clave
+     * ajena vacia mientras el informe lo cuenta como cargado. Es exactamente lo que dejo
+     * {@code profile_status} sin sembrar hasta V12, multiplicado por las diez relaciones.
+     *
+     * <p>Se juntan TODOS los codigos que fallan en un unico error en vez de parar en el
+     * primero: quien corrige el maestro quiere la lista entera de una pasada, no descubrir
+     * uno por ejecucion.
+     */
+    private void requireResolvableCodes(ProfileMasterRow row, List<CantileverMasterRow> cantilevers) {
+        List<String> unresolved = new ArrayList<>();
+
+        check(unresolved, "profileStatus", row.profileStatus(), masterDataService::getProfileStatusByCode);
+        ProfileLovCodes lov = row.lov();
+        check(unresolved, "sectioning", lov.sectioning(), masterDataService::getSectioningByCode);
+        check(unresolved, "anchorage", lov.anchorage(), masterDataService::getAnchorageByCode);
+        check(unresolved, "anchorageFoundation", lov.anchorageFoundation(),
+                masterDataService::getAnchorageFoundationByCode);
+        check(unresolved, "foundation", lov.foundation(), masterDataService::getFoundationByCode);
+        check(unresolved, "poleType", lov.poleType(), masterDataService::getPoleTypeByCode);
+        check(unresolved, "portal", lov.portal(), masterDataService::getPortalByCode);
+        check(unresolved, "returnSupport", lov.returnSupport(), masterDataService::getReturnSupportByCode);
+        check(unresolved, "sectioningFeeding", lov.sectioningFeeding(),
+                masterDataService::getDisconnectorFunctionByCode);
+
+        for (CantileverMasterRow cantilever : cantilevers) {
+            String slot = "cantilever[" + cantilever.slot() + "].";
+            check(unresolved, slot + "cantileverType", cantilever.cantileverType(),
+                    masterDataService::getCantileverTypeByCode);
+            check(unresolved, slot + "steadyArmType", cantilever.steadyArmType(),
+                    masterDataService::getSteadyArmTypeByCode);
+        }
+
+        if (!unresolved.isEmpty()) {
+            throw new NotFoundException(
+                    "codigos que no existen habilitados en su catalogo: "
+                            + String.join(", ", unresolved)
+                            + "; regenera el maestro con build_profile_master.py, que ahora los "
+                            + "saca en NO_RECONOCIDO antes de importar");
+        }
+    }
+
+    /** Un codigo en blanco es un hueco legitimo; uno informado tiene que resolver. */
+    private <T> void check(List<String> unresolved, String field, String code,
+                           Function<String, T> resolver) {
+        if (StringUtils.isBlank(code)) {
+            return;
+        }
+        if (resolver.apply(code.trim()) == null) {
+            unresolved.add(field + "='" + code.trim() + "'");
+        }
+    }
+
     private Long resolveCompany(String identificationNumber) {
         if (StringUtils.isBlank(identificationNumber)) {
             throw new ValidationException(

@@ -438,19 +438,416 @@ code_canonical:
 # estado "pendiente de decidir" y lo deja a la vista sin romper la generacion.
 # --------------------------------------------------------------------------------
 track_accepted:
+  Anchorage:
+    - AnFW AnFW
+    - AnMC
+    - AnMP
+    - AnMP T1
+    - AnRW AnRW
+    - AnRW Portal
+    - AnRW2
+    - AnRW2 track 1
+    - AnRW2/Tunnel
+    - CP
+    - CP+AMC
+    - CP+AnCM
+    - CP+AnMC 265,00
+    - CP+AnMC AnRW
+    - CP+AnMC CP+AnMC
+    - CP+AnMC CP+AnMC 527,00
+    - CP+AnMC FP+AnMC
+    - CP+AnMC IO
+    - CP+TX-P/1100
+    - FP+AnCM
+    - FP+AnMC AnRW
+    - FP+AnMC AnRW2
+    - FP+AnMC IO
+    - FP+AnMCAnRW
+    - IO AnRW
+    - IO CP+AnMC
+    - IO FP+AnMC
+    - PF+AnMC
+    - TRACK 5
+  AnchorageFoundation:
+    - AnFW-RT
+    - AnFW-RTL
+    - AnMC-W
+    - AnMP-R
+    - AnMP-RT
+    - AnRW-R
+    - AnRW-RT
+  CantileverType:
+    - 48-1-
+    - EMT-1-RH
+    - EMT-1P(Diag)
+    - EMT-2-RH
+    - EMT-2HR
+    - EMT-P
+    - EMT-R
+    - EMT-TRH
+    - EMT1
+    - EMT1P
+    - EMT2
+    - EMT21P
+    - EMT2P
+    - ENT-1
+    - ENT-2
+    - ETM-2
+    - H-ARM
+    - ISOL.SUSP.
+    - OCR
   DisconnectorFunction:
-    # Feeder wire: no aparece en ningun bloque FEEDING de las leyendas, pero son
-    # ~360 usos reales repartidos por todos los EP.
+    - 2xFW-25
+    - Disc/PP
     - FW
     - FW-25
     - FW-D
     - FW-DV
-    - 2xFW-25
-    # Variantes de equipos que si estan en la leyenda, con su matiz propio.
-    - Disc/PP
-    - LoadB/t
     - LoadB/ED
+    - LoadB/t
     - MW/CW-ISusp
+  Foundation:
+    - 2C3R-S
+    - 2C3RT-S
+    - 2C3SR_L
+    - 2C4FR-S
+    - 2C4R-S
+    - 2C4RT-S
+    - 2C4SR_L
+    - 2C9R
+    - 2W3 UNIQUE SOLUTION
+    - C11R-S
+    - C12R-S
+    - C2H240
+    - C2H240RT
+    - C3 SLABTRACK
+    - C3RL
+    - C4 SLABTRACK
+    - C4R-S
+    - C4RL
+    - C4SR_L
+    - C5R-S
+    - C5RT-S
+    - C5SR_L
+    - C7R-S
+    - C7RT-S
+    - C7SR_L
+    - C8R-S
+    - C9R-S
+    - CHEM. ANCHOR
+    - CV-PAW
+    - PL
+    - PLATE TYPE 2
+    - PLATE TYPE 3
+    - WALL
+    - WL3
+  PoleType:
+    - 2HBE-240
+    - 2HEB-240LL
+    - 2HEB-260LL
+    - 2HEB-300(CP) V
+    - 2HEB-320
+    - 2HEB-320A
+    - 2HEB-320AL
+    - HB-280 (CP)
+    - HEB-240 AirPort
+    - HEB-240 WALL
+    - HEB-260 AirPort
+    - HEB-280 AirPort
+    - LOW WALL
+    - POLE TRACK 02
+    - POLE TRACK 03
+    - POLE TRACK 04
+    - POLE TRACK 04(06)
+    - POLE TRACK 07
+    - POLE TRACK 1
+    - POLE TRACK 11S
+    - POLE TRACK 13D
+    - POLE TRACK 15D
+    - POLE TRACK 1D
+    - POLE TRACK 1S
+    - POLE TRACK 2
+    - POLE TRACK 21D
+    - POLE TRACK 23D
+    - POLE TRACK 2D
+    - POLE TRACK 3
+    - POLE TRACK 3NET
+    - POLE TRACK 3S
+    - POLE TRACK 4
+    - POLE TRACK 4M
+    - POLE TRACK 4S
+    - POLE TRACK 5S
+    - POLE TRACK 6
+    - POLE TRACK 6S
+    - POLE TRACK 7D
+    - POLE TRACK 7S
+    - POLE TRACK 8S
+    - POLE TRACK 9D
+    - POLE TRACK INT
+    - POLE TRACK02
+    - POLE TRACKS 6S
+    - PROFILE TRACK 2
+    - S-1T-B1
+    - S-1T-B3
+    - S-1T-H
+    - S-1T-L
+    - S-1T-R
+    - S-1T-W
+    - S-1TB1
+    - S-1TB3
+    - S-2T-H
+    - S-2T-R
+    - S-2T-W
+    - S1T
+    - S2T
+    - SUPL-5
+    - SUPL-5 + S-1T-W
+    - T-SING
+  Portal:
+    - 2PR1E
+    - SPR1
+  ReturnSupport:
+    - PR1B
+    - PR1D
+    - RW1-C
+    - RW1-S
+    - RW1-T
+    - RW1/DIST-R
+    - RW1T-C
+    - RW1T-S
+    - RW1T-S/RW1
+    - RW2T-C
+    - RW2T-S
+    - RW2T-SC
+    - RW3
+    - RWT-S
+  Sectioning:
+    - 2MP S/A
+    - A A/S Diag
+    - A A/S-Diag
+    - A/S (T1)
+    - A/S - S/A
+    - A/S A/S
+    - A/S A/S Diag
+    - A/S A/S-Diag
+    - A/S AnMP
+    - A/S AnMP S/A
+    - A/S Diag
+    - A/S Diag 1
+    - A/S Diag 1 - AnMP (T1)
+    - A/S Diag A/S
+    - A/S Diag AnMP
+    - A/S Diag MP
+    - A/S Diag S/A
+    - A/S Diag S/A A/S
+    - A/S Diag S/A AnMP
+    - A/S Diag S/A S/A
+    - A/S Diag1
+    - A/S Diag2
+    - A/S MP
+    - A/S P30(CS)
+    - A/S P30(CS) S/A
+    - A/S P35(CS)
+    - A/S P44(CS)
+    - A/S P50
+    - A/S P50 (CS)
+    - A/S P50 (CS) A/S
+    - A/S P50(CS)
+    - A/S P50(CS) A/S
+    - A/S P50(CS) A/S-Diag
+    - A/S P50(CS) S/A
+    - A/S P59(CS)
+    - A/S P90
+    - A/S S/A
+    - A/S S/A P50(CS)
+    - A/S S/A S/A A/S
+    - A/S-Diag A/S
+    - A/S-Diag A/S-Diag
+    - A/S-Diag AnMP
+    - A/S-Diag AnRW
+    - A/S-DiaG MP
+    - A/S-Diag MP S/A
+    - A/S-Diag P40(CS) AnMP
+    - A/S-Diag P50 (CS)
+    - A/S-Diag P50 (CS) S/A
+    - A/S-Diag P50 S/A
+    - A/S-Diag P50(CS)
+    - A/S-Diag S/A
+    - A/S-Diag S/A A/S
+    - A/S-Diag S/A AnMP
+    - A/S-Diag S/A S/A
+    - A/S-Diag1
+    - A/S-Diang
+    - AnFW AnFW
+    - AnMP - AnMP (T1)
+    - AnMP - MP (T1)
+    - AnMP A/S-Diag
+    - AnMP AnMP
+    - AnMP AnRw
+    - AnMP MP
+    - AnMP MP AnMP
+    - AnMP P40 (CS) S/A
+    - AnMP P50 (CS)
+    - AnMP P50(CS)
+    - AnMP S/A
+    - AnMP S/A A/S
+    - AnMP S/A A/S-Diag
+    - AnMP S/A AnMP
+    - AnMP T A/S-Diag
+    - AnRW
+    - AnRW/Tunnel
+    - AnRW2
+    - IO
+    - MP A/S
+    - MP A/S-Diag
+    - MP A/S-Diag A/S-Diag
+    - MP AnMP
+    - MP P30(CS)
+    - MP P50 (CS) A/S
+    - MP P50(CS)
+    - MP S/A S/A
+    - P0(CS)
+    - P100
+    - P100(TgS)
+    - P120 (Tg)
+    - P120 (Tg) S/A
+    - P120 (Tg) S/A IO
+    - P15
+    - P21(CS)
+    - P22(CS)
+    - P22(CS) A/S Diag
+    - P25(CS)
+    - P25(CS) S/A
+    - P27(CS)
+    - P27(CS) A/S
+    - P29(CS) A/S Diag
+    - P30
+    - P30 (CS)
+    - P30 (CS) A/S-Diag
+    - P30 (CS) S/A
+    - P30 A/S Diag
+    - P30(CS)
+    - P30(CS) A/S
+    - P30(CS) A/S Diag
+    - P30(CS) A/S Diag A/S Diag
+    - P30(CS) A/S-Diag
+    - P30(CS) AnMP
+    - P30(CS) S/A
+    - P30(CS) S/A A/S Diag
+    - P30(CS) SA
+    - P32(CS)
+    - P35
+    - P35(CS)
+    - P35(CS) AnMP
+    - P37(CS)
+    - P39(CS)
+    - P39(CS) A/S
+    - P39(CS) S/A
+    - P40 (CS)
+    - P40 (CS) S/A
+    - P40(CS)
+    - P40(CS) A/S Diag
+    - P40(CS) S/A
+    - P40(CS) S/A A/S
+    - P45 (CS) A/S
+    - P45(CS)
+    - P48(CS)
+    - P49(CS)
+    - P49(CS) S/A
+    - P5(CS)
+    - P50 (CS) A/S
+    - P50 (CS) A/S MP
+    - P50 (CS) A/S-Diag
+    - P50 (CS) AnMP
+    - P50 (CS) MP
+    - P50 (CS) S/A
+    - P50 (CS) S/A A/S
+    - P50 (CS) S/A A/S A/S
+    - P50 (CS) S/A A/S AnMP
+    - P50 (CS) S/A AnMP
+    - P50 A/S
+    - P50 A/S Diag 2
+    - P50 A/S Diag2
+    - P50 A/S-Diag
+    - P50 AnMP
+    - P50 MP
+    - P50 S/A
+    - P50 S/A A/S
+    - P50 S/A A/S-Diag
+    - P50 S/A MP
+    - P50(CS)
+    - P50(CS) A/S
+    - P50(CS) A/S A/S
+    - P50(CS) A/S Diag
+    - P50(CS) A/S Diag S/A
+    - P50(CS) A/S-Diag
+    - P50(CS) MP
+    - P50(CS) MPA
+    - P50(CS) S/A
+    - P50(CS) S/A A/S
+    - P50(CS) S/A A/S-Diag
+    - P50(CS) S/A AnMP
+    - P50(CS) SA
+    - P50(CS)S/A AnMP
+    - P51(CS)
+    - P52(CS) A/S
+    - P55(CS)
+    - P55(CS) AnMP
+    - P60
+    - P60(CS)
+    - P64(CS)
+    - P65
+    - P65(CS)
+    - P65(CS) A/S
+    - P65(CS) S/A
+    - P65(CS) S/A A/S
+    - P67(CS)
+    - P70 A/S
+    - P70(CS)
+    - P70(CS) S/A
+    - P71 A/S (T1)
+    - P80(TgS)
+    - P85(CS) S/A A/S Diag
+    - P90 - A/S
+    - P90 A/S
+    - P90 A/S - Diag
+    - P90 S/A
+    - P90(TgS)
+    - POLE TRACK 14S
+    - S/A A/S
+    - S/A A/S A/S-Diag
+    - S/A A/S AnMP
+    - S/A A/S AnRW1 AnRW2
+    - S/A A/S Diag
+    - S/A A/S S/A
+    - S/A A/S-Diag
+    - S/A A/S-Diag MP
+    - S/A A/S-Diag1
+    - S/A AnMP
+    - S/A AnMP A/S-Diag
+    - S/A IO
+    - S/A IO S/A
+    - S/A MP
+    - S/A P120 (Tg)
+    - S/A P30 (CS)
+    - S/A P30(CS)
+    - S/A P40(CS)
+    - S/A P50
+    - S/A P50 (CS)
+    - S/A P50 (CS) A/S-Diag
+    - S/A P50(CS)
+    - S/A P50(CS) A/S
+    - S/A P50(CS) A/S-Diag
+    - S/A P50(CS) AnMP
+    - S/A P50(CS) MP
+    - S/A P50(CS) MP A/S Diag
+    - S/A P55(CS)
+    - S/A P60(CS)
+    - S/A P85 A/S
+    - S/A S/A
+    - S/A S/A A/S
+    - S/A S/A A/S-Diag
+    - SA
 
 # --------------------------------------------------------------------------------
 # Textos que ocupan la celda del codigo pero no son codigos: marcadores de "esto

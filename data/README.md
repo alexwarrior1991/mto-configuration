@@ -239,6 +239,24 @@ aparecía mucho más tarde: el importador rechazaba la vía y se quedaba sin car
 trabajo ya a medias. La comparación ignora mayúsculas y espacios sobrantes; `station: null`
 no se comprueba, porque es una respuesta válida.
 
+**Todo código de lista de valores tiene que existir HABILITADO en el catálogo.** El
+generador cruza cada columna de código (`SECTIONING`, `ANCHORAGE`, `ANCHORAGE_FOUNDATION`,
+`FOUNDATION`, `POLE_TYPE`, `PORTAL`, `RETURN_SUPPORT`, `SECTIONING_FEEDING`,
+`CANTILEVER_TYPE`, `STEADY_ARM_TYPE`) contra `lov-master.xlsx` y saca a `NO_RECONOCIDO` los
+que no resuelven, terminando con código distinto de cero. Antes de aplicar el cruce
+canonicaliza con la misma tabla `code_canonical` que usa el generador de LOV: tenerla en un
+solo sitio y aplicarla solo en uno era un fallo que dejaba `FW25` sin convertir en `FW-25`.
+
+Un código con `ENABLED=NO` cuenta como ausente: no llega a la base de datos, así que
+referenciarlo desde un perfil está igual de roto que inventárselo.
+
+Por qué importa tanto: `MasterDataService` resuelve un código desconocido a `null` **sin
+quejarse**, y `ProfileValidator` no consulta ningún catálogo. Sin esta comprobación el perfil
+se guardaba con la clave ajena vacía y el informe lo contaba como cargado. Medido sobre el
+maestro real eran **5.814 asignaciones** que se habrían perdido en silencio. El importador
+lleva además su propio candado (`InfrastructureUpsertService.requireResolvableCodes`), que
+rechaza la fila nombrando todos los códigos que fallan de una vez.
+
 **El `company_identification_number` se busca, no se da de alta.** Es el NIF de la
 empresa, no su id: el importador lo traduce contra `business_entity`, y esa tabla viene de
 un maestro externo — este repositorio no tiene migración que la siembre, ni servicio, ni

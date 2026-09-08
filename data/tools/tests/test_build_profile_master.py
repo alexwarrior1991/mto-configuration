@@ -463,6 +463,79 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
 
 
 @unittest.skipUnless(os.path.exists(LOV_MASTER), "data/lov-master.xlsx no generado")
+class CodigosDeListaDeValores(unittest.TestCase):
+    """Canonicalizacion y cruce contra el catalogo.
+
+    Es la comprobacion que faltaba y la que mas caro salia: MasterDataService resuelve un
+    codigo desconocido a null SIN QUEJARSE, asi que un codigo que no este habilitado no da
+    error en ninguna parte — el perfil se guarda con la clave ajena vacia y el informe dice
+    que fue bien. Aqui se corta antes de escribir el maestro.
+    """
+
+    CFG_LOV = dict(CFG, code_canonical={"DisconnectorFunction": {"FW25": "FW-25"}},
+                   lov_catalog={"DisconnectorFunction": {"FW-25"}, "PoleType": {"S1T"}})
+
+    def resolver(self, field, text, cfg=None):
+        master = bpm.Master()
+        value = bpm.resolve_lov(field, text, cfg or self.CFG_LOV, "EP1", "H", 7, master)
+        return value, master.unknown
+
+    def test_un_alias_se_convierte_en_su_codigo_canonico(self):
+        value, unknown = self.resolver("SECTIONING_FEEDING", "FW25")
+        self.assertEqual(value, "FW-25")
+        self.assertEqual(unknown, {})
+
+    def test_el_alias_se_reconoce_sin_importar_mayusculas(self):
+        value, _ = self.resolver("SECTIONING_FEEDING", "fw25")
+        self.assertEqual(value, "FW-25")
+
+    def test_un_codigo_ya_canonico_pasa_tal_cual(self):
+        value, unknown = self.resolver("POLE_TYPE", "S1T")
+        self.assertEqual(value, "S1T")
+        self.assertEqual(unknown, {})
+
+    def test_un_codigo_que_no_esta_habilitado_va_a_no_reconocido(self):
+        value, unknown = self.resolver("POLE_TYPE", "NO_EXISTE")
+        # Se conserva el valor: tirarlo escondería el problema en vez de enseñarlo.
+        self.assertEqual(value, "NO_EXISTE")
+        self.assertEqual(len(unknown), 1)
+        item = next(iter(unknown.values()))
+        self.assertIn("PoleType", item["tipo"])
+        self.assertEqual(item["valor"], "NO_EXISTE")
+
+    def test_un_hueco_no_se_comprueba(self):
+        value, unknown = self.resolver("POLE_TYPE", "")
+        self.assertEqual(value, "")
+        self.assertEqual(unknown, {})
+
+    def test_sin_catalogo_cargado_solo_canonicaliza(self):
+        """Los tests de unidad construyen su CFG a mano; main() siempre carga el catalogo."""
+        cfg = dict(CFG, code_canonical={"DisconnectorFunction": {"FW25": "FW-25"}})
+        value, unknown = self.resolver("SECTIONING_FEEDING", "FW25", cfg)
+        self.assertEqual(value, "FW-25")
+        self.assertEqual(unknown, {})
+
+    def test_una_columna_que_no_es_lov_no_se_toca(self):
+        value, unknown = self.resolver("KP", "12+345")
+        self.assertEqual(value, "12+345")
+        self.assertEqual(unknown, {})
+
+    def test_la_canonicalizacion_se_aplica_al_leer_la_hoja(self):
+        """El fallo real era este: la tabla existia y solo la aplicaba el generador de LOV."""
+        cfg = dict(CFG, code_canonical={"PoleType": {"S1T-VIEJO": "S1T"}},
+                   lov_catalog={"PoleType": {"S1T"}})
+        sheet = FakeSheet("HR Track 1", [
+            pad(["Hoja"]),
+            pad(HEADER),
+            pad([None, "83-1.02", "1+000", None, None, "S1T-VIEJO"]),
+        ])
+        master = bpm.Master()
+        bpm.read_track(sheet, "EP1", {"name": "VIA 1"}, cfg, master)
+
+        self.assertEqual(master.profiles[0]["POLE_TYPE"], "S1T")
+        self.assertEqual(master.unknown, {})
+
+
 class CoherenciaConElCatalogoDeLov(unittest.TestCase):
     """Los tipos de brazo se declaran en aliases.yml y viven en lov-master.xlsx.
 
@@ -490,7 +563,6 @@ class CoherenciaConElCatalogoDeLov(unittest.TestCase):
             wb.close()
 
         self.assertEqual(declared, catalogue)
-
 
 if __name__ == "__main__":
     unittest.main()

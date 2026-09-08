@@ -77,6 +77,24 @@ STEADY_ARM_LENGTH_MIN, STEADY_ARM_LENGTH_MAX = 1, 2000
 PROFILE_LOV_FIELDS = ("SECTIONING", "ANCHORAGE", "ANCHORAGE_FOUNDATION", "FOUNDATION",
                       "POLE_TYPE", "PORTAL", "RETURN_SUPPORT", "SECTIONING_FEEDING")
 
+# A que catalogo pertenece cada columna de codigo. Es lo que permite canonicalizar y,
+# sobre todo, comprobar que el codigo EXISTE habilitado antes de escribir el maestro:
+# MasterDataService resuelve un codigo desconocido a null SIN QUEJARSE, asi que sin esta
+# comprobacion el perfil se cargaria con la clave ajena vacia y el informe diria que todo
+# fue bien. Es el mismo fallo silencioso que dejo profile_status vacia.
+LOV_ENTITY = {
+    "SECTIONING": "Sectioning",
+    "ANCHORAGE": "Anchorage",
+    "ANCHORAGE_FOUNDATION": "AnchorageFoundation",
+    "FOUNDATION": "Foundation",
+    "POLE_TYPE": "PoleType",
+    "PORTAL": "Portal",
+    "RETURN_SUPPORT": "ReturnSupport",
+    "SECTIONING_FEEDING": "DisconnectorFunction",
+    "CANTILEVER_TYPE": "CantileverType",
+    "STEADY_ARM_TYPE": "SteadyArmType",
+}
+
 HEADER_FILL = PatternFill("solid", fgColor="1F3864")
 REVIEW_FILL = PatternFill("solid", fgColor="FFF2CC")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
@@ -252,6 +270,61 @@ def cell(row, index):
     return row[index] if index is not None and index < len(row) else None
 
 
+def load_lov_catalog(path):
+    """Codigos HABILITADOS de lov-master.xlsx, por entidad y en mayusculas.
+
+    Solo los habilitados: un codigo con ENABLED=NO no llega a la base de datos, asi que
+    referenciarlo desde un perfil es exactamente igual de roto que inventarselo.
+    """
+    workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        sheet = workbook["LOVS"]
+        rows = sheet.iter_rows(values_only=True)
+        header = list(next(rows))
+        i_entity = header.index("ENTIDAD")
+        i_code = header.index("CODIGO")
+        i_enabled = header.index("ENABLED")
+        catalog = collections.defaultdict(set)
+        for row in rows:
+            if not row or row[i_code] is None:
+                continue
+            if squash(row[i_enabled]).upper() != "SI":
+                continue
+            catalog[squash(row[i_entity])].add(squash(row[i_code]).upper())
+        return dict(catalog)
+    finally:
+        workbook.close()
+
+
+def resolve_lov(field, text, cfg, ep, sheet, row, master: Master):
+    """Canonicaliza un codigo y comprueba que el catalogo lo tiene habilitado.
+
+    Devuelve el codigo canonico. Si no resuelve, lo deja tal cual —tirarlo escondería el
+    problema— y lo anota en NO_RECONOCIDO, que es lo que hace terminar con codigo != 0.
+    """
+    if not text:
+        return text
+
+    entity = LOV_ENTITY.get(field)
+    if entity is None:
+        return text
+
+    # La misma tabla que usa build_lov_master.py: si alli 'FW25' es 'FW-25', aqui tambien.
+    # Tenerla en un solo sitio y aplicarla en uno solo era el fallo: el catalogo quedaba
+    # canonicalizado y las referencias de los perfiles no.
+    table = cfg.get("code_canonical", {}).get(entity, {})
+    upper = text.upper()
+    for raw, canonical in table.items():
+        if squash(raw).upper() == upper:
+            text, upper = canonical, canonical.upper()
+            break
+
+    catalog = cfg.get("lov_catalog")
+    if catalog is not None and upper not in catalog.get(entity, set()):
+        master.unrecognised(f"codigo sin {entity} habilitado", text, ep, sheet, row)
+    return text
+
+
 def read_track(ws, ep, decl, cfg, master: Master):
     """Vuelca una hoja (o el tramo declarado de una hoja) al maestro."""
     sheet = ws.title
@@ -275,7 +348,6 @@ def read_track(ws, ep, decl, cfg, master: Master):
         declared_first, declared_last = decl["rows"]
         start, end = max(start, declared_first - 1), min(end, declared_last)
 
-    arm_types = cfg["steady_arm_types"]
     profiles = cantilevers = 0
     # (via, profileId) es la clave natural del perfil. El origen la repite alguna vez
     # dentro de una misma via —no por tramos concatenados, que se cortan con 'rows',
@@ -322,7 +394,8 @@ def read_track(ws, ep, decl, cfg, master: Master):
         for field in PROFILE_LOV_FIELDS:
             raw = cell(row, single.get(field))
             text = squash(raw)
-            record[field] = "" if is_blank(raw) or is_noise(text) else text
+            text = "" if is_blank(raw) or is_noise(text) else text
+            record[field] = resolve_lov(field, text, cfg, ep, sheet, number, master)
 
         duplicated = code.upper() in seen_ids
         if duplicated:
@@ -338,7 +411,7 @@ def read_track(ws, ep, decl, cfg, master: Master):
         master.profiles.append(record)
         profiles += 1
 
-        cantilevers += read_cantilevers(row, multi, arm_types, record, ep, sheet,
+        cantilevers += read_cantilevers(row, multi, cfg, record, ep, sheet,
                                         number, master)
         collect_unmapped(rows, offset, end, unmapped_cols, record, master)
 
@@ -360,8 +433,9 @@ def lookahead(rows, offset, end, single, field):
     return None
 
 
-def read_cantilevers(row, multi, arm_types, profile, ep, sheet, number, master: Master):
+def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master):
     """Hasta tres mensulas por perfil, una por slot ocupado."""
+    arm_types = cfg["steady_arm_types"]
     written = 0
     for slot in range(CANTILEVER_SLOTS):
         values = {}
@@ -377,7 +451,9 @@ def read_cantilevers(row, multi, arm_types, profile, ep, sheet, number, master: 
 
         raw_type = values.get("CANTILEVER_TYPE")
         type_code = squash(raw_type)
-        record["CANTILEVER_TYPE"] = "" if is_blank(raw_type) or is_noise(type_code) else type_code
+        type_code = "" if is_blank(raw_type) or is_noise(type_code) else type_code
+        record["CANTILEVER_TYPE"] = resolve_lov("CANTILEVER_TYPE", type_code, cfg, ep,
+                                                sheet, number, master)
 
         for field in ("STAGGER", "CATENARY_HEIGHT", "CW_ELEVATION", "CW_HEIGHT",
                       "WIND_DEFLECTION", "ARM_ANGLE"):
@@ -391,7 +467,8 @@ def read_cantilevers(row, multi, arm_types, profile, ep, sheet, number, master: 
             master.discard(motivo=f"STEADY_ARM: {reason}", ep=ep, hoja=sheet,
                            fila=number, detalle=squash(values.get("STEADY_ARM")))
             review = True
-        record["STEADY_ARM_TYPE"] = arm_type or ""
+        record["STEADY_ARM_TYPE"] = resolve_lov("STEADY_ARM_TYPE", arm_type or "", cfg,
+                                                ep, sheet, number, master)
         record["STEADY_ARM_LENGTH"] = arm_length
 
         record["ENABLED"] = "SI" if record["CANTILEVER_TYPE"] else "NO"
@@ -647,6 +724,7 @@ def main():
     parser.add_argument("-o", "--output", default="data/profile-master.xlsx")
     parser.add_argument("--aliases", default=os.path.join(os.path.dirname(__file__), "aliases.yml"))
     parser.add_argument("--topology", default=os.path.join(os.path.dirname(__file__), "topology.yml"))
+    parser.add_argument("--lov-master", default="data/lov-master.xlsx")
     parser.add_argument("--seed-topology", action="store_true",
                         help="escribe un topology.yml inicial y termina")
     args = parser.parse_args()
@@ -663,6 +741,13 @@ def main():
     with open(args.topology, encoding="utf-8") as handle:
         topology = yaml.safe_load(handle) or {}
     cfg = {**cfg, **{k: v for k, v in topology.items() if k in ("defaults", "execution_packages")}}
+
+    if not os.path.exists(args.lov_master):
+        print(f"ERROR: falta {args.lov_master}. Generalo con build_lov_master.py: sin el "
+              f"catalogo no se puede comprobar que los codigos de los perfiles existan.",
+              file=sys.stderr)
+        return 2
+    cfg["lov_catalog"] = load_lov_catalog(args.lov_master)
 
     files = discover(args.folder)
     if not files:
