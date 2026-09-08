@@ -34,6 +34,10 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
     @Autowired
     protected MasterDataService masterDataService;
 
+    /** Ver TrackMapper.referenceResolver: el nombre corto lo ocupa el impl generado. */
+    @Autowired
+    protected ReferenceMapper referenceResolver;
+
     /**
      * Hacen falta aqui, y no solo en el {@code uses} del @Mapper, porque la reconciliacion de las
      * tres colecciones vive en el {@code @AfterMapping} de esta clase y necesita volcar cada DTO
@@ -44,10 +48,6 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
      * a este. Spring inyecta los dos, pero cualquier cableado por reflexion —un test que instancia
      * el impl a mano— alcanzaria solo el de la subclase y dejaria estos a null.
      */
-    /** Ver TrackMapper.referenceResolver: el nombre corto lo ocupa el impl generado. */
-    @Autowired
-    protected ReferenceMapper referenceResolver;
-
     @Autowired
     protected TrackMapper trackChildMapper;
     @Autowired
