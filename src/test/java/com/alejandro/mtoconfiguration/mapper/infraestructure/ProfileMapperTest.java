@@ -16,6 +16,9 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.PoleTypeDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.junit.jupiter.api.BeforeEach;
+import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
+import java.util.LinkedHashSet;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -185,6 +188,99 @@ class ProfileMapperTest {
     @Nested
     @DisplayName("Listas de valores")
     class ListasDeValores {
+
+        /**
+         * Un perfil puede llevar VARIOS seccionamientos: 'A/S P50' son dos, y es corriente en
+         * estaciones. Antes cabia uno solo, asi que la segunda mitad se perdia.
+         */
+        @Test
+        @DisplayName("los seccionamientos se resuelven todos, no solo el primero")
+        void variosSeccionamientos() {
+            Sectioning as = new Sectioning();
+            as.setId(1L);
+            as.setCode("A/S");
+            Sectioning p50 = new Sectioning();
+            p50.setId(2L);
+            p50.setCode("P50(CS)");
+            when(masterDataService.getSectioningByCode("A/S")).thenReturn(as);
+            when(masterDataService.getSectioningByCode("P50(CS)")).thenReturn(p50);
+
+            ProfileDTO dto = dto();
+            dto.setSectionings(List.of(sectioningDto("A/S"), sectioningDto("P50(CS)")));
+
+            Profile entity = mapper.toEntity(dto);
+
+            assertThat(entity.getSectionings()).containsExactly(as, p50);
+        }
+
+        @Test
+        @DisplayName("mandar la lista REEMPLAZA los seccionamientos, no los suma")
+        void laListaReemplaza() {
+            Sectioning nuevo = new Sectioning();
+            nuevo.setId(3L);
+            nuevo.setCode("S/A");
+            when(masterDataService.getSectioningByCode("S/A")).thenReturn(nuevo);
+
+            Profile entity = new Profile();
+            Sectioning viejo = new Sectioning();
+            viejo.setId(9L);
+            viejo.setCode("VIEJO");
+            entity.setSectionings(new LinkedHashSet<>(List.of(viejo)));
+
+            ProfileDTO dto = dto();
+            dto.setSectionings(List.of(sectioningDto("S/A")));
+            mapper.updateEntityFromDTO(dto, entity);
+
+            assertThat(entity.getSectionings()).containsExactly(nuevo);
+        }
+
+        @Test
+        @DisplayName("una lista vacia deja el perfil sin seccionamientos")
+        void listaVacia() {
+            ProfileDTO dto = dto();
+            dto.setSectionings(List.of());
+
+            assertThat(mapper.toEntity(dto).getSectionings()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("un codigo que el catalogo no tiene no se inventa: se queda fuera")
+        void codigoDesconocidoNoSeInventa() {
+            Sectioning as = new Sectioning();
+            as.setId(1L);
+            as.setCode("A/S");
+            when(masterDataService.getSectioningByCode("A/S")).thenReturn(as);
+            when(masterDataService.getSectioningByCode("NO-EXISTE")).thenReturn(null);
+
+            ProfileDTO dto = dto();
+            dto.setSectionings(List.of(sectioningDto("A/S"), sectioningDto("NO-EXISTE")));
+
+            assertThat(mapper.toEntity(dto).getSectionings()).containsExactly(as);
+        }
+
+        @Test
+        @DisplayName("de vuelta al DTO salen todos, enriquecidos por id")
+        void deVueltaSalenTodos() {
+            Sectioning as = new Sectioning();
+            as.setId(1L);
+            Sectioning p50 = new Sectioning();
+            p50.setId(2L);
+            SectioningDTO asDto = sectioningDto("A/S");
+            SectioningDTO p50Dto = sectioningDto("P50(CS)");
+            when(masterDataService.getSectioningByIdAndMapToDTO(1L)).thenReturn(asDto);
+            when(masterDataService.getSectioningByIdAndMapToDTO(2L)).thenReturn(p50Dto);
+
+            Profile entity = new Profile();
+            entity.setSectionings(new LinkedHashSet<>(List.of(as, p50)));
+
+            assertThat(mapper.toDTO(entity).getSectionings()).containsExactly(asDto, p50Dto);
+        }
+
+        private SectioningDTO sectioningDto(String code) {
+            SectioningDTO dto = new SectioningDTO();
+            dto.setCode(code);
+            return dto;
+        }
 
         @Test
         @DisplayName("cada LOV se resuelve contra el catalogo por su codigo")

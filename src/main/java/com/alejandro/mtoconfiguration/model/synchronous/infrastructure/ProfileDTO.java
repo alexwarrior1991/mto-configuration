@@ -37,7 +37,11 @@ public class ProfileDTO extends BaseDTO {
     private PortalDTO portal;
     private ProfileStatusDTO profileStatus;
     private ReturnSupportDTO returnSupport;
-    private SectioningDTO sectioning;
+    /**
+     * Seccionamientos del perfil: <b>varios</b>. Un perfil de estacion puede llevar 'A/S' y
+     * 'P50' a la vez, y antes solo cabia uno.
+     */
+    private List<SectioningDTO> sectionings;
     /** Columna {@code Sectioning Feeding} del origen; usa el catálogo DisconnectorFunction. */
     private DisconnectorFunctionDTO sectioningFeeding;
 }

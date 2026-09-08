@@ -21,6 +21,9 @@ import com.alejandro.mtoconfiguration.service.infraestructure.ExecutionPackageSe
 import com.alejandro.mtoconfiguration.service.infraestructure.ProfileService;
 import com.alejandro.mtoconfiguration.service.infraestructure.StationService;
 import com.alejandro.mtoconfiguration.service.infraestructure.TrackService;
+import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -288,6 +291,82 @@ class InfrastructureUpsertServiceTest {
             assertThatThrownBy(() -> service.upsertProfile(profile("S1T"), 1L, List.of(), true))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessageContaining("S1T");
+        }
+
+        /**
+         * El maestro trae 'A/S P50(CS)' en una celda porque el perfil lleva los dos. Antes
+         * cabia uno y la celda entera se quedaba fuera por no ser un codigo conocido.
+         */
+        @Test
+        @DisplayName("una celda con varios seccionamientos se parte en varios")
+        void variosSeccionamientosEnUnaCelda() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(masterDataService.getSectioningByCode("A/S")).thenReturn(new Sectioning());
+            when(masterDataService.getSectioningByCode("P50(CS)")).thenReturn(new Sectioning());
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+                    .thenReturn(Optional.empty());
+            when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            service.upsertProfile(conSeccionamiento("A/S P50(CS)"), 1L, List.of(), false);
+
+            ArgumentCaptor<ProfileDTO> captor = ArgumentCaptor.forClass(ProfileDTO.class);
+            verify(profileService).create(captor.capture());
+            assertThat(captor.getValue().getSectionings())
+                    .extracting(SectioningDTO::getCode)
+                    .containsExactly("A/S", "P50(CS)");
+        }
+
+        @Test
+        @DisplayName("uno solo sigue siendo uno solo")
+        void unoSolo() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(masterDataService.getSectioningByCode("A/S")).thenReturn(new Sectioning());
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+                    .thenReturn(Optional.empty());
+            when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            service.upsertProfile(conSeccionamiento("A/S"), 1L, List.of(), false);
+
+            ArgumentCaptor<ProfileDTO> captor = ArgumentCaptor.forClass(ProfileDTO.class);
+            verify(profileService).create(captor.capture());
+            assertThat(captor.getValue().getSectionings()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("la celda vacia deja el perfil sin seccionamientos")
+        void celdaVacia() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+                    .thenReturn(Optional.empty());
+            when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            service.upsertProfile(conSeccionamiento(""), 1L, List.of(), false);
+
+            ArgumentCaptor<ProfileDTO> captor = ArgumentCaptor.forClass(ProfileDTO.class);
+            verify(profileService).create(captor.capture());
+            assertThat(captor.getValue().getSectionings()).isEmpty();
+        }
+
+        /** Partir la celda no puede saltarse la comprobacion: cada mitad tiene que existir. */
+        @Test
+        @DisplayName("si una de las partes no existe, el perfil no se carga y sale nombrada")
+        void unaParteDesconocidaTumbaLaFila() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(masterDataService.getSectioningByCode("A/S")).thenReturn(new Sectioning());
+            when(masterDataService.getSectioningByCode("NO-EXISTE")).thenReturn(null);
+
+            assertThatThrownBy(() -> service.upsertProfile(
+                    conSeccionamiento("A/S NO-EXISTE"), 1L, List.of(), false))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("NO-EXISTE");
+
+            verify(profileService, never()).create(any());
+        }
+
+        private ProfileMasterRow conSeccionamiento(String codes) {
+            return new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1+000", "DEFINITIVE",
+                    new ProfileLovCodes(codes, "", "", "", "", "", "", ""),
+                    null, null, null, null, true, 5);
         }
 
         private ProfileMasterRow profile(String poleType) {

@@ -94,7 +94,7 @@ class FlywayLegacyAdoptionIT {
         // que es el caso que este test cubre y el unico donde V1 no se ejecuta.
         assertThat(appliedVersions())
                 .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
-                        "11", "12", "13");
+                        "11", "12", "13", "14");
         assertThat(queryForString(
                 "select type from " + SCHEMA + ".flyway_schema_history where version = '1'"))
                 .as("V1 debe quedar marcada como baseline, no ejecutada sobre un esquema que ya existe")

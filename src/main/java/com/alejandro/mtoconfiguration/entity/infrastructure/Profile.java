@@ -5,6 +5,9 @@ import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.lov.*;
 import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
 import jakarta.persistence.*;
+
+import java.util.LinkedHashSet;
+import java.util.Set;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -93,7 +96,7 @@ public class Profile extends CRUDEntity {
     private Portal portal;
     private ProfileStatus profileStatus;
     private ReturnSupport returnSupport;
-    private Sectioning sectioning;
+    private Set<Sectioning> sectionings = new LinkedHashSet<>();
     private DisconnectorFunction sectioningFeeding;
 
     @Id
@@ -229,11 +232,29 @@ public class Profile extends CRUDEntity {
         return returnSupport;
     }
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "SECTIONING_ID")
+    /**
+     * Seccionamientos del perfil. <b>Varios</b>, no uno.
+     *
+     * <p>Un perfil puede llevar mas de uno a la vez —es corriente en estaciones: 'A/S P50' son
+     * dos— y el modelo tenia una clave ajena, que solo admite uno. La celda del origen con dos
+     * valores no era un error de tecleo: era el dominio que no cabia en el esquema.
+     *
+     * <p>{@code Set} y no {@code List} porque el orden no significa nada: un perfil TIENE estos
+     * seccionamientos, no los tiene en un orden. {@code LinkedHashSet} para que dos lecturas
+     * devuelvan lo mismo, que es lo unico que se necesita para que exportaciones y eventos sean
+     * reproducibles.
+     *
+     * <p>Es la unica relacion N:M del perfil: las demas listas de valores llevan una sola por
+     * perfil, y ampliarlas seria complicar el modelo sin motivo.
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "PROFILE_SECTIONING",
+            joinColumns = @JoinColumn(name = "PROFILE_ID"),
+            inverseJoinColumns = @JoinColumn(name = "SECTIONING_ID"))
     @Audited(targetAuditMode = NOT_AUDITED)
-    public Sectioning getSectioning() {
-        return sectioning;
+    public Set<Sectioning> getSectionings() {
+        return sectionings;
     }
 
     /**

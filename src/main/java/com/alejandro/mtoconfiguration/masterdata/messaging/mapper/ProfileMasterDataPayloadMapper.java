@@ -40,7 +40,9 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         values.put("portal", toLovPayload(profile.getPortal()));
         values.put("profileStatus", toLovPayload(profile.getProfileStatus()));
         values.put("returnSupport", toLovPayload(profile.getReturnSupport()));
-        values.put("sectioning", toLovPayload(profile.getSectioning()));
+        // Cambia de objeto a LISTA. Es un cambio de contrato: ver README_MESSAGING.
+        values.put("sectionings", profile.getSectionings() == null ? List.of()
+                : profile.getSectionings().stream().map(this::toLovPayload).toList());
         values.put("sectioningFeeding", toLovPayload(profile.getSectioningFeeding()));
         values.put("cantilevers", toCantileverPayload(profile.getCantilevers()));
         values.put("disconnector", toDisconnectorPayload(profile.getDisconnector()));

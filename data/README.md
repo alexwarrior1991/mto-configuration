@@ -262,6 +262,25 @@ del catálogo, y además el generador de perfiles los convierte en **hueco**. An
 contrario de lo que pasa. La lista es la misma, `code_rejections`, y ahora la usan los dos
 generadores con el mismo significado: esto no es un código.
 
+**`SECTIONING` es la única columna multivalor.** Un perfil puede llevar varios
+seccionamientos a la vez —`A/S P50(CS)` son dos, corriente en estaciones— y desde `V14` el
+modelo es N:M. El generador **primero prueba la celda entera** como código y solo la parte si
+**todas** sus partes son códigos válidos; si no, la deja intacta y la saca en
+`NO_RECONOCIDO`. Sin esa condición, `A/S Diag` —que es `A/S-Diag` escrito con espacio— se
+convertiría en `A/S` más un `Diag` inventado. En las demás columnas, dos códigos en una celda
+siguen siendo una anomalía y se reportan.
+
+Dos erratas mecánicas se corrigen antes de nada, en los dos generadores: el **espacio antes
+de un paréntesis** (`P50 (CS)` es `P50(CS)`, 50 códigos de cuatro catálogos) y el **código
+repetido en la celda** (`S/A S/A` es `S/A`). La primera importa el doble ahora: partiendo la
+cadena cruda, ese espacio rompía `P50(CS)` por la mitad.
+
+**Una celda con varios valores no es un código.** El catálogo se cosecha leyendo cada celda
+de las hojas Track como un código, así que `S/A A/S-Diag` entraba como si fuera uno más —y
+al habilitar en bloque los `ENABLED=NO` se legitimaron 123 de ellos. Ahora se descartan: la
+regla no es «tiene un espacio» (`T-SIGN FOUND.`, `UNIQUE SOLUTION` y `M3 Ø36` son legítimos),
+sino que **todas** sus partes sean a su vez códigos de la misma entidad.
+
 **Todo código de lista de valores tiene que existir HABILITADO en el catálogo.** El
 generador cruza cada columna de código (`SECTIONING`, `ANCHORAGE`, `ANCHORAGE_FOUNDATION`,
 `FOUNDATION`, `POLE_TYPE`, `PORTAL`, `RETURN_SUPPORT`, `SECTIONING_FEEDING`,

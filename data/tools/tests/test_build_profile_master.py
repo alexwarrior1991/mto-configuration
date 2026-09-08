@@ -515,6 +515,46 @@ class CodigosDeListaDeValores(unittest.TestCase):
         self.assertEqual(value, "FW-25")
         self.assertEqual(unknown, {})
 
+    def test_el_seccionamiento_admite_VARIOS_codigos_en_una_celda(self):
+        """Es la unica columna multivalor: un perfil de estacion lleva 'A/S' y 'P50' a la vez."""
+        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S", "P50(CS)"}})
+        value, unknown = self.resolver("SECTIONING", "A/S P50(CS)", cfg)
+        self.assertEqual(value, "A/S P50(CS)")
+        self.assertEqual(unknown, {})
+
+    def test_solo_parte_si_TODAS_las_partes_son_codigos(self):
+        """'A/S Diag' es 'A/S-Diag' con un espacio, no dos valores. Partirla inventaria 'Diag'."""
+        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S", "A/S-Diag"}})
+        value, unknown = self.resolver("SECTIONING", "A/S Diag", cfg)
+        self.assertEqual(value, "A/S Diag")
+        self.assertEqual(len(unknown), 1)
+
+    def test_la_celda_entera_gana_a_la_particion(self):
+        """Si la celda ES un codigo, se respeta aunque lleve espacio."""
+        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S DIAG", "A/S"}})
+        value, unknown = self.resolver("SECTIONING", "A/S DIAG", cfg)
+        self.assertEqual(value, "A/S DIAG")
+        self.assertEqual(unknown, {})
+
+    def test_el_espacio_antes_del_parentesis_no_parte_el_codigo(self):
+        """'P50 (CS) S/A' son DOS valores, no tres: la errata no puede romper 'P50(CS)'."""
+        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"P50(CS)", "S/A"}})
+        value, unknown = self.resolver("SECTIONING", "P50 (CS) S/A", cfg)
+        self.assertEqual(value, "P50(CS) S/A")
+        self.assertEqual(unknown, {})
+
+    def test_el_mismo_seccionamiento_dos_veces_es_uno(self):
+        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"S/A"}})
+        value, _ = self.resolver("SECTIONING", "S/A S/A", cfg)
+        self.assertEqual(value, "S/A")
+
+    def test_las_demas_columnas_NO_admiten_varios(self):
+        """Dos anclajes en una celda es una anomalia, no el caso normal: tiene que verse."""
+        cfg = dict(self.CFG_LOV, lov_catalog={"Anchorage": {"FP+AnMC", "CP+AnMC"}})
+        value, unknown = self.resolver("ANCHORAGE", "FP+AnMC CP+AnMC", cfg)
+        self.assertEqual(value, "FP+AnMC CP+AnMC")
+        self.assertEqual(len(unknown), 1)
+
     def test_un_codigo_repetido_en_la_celda_se_colapsa_en_uno(self):
         """'AnM-R AnM-R' no son dos valores: es uno escrito dos veces."""
         cfg = dict(self.CFG_LOV, lov_catalog={"PoleType": {"S1T"}})

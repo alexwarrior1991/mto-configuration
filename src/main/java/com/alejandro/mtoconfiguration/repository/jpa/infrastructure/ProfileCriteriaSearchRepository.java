@@ -43,7 +43,7 @@ public interface ProfileCriteriaSearchRepository extends
                 JoinPredicates.like(cb, root, filters, "portalCode", "portal", "code"),
                 JoinPredicates.like(cb, root, filters, "profileStatusCode", "profileStatus", "code"),
                 JoinPredicates.like(cb, root, filters, "returnSupportCode", "returnSupport", "code"),
-                JoinPredicates.like(cb, root, filters, "sectioningCode", "sectioning", "code"),
+                JoinPredicates.like(cb, root, filters, "sectioningCode", "sectionings", "code"),
                 stationNamePredicate(cb, root, filters),
                 b.or(
                         b.search("profileId"),

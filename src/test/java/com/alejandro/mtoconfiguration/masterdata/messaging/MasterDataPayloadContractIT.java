@@ -363,7 +363,8 @@ class MasterDataPayloadContractIT {
             profile.setPortal(lov(new Portal(), "POR" + profileId.charAt(4)));
             profile.setProfileStatus(lov(new ProfileStatus(), "EST" + profileId.charAt(4)));
             profile.setReturnSupport(lov(new ReturnSupport(), "RET" + profileId.charAt(4)));
-            profile.setSectioning(lov(new Sectioning(), "SEC" + profileId.charAt(4)));
+            profile.setSectionings(new java.util.LinkedHashSet<>(java.util.List.of(
+                    lov(new Sectioning(), "SEC" + profileId.charAt(4)))));
             profile.setSectioningFeeding(lov(new DisconnectorFunction(), "ALI" + profileId.charAt(4)));
             track.addProfile(profile);
             return profile;

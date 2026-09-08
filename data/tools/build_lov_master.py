@@ -49,6 +49,7 @@ from workbook_common import (  # noqa: E402  (necesita el sys.path de arriba)
     is_noise,
     norm_category,
     norm_header,
+    normalize_code,
     squash,
 )
 
@@ -454,6 +455,9 @@ def canonical_code(entity, code, cfg):
     'LoadB/NZ' frente a 'LoadB/NS'— y que si no repartiria los usos de un mismo
     equipo entre varias filas, cada una por debajo del umbral de atencion.
     """
+    # Antes que nada, la errata mecanica: 'P50 (CS)' y 'P50(CS)' son el mismo codigo.
+    code = normalize_code(code)
+
     table = cfg.get("code_canonical", {}).get(entity, {})
     if not table:
         return code
@@ -476,6 +480,38 @@ def is_track_accepted(entity, code, cfg):
     accepted = cfg.get("track_accepted", {}).get(entity, [])
     upper = code.upper()
     return any(squash(value).upper() == upper for value in accepted)
+
+
+def drop_concatenations(cat):
+    """Saca del catalogo las celdas con VARIOS codigos que se colaron como si fueran uno.
+
+    'S/A S/A', 'A/S Diag' o 'S/A A/S-Diag' no son codigos de seccionamiento: son celdas en
+    las que el perfil lleva mas de un valor. Entraron porque el catalogo se cosecha de las
+    hojas Track leyendo cada celda como un codigo, y una vez dentro nada las distinguia de
+    las de verdad.
+
+    La regla no puede ser "tiene un espacio": 'T-SIGN FOUND.', 'UNIQUE SOLUTION' y 'M3 Ø36'
+    son codigos legitimos con espacio. Lo que las delata es que TODAS sus partes son, a su
+    vez, codigos de la misma entidad. 'UNIQUE' y 'SOLUTION' no lo son; 'S/A' y 'A/S-Diag'
+    si.
+    """
+    by_entity = collections.defaultdict(set)
+    for row in cat.rows.values():
+        by_entity[row["entity"]].add(row["code"].upper())
+
+    for key, row in list(cat.rows.items()):
+        code = row["code"]
+        if " " not in code.strip():
+            continue
+        parts = code.split()
+        if len(parts) < 2:
+            continue
+        codes = by_entity[row["entity"]]
+        if all(part.upper() in codes for part in parts):
+            cat.discard(motivo="celda con varios valores, no un codigo",
+                        entidad=row["entity"], codigo=code, ep=row.get("ep", ""),
+                        detalle=" + ".join(parts))
+            del cat.rows[key]
 
 
 def decide_enabled(row, cfg) -> bool:
@@ -695,6 +731,8 @@ def main():
         finally:
             wb.close()
         print(f"  {ep:8} BOQ={boq_sheets}  Legend={legend_sheets}  Track={track_sheets}")
+
+    drop_concatenations(cat)
 
     # Derivacion de tipos y decision de ENABLED / REVISAR.
     unresolved_types = 0

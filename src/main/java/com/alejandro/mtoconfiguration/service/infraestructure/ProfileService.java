@@ -119,7 +119,9 @@ public class ProfileService extends CRUDService<ProfileDTO, Profile>
         applyCondition(builder, filter.portalCode(), qEntity.portal.code::eq);
         applyCondition(builder, filter.profileStatusCode(), qEntity.profileStatus.code::eq);
         applyCondition(builder, filter.returnSupportCode(), qEntity.returnSupport.code::eq);
-        applyCondition(builder, filter.sectioningCode(), qEntity.sectioning.code::eq);
+        // Con varios seccionamientos por perfil, filtrar por codigo pasa de "es" a "tiene".
+        applyCondition(builder, filter.sectioningCode(),
+                code -> qEntity.sectionings.any().code.eq(code));
 
         // Búsqueda general (SearchText)
         Optional.ofNullable(filter.searchText())

@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
     }
 
     /**
@@ -228,6 +228,38 @@ class FlywayMigrationIT {
      * <p>5.691 de las 14.592 mensulas de los workbooks traen el tipo pero no la longitud.
      * No es un dato que falte por descuido: no se conoce.
      */
+    /**
+     * V14: el seccionamiento pasa a N:M porque un perfil puede llevar varios a la vez.
+     *
+     * <p>Lo que se comprueba aqui es que la columna vieja YA NO ESTA. Dejarla seria peor que
+     * no migrar: habria dos sitios donde mirar y ninguna garantia de que digan lo mismo.
+     */
+    @Test
+    void elSeccionamientoEsAhoraUnaTablaDeUnion() {
+        assertThat(existeTabla("profile_sectioning")).isTrue();
+        assertThat(existeColumna("profile", "sectioning_id")).isFalse();
+        assertThat(existeColumna("profile_aud", "sectioning_id")).isFalse();
+
+        assertThat(jdbc().queryForObject(
+                "select count(*) from information_schema.table_constraints"
+                        + " where table_schema = ? and table_name = 'profile_sectioning'"
+                        + " and constraint_type = 'PRIMARY KEY'", Integer.class, SCHEMA))
+                .isEqualTo(1);
+    }
+
+    /**
+     * Envers audita la PERTENENCIA de una N:M, no la entidad del otro lado (Sectioning es un
+     * catalogo, NOT_AUDITED). Sin esta gemela la aplicacion no arranca con ddl-auto: validate.
+     */
+    @Test
+    void laTablaDeUnionTieneGemelaDeAuditoria() {
+        assertThat(existeTabla("profile_sectioning_aud")).isTrue();
+        assertThat(existeColumna("profile_sectioning_aud", "rev")).isTrue();
+        assertThat(existeColumna("profile_sectioning_aud", "revtype")).isTrue();
+        assertThat(existeColumna("profile_sectioning_aud", "profile_id")).isTrue();
+        assertThat(existeColumna("profile_sectioning_aud", "sectioning_id")).isTrue();
+    }
+
     @Test
     void laLongitudDelBrazoAdmiteNulo() {
         String nullable = jdbc().queryForObject(
@@ -461,6 +493,22 @@ class FlywayMigrationIT {
      * INSERT minimo en {@code async_job}. Compuesto por concatenacion a proposito: ver la
      * nota de {@link #elEstadoDeUnTrabajoEstaAcotadoPorLaBaseDeDatos()}.
      */
+    private boolean existeTabla(String tabla) {
+        Integer n = jdbc().queryForObject(
+                "select count(*) from information_schema.tables"
+                        + " where table_schema = ? and table_name = ?",
+                Integer.class, SCHEMA, tabla);
+        return n != null && n > 0;
+    }
+
+    private boolean existeColumna(String tabla, String columna) {
+        Integer n = jdbc().queryForObject(
+                "select count(*) from information_schema.columns"
+                        + " where table_schema = ? and table_name = ? and column_name = ?",
+                Integer.class, SCHEMA, tabla, columna);
+        return n != null && n > 0;
+    }
+
     private String insertAsyncJob(String jobType, String status) {
         return "insert into " + SCHEMA + ".async_job"
                 + " (id, job_type, status, created_at, heartbeat_at,"

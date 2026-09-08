@@ -50,6 +50,7 @@ from workbook_common import (  # noqa: E402  (necesita el sys.path de arriba)
     is_noise,
     is_track_sheet,
     norm_header,
+    normalize_code,
     squash,
 )
 
@@ -82,6 +83,11 @@ PROFILE_LOV_FIELDS = ("SECTIONING", "ANCHORAGE", "ANCHORAGE_FOUNDATION", "FOUNDA
 # MasterDataService resuelve un codigo desconocido a null SIN QUEJARSE, asi que sin esta
 # comprobacion el perfil se cargaria con la clave ajena vacia y el informe diria que todo
 # fue bien. Es el mismo fallo silencioso que dejo profile_status vacia.
+# La UNICA columna multivalor: un perfil puede llevar varios seccionamientos a la vez
+# ('A/S P50' son dos, corriente en estaciones). En las demas, dos codigos en una celda es
+# una anomalia y por eso alli sigue saliendo a NO_RECONOCIDO.
+LOV_MULTIVALUE = {"SECTIONING"}
+
 LOV_ENTITY = {
     "SECTIONING": "Sectioning",
     "ANCHORAGE": "Anchorage",
@@ -309,12 +315,58 @@ def resolve_lov(field, text, cfg, ep, sheet, row, master: Master):
     if entity is None:
         return text
 
+    # Multivalor: PRIMERO se prueba la celda entera. Solo si no es un codigo se intenta
+    # partirla, y solo se acepta la particion cuando TODAS las partes son codigos validos.
+    # Sin esa condicion 'A/S Diag' —que es 'A/S-Diag' escrito con espacio— se convertiria
+    # en 'A/S' mas un 'Diag' inventado, que es peor que no reconocerla.
+    if field in LOV_MULTIVALUE:
+        # Normalizar ANTES de partir: 'P50 (CS) S/A' son dos valores, no tres. Partiendo
+        # la cadena cruda, el espacio de la errata rompe 'P50(CS)' por la mitad.
+        text = normalize_code(text)
+    if field in LOV_MULTIVALUE and " " in text.strip():
+        catalog = cfg.get("lov_catalog")
+        entero = canonical_code(entity, text, cfg)
+        if catalog is None or entero.upper() in catalog.get(entity, set()):
+            return resolve_lov_single(field, text, cfg, ep, sheet, row, master)
+
+        partes = [canonical_code(entity, part, cfg) for part in text.split()]
+        if all(part.upper() in catalog.get(entity, set()) for part in partes):
+            vistos = []
+            for part in partes:                      # 'S/A S/A' es uno, no dos
+                if part.upper() not in {v.upper() for v in vistos}:
+                    vistos.append(part)
+            return " ".join(vistos)
+
+    return resolve_lov_single(field, text, cfg, ep, sheet, row, master)
+
+
+def canonical_code(entity, text, cfg):
+    """El codigo que declara aliases.yml para esta grafia, o el mismo texto."""
+    text = normalize_code(text)
+    table = cfg.get("code_canonical", {}).get(entity, {})
+    upper = text.upper()
+    for raw, canonical in table.items():
+        if squash(raw).upper() == upper:
+            return canonical
+    return text
+
+
+def resolve_lov_single(field, text, cfg, ep, sheet, row, master: Master):
+    """Un solo codigo: canonicaliza y comprueba que el catalogo lo tiene habilitado."""
+    if not text:
+        return text
+
+    entity = LOV_ENTITY[field]
+
     # 'NON DEFINED', 'N.D.', 'U.S. N.D.', 'PENDIENTE'... no son codigos: son la forma de
     # escribir "aqui no hay dato". La misma lista que impide que entren en el catalogo
     # (code_rejections) los convierte aqui en el hueco que son. Dejarlos pasar los sacaria
     # en NO_RECONOCIDO como si faltara una LOV por declarar, que es justo lo contrario.
     if any(squash(marker).upper() == text.upper() for marker in cfg.get("code_rejections", [])):
         return ""
+
+    # La misma errata mecanica que corrige el catalogo: 'P50 (CS)' es 'P50(CS)'.
+    text = normalize_code(text)
 
     # La misma tabla que usa build_lov_master.py: si alli 'FW25' es 'FW-25', aqui tambien.
     # Tenerla en un solo sitio y aplicarla en uno solo era el fallo: el catalogo quedaba

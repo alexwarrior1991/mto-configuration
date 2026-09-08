@@ -24,6 +24,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.PortalDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.ReturnSupportDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
+import com.alejandro.mtoconfiguration.model.commons.SLovDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SteadyArmTypeDTO;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
@@ -226,7 +227,8 @@ public class InfrastructureUpsertService {
 
     private void applyLovCodes(ProfileDTO dto, String profileStatus, ProfileLovCodes lov) {
         dto.setProfileStatus(lov(profileStatus, ProfileStatusDTO::new));
-        dto.setSectioning(lov(lov.sectioning(), SectioningDTO::new));
+        // El maestro trae los codigos separados por espacio: 'A/S P50' son DOS.
+        dto.setSectionings(lovList(lov.sectioning(), SectioningDTO::new));
         dto.setAnchorage(lov(lov.anchorage(), AnchorageDTO::new));
         dto.setAnchorageFoundation(lov(lov.anchorageFoundation(), AnchorageFoundationDTO::new));
         dto.setFoundation(lov(lov.foundation(), FoundationDTO::new));
@@ -287,7 +289,12 @@ public class InfrastructureUpsertService {
 
         check(unresolved, "profileStatus", row.profileStatus(), masterDataService::getProfileStatusByCode);
         ProfileLovCodes lov = row.lov();
-        check(unresolved, "sectioning", lov.sectioning(), masterDataService::getSectioningByCode);
+        // El seccionamiento viene en plural: se comprueba codigo a codigo.
+        if (!StringUtils.isBlank(lov.sectioning())) {
+            for (String code : lov.sectioning().trim().split("\\s+")) {
+                check(unresolved, "sectioning", code, masterDataService::getSectioningByCode);
+            }
+        }
         check(unresolved, "anchorage", lov.anchorage(), masterDataService::getAnchorageByCode);
         check(unresolved, "anchorageFoundation", lov.anchorageFoundation(),
                 masterDataService::getAnchorageFoundationByCode);
@@ -313,6 +320,26 @@ public class InfrastructureUpsertService {
                             + "; regenera el maestro con build_profile_master.py, que ahora los "
                             + "saca en NO_RECONOCIDO antes de importar");
         }
+    }
+
+    /**
+     * Varios codigos en una celda, separados por espacio.
+     *
+     * <p>Solo el seccionamiento admite mas de uno: es corriente que un perfil de estacion lleve
+     * 'A/S' y 'P50' a la vez. En las demas listas de valores una celda con dos codigos es una
+     * anomalia, no el caso normal, y por eso alli sigue fallando.
+     */
+    private <T extends SLovDTO> List<T> lovList(String codes, Supplier<T> factory) {
+        if (StringUtils.isBlank(codes)) {
+            return List.of();
+        }
+        List<T> result = new ArrayList<>();
+        for (String code : codes.trim().split("\\s+")) {
+            T dto = factory.get();
+            dto.setCode(code);
+            result.add(dto);
+        }
+        return result;
     }
 
     /** Un codigo en blanco es un hueco legitimo; uno informado tiene que resolver. */

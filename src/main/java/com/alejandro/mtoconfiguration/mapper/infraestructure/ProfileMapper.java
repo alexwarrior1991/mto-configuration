@@ -9,6 +9,12 @@ import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
+import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
+import java.util.LinkedHashSet;
+import java.util.Objects;
+import java.util.Set;
+
 import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -50,7 +56,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "portal", ignore = true)
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
-    @Mapping(target = "sectioning", ignore = true)
+    @Mapping(target = "sectionings", ignore = true)
     @Mapping(target = "sectioningFeeding", ignore = true)
     public abstract ProfileDTO toDTO(Profile entity);
 
@@ -64,7 +70,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "portal", ignore = true)
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
-    @Mapping(target = "sectioning", ignore = true)
+    @Mapping(target = "sectionings", ignore = true)
     @Mapping(target = "sectioningFeeding", ignore = true)
     @ToEntityIgnoreAudit
     public abstract Profile toEntity(ProfileDTO dto);
@@ -79,7 +85,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "portal", ignore = true)
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
-    @Mapping(target = "sectioning", ignore = true)
+    @Mapping(target = "sectionings", ignore = true)
     @Mapping(target = "sectioningFeeding", ignore = true)
     @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(ProfileDTO dto, @MappingTarget Profile entity);
@@ -110,8 +116,20 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         if (dto.getReturnSupport() != null) {
             entity.setReturnSupport(masterDataService.getReturnSupportByCode(dto.getReturnSupport().getCode()));
         }
-        if (dto.getSectioning() != null) {
-            entity.setSectioning(masterDataService.getSectioningByCode(dto.getSectioning().getCode()));
+        if (dto.getSectionings() != null) {
+            // Se reemplaza el conjunto entero, no se anade: mandar la lista es declarar cuales
+            // son TODOS los seccionamientos del perfil, igual que en el resto de la API.
+            Set<Sectioning> resolved = new LinkedHashSet<>();
+            for (SectioningDTO each : dto.getSectionings()) {
+                if (each == null || each.getCode() == null) {
+                    continue;
+                }
+                Sectioning sectioning = masterDataService.getSectioningByCode(each.getCode());
+                if (sectioning != null) {
+                    resolved.add(sectioning);
+                }
+            }
+            entity.setSectionings(resolved);
         }
         if (dto.getSectioningFeeding() != null) {
             entity.setSectioningFeeding(masterDataService.getDisconnectorFunctionByCode(dto.getSectioningFeeding().getCode()));
@@ -164,8 +182,11 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         if (entity.getReturnSupport() != null) {
             dto.setReturnSupport(masterDataService.getReturnSupportByIdAndMapToDTO(entity.getReturnSupport().getId()));
         }
-        if (entity.getSectioning() != null) {
-            dto.setSectioning(masterDataService.getSectioningByIdAndMapToDTO(entity.getSectioning().getId()));
+        if (entity.getSectionings() != null) {
+            dto.setSectionings(entity.getSectionings().stream()
+                    .map(each -> masterDataService.getSectioningByIdAndMapToDTO(each.getId()))
+                    .filter(Objects::nonNull)
+                    .toList());
         }
         if (entity.getSectioningFeeding() != null) {
             dto.setSectioningFeeding(masterDataService.getDisconnectorFunctionByIdAndMapToDTO(entity.getSectioningFeeding().getId()));

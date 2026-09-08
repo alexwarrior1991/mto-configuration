@@ -113,3 +113,13 @@ def discover(folder):
     for pattern in ("*.xlsm", "*.xlsx", "*.XLSM", "*.XLSX"):
         found.update(glob.glob(os.path.join(folder, pattern)))
     return sorted(found)
+
+
+def normalize_code(text: str) -> str:
+    """Quita el espacio que sobra antes de un parentesis: 'P50 (CS)' es 'P50(CS)'.
+
+    Es una errata de tecleo repetida en 50 codigos de cuatro catalogos, y no era inocua:
+    'P50 (CS) S/A' no se reconocia como la concatenacion de 'P50(CS)' y 'S/A', asi que
+    entraba al catalogo como si fuera un codigo mas.
+    """
+    return re.sub(r"\s+\(", "(", text)

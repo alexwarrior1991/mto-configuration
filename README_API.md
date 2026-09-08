@@ -236,6 +236,35 @@ lo precede por `kp`.
 
 ---
 
+## 4 ter. `sectionings`: el perfil lleva VARIOS seccionamientos
+
+Un perfil puede tener más de un seccionamiento a la vez —es corriente en estaciones: un
+perfil puede ser `A/S` y `P50(CS)`—, así que desde `V14` la relación es N:M. Es la **única**
+del perfil: las demás listas de valores llevan una sola.
+
+```jsonc
+// antes
+"sectioning":  { "code": "A/S" }
+// ahora
+"sectionings": [ { "code": "A/S" }, { "code": "P50(CS)" } ]
+```
+
+Como el resto de colecciones de esta API (§4), **mandar la lista reemplaza el conjunto
+entero**: el seccionamiento que no mandas se quita. Mandar `[]` los deja todos fuera; omitir
+el campo no toca nada.
+
+Un código que el catálogo no tenga **no se inventa ni rompe la petición**: se ignora, y el
+resto se guarda. Quien quiera que un código desconocido sea un error, lo tiene en la
+importación (`InfrastructureUpsertService`), que sí rechaza la fila y nombra el código.
+
+Dos efectos secundarios que conviene tener presentes:
+
+- `GET /profiles?sectioningCode=X` pasa de significar «su seccionamiento es X» a **«tiene X
+  entre los suyos»**.
+- En la exportación CSV la columna se llama `sectionings` y trae los códigos separados por
+  espacio. Una columna por seccionamiento haría que el ancho del fichero dependiera del
+  perfil con más, y dejaría de ser fijo.
+
 ## 5. Listas de valores
 
 Las LOV van por código, no por id. Al referenciarlas desde otra entidad basta el `code`:
