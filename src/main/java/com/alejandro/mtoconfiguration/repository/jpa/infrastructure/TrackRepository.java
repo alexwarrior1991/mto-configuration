@@ -36,11 +36,18 @@ public interface TrackRepository extends CRUDRepository<Track>,
      * <p>
      * Es un join a-uno colgando de profiles, no una segunda coleccion: no multiplica
      * filas.
+     * <p>
+     * {@code stations} SI entra desde V17, y multiplica las filas del resultado —una via de
+     * 200 perfiles en 3 estaciones devuelve 600— porque no hay alternativa: hasta V17 la
+     * estacion era un {@code @ManyToOne} del que el mapper solo leia el id, y el id de un
+     * proxy se lee sin inicializarlo. Ahora es una coleccion, y una coleccion perezosa sobre
+     * la entidad ya desatachada revienta con LazyInitializationException al publicar el
+     * evento. 600 filas en una consulta es un precio pequeño al lado de eso.
      */
     @Override
     @EntityGraph(attributePaths = {
             "executionPackage",
-            "station",
+            "stations",
             "profiles",
             "profiles.disconnector"
     })

@@ -109,7 +109,8 @@ public class ProfileService extends CRUDService<ProfileDTO, Profile>
         // Filtros de navegación (Track y Station)
         applyCondition(builder, filter.trackId(), qEntity.track.id::eq);
         applyCondition(builder, filter.trackName(), qEntity.track.name::containsIgnoreCase);
-        applyCondition(builder, filter.stationName(), qEntity.track.station.name::containsIgnoreCase);
+        applyCondition(builder, filter.stationName(),
+                name -> qEntity.track.stations.any().name.containsIgnoreCase(name));
 
         // Filtros por CÓDIGO de las LOVs
         applyCondition(builder, filter.anchorageCode(),
@@ -131,7 +132,7 @@ public class ProfileService extends CRUDService<ProfileDTO, Profile>
                     BooleanBuilder searchBuilder = new BooleanBuilder();
                     searchBuilder.or(qEntity.profileId.containsIgnoreCase(text));
                     searchBuilder.or(qEntity.track.name.containsIgnoreCase(text));
-                    searchBuilder.or(qEntity.track.station.name.containsIgnoreCase(text));
+                    searchBuilder.or(qEntity.track.stations.any().name.containsIgnoreCase(text));
                     builder.and(searchBuilder);
                 });
 

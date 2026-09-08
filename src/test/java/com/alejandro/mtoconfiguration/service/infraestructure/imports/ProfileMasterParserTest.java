@@ -42,7 +42,7 @@ class ProfileMasterParserTest {
                 "COMPANY_ID_NUMBER", "ENABLED"});
         HEADERS.put(ProfileMasterParser.STATIONS_SHEET, new String[]{"EP", "NOMBRE"});
         HEADERS.put(ProfileMasterParser.TRACKS_SHEET, new String[]{
-                "EP", "NOMBRE", "ESTACION", "ENABLED", "HOJA_ORIGEN", "FILA_INICIO", "FILA_FIN"});
+                "EP", "NOMBRE", "ESTACIONES", "ENABLED", "HOJA_ORIGEN", "FILA_INICIO", "FILA_FIN"});
         HEADERS.put(ProfileMasterParser.PROFILES_SHEET, new String[]{
                 "EP", "VIA", "PROFILE_ID", "KP", "PROFILE_STATUS", "SECTIONING", "ANCHORAGE",
                 "ANCHORAGE_FOUNDATION", "FOUNDATION", "POLE_TYPE", "PORTAL", "RETURN_SUPPORT",
@@ -121,8 +121,21 @@ class ProfileMasterParserTest {
                             "EP6", "TRACK 1 RISHPON-HERZLIYA", "", "SI", "HR Track 1 RIS-HER", "", ""}))));
 
             TrackMasterRow row = content.tracks().getFirst();
-            assertThat(row.station()).isEmpty();
+            assertThat(row.stations()).isEmpty();
             assertThat(row.enabled()).isTrue();
+        }
+
+        @Test
+        @DisplayName("una via larga trae varias estaciones, separadas por barra vertical")
+        void viaConVariasEstaciones() throws IOException {
+            // Barra y no espacio: 'TLV SAVIDOR' lleva un espacio dentro, asi que partir por
+            // espacios habria convertido una estacion en dos.
+            ProfileMasterParser.ProfileMasterContent content = parser.parseAll(workbook(Map.of(
+                    ProfileMasterParser.TRACKS_SHEET, List.<String[]>of(new String[]{
+                            "EP4", "TRACK 1", "ZIC | BIN | TLV SAVIDOR", "SI", "HR Track 1", "", ""}))));
+
+            assertThat(content.tracks().getFirst().stations())
+                    .containsExactly("ZIC", "BIN", "TLV SAVIDOR");
         }
 
         @Test

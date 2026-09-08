@@ -117,8 +117,8 @@ public class InfrastructureUpsertService {
         return write(existing, dto, stationService::create, stationService::update, dryRun);
     }
 
-    public UpsertResult upsertTrack(TrackMasterRow row, Long executionPackageId, Long stationId,
-                                    boolean dryRun) {
+    public UpsertResult upsertTrack(TrackMasterRow row, Long executionPackageId,
+                                    List<Long> stationIds, boolean dryRun) {
         Optional<Long> existing = trackRepository
                 .findByExecutionPackageIdAndNameIgnoreCase(executionPackageId, row.name())
                 .map(entity -> entity.getId());
@@ -127,8 +127,9 @@ public class InfrastructureUpsertService {
         dto.setName(row.name());
         dto.setEnabled(row.enabled());
         dto.setExecutionPackageId(executionPackageId);
-        // Nulo es una respuesta valida: la via cuelga del paquete, no de una estacion.
-        dto.setStationId(stationId);
+        // Lista vacia es una respuesta valida: la via cuelga del paquete, no de una estacion.
+        // Y son VARIAS porque una via larga atraviesa varias sin dejar de ser una via.
+        dto.setStationIds(stationIds == null ? List.of() : stationIds);
 
         return write(existing, dto, trackService::create, trackService::update, dryRun);
     }

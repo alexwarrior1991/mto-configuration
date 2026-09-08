@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -136,20 +137,31 @@ public class ProfileMasterImporter {
                 continue;
             }
 
-            // Una via sin estacion es correcta; una que declara una estacion que no existe, no.
-            Long stationId = null;
-            if (!row.station().isBlank()) {
-                stationId = stationsByKey.get(new StationKey(code, key(row.station())));
-                if (stationId == null && !dryRun) {
-                    fail(report, row.sourceRow(), ProfileImportReport.TRACK, reference(row),
-                            "declara la estacion '" + row.station() + "', que no esta en la hoja STATIONS",
-                            progress);
-                    continue;
+            // Una via sin estaciones es correcta; una que declara una que no existe, no. Se
+            // acumulan TODAS las que fallan antes de rendirse: enterarse de las tres de golpe
+            // vale mas que arreglar una, reimportar, y descubrir la siguiente.
+            List<Long> stationIds = new ArrayList<>();
+            List<String> desconocidas = new ArrayList<>();
+            for (String station : row.stations()) {
+                Long stationId = stationsByKey.get(new StationKey(code, key(station)));
+                if (stationId == null) {
+                    desconocidas.add(station);
+                } else {
+                    stationIds.add(stationId);
                 }
+            }
+            if (!desconocidas.isEmpty() && !dryRun) {
+                fail(report, row.sourceRow(), ProfileImportReport.TRACK, reference(row),
+                        "declara " + (desconocidas.size() == 1 ? "la estacion " : "las estaciones ")
+                                + desconocidas.stream().collect(Collectors.joining("', '", "'", "'"))
+                                + ", que no " + (desconocidas.size() == 1 ? "esta" : "estan")
+                                + " en la hoja STATIONS",
+                        progress);
+                continue;
             }
 
             try {
-                var result = upsertService.upsertTrack(row, packagesByCode.get(code), stationId, dryRun);
+                var result = upsertService.upsertTrack(row, packagesByCode.get(code), stationIds, dryRun);
                 count(report, ProfileImportReport.TRACK, result.created());
                 byKey.put(new TrackKey(code, key(row.name())), result.id());
                 progress.accept(true);

@@ -184,7 +184,10 @@ class MasterDataPayloadContractIT {
         Map<String, Object> payload = payloadOfDetached(trackRepository, ids.track());
 
         assertThat(asList(payload, "profiles")).hasSize(2);
-        assertThat(payload).containsKeys("executionPackage", "station");
+        assertThat(payload).containsKeys("executionPackage", "stations");
+        // Una coleccion, no un @ManyToOne: si 'stations' se cayera del grafo esto no daria un
+        // null discreto, reventaria con LazyInitializationException al publicar el evento.
+        assertThat(asList(payload, "stations")).hasSize(1);
     }
 
     /**

@@ -46,13 +46,15 @@ public interface ExecutionPackageRepository extends
     }
 
     /**
-     * {@code tracks.station} no entra: el mapper solo publica su id y Track es el lado
-     * propietario (la FK STATION_ID vive en TRACK), asi que sale del proxy sin
-     * inicializarlo.
+     * {@code tracks.stations} entra desde V17. Antes no hacia falta: la estacion de la via era
+     * un {@code @ManyToOne} y el mapper solo leia su id, que se saca del proxy sin
+     * inicializarlo. Ahora son varias, y recorrer una coleccion perezosa con la entidad ya
+     * desatachada revienta al publicar el evento.
      */
     @EntityGraph(attributePaths = {
             "company",
-            "tracks"
+            "tracks",
+            "tracks.stations"
     })
     @Query("select e from ExecutionPackage e where e.id = :id")
     Optional<ExecutionPackage> findByIdWithTracksForMessaging(@Param("id") Long id);

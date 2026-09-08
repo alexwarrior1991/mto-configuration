@@ -26,7 +26,9 @@ import java.io.InputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -93,12 +95,34 @@ class ProfileMasterImporterTest {
     @DisplayName("una via sin estacion cuelga del paquete, que es una declaracion valida")
     void viaSinEstacion() {
         givenMaster(List.of(ep("EP6")), List.of(),
-                List.of(track("EP6", "TRACK 1 RIS-HER", "")),
+                List.of(track("EP6", "TRACK 1 RIS-HER")),
                 List.of(), List.of());
 
         importer.importFrom(ANY_FILE, false);
 
-        verify(upsertService).upsertTrack(any(), eq(1L), eq(null), eq(false));
+        verify(upsertService).upsertTrack(any(), eq(1L), eq(List.of()), eq(false));
+    }
+
+    @Test
+    @DisplayName("una via larga se liga a TODAS las estaciones que atraviesa, no a la primera")
+    void viaConVariasEstaciones() {
+        // 'TRACK 1' de EP4 pasa por ZIC, por BIN y por HAD sin dejar de ser una via. Quedarse
+        // con la primera era lo que hacia el modelo anterior, y perdia las otras dos.
+        // Un id distinto por estacion: con el stub por defecto las tres devolverian el mismo y
+        // el test pasaria aunque el importador se quedara con una sola.
+        AtomicLong siguiente = new AtomicLong(10);
+        when(upsertService.upsertStation(any(), anyLong(), anyBoolean()))
+                .thenAnswer(invocation -> new UpsertResult(siguiente.getAndIncrement(), true));
+
+        givenMaster(List.of(ep("EP4")),
+                List.of(station("EP4", "ZIC"), station("EP4", "BIN"), station("EP4", "HAD")),
+                List.of(track("EP4", "TRACK 1", "ZIC", "BIN", "HAD")),
+                List.of(), List.of());
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        verify(upsertService).upsertTrack(any(), eq(1L), eq(List.of(10L, 11L, 12L)), eq(false));
+        assertThat(report.getFailed()).isZero();
     }
 
     @Test
@@ -277,8 +301,10 @@ class ProfileMasterImporterTest {
         return new StationMasterRow(ep, name, 3);
     }
 
-    private static TrackMasterRow track(String ep, String name, String station) {
-        return new TrackMasterRow(ep, name, station, true, 5);
+    /** Sin estaciones -> {@code track(ep, name)}; la cadena vacia tambien vale por comodidad. */
+    private static TrackMasterRow track(String ep, String name, String... stations) {
+        return new TrackMasterRow(ep, name,
+                Arrays.stream(stations).filter(each -> !each.isBlank()).toList(), true, 5);
     }
 
     private static ProfileMasterRow profile(String ep, String track, String profileId) {

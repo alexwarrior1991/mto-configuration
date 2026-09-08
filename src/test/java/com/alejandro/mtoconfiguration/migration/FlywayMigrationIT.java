@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17");
     }
 
     /**
@@ -515,6 +515,36 @@ class FlywayMigrationIT {
         assertThat(existeTabla("profile_sectioning_feeding_aud")).isTrue();
         assertThat(existeColumna("profile", "sectioning_feeding_id")).isFalse();
         assertThat(existeColumna("profile_aud", "sectioning_feeding_id")).isFalse();
+    }
+
+    /**
+     * V17: la via atraviesa VARIAS estaciones.
+     *
+     * <p>La cuarta N:M del dominio, y la primera que no cuelga del perfil. Se comprueba tambien
+     * que la clave ajena apunte a station: sin ella un id de estacion inexistente se quedaria
+     * como referencia rota, y el evento de datos maestros la publicaria igual.
+     */
+    @Test
+    void laViaAtraviesaVariasEstaciones() {
+        assertThat(existeTabla("track_station")).isTrue();
+        assertThat(existeTabla("track_station_aud")).isTrue();
+        assertThat(existeColumna("track", "station_id")).isFalse();
+        assertThat(existeColumna("track_aud", "station_id")).isFalse();
+
+        List<String> referenciadas = jdbc().queryForList(
+                """
+                select ccu.table_name
+                from information_schema.table_constraints tc
+                join information_schema.key_column_usage kcu
+                  on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
+                join information_schema.constraint_column_usage ccu
+                  on ccu.constraint_name = tc.constraint_name and ccu.table_schema = tc.table_schema
+                where tc.table_schema = ? and tc.table_name = 'track_station'
+                  and tc.constraint_type = 'FOREIGN KEY'
+                  and kcu.column_name = 'station_id'
+                """, String.class, SCHEMA);
+
+        assertThat(referenciadas).containsExactly("station");
     }
 
     private boolean existeTabla(String tabla) {

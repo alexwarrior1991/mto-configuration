@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -50,7 +51,13 @@ public class ProfileMasterParser {
     private static final String COL_EP = "EP";
     private static final String COL_NAME = "NOMBRE";
     private static final String COL_TRACK = "VIA";
-    private static final String COL_STATION = "ESTACION";
+    /**
+     * Las estaciones de la via, separadas por barra vertical. No por espacios: hay nombres de
+     * estacion con espacio dentro ({@code TLV SAVIDOR}), asi que partir por espacios habria
+     * inventado dos estaciones donde hay una.
+     */
+    private static final String COL_STATIONS = "ESTACIONES";
+    private static final String STATION_SEPARATOR = "\\|";
     private static final String COL_PROFILE_ID = "PROFILE_ID";
     private static final String COL_ENABLED = "ENABLED";
     private static final String COL_SLOT = "SLOT";
@@ -98,15 +105,31 @@ public class ProfileMasterParser {
     }
 
     private List<TrackMasterRow> readTracks(ExcelWorkbook workbook) {
-        return read(workbook, TRACKS_SHEET, List.of(COL_EP, COL_NAME, COL_ENABLED), (row, columns, index) -> {
+        // ESTACIONES va en la lista de obligatorias, aunque su contenido pueda estar vacio: un
+        // maestro anterior a V17 trae la columna ESTACION en singular, y sin esto se cargaria
+        // entero con TODAS las vias sin estacion y sin una sola queja.
+        return read(workbook, TRACKS_SHEET, List.of(COL_EP, COL_NAME, COL_STATIONS, COL_ENABLED),
+                (row, columns, index) -> {
             String ep = text(row, columns.get(COL_EP));
             String name = text(row, columns.get(COL_NAME));
             if (ep.isBlank() || name.isBlank()) {
                 return null;
             }
-            return new TrackMasterRow(ep, name, text(row, columns.get(COL_STATION)),
+            return new TrackMasterRow(ep, name, stations(text(row, columns.get(COL_STATIONS))),
                     flag(text(row, columns.get(COL_ENABLED))), index + 1);
         });
+    }
+
+    /** {@code "ZIC | BIN | HAD"} -> tres nombres. Celda vacia -> lista vacia, que es valida. */
+    private List<String> stations(String cell) {
+        if (cell == null || cell.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(cell.split(STATION_SEPARATOR))
+                .map(String::trim)
+                .filter(name -> !name.isEmpty())
+                .distinct()
+                .toList();
     }
 
     private List<ProfileMasterRow> readProfiles(ExcelWorkbook workbook) {

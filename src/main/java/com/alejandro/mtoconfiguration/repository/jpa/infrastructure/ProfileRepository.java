@@ -87,18 +87,26 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
      * lado INVERSO de un {@code @OneToOne}, que Hibernate no puede proxear, asi que
      * sin ellos se paga un select por fila.
      * <p>
+     * {@code track.stations} entra desde V17 por lo mismo: dejo de ser un {@code @ManyToOne}
+     * del que basta el id del proxy y paso a ser una coleccion, que desatachada no se puede
+     * recorrer.
+     * <p>
      * Las rutas anidadas de las que el mapper solo lee el id se quedan fuera
-     * ({@code track.station}, {@code track.executionPackage},
+     * ({@code track.executionPackage},
      * {@code cantilevers.cantileverType}, {@code cantilevers.steadyArm.steadyArmType}
      * y {@code disconnector.disconnectorFunction}): con acceso por propiedad, leer el
      * id de un proxy no lo inicializa.
      * <p>
-     * {@code cantilevers} es la UNICA coleccion del grafo, y eso es intencionado: en
-     * cuanto entra una segunda, el join pasa a producir un producto cartesiano.
+     * El grafo trae VARIAS colecciones ({@code cantilevers} y las tres N:M de LOVs de
+     * V14-V16, mas {@code track.stations} desde V17), asi que el join produce un producto
+     * cartesiano. Se acepta porque los factores son diminutos —un perfil tiene tres mensulas
+     * como mucho y un puñado de codigos por lista— y la alternativa es un select por
+     * coleccion o, peor, una LazyInitializationException al publicar el evento.
      */
     @Override
     @EntityGraph(attributePaths = {
             "track",
+            "track.stations",
             "anchorages",
             "anchorageFoundation",
             "foundation",

@@ -177,9 +177,15 @@ cuerpo desde cero ni le quites campos.
 | Padre | Colecciones |
 |---|---|
 | `execution-packages` | `tracks`, `stations` |
-| `stations` | `tracks`, `disconnectors`, `sectionInsulators` |
+| `stations` | `tracks`&nbsp;⚠️, `disconnectors`, `sectionInsulators` |
 | `tracks` | `profiles` |
 | `profiles` | `cantilevers` |
+
+⚠️ **`stations` → `tracks` es la única excepción, y desde `V17`.** Ahí la vía que no mandas se
+**desliga** de esa estación; no se borra. La regla general vale para un hijo que no existe sin su
+padre, y una vía sí existe: `TRACK 1` de EP4 atraviesa ZIC, BIN y HAD a la vez. Si un `PUT` sobre
+ZIC que no la menciona la borrara, se la llevaría por delante también a BIN y a HAD, con sus
+perfiles. Para dar de baja una vía de verdad está `DELETE $BASE/tracks/{id}`.
 
 Y **anida**: en un `PUT $BASE/execution-packages/{id}` puedes traer vías, y dentro de cada vía sus
 perfiles, y dentro de cada perfil sus ménsulas. Cada nivel se reconcilia con la misma regla.
@@ -250,6 +256,23 @@ disconnector **más** un aislador de sección. Ese campo usa el catálogo
 
 Son las **tres únicas** relaciones N:M del perfil: las demás listas de valores llevan una
 sola, y ahí una celda con dos códigos sigue siendo una anomalía que se reporta.
+
+**La vía tiene la suya propia** (`V17`): `stationId` pasa a `stationIds`, porque una vía larga
+atraviesa varias estaciones sin dejar de ser una vía —`TRACK 1` de EP4 pasa por ZIC, por BIN y
+por HAD— mientras que `TRACK 5 BIN` solo está en BIN. La lista vacía es una respuesta válida y
+frecuente: un tramo entre estaciones cuelga directamente del paquete de ejecución.
+
+```jsonc
+// antes
+"stationId": 12
+// ahora
+"stationIds": [12, 13, 14]
+```
+
+Lo que este modelo **no** dice es dónde empieza cada estación dentro de la vía: dice que pasa por
+las tres, no por qué mástil entra en cada una. El origen no marca ese límite de forma fiable —de
+las 176 vías medidas, 31 traen el punto kilométrico no monótono y una llega a un KP de 1.110.546
+por un dedazo—, así que declararlo sería inventarse una precisión que el dato no tiene.
 
 ```jsonc
 // antes

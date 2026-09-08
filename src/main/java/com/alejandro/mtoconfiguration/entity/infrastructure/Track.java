@@ -31,7 +31,7 @@ public class Track extends CRUDEntity {
     private String name;
     private Boolean enabled = true;
     private ExecutionPackage executionPackage;
-    private Station station;
+    private Set<Station> stations = new HashSet<>();
     private List<Profile> profiles = new ArrayList<>();
 
     @Id
@@ -65,11 +65,38 @@ public class Track extends CRUDEntity {
         return executionPackage;
     }
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "STATION_ID", nullable = true) // nullable = true permite que sea opcional
+    /**
+     * Estaciones que atraviesa la via. Varias, no una.
+     *
+     * <p>'TRACK 1' de EP4 es una via larga: un tramo cae dentro de ZIC, otro dentro de BIN y
+     * otro dentro de HAD, y sigue siendo UNA via. Con la clave ajena unica solo cabia una de
+     * las tres. La coleccion vacia tambien es una respuesta valida y frecuente: un tramo
+     * entre estaciones cuelga directamente del paquete de ejecucion.
+     *
+     * <p>Lo que este modelo no guarda es DONDE empieza cada estacion dentro de la via. El
+     * origen no marca ese limite de forma fiable —31 de las 176 vias traen el KP no monotono,
+     * y una llega a un KP de 1.110.546 por un dedazo—, asi que declararlo seria inventarse una
+     * precision que el dato no tiene.
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "TRACK_STATION",
+            joinColumns = @JoinColumn(name = "TRACK_ID"),
+            inverseJoinColumns = @JoinColumn(name = "STATION_ID"))
     @Audited(targetAuditMode = NOT_AUDITED)
-    public Station getStation() {
-        return station;
+    public Set<Station> getStations() {
+        return stations;
+    }
+
+    public void addStation(Station station) {
+        if (station != null) {
+            getStations().add(station);
+        }
+    }
+
+    public void removeStation(Station station) {
+        if (station != null) {
+            getStations().remove(station);
+        }
     }
 
     /**

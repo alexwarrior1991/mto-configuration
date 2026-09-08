@@ -732,3 +732,35 @@ class CoberturaDeLosTramosDeclarados(unittest.TestCase):
         layout = bpm.track_layout(self.hoja(), "EP1", CFG, master)
         self.assertEqual(layout.sheet, "HR Track 1")
         self.assertEqual(bpm.profile_rows(layout), [4, 6, 8])
+
+
+class EstacionesDeUnaVia(unittest.TestCase):
+    """Una via larga atraviesa varias estaciones sin dejar de ser una via.
+
+    'TRACK 1' de EP4 pasa por ZIC, por BIN y por HAD. Se declaran en plural, y el
+    singular se sigue admitiendo porque las 124 vias ya rellenas con 'station:' no
+    tienen por que reescribirse.
+    """
+
+    def test_el_singular_sigue_valiendo(self):
+        self.assertEqual(bpm.track_stations({"station": "MOM"}), ["MOM"])
+
+    def test_el_plural_las_devuelve_todas_y_en_orden(self):
+        self.assertEqual(bpm.track_stations({"stations": ["ZIC", "BIN", "HAD"]}),
+                         ["ZIC", "BIN", "HAD"])
+
+    def test_singular_y_plural_a_la_vez_no_duplican(self):
+        self.assertEqual(bpm.track_stations({"station": "ZIC", "stations": ["zic", "BIN"]}),
+                         ["ZIC", "BIN"])
+
+    def test_sin_estacion_es_una_respuesta_valida(self):
+        self.assertEqual(bpm.track_stations({"station": None}), [])
+        self.assertEqual(bpm.track_stations({}), [])
+
+    def test_una_estacion_no_declarada_en_el_paquete_no_pasa_en_silencio(self):
+        master = bpm.Master()
+        bpm.check_declared_stations("EP4", {
+            "stations": ["ZIC", "BIN"],
+            "tracks": [{"sheet": "HR Track 1", "stations": ["ZIC", "BIN", "HAD"]}],
+        }, master)
+        self.assertEqual([k[1] for k in master.unknown], ["HAD"])

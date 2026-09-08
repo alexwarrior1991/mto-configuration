@@ -14,6 +14,10 @@ public class TrackDTO extends BaseDTO {
     private String name;
     private Boolean enabled;
     private Long executionPackageId;
-    private Long stationId;
+    /**
+     * Estaciones que atraviesa la via. Vacia es una respuesta valida: un tramo entre
+     * estaciones cuelga directamente del paquete de ejecucion.
+     */
+    private List<Long> stationIds = new ArrayList<>();
     private List<ProfileDTO> profiles = new ArrayList<>();
 }

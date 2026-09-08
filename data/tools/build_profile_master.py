@@ -704,9 +704,11 @@ def seed_topology(folder, output):
         "#",
         "# Generado con --seed-topology. TODAS las entradas necesitan repaso:",
         "#   - 'name' viene de la celda A1, que miente en cuatro hojas.",
-        "#   - 'station: null' es el valor de arranque, NO una afirmacion. La columna",
-        "#     TRACK.STATION_ID es anulable a proposito, asi que null es una respuesta",
-        "#     valida: la via cuelga del paquete de ejecucion.",
+        "#   - 'station: null' es el valor de arranque, NO una afirmacion. Sin estacion es",
+        "#     una respuesta valida: la via cuelga del paquete de ejecucion.",
+        "#   - una via LARGA atraviesa varias estaciones sin dejar de ser una via, y se",
+        "#     declaran en plural: 'stations: [ZIC, BIN, HAD]'. El singular 'station: ZIC'",
+        "#     sigue valiendo para la via que solo pasa por una.",
         "#   - 'rows: [primera, ultima]' solo hace falta cuando una hoja lleva mas de un",
         "#     tramo. EP9A / HR Track 1 y HR Track 2 son el caso conocido.",
         "#   - 'skip: motivo' para una hoja que no hay que importar.",
@@ -762,7 +764,7 @@ SHEETS = {
     "EPS": ["EP", "NOMBRE", "INITIAL_PACKAGE", "LENGTH", "START_DATE", "END_DATE",
             "COMPANY_ID_NUMBER", "ENABLED"],
     "STATIONS": ["EP", "NOMBRE"],
-    "TRACKS": ["EP", "NOMBRE", "ESTACION", "ENABLED", "HOJA_ORIGEN", "FILA_INICIO", "FILA_FIN"],
+    "TRACKS": ["EP", "NOMBRE", "ESTACIONES", "ENABLED", "HOJA_ORIGEN", "FILA_INICIO", "FILA_FIN"],
     "PROFILES": ["EP", "VIA", "PROFILE_ID", "KP", "PROFILE_STATUS",
                  "SECTIONING", "ANCHORAGE", "ANCHORAGE_FOUNDATION", "FOUNDATION",
                  "POLE_TYPE", "PORTAL", "RETURN_SUPPORT", "SECTIONING_FEEDING",
@@ -857,23 +859,39 @@ def write_master(path, master: Master):
 # Entrada
 # --------------------------------------------------------------------------------
 
-def check_declared_stations(ep, declared, master: Master):
-    """Comprueba que cada via cuelgue de una estacion declarada en su paquete.
+def track_stations(track):
+    """Las estaciones que declara una via, en singular o en plural.
 
-    'station: null' es una respuesta valida y no se toca: la columna TRACK.STATION_ID es
-    anulable a proposito y una via de tramo entre estaciones cuelga del paquete.
+    'station: ZIC' (una) y 'stations: [ZIC, BIN, HAD]' (varias) valen las dos, y se
+    admiten a la vez por una razon practica: las 124 vias que ya estaban rellenas con la
+    forma en singular no hay que reescribirlas para que sigan valiendo.
+    """
+    nombres = []
+    uno = squash(track.get("station"))
+    if uno:
+        nombres.append(uno)
+    for nombre in (track.get("stations") or []):
+        nombre = squash(nombre)
+        if nombre and nombre.upper() not in {n.upper() for n in nombres}:
+            nombres.append(nombre)
+    return nombres
+
+
+def check_declared_stations(ep, declared, master: Master):
+    """Comprueba que cada via cuelgue de estaciones declaradas en su paquete.
+
+    Sin estacion es una respuesta valida y no se toca: una via de tramo entre estaciones
+    cuelga del paquete. Se miran TODAS las que declara, que desde V17 pueden ser varias.
     """
     stations = {squash(name).upper() for name in (declared.get("stations") or []) if squash(name)}
 
     for track in declared.get("tracks") or []:
         if track.get("skip"):
             continue
-        station = squash(track.get("station"))
-        if not station:
-            continue
-        if station.upper() not in stations:
-            master.unrecognised("estacion no declarada en el paquete", station, ep,
-                                squash(track.get("sheet")))
+        for station in track_stations(track):
+            if station.upper() not in stations:
+                master.unrecognised("estacion no declarada en el paquete", station, ep,
+                                    squash(track.get("sheet")))
 
 
 def load_declared(topology, ep):
@@ -972,7 +990,8 @@ def main():
                     rows = decl.get("rows") or [None, None]
                     master.tracks.append({
                         "EP": ep, "NOMBRE": decl["name"],
-                        "ESTACION": decl.get("station") or "",
+                        # Barra vertical y no espacio: 'TLV SAVIDOR' lleva un espacio dentro.
+                        "ESTACIONES": " | ".join(track_stations(decl)),
                         "ENABLED": "SI", "HOJA_ORIGEN": ws.title,
                         "FILA_INICIO": rows[0], "FILA_FIN": rows[1],
                     })

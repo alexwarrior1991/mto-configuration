@@ -127,7 +127,7 @@ class ProfileCriteriaSearchIT extends AbstractCriteriaSearchIT {
         entity.setName(name);
         entity.setEnabled(true);
         entity.setExecutionPackage(executionPackage);
-        entity.setStation(station);
+        entity.addStation(station);
         em.persist(entity);
         return entity;
     }

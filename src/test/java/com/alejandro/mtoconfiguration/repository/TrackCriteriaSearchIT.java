@@ -147,7 +147,7 @@ class TrackCriteriaSearchIT extends AbstractCriteriaSearchIT {
         entity.setName(name);
         entity.setEnabled(enabled);
         entity.setExecutionPackage(executionPackage);
-        entity.setStation(station);
+        entity.addStation(station);
         return entity;
     }
 }

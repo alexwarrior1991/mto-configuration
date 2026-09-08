@@ -232,33 +232,34 @@ execution_packages:
 **Toda hoja `HR Track` tiene que estar declarada**, con `name` o con `skip`. Una hoja
 sin declarar hace terminar el generador con código distinto de cero.
 
-**Una vía que atraviesa varias estaciones se parte con `rows`, igual que una hoja con dos
-tramos.** Es el mismo mecanismo con otro motivo, y es el que ya usa el propio origen: 117
-de las 179 hojas vienen con el sufijo puesto (`HR Track 1 MOM`, `HR Track 1 RIS-HER`), es
-decir, el trozo de la vía 1 que está dentro de MOM ya es una hoja aparte. Las 62 restantes
-son hojas `HR Track N` peladas, y ahí el corte lo declaras tú:
+**Una vía que atraviesa varias estaciones las declara todas, y sigue siendo UNA vía.** No se
+parte: `TRACK 1` de EP4 es larga y pasa por ZIC, por BIN y por HAD, mientras que `TRACK 5 BIN`
+solo está en BIN. Desde `V17` la relación es N:M, así que se declaran en plural:
 
 ```yaml
-      - sheet: "HR Track 1"            # una sola hoja, tres tramos
-        name: "TRACK 1 MOM"
-        station: MOM
-        rows: [4, 120]
       - sheet: "HR Track 1"
-        name: "TRACK 1 MOM-PMO"
+        name: "TRACK 1"
+        stations: [ZIC, BIN, HAD]      # la vía larga: pasa por las tres
+      - sheet: "HR Track 5 BIN"
+        name: "TRACK 5 BIN"
+        station: BIN                   # el singular sigue valiendo para una sola
+      - sheet: "HR Track 1 RIS-HER"
+        name: "TRACK 1 RISHPON-HERZLIYA"
         station: null                  # entre estaciones: cuelga del paquete
-        rows: [121, 260]
-      - sheet: "HR Track 1"
-        name: "TRACK 1 PMO"
-        station: PMO
-        rows: [261, 400]
 ```
 
-Se corta **por fila, no por KP**, y no es una preferencia: de las 176 vías medidas, **31
-tienen el KP no monótono** y `EP9B / TRACK 1 LOD_S` llega a un KP de 1.110.546 (un dedazo
-por 110.546). Un límite declarado en KP metería perfiles en la estación equivocada sin
-avisar; la fila es exacta y es lo que enseña Excel.
+`station:` (una) y `stations:` (varias) valen las dos y pueden convivir en el fichero: las vías
+que ya estaban rellenas en singular no hay que reescribirlas.
 
-**Los tramos de una hoja partida tienen que cubrirla entera, y una sola vez.** Si las filas
+Lo que **no** se declara es dónde empieza cada estación dentro de la vía. Se valoró cortarla por
+rangos de fila y se descartó: parte la vía en tres, que es contar una vía como tres. Y por KP no
+se puede, que sería lo natural: de las 176 vías medidas, **31 traen el KP no monótono** y
+`EP9B / TRACK 1 LOD_S` llega a un KP de 1.110.546 (un dedazo por 110.546), así que un límite
+declarado en KP metería perfiles en la estación equivocada sin avisar.
+
+**Los tramos de una hoja partida** —`rows`, que sigue siendo solo para las hojas que llevan
+**dos tramos concatenados**, como `EP9A / HR Track 1`— **tienen que cubrirla entera, y una sola
+vez.** Si las filas
 con perfil se quedan fuera de todo tramo, o caen en dos a la vez, el generador las saca en
 `NO_RECONOCIDO` y termina con código distinto de cero. Sin esa comprobación, declarar
 `[4, 120]` y `[200, 400]` en una hoja que llega a la 400 se tragaba las de en medio **en

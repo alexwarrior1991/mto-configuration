@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.masterdata.messaging.mapper;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.entity.lov.*;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataEntityPayloadMapper;
@@ -12,6 +13,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Component
 public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMapper<Profile> {
@@ -61,7 +63,8 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         values.put("id", track.getId());
         values.put("name", track.getName());
         values.put("enabled", track.getEnabled());
-        values.put("stationId", track.getStation() != null ? track.getStation().getId() : null);
+        values.put("stationIds", track.getStations() == null ? List.of()
+                : track.getStations().stream().map(each -> each.getId()).filter(Objects::nonNull).sorted().toList());
         values.put("executionPackageId", track.getExecutionPackage() != null ? track.getExecutionPackage().getId() : null);
         return values;
     }

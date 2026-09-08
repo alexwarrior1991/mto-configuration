@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.mapper.infraestructure;
 
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
@@ -20,9 +21,13 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
 /**
  * Reconciliacion de los perfiles de una via.
@@ -269,6 +274,75 @@ class TrackMapperTest {
                     .containsExactly("P-001", "P-002");
             assertThat(track.getProfiles())
                     .allSatisfy(p -> assertThat(p.getTrack()).isSameAs(track));
+        }
+    }
+
+    @Nested
+    @DisplayName("Estaciones")
+    class Estaciones {
+
+        @BeforeEach
+        void referencias() {
+            when(referenceMapper.resolve(anyLong(), eq(Station.class)))
+                    .thenAnswer(invocation -> station(invocation.getArgument(0)));
+        }
+
+        @Test
+        @DisplayName("una via larga se liga a las TRES estaciones que atraviesa")
+        void variasEstaciones() {
+            // 'TRACK 1' de EP4 pasa por ZIC, por BIN y por HAD. Con la clave ajena unica de
+            // antes solo cabia una, y las otras dos se perdian al guardar.
+            TrackDTO dto = dto();
+            dto.setStationIds(List.of(7L, 8L, 9L));
+
+            Track track = mapper.toEntity(dto);
+
+            assertThat(track.getStations())
+                    .extracting(each -> each.getId())
+                    .containsExactlyInAnyOrder(7L, 8L, 9L);
+        }
+
+        @Test
+        @DisplayName("la vuelta a DTO devuelve los ids de todas, ordenados")
+        void vueltaADto() {
+            Track track = new Track();
+            track.setStations(new LinkedHashSet<>(List.of(station(9L), station(7L))));
+
+            assertThat(mapper.toDTO(track).getStationIds()).containsExactly(7L, 9L);
+        }
+
+        @Test
+        @DisplayName("una lista vacia desliga: la via pasa a colgar del paquete")
+        void listaVacia() {
+            Track track = new Track();
+            track.setStations(new LinkedHashSet<>(List.of(station(7L))));
+
+            TrackDTO dto = dto();
+            dto.setStationIds(List.of());
+            mapper.updateEntityFromDTO(dto, track);
+
+            assertThat(track.getStations()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("no mandar el campo no toca nada, que no es lo mismo que mandarlo vacio")
+        void campoAusente() {
+            // La diferencia importa: un cliente que solo renombra la via manda el nombre y no
+            // la lista, y no tiene por que perder las estaciones por el camino.
+            Track track = new Track();
+            track.setStations(new LinkedHashSet<>(List.of(station(7L))));
+
+            TrackDTO dto = dto();
+            dto.setStationIds(null);
+            mapper.updateEntityFromDTO(dto, track);
+
+            assertThat(track.getStations()).extracting(each -> each.getId()).containsExactly(7L);
+        }
+
+        private static Station station(Long id) {
+            Station station = new Station();
+            station.setId(id);
+            return station;
         }
     }
 }

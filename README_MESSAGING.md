@@ -4,13 +4,18 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
-## ⚠️ Cambio de contrato del evento `profile`
+## ⚠️ Cambio de contrato de los eventos `profile` y `track`
 
-Las claves `sectioning`, `anchorage` y `sectioningFeeding` (objetos) pasan a `sectionings`,
-`anchorages` y `sectioningFeedings` (**listas**), porque un perfil puede llevar varios de
-cada uno a la vez. `mto-stock` consume este evento pero solo lo
-registra, así que no hay nada que cambiar allí; queda escrito porque el contrato lo posee
-este repositorio.
+En `profile`, las claves `sectioning`, `anchorage` y `sectioningFeeding` (objetos) pasan a
+`sectionings`, `anchorages` y `sectioningFeedings` (**listas**), porque un perfil puede llevar
+varios de cada uno a la vez.
+
+En `track`, la clave `station` (objeto) pasa a `stations` (**lista**): una vía larga atraviesa
+varias estaciones sin dejar de ser una vía. Y donde una vía viaja anidada dentro de otro evento
+—`profile` y `executionPackage`—, su `stationId` pasa a `stationIds`.
+
+`mto-stock` consume estos eventos pero solo los registra, así que no hay nada que cambiar allí;
+queda escrito porque el contrato lo posee este repositorio.
 
 ## 1. Conceptos Fundamentales
 
