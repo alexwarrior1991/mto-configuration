@@ -30,7 +30,8 @@ public class ProfileDTO extends BaseDTO {
     private DisconnectorDTO disconnector;
     private List<CantileverDTO> cantilevers = new ArrayList<>();
 
-    private AnchorageDTO anchorage;
+    /** Anclajes del perfil: <b>varios</b>. Ver {@code sectionings}: mismo motivo. */
+    private List<AnchorageDTO> anchorages;
     private AnchorageFoundationDTO anchorageFoundation;
     private FoundationDTO foundation;
     private PoleTypeDTO poleType;

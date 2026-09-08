@@ -400,6 +400,10 @@ profile_columns:
 # Esto es para lo que ademas cambia de caracteres.
 # --------------------------------------------------------------------------------
 code_canonical:
+  Anchorage:
+    # Alguien anoto al lado del codigo. El numero y la via no son parte del anclaje.
+    'AnMP(Track 02)': AnMP
+    'CP+AnMC 287': CP+AnMC
   Sectioning:
     # 'A/S-Diag' escrito con espacio en vez de guion. Sin esto se lee como dos valores
     # ('A/S' y un 'Diag' que no existe) justo ahora que el seccionamiento admite varios.

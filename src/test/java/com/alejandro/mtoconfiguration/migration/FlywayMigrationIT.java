@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15");
     }
 
     /**
@@ -493,6 +493,15 @@ class FlywayMigrationIT {
      * INSERT minimo en {@code async_job}. Compuesto por concatenacion a proposito: ver la
      * nota de {@link #elEstadoDeUnTrabajoEstaAcotadoPorLaBaseDeDatos()}.
      */
+    /** V15: el anclaje sigue el mismo camino que el seccionamiento en V14. */
+    @Test
+    void elAnclajeEsAhoraUnaTablaDeUnion() {
+        assertThat(existeTabla("profile_anchorage")).isTrue();
+        assertThat(existeTabla("profile_anchorage_aud")).isTrue();
+        assertThat(existeColumna("profile", "anchorage_id")).isFalse();
+        assertThat(existeColumna("profile_aud", "anchorage_id")).isFalse();
+    }
+
     private boolean existeTabla(String tabla) {
         Integer n = jdbc().queryForObject(
                 "select count(*) from information_schema.tables"

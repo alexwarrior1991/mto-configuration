@@ -33,7 +33,8 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         values.put("poleGaugeLocation", profile.getPoleGaugeLocation());
         values.put("railPoleDistance", profile.getRailPoleDistance());
         values.put("track", toTrackPayload(profile.getTrack()));
-        values.put("anchorage", toLovPayload(profile.getAnchorage()));
+        values.put("anchorages", profile.getAnchorages() == null ? List.of()
+                : profile.getAnchorages().stream().map(this::toLovPayload).toList());
         values.put("anchorageFoundation", toLovPayload(profile.getAnchorageFoundation()));
         values.put("foundation", toLovPayload(profile.getFoundation()));
         values.put("poleType", toLovPayload(profile.getPoleType()));

@@ -11,6 +11,8 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDT
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
+import com.alejandro.mtoconfiguration.entity.lov.Anchorage;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -49,7 +51,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
 
     @Override
     @Mapping(target = "trackId", source = "track.id")
-    @Mapping(target = "anchorage", ignore = true)
+    @Mapping(target = "anchorages", ignore = true)
     @Mapping(target = "anchorageFoundation", ignore = true)
     @Mapping(target = "foundation", ignore = true)
     @Mapping(target = "poleType", ignore = true)
@@ -63,7 +65,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Override
     @Mapping(target = "track", source = "trackId")
     @Mapping(target = "cantilevers", ignore = true) // se reconcilia en mapDtoToEntity
-    @Mapping(target = "anchorage", ignore = true)
+    @Mapping(target = "anchorages", ignore = true)
     @Mapping(target = "anchorageFoundation", ignore = true)
     @Mapping(target = "foundation", ignore = true)
     @Mapping(target = "poleType", ignore = true)
@@ -78,7 +80,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Override
     @Mapping(target = "track", source = "trackId")
     @Mapping(target = "cantilevers", ignore = true) // se reconcilia en mapDtoToEntity
-    @Mapping(target = "anchorage", ignore = true)
+    @Mapping(target = "anchorages", ignore = true)
     @Mapping(target = "anchorageFoundation", ignore = true)
     @Mapping(target = "foundation", ignore = true)
     @Mapping(target = "poleType", ignore = true)
@@ -95,8 +97,18 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
 
 
         // 1. Resolución de múltiples LOVs usando MasterDataService
-        if (dto.getAnchorage() != null) {
-            entity.setAnchorage(masterDataService.getAnchorageByCode(dto.getAnchorage().getCode()));
+        if (dto.getAnchorages() != null) {
+            Set<Anchorage> resolved = new LinkedHashSet<>();
+            for (AnchorageDTO each : dto.getAnchorages()) {
+                if (each == null || each.getCode() == null) {
+                    continue;
+                }
+                Anchorage anchorage = masterDataService.getAnchorageByCode(each.getCode());
+                if (anchorage != null) {
+                    resolved.add(anchorage);
+                }
+            }
+            entity.setAnchorages(resolved);
         }
         if (dto.getAnchorageFoundation() != null) {
             entity.setAnchorageFoundation(masterDataService.getAnchorageFoundationByCode(dto.getAnchorageFoundation().getCode()));
@@ -161,8 +173,11 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     protected void mapEntityToDto(Profile entity, @MappingTarget ProfileDTO dto) {
 
         // 4. Enriquecimiento del DTO con LOVs usando la caché del MasterDataService
-        if (entity.getAnchorage() != null) {
-            dto.setAnchorage(masterDataService.getAnchorageByIdAndMapToDTO(entity.getAnchorage().getId()));
+        if (entity.getAnchorages() != null) {
+            dto.setAnchorages(entity.getAnchorages().stream()
+                    .map(each -> masterDataService.getAnchorageByIdAndMapToDTO(each.getId()))
+                    .filter(Objects::nonNull)
+                    .toList());
         }
         if (entity.getAnchorageFoundation() != null) {
             dto.setAnchorageFoundation(masterDataService.getAnchorageFoundationByIdAndMapToDTO(entity.getAnchorageFoundation().getId()));

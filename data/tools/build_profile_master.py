@@ -83,10 +83,11 @@ PROFILE_LOV_FIELDS = ("SECTIONING", "ANCHORAGE", "ANCHORAGE_FOUNDATION", "FOUNDA
 # MasterDataService resuelve un codigo desconocido a null SIN QUEJARSE, asi que sin esta
 # comprobacion el perfil se cargaria con la clave ajena vacia y el informe diria que todo
 # fue bien. Es el mismo fallo silencioso que dejo profile_status vacia.
-# La UNICA columna multivalor: un perfil puede llevar varios seccionamientos a la vez
-# ('A/S P50' son dos, corriente en estaciones). En las demas, dos codigos en una celda es
-# una anomalia y por eso alli sigue saliendo a NO_RECONOCIDO.
-LOV_MULTIVALUE = {"SECTIONING"}
+# Las columnas multivalor: un perfil puede llevar varios seccionamientos ('A/S P50' son
+# dos, corriente en estaciones) y varios anclajes ('FP+AnMC CP+AnMC' es uno con regulacion
+# de tension y otro sin ella). En las demas, dos codigos en una celda es una anomalia y por
+# eso alli sigue saliendo a NO_RECONOCIDO.
+LOV_MULTIVALUE = {"SECTIONING", "ANCHORAGE"}
 
 LOV_ENTITY = {
     "SECTIONING": "Sectioning",

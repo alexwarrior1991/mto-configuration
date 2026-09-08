@@ -99,7 +99,7 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
     @Override
     @EntityGraph(attributePaths = {
             "track",
-            "anchorage",
+            "anchorages",
             "anchorageFoundation",
             "foundation",
             "poleType",

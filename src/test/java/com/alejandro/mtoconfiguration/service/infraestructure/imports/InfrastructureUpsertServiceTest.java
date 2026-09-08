@@ -24,6 +24,8 @@ import com.alejandro.mtoconfiguration.service.infraestructure.TrackService;
 import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
+import com.alejandro.mtoconfiguration.entity.lov.Anchorage;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -357,6 +359,48 @@ class InfrastructureUpsertServiceTest {
 
             assertThatThrownBy(() -> service.upsertProfile(
                     conSeccionamiento("A/S NO-EXISTE"), 1L, List.of(), false))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("NO-EXISTE");
+
+            verify(profileService, never()).create(any());
+        }
+
+        @Test
+        @DisplayName("una celda con dos anclajes se parte en dos")
+        void dosAnclajesEnUnaCelda() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(masterDataService.getAnchorageByCode("FP+AnMC")).thenReturn(new Anchorage());
+            when(masterDataService.getAnchorageByCode("CP+AnMC")).thenReturn(new Anchorage());
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+                    .thenReturn(Optional.empty());
+            when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            ProfileMasterRow row = new ProfileMasterRow("EP7", "TRACK 1", "86-02.20", "1+000",
+                    "DEFINITIVE",
+                    new ProfileLovCodes("", "FP+AnMC CP+AnMC", "", "", "", "", "", ""),
+                    null, null, null, null, true, 586);
+            service.upsertProfile(row, 1L, List.of(), false);
+
+            ArgumentCaptor<ProfileDTO> captor = ArgumentCaptor.forClass(ProfileDTO.class);
+            verify(profileService).create(captor.capture());
+            assertThat(captor.getValue().getAnchorages())
+                    .extracting(AnchorageDTO::getCode)
+                    .containsExactly("FP+AnMC", "CP+AnMC");
+        }
+
+        @Test
+        @DisplayName("si una parte del anclaje no existe, el perfil no se carga")
+        void anclajeDesconocidoTumbaLaFila() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(masterDataService.getAnchorageByCode("FP+AnMC")).thenReturn(new Anchorage());
+            when(masterDataService.getAnchorageByCode("NO-EXISTE")).thenReturn(null);
+
+            ProfileMasterRow row = new ProfileMasterRow("EP7", "TRACK 1", "86-02.20", "1+000",
+                    "DEFINITIVE",
+                    new ProfileLovCodes("", "FP+AnMC NO-EXISTE", "", "", "", "", "", ""),
+                    null, null, null, null, true, 586);
+
+            assertThatThrownBy(() -> service.upsertProfile(row, 1L, List.of(), false))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessageContaining("NO-EXISTE");
 

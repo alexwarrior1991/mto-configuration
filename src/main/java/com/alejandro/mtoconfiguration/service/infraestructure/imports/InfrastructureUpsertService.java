@@ -229,7 +229,7 @@ public class InfrastructureUpsertService {
         dto.setProfileStatus(lov(profileStatus, ProfileStatusDTO::new));
         // El maestro trae los codigos separados por espacio: 'A/S P50' son DOS.
         dto.setSectionings(lovList(lov.sectioning(), SectioningDTO::new));
-        dto.setAnchorage(lov(lov.anchorage(), AnchorageDTO::new));
+        dto.setAnchorages(lovList(lov.anchorage(), AnchorageDTO::new));
         dto.setAnchorageFoundation(lov(lov.anchorageFoundation(), AnchorageFoundationDTO::new));
         dto.setFoundation(lov(lov.foundation(), FoundationDTO::new));
         dto.setPoleType(lov(lov.poleType(), PoleTypeDTO::new));
@@ -295,7 +295,11 @@ public class InfrastructureUpsertService {
                 check(unresolved, "sectioning", code, masterDataService::getSectioningByCode);
             }
         }
-        check(unresolved, "anchorage", lov.anchorage(), masterDataService::getAnchorageByCode);
+        if (!StringUtils.isBlank(lov.anchorage())) {
+            for (String code : lov.anchorage().trim().split("\\s+")) {
+                check(unresolved, "anchorage", code, masterDataService::getAnchorageByCode);
+            }
+        }
         check(unresolved, "anchorageFoundation", lov.anchorageFoundation(),
                 masterDataService::getAnchorageFoundationByCode);
         check(unresolved, "foundation", lov.foundation(), masterDataService::getFoundationByCode);

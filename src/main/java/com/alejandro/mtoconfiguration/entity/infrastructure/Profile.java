@@ -89,7 +89,7 @@ public class Profile extends CRUDEntity {
     private Disconnector disconnector;
     private List<Cantilever> cantilevers = new ArrayList<>();
 
-    private Anchorage anchorage;
+    private Set<Anchorage> anchorages = new LinkedHashSet<>();
     private AnchorageFoundation anchorageFoundation;
     private Foundation foundation;
     private PoleType poleType;
@@ -183,11 +183,22 @@ public class Profile extends CRUDEntity {
         return railPoleDistance;
     }
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ANCHORAGE_ID")
+    /**
+     * Anclajes del perfil. <b>Varios</b>, como los seccionamientos.
+     *
+     * <p>Un perfil puede llevar un anclaje de catenaria CON regulacion de tension y otro SIN
+     * ella ({@code FP+AnMC CP+AnMC}), o uno de catenaria mas uno de retorno
+     * ({@code CP+AnMC AnRW}). Que el origen escriba el mismo par en los dos ordenes confirma
+     * que el orden no significa nada, y por eso es un {@code Set}.
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "PROFILE_ANCHORAGE",
+            joinColumns = @JoinColumn(name = "PROFILE_ID"),
+            inverseJoinColumns = @JoinColumn(name = "ANCHORAGE_ID"))
     @Audited(targetAuditMode = NOT_AUDITED)
-    public Anchorage getAnchorage() {
-        return anchorage;
+    public Set<Anchorage> getAnchorages() {
+        return anchorages;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)

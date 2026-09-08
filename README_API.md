@@ -236,17 +236,24 @@ lo precede por `kp`.
 
 ---
 
-## 4 ter. `sectionings`: el perfil lleva VARIOS seccionamientos
+## 4 ter. `sectionings` y `anchorages`: el perfil lleva VARIOS
 
 Un perfil puede tener más de un seccionamiento a la vez —es corriente en estaciones: un
-perfil puede ser `A/S` y `P50(CS)`—, así que desde `V14` la relación es N:M. Es la **única**
-del perfil: las demás listas de valores llevan una sola.
+perfil puede ser `A/S` y `P50(CS)`—, así que desde `V14` la relación es N:M. Lo mismo pasa con los **anclajes** (`V15`): un perfil puede llevar uno de catenaria **con**
+regulación de tensión y otro **sin** ella (`FP+AnMC CP+AnMC`), o uno de catenaria más uno de
+retorno (`CP+AnMC AnRW`). Que el origen escriba el mismo par en los dos órdenes confirma que
+el orden no significa nada.
+
+Son las **dos únicas** relaciones N:M del perfil: las demás listas de valores llevan una
+sola, y ahí una celda con dos códigos sigue siendo una anomalía que se reporta.
 
 ```jsonc
 // antes
 "sectioning":  { "code": "A/S" }
+"anchorage":   { "code": "CP+AnMC" }
 // ahora
 "sectionings": [ { "code": "A/S" }, { "code": "P50(CS)" } ]
+"anchorages":  [ { "code": "CP+AnMC" }, { "code": "FP+AnMC" } ]
 ```
 
 Como el resto de colecciones de esta API (§4), **mandar la lista reemplaza el conjunto
@@ -259,8 +266,8 @@ importación (`InfrastructureUpsertService`), que sí rechaza la fila y nombra e
 
 Dos efectos secundarios que conviene tener presentes:
 
-- `GET /profiles?sectioningCode=X` pasa de significar «su seccionamiento es X» a **«tiene X
-  entre los suyos»**.
+- `GET /profiles?sectioningCode=X` y `?anchorageCode=X` pasan de significar «el suyo es X»
+  a **«tiene X entre los suyos»**.
 - En la exportación CSV la columna se llama `sectionings` y trae los códigos separados por
   espacio. Una columna por seccionamiento haría que el ancho del fichero dependiera del
   perfil con más, y dejaría de ser fijo.

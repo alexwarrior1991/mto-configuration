@@ -19,6 +19,8 @@ import org.junit.jupiter.api.BeforeEach;
 import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import java.util.LinkedHashSet;
+import com.alejandro.mtoconfiguration.entity.lov.Anchorage;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -276,6 +278,47 @@ class ProfileMapperTest {
             assertThat(mapper.toDTO(entity).getSectionings()).containsExactly(asDto, p50Dto);
         }
 
+        /**
+         * Mismo caso que los seccionamientos, con otra razon: 'FP+AnMC CP+AnMC' es un anclaje
+         * de catenaria CON regulacion de tension y otro SIN ella en el mismo perfil.
+         */
+        @Test
+        @DisplayName("los anclajes se resuelven todos, no solo el primero")
+        void variosAnclajes() {
+            Anchorage con = new Anchorage();
+            con.setId(1L);
+            con.setCode("CP+AnMC");
+            Anchorage sin = new Anchorage();
+            sin.setId(2L);
+            sin.setCode("FP+AnMC");
+            when(masterDataService.getAnchorageByCode("CP+AnMC")).thenReturn(con);
+            when(masterDataService.getAnchorageByCode("FP+AnMC")).thenReturn(sin);
+
+            ProfileDTO dto = dto();
+            AnchorageDTO conDto = new AnchorageDTO();
+            conDto.setCode("CP+AnMC");
+            AnchorageDTO sinDto = new AnchorageDTO();
+            sinDto.setCode("FP+AnMC");
+            dto.setAnchorages(List.of(conDto, sinDto));
+
+            assertThat(mapper.toEntity(dto).getAnchorages()).containsExactly(con, sin);
+        }
+
+        @Test
+        @DisplayName("de vuelta al DTO salen todos los anclajes")
+        void anclajesDeVuelta() {
+            Anchorage uno = new Anchorage();
+            uno.setId(1L);
+            AnchorageDTO unoDto = new AnchorageDTO();
+            unoDto.setCode("CP+AnMC");
+            when(masterDataService.getAnchorageByIdAndMapToDTO(1L)).thenReturn(unoDto);
+
+            Profile entity = new Profile();
+            entity.setAnchorages(new LinkedHashSet<>(List.of(uno)));
+
+            assertThat(mapper.toDTO(entity).getAnchorages()).containsExactly(unoDto);
+        }
+
         private SectioningDTO sectioningDto(String code) {
             SectioningDTO dto = new SectioningDTO();
             dto.setCode(code);
@@ -316,7 +359,7 @@ class ProfileMapperTest {
 
             assertThat(entity.getPoleType()).isNull();
             assertThat(entity.getProfileStatus()).isNull();
-            assertThat(entity.getAnchorage()).isNull();
+            assertThat(entity.getAnchorages()).isEmpty();
             assertThat(entity.getSectioningFeeding()).isNull();
             verifyNoInteractions(masterDataService);
         }

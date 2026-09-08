@@ -548,11 +548,23 @@ class CodigosDeListaDeValores(unittest.TestCase):
         value, _ = self.resolver("SECTIONING", "S/A S/A", cfg)
         self.assertEqual(value, "S/A")
 
-    def test_las_demas_columnas_NO_admiten_varios(self):
-        """Dos anclajes en una celda es una anomalia, no el caso normal: tiene que verse."""
-        cfg = dict(self.CFG_LOV, lov_catalog={"Anchorage": {"FP+AnMC", "CP+AnMC"}})
+    def test_el_anclaje_tambien_admite_varios(self):
+        """'FP+AnMC CP+AnMC' es uno CON regulacion de tension y otro SIN ella.
+
+        Los codigos del catalogo van EN MAYUSCULAS: es lo que devuelve load_lov_catalog y
+        contra lo que se compara. Escribirlos aqui como en el origen hace fallar el test
+        sin que falle el generador.
+        """
+        cfg = dict(self.CFG_LOV, lov_catalog={"Anchorage": {"FP+ANMC", "CP+ANMC"}})
         value, unknown = self.resolver("ANCHORAGE", "FP+AnMC CP+AnMC", cfg)
         self.assertEqual(value, "FP+AnMC CP+AnMC")
+        self.assertEqual(unknown, {})
+
+    def test_las_columnas_de_una_sola_LOV_NO_admiten_varios(self):
+        """En return_support dos codigos en una celda siguen siendo una anomalia."""
+        cfg = dict(self.CFG_LOV, lov_catalog={"ReturnSupport": {"RW2", "RW2T-C"}})
+        value, unknown = self.resolver("RETURN_SUPPORT", "RW2 RW2T-C", cfg)
+        self.assertEqual(value, "RW2 RW2T-C")
         self.assertEqual(len(unknown), 1)
 
     def test_un_codigo_repetido_en_la_celda_se_colapsa_en_uno(self):

@@ -112,7 +112,8 @@ public class ProfileService extends CRUDService<ProfileDTO, Profile>
         applyCondition(builder, filter.stationName(), qEntity.track.station.name::containsIgnoreCase);
 
         // Filtros por CÓDIGO de las LOVs
-        applyCondition(builder, filter.anchorageCode(), qEntity.anchorage.code::eq);
+        applyCondition(builder, filter.anchorageCode(),
+                code -> qEntity.anchorages.any().code.eq(code));
         applyCondition(builder, filter.anchorageFoundationCode(), qEntity.anchorageFoundation.code::eq);
         applyCondition(builder, filter.foundationCode(), qEntity.foundation.code::eq);
         applyCondition(builder, filter.poleTypeCode(), qEntity.poleType.code::eq);

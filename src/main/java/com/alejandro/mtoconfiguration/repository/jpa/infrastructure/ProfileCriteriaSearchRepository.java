@@ -36,7 +36,7 @@ public interface ProfileCriteriaSearchRepository extends
                 b.numberTo("kp"),
                 JoinPredicates.eq(cb, root, filters, "trackId", "track", "id"),
                 JoinPredicates.like(cb, root, filters, "trackName", "track", "name"),
-                JoinPredicates.like(cb, root, filters, "anchorageCode", "anchorage", "code"),
+                JoinPredicates.like(cb, root, filters, "anchorageCode", "anchorages", "code"),
                 JoinPredicates.like(cb, root, filters, "anchorageFoundationCode", "anchorageFoundation", "code"),
                 JoinPredicates.like(cb, root, filters, "foundationCode", "foundation", "code"),
                 JoinPredicates.like(cb, root, filters, "poleTypeCode", "poleType", "code"),

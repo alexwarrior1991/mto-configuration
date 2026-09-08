@@ -356,7 +356,8 @@ class MasterDataPayloadContractIT {
             Profile profile = new Profile();
             profile.setProfileId(profileId);
             profile.setKp(new BigDecimal(kp));
-            profile.setAnchorage(lov(new Anchorage(), "ANC" + profileId.charAt(4)));
+            profile.setAnchorages(new java.util.LinkedHashSet<>(java.util.List.of(
+                    lov(new Anchorage(), "ANC" + profileId.charAt(4)))));
             profile.setAnchorageFoundation(lov(new AnchorageFoundation(), "ANF" + profileId.charAt(4)));
             profile.setFoundation(lov(new Foundation(), "FUN" + profileId.charAt(4)));
             profile.setPoleType(lov(new PoleType(), "POL" + profileId.charAt(4)));

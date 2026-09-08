@@ -6,8 +6,8 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ## ⚠️ Cambio de contrato del evento `profile`
 
-La clave `sectioning` (objeto) pasa a `sectionings` (**lista**), porque un perfil puede
-llevar varios seccionamientos a la vez. `mto-stock` consume este evento pero solo lo
+Las claves `sectioning` y `anchorage` (objetos) pasan a `sectionings` y `anchorages`
+(**listas**), porque un perfil puede llevar varios de cada uno a la vez. `mto-stock` consume este evento pero solo lo
 registra, así que no hay nada que cambiar allí; queda escrito porque el contrato lo posee
 este repositorio.
 
