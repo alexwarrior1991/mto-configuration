@@ -184,22 +184,43 @@ class ProfileMasterImportIT {
      *
      * <p>Los metadatos de los paquetes no estan en los workbooks: los declara una persona en
      * {@code data/tools/topology.yml}. Mientras esa declaracion no este completa, el maestro
-     * trae marcadores de relleno y {@code ExecutionPackageValidator} rechaza los once
-     * paquetes, con lo que no se carga NADA. Saltar es lo honesto: el test no puede
-     * comprobar una carga que aun no se puede hacer, y fallar solo diria que el fichero de
-     * declaracion sigue a medias, que ya se sabe.
+     * trae marcadores de relleno y {@code ExecutionPackageValidator} rechaza los paquetes, con
+     * lo que no se carga NADA. Saltar es lo honesto: el test no puede comprobar una carga que
+     * aun no se puede hacer, y fallar solo diria que el fichero de declaracion sigue a medias,
+     * que ya se sabe.
+     *
+     * <p>Se exigen TODOS los paquetes, no uno cualquiera. Con un solo paquete declarado los
+     * cuatro tests pasarian sin haber cargado los otros diez, y {@code hojaConDosTramos} —que
+     * existe para EP9A— daria verde sin que EP9A hubiera entrado. Un verde asi es peor que un
+     * salto, porque parece una comprobacion.
+     *
+     * <p>Y la condicion es la de verdad, no "alguien ha escrito un NIF": el validador tambien
+     * exige que la fecha de fin sea posterior a la de inicio, y la plantilla sembrada deja las
+     * dos en 1970-01-01. Con solo mirar el NIF, el test se ponia a correr contra un maestro que
+     * seguia sin poder cargarse.
      */
     private void prepara() throws IOException {
         assumeThat(Files.isReadable(PROFILE_MASTER))
                 .as("data/profile-master.xlsx tiene que estar generado")
                 .isTrue();
 
-        List<String> companies = declaredCompanies();
-        assumeThat(companies)
-                .as("topology.yml todavia es un borrador: los paquetes no declaran empresa "
-                        + "(company_identification_number), asi que el maestro no se puede cargar")
-                .isNotEmpty();
+        List<ExecutionPackageMasterRow> paquetes = enabledPackages();
+        assumeThat(paquetes).as("el maestro no trae ningun paquete activo").isNotEmpty();
 
+        List<String> incompletos = paquetes.stream()
+                .filter(row -> !esDeclaracionCompleta(row))
+                .map(ExecutionPackageMasterRow::code)
+                .toList();
+        assumeThat(incompletos)
+                .as("topology.yml todavia es un borrador: a estos paquetes les falta el NIF de "
+                        + "la empresa o la fecha de fin posterior a la de inicio, asi que el "
+                        + "maestro no se puede cargar")
+                .isEmpty();
+
+        List<String> companies = paquetes.stream()
+                .map(ExecutionPackageMasterRow::companyIdentificationNumber)
+                .distinct()
+                .toList();
         seedCompanies(companies);
 
         // El catalogo va PRIMERO: los perfiles referencian sus codigos, y una LOV que no
@@ -207,16 +228,22 @@ class ProfileMasterImportIT {
         importLovMaster();
     }
 
-    /** Los NIF que declara el maestro, que son los que el importador va a buscar. */
-    private List<String> declaredCompanies() throws IOException {
+    /** Los paquetes cargables que declara el maestro. */
+    private List<ExecutionPackageMasterRow> enabledPackages() throws IOException {
         try (InputStream in = Files.newInputStream(PROFILE_MASTER)) {
             return parser.parseAll(in).executionPackages().stream()
                     .filter(ExecutionPackageMasterRow::enabled)
-                    .map(ExecutionPackageMasterRow::companyIdentificationNumber)
-                    .filter(nif -> nif != null && !nif.isBlank())
-                    .distinct()
                     .toList();
         }
+    }
+
+    /** Lo que ExecutionPackageValidator va a exigir, comprobado antes de intentar cargar. */
+    private static boolean esDeclaracionCompleta(ExecutionPackageMasterRow row) {
+        return row.companyIdentificationNumber() != null
+                && !row.companyIdentificationNumber().isBlank()
+                && row.startDate() != null
+                && row.endDate() != null
+                && row.endDate().isAfter(row.startDate());
     }
 
     /**
