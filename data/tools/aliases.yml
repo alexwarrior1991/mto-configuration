@@ -400,6 +400,15 @@ profile_columns:
 # Esto es para lo que ademas cambia de caracteres.
 # --------------------------------------------------------------------------------
 code_canonical:
+  Foundation:
+    'Unique Solution': UNIQUE SOLUTION
+    'Unique solution': UNIQUE SOLUTION
+    'UnIque Solution': UNIQUE SOLUTION
+    'U.S.': UNIQUE SOLUTION
+    'U.SOLUTION': UNIQUE SOLUTION
+    'U. SOLUTION': UNIQUE SOLUTION
+    'T-SING FOUND.': T-SIGN FOUND.
+    'T-SIGN FOUND,': T-SIGN FOUND.
   DisconnectorFunction:
     # Familia FW (feeder wire): cuatro formas de escribir dos codigos.
     FW25: FW-25
@@ -856,8 +865,6 @@ track_accepted:
 code_rejections:
   - NON DEFINED
   - N.D.
-  - UNIQUE SOLUTION
-  - U.S.
   - U.S. N.D.
   - EJECUTADO
   - MANUAL
@@ -916,6 +923,7 @@ type_rules:
 # sueltos). Clave = codigo en MAYUSCULAS.
 type_overrides:
   Foundation:
+    UNIQUE SOLUTION: USX
     T-SIGN FOUND.: CX
     T-SIGN FOUND: CX
     P8R: CX
@@ -931,6 +939,7 @@ type_overrides:
 type_catalog:
   FoundationType:
     CX: Pole foundation Type CX
+    USX: Unique solution - bespoke foundation supplied separately
     CXR_L: Pole foundation Type CX in L
     PLX: Base for pole in viaduct
     WX: Base for pole in Lateral wall

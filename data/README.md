@@ -239,6 +239,18 @@ aparecía mucho más tarde: el importador rechazaba la vía y se quedaba sin car
 trabajo ya a medias. La comparación ignora mayúsculas y espacios sobrantes; `station: null`
 no se comprueba, porque es una respuesta válida.
 
+**`UNIQUE SOLUTION` es un valor de cimentación, no un marcador.** Significa que esa
+cimentación necesita una solución **específica, que viene aparte**, porque ninguna
+convencional sirve. Estuvo en `code_rejections` por una suposición equivocada, y eso dejaba
+468 perfiles sin `foundation`. Las grafías del origen (`Unique Solution`, `U.S.`,
+`U.SOLUTION`, `U. SOLUTION`…) se canonicalizan a `UNIQUE SOLUTION`, y su `FoundationType` es
+**`USX`**, un tipo propio: precisamente por no encajar en ninguna de las seis familias
+estructurales (`CX`, `CXR_L`, `PLX`, `WX`, `WDX`, `WTX`). En la misma pasada se funden dos
+erratas de `T-SIGN FOUND.` (`T-SING FOUND.`, `T-SIGN FOUND,`), 27 filas más.
+
+Siguen en `code_rejections`, a la espera de saber qué significan: `NON DEFINED`, `N.D.` y
+`U.S. N.D.`.
+
 **Todo código de lista de valores tiene que existir HABILITADO en el catálogo.** El
 generador cruza cada columna de código (`SECTIONING`, `ANCHORAGE`, `ANCHORAGE_FOUNDATION`,
 `FOUNDATION`, `POLE_TYPE`, `PORTAL`, `RETURN_SUPPORT`, `SECTIONING_FEEDING`,

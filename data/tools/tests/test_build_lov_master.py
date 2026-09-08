@@ -232,6 +232,16 @@ class MaestroGenerado(unittest.TestCase):
                 for r in sheet.iter_rows(min_row=2, values_only=True)
                 if r and r[0] == "DisconnectorFunction"
             }
+            cls.foundation = {
+                str(r[1]): r[index["ENABLED"]]
+                for r in sheet.iter_rows(min_row=2, values_only=True)
+                if r and r[0] == "Foundation"
+            }
+            cls.foundation_types = {
+                str(r[1]): r[3]
+                for r in wb["TIPOS"].iter_rows(min_row=2, values_only=True)
+                if r and r[0] == "FoundationType"
+            }
             cls.unknown_rows = sum(
                 1 for r in wb["NO_RECONOCIDO"].iter_rows(min_row=2, values_only=True)
                 if r and any(v is not None for v in r))
@@ -269,6 +279,21 @@ class MaestroGenerado(unittest.TestCase):
     def test_las_celdas_con_dos_valores_no_estan_en_el_catalogo(self):
         for code in ("Disc SECT-I", "FS-1 VoltageD", "LoadB/NS FS-1", "LoadB/PP FS-1"):
             self.assertNotIn(code, self.feeding, code)
+
+    def test_unique_solution_es_un_valor_real_y_no_un_marcador(self):
+        """No es un hueco: es la cimentacion que necesita solucion a medida, aparte, porque
+        ninguna convencional sirve. Estuvo en code_rejections por una suposicion mia y eso
+        dejaba 468 perfiles sin cimentacion. Su tipo es USX justamente porque no encaja en
+        ninguna de las seis familias estructurales."""
+        self.assertEqual(self.foundation.get("UNIQUE SOLUTION"), "SI")
+        self.assertEqual(self.foundation_types.get("USX"), "SI")
+        for grafia in ("Unique Solution", "U.S.", "U.SOLUTION", "U. SOLUTION"):
+            self.assertNotIn(grafia, self.foundation, grafia)
+
+    def test_las_erratas_de_t_sign_found_se_funden_con_el_codigo_bueno(self):
+        for errata in ("T-SING FOUND.", "T-SIGN FOUND,"):
+            self.assertNotIn(errata, self.foundation, errata)
+        self.assertEqual(self.foundation.get("T-SIGN FOUND."), "SI")
 
     def test_no_queda_nada_sin_reconocer(self):
         # Si esta hoja trae filas, el catalogo sale incompleto y el generador
