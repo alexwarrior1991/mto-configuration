@@ -269,12 +269,21 @@ class MaestroGenerado(unittest.TestCase):
         self.assertNotIn("LoadB/NZ", self.feeding)
         self.assertNotIn("DISC/NZ", self.feeding)
 
-    def test_los_sufijos_pr_y_pp_siguen_pendientes_de_decidir(self):
-        # No se habilitan hasta saber que significan; quedan a la vista con
-        # ENABLED=NO en lugar de perderse en silencio.
-        for code in ("Disc-pr", "Disc-pp", "Disc/IO-pr", "Disc/PP-pr",
-                     "Disc/SI-pr", "LoadB-pr", "LoadB-pp"):
-            self.assertEqual(self.feeding.get(code), "NO", code)
+    def test_las_variantes_en_portico_estan_habilitadas(self):
+        """'-pr' es el mismo aparato montado en PORTICO, no una errata.
+
+        Lo confirma el propio catalogo: 'LoadB/PP' es «Connections of Load Breaker (without
+        feeder)» y 'LoadB/PP-pr' es «... in OCS portal (without feeder)». Lo unico que
+        cambia es el portico. Sin habilitarlas, 182 perfiles se quedaban sin su aparato.
+        """
+        for code in ("Disc-pr", "Disc/IO-pr", "Disc/PP-pr", "Disc/SI-pr",
+                     "LoadB-pr", "LoadB/IO-pr", "LoadB/PP-pr"):
+            self.assertEqual(self.feeding.get(code), "SI", code)
+
+    def test_el_sufijo_pp_era_una_errata_de_pr(self):
+        # Solo aparecia en 4 filas, las cuatro de EP9A, y en ningun BOQ.
+        for errata in ("Disc-pp", "LoadB-pp"):
+            self.assertNotIn(errata, self.feeding, errata)
 
     def test_las_celdas_con_dos_valores_no_estan_en_el_catalogo(self):
         for code in ("Disc SECT-I", "FS-1 VoltageD", "LoadB/NS FS-1", "LoadB/PP FS-1"):

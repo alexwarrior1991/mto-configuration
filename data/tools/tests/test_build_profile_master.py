@@ -473,7 +473,7 @@ class CodigosDeListaDeValores(unittest.TestCase):
     """
 
     CFG_LOV = dict(CFG, code_canonical={"DisconnectorFunction": {"FW25": "FW-25"}},
-                   lov_catalog={"DisconnectorFunction": {"FW-25"}, "PoleType": {"S1T"}})
+                   lov_catalog={"DisconnectorFunction": {"FW-25": "FW-25"}, "PoleType": {"S1T": "S1T"}})
 
     def resolver(self, field, text, cfg=None):
         master = bpm.Master()
@@ -517,75 +517,89 @@ class CodigosDeListaDeValores(unittest.TestCase):
 
     def test_el_seccionamiento_admite_VARIOS_codigos_en_una_celda(self):
         """Es la unica columna multivalor: un perfil de estacion lleva 'A/S' y 'P50' a la vez."""
-        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S", "P50(CS)"}})
+        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S": "A/S", "P50(CS)": "P50(CS)"}})
         value, unknown = self.resolver("SECTIONING", "A/S P50(CS)", cfg)
         self.assertEqual(value, "A/S P50(CS)")
         self.assertEqual(unknown, {})
 
     def test_solo_parte_si_TODAS_las_partes_son_codigos(self):
         """'A/S Diag' es 'A/S-Diag' con un espacio, no dos valores. Partirla inventaria 'Diag'."""
-        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S", "A/S-Diag"}})
+        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S": "A/S", "A/S-DIAG": "A/S-Diag"}})
         value, unknown = self.resolver("SECTIONING", "A/S Diag", cfg)
         self.assertEqual(value, "A/S Diag")
         self.assertEqual(len(unknown), 1)
 
     def test_la_celda_entera_gana_a_la_particion(self):
         """Si la celda ES un codigo, se respeta aunque lleve espacio."""
-        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S DIAG", "A/S"}})
+        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S DIAG": "A/S DIAG", "A/S": "A/S"}})
         value, unknown = self.resolver("SECTIONING", "A/S DIAG", cfg)
         self.assertEqual(value, "A/S DIAG")
         self.assertEqual(unknown, {})
 
     def test_el_espacio_antes_del_parentesis_no_parte_el_codigo(self):
         """'P50 (CS) S/A' son DOS valores, no tres: la errata no puede romper 'P50(CS)'."""
-        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"P50(CS)", "S/A"}})
+        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"P50(CS)": "P50(CS)", "S/A": "S/A"}})
         value, unknown = self.resolver("SECTIONING", "P50 (CS) S/A", cfg)
         self.assertEqual(value, "P50(CS) S/A")
         self.assertEqual(unknown, {})
 
     def test_el_mismo_seccionamiento_dos_veces_es_uno(self):
-        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"S/A"}})
+        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"S/A": "S/A"}})
         value, _ = self.resolver("SECTIONING", "S/A S/A", cfg)
         self.assertEqual(value, "S/A")
 
     def test_el_anclaje_tambien_admite_varios(self):
         """'FP+AnMC CP+AnMC' es uno CON regulacion de tension y otro SIN ella.
 
-        Los codigos del catalogo van EN MAYUSCULAS: es lo que devuelve load_lov_catalog y
-        contra lo que se compara. Escribirlos aqui como en el origen hace fallar el test
-        sin que falle el generador.
+        El catalogo va {CODIGO_EN_MAYUSCULAS: grafia real}, que es lo que devuelve
+        load_lov_catalog. Se busca por la clave y se escribe LA GRAFIA, no lo que trajera
+        el origen: findByCode distingue mayusculas, asi que 'FP+ANMC' no resolveria.
         """
-        cfg = dict(self.CFG_LOV, lov_catalog={"Anchorage": {"FP+ANMC", "CP+ANMC"}})
+        cfg = dict(self.CFG_LOV,
+                   lov_catalog={"Anchorage": {"FP+ANMC": "FP+AnMC", "CP+ANMC": "CP+AnMC"}})
         value, unknown = self.resolver("ANCHORAGE", "FP+AnMC CP+AnMC", cfg)
         self.assertEqual(value, "FP+AnMC CP+AnMC")
         self.assertEqual(unknown, {})
 
     def test_las_columnas_de_una_sola_LOV_NO_admiten_varios(self):
         """En return_support dos codigos en una celda siguen siendo una anomalia."""
-        cfg = dict(self.CFG_LOV, lov_catalog={"ReturnSupport": {"RW2", "RW2T-C"}})
+        cfg = dict(self.CFG_LOV, lov_catalog={"ReturnSupport": {"RW2": "RW2", "RW2T-C": "RW2T-C"}})
         value, unknown = self.resolver("RETURN_SUPPORT", "RW2 RW2T-C", cfg)
         self.assertEqual(value, "RW2 RW2T-C")
         self.assertEqual(len(unknown), 1)
 
     def test_un_codigo_repetido_en_la_celda_se_colapsa_en_uno(self):
         """'AnM-R AnM-R' no son dos valores: es uno escrito dos veces."""
-        cfg = dict(self.CFG_LOV, lov_catalog={"PoleType": {"S1T"}})
+        cfg = dict(self.CFG_LOV, lov_catalog={"PoleType": {"S1T": "S1T"}})
         value, unknown = self.resolver("POLE_TYPE", "S1T S1T", cfg)
         self.assertEqual(value, "S1T")
         self.assertEqual(unknown, {})
 
     def test_dos_codigos_DISTINTOS_no_se_eligen_solos(self):
         """Quedarse con uno seria decidir por el humano cual de los dos vale."""
-        cfg = dict(self.CFG_LOV, lov_catalog={"PoleType": {"S1T", "S2T"}})
+        cfg = dict(self.CFG_LOV, lov_catalog={"PoleType": {"S1T": "S1T", "S2T": "S2T"}})
         value, unknown = self.resolver("POLE_TYPE", "S1T S2T", cfg)
         self.assertEqual(value, "S1T S2T")
         self.assertEqual(len(unknown), 1)
 
     def test_un_codigo_con_espacio_no_se_parte(self):
         """'T-SIGN FOUND.' lleva espacio y es un codigo entero."""
-        cfg = dict(self.CFG_LOV, lov_catalog={"Foundation": {"T-SIGN FOUND."}})
+        cfg = dict(self.CFG_LOV, lov_catalog={"Foundation": {"T-SIGN FOUND.": "T-SIGN FOUND."}})
         value, unknown = self.resolver("FOUNDATION", "T-SIGN FOUND.", cfg)
         self.assertEqual(value, "T-SIGN FOUND.")
+        self.assertEqual(unknown, {})
+
+    def test_se_escribe_la_grafia_del_catalogo_no_la_del_origen(self):
+        """El importador resuelve con findByCode, que DISTINGUE mayusculas.
+
+        Si el maestro llevara 'DISC/IO-pr' porque asi venia en el workbook, el generador lo
+        daria por bueno —compara sin distinguir— y el importador rechazaria la fila. Los dos
+        candados tienen que decir lo mismo.
+        """
+        cfg = dict(self.CFG_LOV,
+                   lov_catalog={"DisconnectorFunction": {"DISC/IO-PR": "Disc/IO-pr"}})
+        value, unknown = self.resolver("SECTIONING_FEEDING", "DISC/IO-pr", cfg)
+        self.assertEqual(value, "Disc/IO-pr")
         self.assertEqual(unknown, {})
 
     def test_un_marcador_de_no_definido_sale_como_hueco_y_no_como_codigo(self):
@@ -605,7 +619,7 @@ class CodigosDeListaDeValores(unittest.TestCase):
     def test_la_canonicalizacion_se_aplica_al_leer_la_hoja(self):
         """El fallo real era este: la tabla existia y solo la aplicaba el generador de LOV."""
         cfg = dict(CFG, code_canonical={"PoleType": {"S1T-VIEJO": "S1T"}},
-                   lov_catalog={"PoleType": {"S1T"}})
+                   lov_catalog={"PoleType": {"S1T": "S1T"}})
         sheet = FakeSheet("HR Track 1", [
             pad(["Hoja"]),
             pad(HEADER),

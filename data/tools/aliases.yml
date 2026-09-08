@@ -423,6 +423,9 @@ code_canonical:
     'T-SING FOUND.': T-SIGN FOUND.
     'T-SIGN FOUND,': T-SIGN FOUND.
   DisconnectorFunction:
+    # '-pp' es una errata de '-pr'. Solo 4 filas, las cuatro en EP9A.
+    'Disc-pp': Disc-pr
+    'LoadB-pp': LoadB-pr
     # Familia FW (feeder wire): cuatro formas de escribir dos codigos.
     FW25: FW-25
     FW+25: FW-25
@@ -529,6 +532,11 @@ track_accepted:
     - LoadB/ED
     - LoadB/t
     - MW/CW-ISusp
+    - 'Disc-pr'
+    - 'Disc/IO-pr'
+    - 'Disc/PP-pr'
+    - 'Disc/SI-pr'
+    - 'LoadB-pr'
   Foundation:
     - 2C3R-S
     - 2C3RT-S

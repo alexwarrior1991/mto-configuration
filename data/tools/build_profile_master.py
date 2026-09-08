@@ -278,10 +278,16 @@ def cell(row, index):
 
 
 def load_lov_catalog(path):
-    """Codigos HABILITADOS de lov-master.xlsx, por entidad y en mayusculas.
+    """Codigos HABILITADOS de lov-master.xlsx: {entidad: {CODIGO_EN_MAYUSCULAS: grafia}}.
 
     Solo los habilitados: un codigo con ENABLED=NO no llega a la base de datos, asi que
     referenciarlo desde un perfil es exactamente igual de roto que inventarselo.
+
+    Se guarda la GRAFIA EXACTA del catalogo, no solo la clave en mayusculas, porque el
+    importador resuelve con LovRepository.findByCode, que es una consulta derivada y por
+    tanto SENSIBLE A MAYUSCULAS. Comparar aqui sin distinguirlas y escribir luego la
+    grafia del origen dejaria pasar 'DISC/IO-pr' cuando el catalogo dice 'Disc/IO-pr': el
+    generador daria el maestro por bueno y el importador rechazaria la fila.
     """
     workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
     try:
@@ -291,13 +297,14 @@ def load_lov_catalog(path):
         i_entity = header.index("ENTIDAD")
         i_code = header.index("CODIGO")
         i_enabled = header.index("ENABLED")
-        catalog = collections.defaultdict(set)
+        catalog = collections.defaultdict(dict)
         for row in rows:
             if not row or row[i_code] is None:
                 continue
             if squash(row[i_enabled]).upper() != "SI":
                 continue
-            catalog[squash(row[i_entity])].add(squash(row[i_code]).upper())
+            code = squash(row[i_code])
+            catalog[squash(row[i_entity])][code.upper()] = code
         return dict(catalog)
     finally:
         workbook.close()
@@ -327,15 +334,17 @@ def resolve_lov(field, text, cfg, ep, sheet, row, master: Master):
     if field in LOV_MULTIVALUE and " " in text.strip():
         catalog = cfg.get("lov_catalog")
         entero = canonical_code(entity, text, cfg)
-        if catalog is None or entero.upper() in catalog.get(entity, set()):
+        if catalog is None or entero.upper() in catalog.get(entity, {}):
             return resolve_lov_single(field, text, cfg, ep, sheet, row, master)
 
         partes = [canonical_code(entity, part, cfg) for part in text.split()]
-        if all(part.upper() in catalog.get(entity, set()) for part in partes):
+        conocidos = catalog.get(entity, {})
+        if all(part.upper() in conocidos for part in partes):
             vistos = []
             for part in partes:                      # 'S/A S/A' es uno, no dos
-                if part.upper() not in {v.upper() for v in vistos}:
-                    vistos.append(part)
+                exacto = conocidos[part.upper()]     # la grafia del catalogo, no la del origen
+                if exacto.upper() not in {v.upper() for v in vistos}:
+                    vistos.append(exacto)
             return " ".join(vistos)
 
     return resolve_lov_single(field, text, cfg, ep, sheet, row, master)
@@ -380,8 +389,10 @@ def resolve_lov_single(field, text, cfg, ep, sheet, row, master: Master):
             break
 
     catalog = cfg.get("lov_catalog")
-    if catalog is None or upper in catalog.get(entity, set()):
+    if catalog is None:
         return text
+    if upper in catalog.get(entity, {}):
+        return catalog[entity][upper]        # la grafia del catalogo: findByCode distingue
 
     # 'AnM-R AnM-R', 'AnRW/Tunnel AnRW/Tunnel': no son dos valores, es uno escrito dos
     # veces. Se colapsa solo cuando TODAS las partes son identicas, asi que no puede
@@ -390,10 +401,10 @@ def resolve_lov_single(field, text, cfg, ep, sheet, row, master: Master):
     parts = text.split()
     if len(parts) > 1 and len({p.upper() for p in parts}) == 1:
         single = parts[0]
-        if single.upper() in catalog.get(entity, set()):
+        if single.upper() in catalog.get(entity, {}):
             master.discard(motivo=f"{entity}: codigo repetido en la celda", ep=ep,
                            hoja=sheet, fila=row, detalle=text)
-            return single
+            return catalog[entity][single.upper()]
 
     master.unrecognised(f"codigo sin {entity} habilitado", text, ep, sheet, row)
     return text

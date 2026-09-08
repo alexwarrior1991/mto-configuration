@@ -282,6 +282,19 @@ al habilitar en bloque los `ENABLED=NO` se legitimaron 123 de ellos. Ahora se de
 regla no es «tiene un espacio» (`T-SIGN FOUND.`, `UNIQUE SOLUTION` y `M3 Ø36` son legítimos),
 sino que **todas** sus partes sean a su vez códigos de la misma entidad.
 
+**El sufijo `-pr` es «montado en pórtico».** `Disc/IO-pr` es el mismo disconnector que
+`Disc/IO`, pero sobre un pórtico en vez de sobre un poste. Lo confirma el propio catálogo:
+`LoadB/PP` es *«Connections of Load Breaker (without feeder)»* y `LoadB/PP-pr` es
+*«… in OCS portal (without feeder)»*. Las siete variantes están habilitadas y suman 182
+perfiles. **`-pp` era una errata de `-pr`** —4 filas, todas de EP9A— y se canonicaliza.
+
+**El maestro escribe la grafía del CATÁLOGO, no la del origen.** El importador resuelve con
+`LovRepository.findByCode`, una consulta derivada y por tanto **sensible a mayúsculas**: si
+el workbook trae `DISC/IO-pr` y el catálogo dice `Disc/IO-pr`, escribir lo del workbook
+haría que el generador diera el maestro por bueno y el importador rechazara la fila. Los dos
+candados tienen que decir lo mismo, así que el cruce busca sin distinguir mayúsculas pero
+**escribe lo que dice el catálogo**.
+
 **Todo código de lista de valores tiene que existir HABILITADO en el catálogo.** El
 generador cruza cada columna de código (`SECTIONING`, `ANCHORAGE`, `ANCHORAGE_FOUNDATION`,
 `FOUNDATION`, `POLE_TYPE`, `PORTAL`, `RETURN_SUPPORT`, `SECTIONING_FEEDING`,
