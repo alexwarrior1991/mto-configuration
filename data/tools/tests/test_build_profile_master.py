@@ -515,6 +515,27 @@ class CodigosDeListaDeValores(unittest.TestCase):
         self.assertEqual(value, "FW-25")
         self.assertEqual(unknown, {})
 
+    def test_un_codigo_repetido_en_la_celda_se_colapsa_en_uno(self):
+        """'AnM-R AnM-R' no son dos valores: es uno escrito dos veces."""
+        cfg = dict(self.CFG_LOV, lov_catalog={"PoleType": {"S1T"}})
+        value, unknown = self.resolver("POLE_TYPE", "S1T S1T", cfg)
+        self.assertEqual(value, "S1T")
+        self.assertEqual(unknown, {})
+
+    def test_dos_codigos_DISTINTOS_no_se_eligen_solos(self):
+        """Quedarse con uno seria decidir por el humano cual de los dos vale."""
+        cfg = dict(self.CFG_LOV, lov_catalog={"PoleType": {"S1T", "S2T"}})
+        value, unknown = self.resolver("POLE_TYPE", "S1T S2T", cfg)
+        self.assertEqual(value, "S1T S2T")
+        self.assertEqual(len(unknown), 1)
+
+    def test_un_codigo_con_espacio_no_se_parte(self):
+        """'T-SIGN FOUND.' lleva espacio y es un codigo entero."""
+        cfg = dict(self.CFG_LOV, lov_catalog={"Foundation": {"T-SIGN FOUND."}})
+        value, unknown = self.resolver("FOUNDATION", "T-SIGN FOUND.", cfg)
+        self.assertEqual(value, "T-SIGN FOUND.")
+        self.assertEqual(unknown, {})
+
     def test_un_marcador_de_no_definido_sale_como_hueco_y_no_como_codigo(self):
         """'NON DEFINED' no es un codigo que falte por declarar: es la forma de escribir
         que ahi no hay dato. Sacarlo en NO_RECONOCIDO diria lo contrario de lo que pasa."""

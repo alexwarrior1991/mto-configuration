@@ -327,8 +327,22 @@ def resolve_lov(field, text, cfg, ep, sheet, row, master: Master):
             break
 
     catalog = cfg.get("lov_catalog")
-    if catalog is not None and upper not in catalog.get(entity, set()):
-        master.unrecognised(f"codigo sin {entity} habilitado", text, ep, sheet, row)
+    if catalog is None or upper in catalog.get(entity, set()):
+        return text
+
+    # 'AnM-R AnM-R', 'AnRW/Tunnel AnRW/Tunnel': no son dos valores, es uno escrito dos
+    # veces. Se colapsa solo cuando TODAS las partes son identicas, asi que no puede
+    # elegir por su cuenta entre dos codigos distintos —eso si es una decision humana— ni
+    # romper un codigo que lleve espacio, como 'T-SIGN FOUND.'.
+    parts = text.split()
+    if len(parts) > 1 and len({p.upper() for p in parts}) == 1:
+        single = parts[0]
+        if single.upper() in catalog.get(entity, set()):
+            master.discard(motivo=f"{entity}: codigo repetido en la celda", ep=ep,
+                           hoja=sheet, fila=row, detalle=text)
+            return single
+
+    master.unrecognised(f"codigo sin {entity} habilitado", text, ep, sheet, row)
     return text
 
 
