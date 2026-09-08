@@ -152,7 +152,9 @@ class FlywayMigrationIT {
     }
 
     /**
-     * V11 anade a profile los cuatro campos tecnicos y la clave ajena de sectioning_feeding.
+     * V11 anade a profile los cuatro campos tecnicos. La quinta columna que traia,
+     * {@code sectioning_feeding_id}, ya no esta aqui: V16 la convirtio en tabla de union y por eso
+     * este test no la busca (lo hace {@link #elAparatoDeSeccionamientoEsAhoraUnaTablaDeUnion()}).
      *
      * <p>El tipo si lo mira {@code ddl-auto: validate}, pero <b>la gemela de auditoria no</b>:
      * Envers no participa en esa validacion, asi que si {@code profile_aud} se quedara sin estas
@@ -162,7 +164,7 @@ class FlywayMigrationIT {
     @Test
     void elPerfilYSuGemelaDeAuditoriaTienenLosCamposTecnicos() {
         List<String> esperadas = List.of("span", "height_cantilever_support", "pole_gauge_location",
-                "rail_pole_distance", "sectioning_feeding_id");
+                "rail_pole_distance");
 
         for (String tabla : List.of("profile", "profile_aud")) {
             List<String> columnas = jdbc().queryForList(
@@ -178,6 +180,10 @@ class FlywayMigrationIT {
      * {@code sectioningFeeding} reutiliza el catalogo DisconnectorFunction en lugar de tener una
      * LOV propia. Sin la clave ajena, un codigo inexistente se guardaria como un id huerfano y el
      * evento de datos maestros saldria con una referencia rota.
+     *
+     * <p>Desde V16 la clave ajena vive en la tabla de union, no en {@code profile}: la relacion es
+     * N:M porque el origen trae celdas con dos aparatos (un disconnector <b>mas</b> un aislador de
+     * seccion, por ejemplo). Lo que se protege es lo mismo; solo ha cambiado donde esta.
      */
     @Test
     void laAlimentacionDelPerfilApuntaAlCatalogoDeFuncionesDeSeccionador() {
@@ -189,7 +195,7 @@ class FlywayMigrationIT {
                   on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
                 join information_schema.constraint_column_usage ccu
                   on ccu.constraint_name = tc.constraint_name and ccu.table_schema = tc.table_schema
-                where tc.table_schema = ? and tc.table_name = 'profile'
+                where tc.table_schema = ? and tc.table_name = 'profile_sectioning_feeding'
                   and tc.constraint_type = 'FOREIGN KEY'
                   and kcu.column_name = 'sectioning_feeding_id'
                 """, String.class, SCHEMA);
