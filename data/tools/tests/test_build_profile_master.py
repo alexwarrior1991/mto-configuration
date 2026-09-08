@@ -515,6 +515,15 @@ class CodigosDeListaDeValores(unittest.TestCase):
         self.assertEqual(value, "FW-25")
         self.assertEqual(unknown, {})
 
+    def test_un_marcador_de_no_definido_sale_como_hueco_y_no_como_codigo(self):
+        """'NON DEFINED' no es un codigo que falte por declarar: es la forma de escribir
+        que ahi no hay dato. Sacarlo en NO_RECONOCIDO diria lo contrario de lo que pasa."""
+        cfg = dict(self.CFG_LOV, code_rejections=["NON DEFINED", "N.D."])
+        for marcador in ("NON DEFINED", "non defined", "N.D."):
+            value, unknown = self.resolver("FOUNDATION", marcador, cfg)
+            self.assertEqual(value, "", marcador)
+            self.assertEqual(unknown, {}, marcador)
+
     def test_una_columna_que_no_es_lov_no_se_toca(self):
         value, unknown = self.resolver("KP", "12+345")
         self.assertEqual(value, "12+345")

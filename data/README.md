@@ -248,8 +248,19 @@ convencional sirve. Estuvo en `code_rejections` por una suposición equivocada, 
 estructurales (`CX`, `CXR_L`, `PLX`, `WX`, `WDX`, `WTX`). En la misma pasada se funden dos
 erratas de `T-SIGN FOUND.` (`T-SING FOUND.`, `T-SIGN FOUND,`), 27 filas más.
 
-Siguen en `code_rejections`, a la espera de saber qué significan: `NON DEFINED`, `N.D.` y
-`U.S. N.D.`.
+`UNIQUE SOLUTION` vale igual en las tres columnas donde aparece: `FOUNDATION` (tipo `USX`),
+`ANCHORAGE_FOUNDATION` (tipo `AnUS`, porque el anclaje también puede necesitar solución a
+medida) y `POLE_TYPE`, que no lleva tipo.
+
+**La familia `M<n> Ø<d>`** (`M3 Ø36`, `M5 Ø42`…) son cimentaciones de poste con pernos
+métricos. Tipo propio **`MX`**, por la misma razón que `USX`: ninguna de las familias
+estructurales describe un anclaje así. Ocho códigos, ~150 filas.
+
+**`NON DEFINED`, `N.D.` y `U.S. N.D.` no son códigos: son «aquí no hay dato».** Siguen fuera
+del catálogo, y además el generador de perfiles los convierte en **hueco**. Antes salían en
+`NO_RECONOCIDO` como si faltara una lista de valores por declarar, que es justo lo
+contrario de lo que pasa. La lista es la misma, `code_rejections`, y ahora la usan los dos
+generadores con el mismo significado: esto no es un código.
 
 **Todo código de lista de valores tiene que existir HABILITADO en el catálogo.** El
 generador cruza cada columna de código (`SECTIONING`, `ANCHORAGE`, `ANCHORAGE_FOUNDATION`,

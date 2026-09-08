@@ -309,6 +309,13 @@ def resolve_lov(field, text, cfg, ep, sheet, row, master: Master):
     if entity is None:
         return text
 
+    # 'NON DEFINED', 'N.D.', 'U.S. N.D.', 'PENDIENTE'... no son codigos: son la forma de
+    # escribir "aqui no hay dato". La misma lista que impide que entren en el catalogo
+    # (code_rejections) los convierte aqui en el hueco que son. Dejarlos pasar los sacaria
+    # en NO_RECONOCIDO como si faltara una LOV por declarar, que es justo lo contrario.
+    if any(squash(marker).upper() == text.upper() for marker in cfg.get("code_rejections", [])):
+        return ""
+
     # La misma tabla que usa build_lov_master.py: si alli 'FW25' es 'FW-25', aqui tambien.
     # Tenerla en un solo sitio y aplicarla en uno solo era el fallo: el catalogo quedaba
     # canonicalizado y las referencias de los perfiles no.

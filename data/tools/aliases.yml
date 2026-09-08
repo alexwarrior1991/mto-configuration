@@ -400,6 +400,10 @@ profile_columns:
 # Esto es para lo que ademas cambia de caracteres.
 # --------------------------------------------------------------------------------
 code_canonical:
+  AnchorageFoundation:
+    'U.S.': UNIQUE SOLUTION
+    'Unique Solution': UNIQUE SOLUTION
+    'U.SOLUTION': UNIQUE SOLUTION
   Foundation:
     'Unique Solution': UNIQUE SOLUTION
     'Unique solution': UNIQUE SOLUTION
@@ -485,6 +489,7 @@ track_accepted:
     - AnMP-RT
     - AnRW-R
     - AnRW-RT
+    - 'UNIQUE SOLUTION'
   CantileverType:
     - 48-1-
     - EMT-1-RH
@@ -550,6 +555,14 @@ track_accepted:
     - PLATE TYPE 3
     - WALL
     - WL3
+    - 'M3 Ø36'
+    - 'M3 Ø42'
+    - 'M5 Ø36'
+    - 'M5 Ø42'
+    - 'M6 Ø36'
+    - 'M6 Ø42'
+    - 'M7 Ø36'
+    - 'M8 Ø36'
   PoleType:
     - 2HBE-240
     - 2HEB-240LL
@@ -612,6 +625,7 @@ track_accepted:
     - SUPL-5
     - SUPL-5 + S-1T-W
     - T-SING
+    - 'UNIQUE SOLUTION'
   Portal:
     - 2PR1E
     - SPR1
@@ -901,6 +915,9 @@ code_reassignment:
 # --------------------------------------------------------------------------------
 type_rules:
   Foundation:
+    # M3 Ø36, M5 Ø42... : cimentacion de poste con pernos metricos. Familia propia:
+    # ninguna de las estructurales (CX, WX, WTX, WDX, PLX) describe un anclaje asi.
+    - {regex: "^M[0-9]+ *\u00d8", type: MX}
     - {suffix: "_L", type: CXR_L}
     - {prefix: ["WT", "2WT"], type: WTX}
     - {prefix: ["WD", "2WD"], type: WDX}
@@ -931,6 +948,7 @@ type_overrides:
     P9R: CX
     P9RT: CX
   AnchorageFoundation:
+    UNIQUE SOLUTION: AnUS
     PL*: AnM
     WT3: AnM
 
@@ -940,6 +958,7 @@ type_catalog:
   FoundationType:
     CX: Pole foundation Type CX
     USX: Unique solution - bespoke foundation supplied separately
+    MX: Pole foundation with metric anchor bolts
     CXR_L: Pole foundation Type CX in L
     PLX: Base for pole in viaduct
     WX: Base for pole in Lateral wall
@@ -953,6 +972,7 @@ type_catalog:
     GANTRY: Gantry
   AnchorageFoundationType:
     AnMC: Messenger and contact wire anchorage foundation
+    AnUS: Unique solution - bespoke anchorage foundation supplied separately
     AnM: Return, Feeder and Midpoint anchorage foundation
 
 # Entidades que llevan columna drawing_number en la entidad JPA.
