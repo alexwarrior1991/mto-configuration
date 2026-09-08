@@ -87,7 +87,7 @@ PROFILE_LOV_FIELDS = ("SECTIONING", "ANCHORAGE", "ANCHORAGE_FOUNDATION", "FOUNDA
 # dos, corriente en estaciones) y varios anclajes ('FP+AnMC CP+AnMC' es uno con regulacion
 # de tension y otro sin ella). En las demas, dos codigos en una celda es una anomalia y por
 # eso alli sigue saliendo a NO_RECONOCIDO.
-LOV_MULTIVALUE = {"SECTIONING", "ANCHORAGE"}
+LOV_MULTIVALUE = {"SECTIONING", "ANCHORAGE", "SECTIONING_FEEDING"}
 
 LOV_ENTITY = {
     "SECTIONING": "Sectioning",

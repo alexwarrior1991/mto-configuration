@@ -147,8 +147,8 @@ class MasterDataPayloadContractIT {
         // sectioningFeeding entra en el grafo como una LOV mas del perfil: si se cayera de
         // findByIdForMessaging, leer su codigo aqui reventaria con la entidad ya desatachada.
         assertThat(payload).containsKeys("span", "heightCantileverSupport", "poleGaugeLocation",
-                "railPoleDistance", "sectioningFeeding");
-        assertThat(asMap(payload, "sectioningFeeding")).containsEntry("code", "ALI1");
+                "railPoleDistance", "sectioningFeedings");
+        assertThat(asList(payload, "sectioningFeedings")).hasSize(1);
     }
 
     @Test
@@ -366,7 +366,8 @@ class MasterDataPayloadContractIT {
             profile.setReturnSupport(lov(new ReturnSupport(), "RET" + profileId.charAt(4)));
             profile.setSectionings(new java.util.LinkedHashSet<>(java.util.List.of(
                     lov(new Sectioning(), "SEC" + profileId.charAt(4)))));
-            profile.setSectioningFeeding(lov(new DisconnectorFunction(), "ALI" + profileId.charAt(4)));
+            profile.setSectioningFeedings(new java.util.LinkedHashSet<>(java.util.List.of(
+                    lov(new DisconnectorFunction(), "ALI" + profileId.charAt(4)))));
             track.addProfile(profile);
             return profile;
         }

@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16");
     }
 
     /**
@@ -500,6 +500,15 @@ class FlywayMigrationIT {
         assertThat(existeTabla("profile_anchorage_aud")).isTrue();
         assertThat(existeColumna("profile", "anchorage_id")).isFalse();
         assertThat(existeColumna("profile_aud", "anchorage_id")).isFalse();
+    }
+
+    /** V16: tercera y ultima N:M del perfil. */
+    @Test
+    void elAparatoDeSeccionamientoEsAhoraUnaTablaDeUnion() {
+        assertThat(existeTabla("profile_sectioning_feeding")).isTrue();
+        assertThat(existeTabla("profile_sectioning_feeding_aud")).isTrue();
+        assertThat(existeColumna("profile", "sectioning_feeding_id")).isFalse();
+        assertThat(existeColumna("profile_aud", "sectioning_feeding_id")).isFalse();
     }
 
     private boolean existeTabla(String tabla) {

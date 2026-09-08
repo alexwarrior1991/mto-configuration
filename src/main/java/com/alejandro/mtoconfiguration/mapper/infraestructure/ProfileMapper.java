@@ -13,6 +13,8 @@ import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import com.alejandro.mtoconfiguration.entity.lov.Anchorage;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
+import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -59,7 +61,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
     @Mapping(target = "sectionings", ignore = true)
-    @Mapping(target = "sectioningFeeding", ignore = true)
+    @Mapping(target = "sectioningFeedings", ignore = true)
     public abstract ProfileDTO toDTO(Profile entity);
 
     @Override
@@ -73,7 +75,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
     @Mapping(target = "sectionings", ignore = true)
-    @Mapping(target = "sectioningFeeding", ignore = true)
+    @Mapping(target = "sectioningFeedings", ignore = true)
     @ToEntityIgnoreAudit
     public abstract Profile toEntity(ProfileDTO dto);
 
@@ -88,7 +90,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
     @Mapping(target = "sectionings", ignore = true)
-    @Mapping(target = "sectioningFeeding", ignore = true)
+    @Mapping(target = "sectioningFeedings", ignore = true)
     @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(ProfileDTO dto, @MappingTarget Profile entity);
 
@@ -143,8 +145,19 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
             }
             entity.setSectionings(resolved);
         }
-        if (dto.getSectioningFeeding() != null) {
-            entity.setSectioningFeeding(masterDataService.getDisconnectorFunctionByCode(dto.getSectioningFeeding().getCode()));
+        if (dto.getSectioningFeedings() != null) {
+            Set<DisconnectorFunction> resolved = new LinkedHashSet<>();
+            for (DisconnectorFunctionDTO each : dto.getSectioningFeedings()) {
+                if (each == null || each.getCode() == null) {
+                    continue;
+                }
+                DisconnectorFunction function =
+                        masterDataService.getDisconnectorFunctionByCode(each.getCode());
+                if (function != null) {
+                    resolved.add(function);
+                }
+            }
+            entity.setSectioningFeedings(resolved);
         }
 
         // 2. Reconciliación de la colección de Cantilevers.
@@ -203,8 +216,11 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
                     .filter(Objects::nonNull)
                     .toList());
         }
-        if (entity.getSectioningFeeding() != null) {
-            dto.setSectioningFeeding(masterDataService.getDisconnectorFunctionByIdAndMapToDTO(entity.getSectioningFeeding().getId()));
+        if (entity.getSectioningFeedings() != null) {
+            dto.setSectioningFeedings(entity.getSectioningFeedings().stream()
+                    .map(each -> masterDataService.getDisconnectorFunctionByIdAndMapToDTO(each.getId()))
+                    .filter(Objects::nonNull)
+                    .toList());
         }
     }
 }

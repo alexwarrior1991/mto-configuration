@@ -235,7 +235,7 @@ public class InfrastructureUpsertService {
         dto.setPoleType(lov(lov.poleType(), PoleTypeDTO::new));
         dto.setPortal(lov(lov.portal(), PortalDTO::new));
         dto.setReturnSupport(lov(lov.returnSupport(), ReturnSupportDTO::new));
-        dto.setSectioningFeeding(lov(lov.sectioningFeeding(), DisconnectorFunctionDTO::new));
+        dto.setSectioningFeedings(lovList(lov.sectioningFeeding(), DisconnectorFunctionDTO::new));
     }
 
     /**
@@ -306,8 +306,12 @@ public class InfrastructureUpsertService {
         check(unresolved, "poleType", lov.poleType(), masterDataService::getPoleTypeByCode);
         check(unresolved, "portal", lov.portal(), masterDataService::getPortalByCode);
         check(unresolved, "returnSupport", lov.returnSupport(), masterDataService::getReturnSupportByCode);
-        check(unresolved, "sectioningFeeding", lov.sectioningFeeding(),
-                masterDataService::getDisconnectorFunctionByCode);
+        if (!StringUtils.isBlank(lov.sectioningFeeding())) {
+            for (String code : lov.sectioningFeeding().trim().split("\s+")) {
+                check(unresolved, "sectioningFeeding", code,
+                        masterDataService::getDisconnectorFunctionByCode);
+            }
+        }
 
         for (CantileverMasterRow cantilever : cantilevers) {
             String slot = "cantilever[" + cantilever.slot() + "].";

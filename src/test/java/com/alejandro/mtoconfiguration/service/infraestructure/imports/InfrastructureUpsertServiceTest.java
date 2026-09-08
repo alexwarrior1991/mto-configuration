@@ -26,6 +26,8 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDT
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import com.alejandro.mtoconfiguration.entity.lov.Anchorage;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
+import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -405,6 +407,31 @@ class InfrastructureUpsertServiceTest {
                     .hasMessageContaining("NO-EXISTE");
 
             verify(profileService, never()).create(any());
+        }
+
+        @Test
+        @DisplayName("una celda con dos aparatos de seccionamiento se parte en dos")
+        void dosAparatosDeSeccionamiento() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(masterDataService.getDisconnectorFunctionByCode("Disc"))
+                    .thenReturn(new DisconnectorFunction());
+            when(masterDataService.getDisconnectorFunctionByCode("SECT-I"))
+                    .thenReturn(new DisconnectorFunction());
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+                    .thenReturn(Optional.empty());
+            when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            ProfileMasterRow row = new ProfileMasterRow("EP14A", "TRACK 138", "154-138.13",
+                    "1+000", "DEFINITIVE",
+                    new ProfileLovCodes("", "", "", "", "", "", "", "Disc SECT-I"),
+                    null, null, null, null, true, 17);
+            service.upsertProfile(row, 1L, List.of(), false);
+
+            ArgumentCaptor<ProfileDTO> captor = ArgumentCaptor.forClass(ProfileDTO.class);
+            verify(profileService).create(captor.capture());
+            assertThat(captor.getValue().getSectioningFeedings())
+                    .extracting(DisconnectorFunctionDTO::getCode)
+                    .containsExactly("Disc", "SECT-I");
         }
 
         private ProfileMasterRow conSeccionamiento(String codes) {

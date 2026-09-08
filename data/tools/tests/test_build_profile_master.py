@@ -561,6 +561,14 @@ class CodigosDeListaDeValores(unittest.TestCase):
         self.assertEqual(value, "FP+AnMC CP+AnMC")
         self.assertEqual(unknown, {})
 
+    def test_el_aparato_de_seccionamiento_tambien_admite_varios(self):
+        """'Disc SECT-I' es un disconnector MAS un aislador de seccion."""
+        cfg = dict(self.CFG_LOV,
+                   lov_catalog={"DisconnectorFunction": {"DISC": "Disc", "SECT-I": "SECT-I"}})
+        value, unknown = self.resolver("SECTIONING_FEEDING", "Disc SECT-I", cfg)
+        self.assertEqual(value, "Disc SECT-I")
+        self.assertEqual(unknown, {})
+
     def test_las_columnas_de_una_sola_LOV_NO_admiten_varios(self):
         """En return_support dos codigos en una celda siguen siendo una anomalia."""
         cfg = dict(self.CFG_LOV, lov_catalog={"ReturnSupport": {"RW2": "RW2", "RW2T-C": "RW2T-C"}})

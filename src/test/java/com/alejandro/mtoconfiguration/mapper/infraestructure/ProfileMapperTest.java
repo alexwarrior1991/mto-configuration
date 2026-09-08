@@ -360,8 +360,34 @@ class ProfileMapperTest {
             assertThat(entity.getPoleType()).isNull();
             assertThat(entity.getProfileStatus()).isNull();
             assertThat(entity.getAnchorages()).isEmpty();
-            assertThat(entity.getSectioningFeeding()).isNull();
+            assertThat(entity.getSectioningFeedings()).isEmpty();
             verifyNoInteractions(masterDataService);
+        }
+
+        /**
+         * Tercera y ultima N:M. 'Disc SECT-I' es un disconnector MAS un aislador de seccion:
+         * quedarse con el primero tiraba el segundo sin que nadie se enterara.
+         */
+        @Test
+        @DisplayName("un perfil puede llevar dos aparatos de seccionamiento")
+        void dosAparatosDeSeccionamiento() {
+            DisconnectorFunction disc = new DisconnectorFunction();
+            disc.setId(1L);
+            disc.setCode("Disc");
+            DisconnectorFunction sect = new DisconnectorFunction();
+            sect.setId(2L);
+            sect.setCode("SECT-I");
+            when(masterDataService.getDisconnectorFunctionByCode("Disc")).thenReturn(disc);
+            when(masterDataService.getDisconnectorFunctionByCode("SECT-I")).thenReturn(sect);
+
+            DisconnectorFunctionDTO discDto = new DisconnectorFunctionDTO();
+            discDto.setCode("Disc");
+            DisconnectorFunctionDTO sectDto = new DisconnectorFunctionDTO();
+            sectDto.setCode("SECT-I");
+            ProfileDTO dto = dto();
+            dto.setSectioningFeedings(List.of(discDto, sectDto));
+
+            assertThat(mapper.toEntity(dto).getSectioningFeedings()).containsExactly(disc, sect);
         }
 
         @Test
@@ -375,9 +401,9 @@ class ProfileMapperTest {
             ProfileDTO dto = dto();
             DisconnectorFunctionDTO feedingDto = new DisconnectorFunctionDTO();
             feedingDto.setCode("Disc/IO");
-            dto.setSectioningFeeding(feedingDto);
+            dto.setSectioningFeedings(List.of(feedingDto));
 
-            assertThat(mapper.toEntity(dto).getSectioningFeeding()).isSameAs(feeding);
+            assertThat(mapper.toEntity(dto).getSectioningFeedings()).containsExactly(feeding);
         }
 
         @Test
@@ -395,9 +421,9 @@ class ProfileMapperTest {
 
             Profile entity = new Profile();
             entity.setProfileId("P-001");
-            entity.setSectioningFeeding(feeding);
+            entity.setSectioningFeedings(new LinkedHashSet<>(List.of(feeding)));
 
-            assertThat(mapper.toDTO(entity).getSectioningFeeding()).isSameAs(oficial);
+            assertThat(mapper.toDTO(entity).getSectioningFeedings()).containsExactly(oficial);
         }
 
         @Test

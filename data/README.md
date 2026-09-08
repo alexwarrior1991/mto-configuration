@@ -262,10 +262,10 @@ del catálogo, y además el generador de perfiles los convierte en **hueco**. An
 contrario de lo que pasa. La lista es la misma, `code_rejections`, y ahora la usan los dos
 generadores con el mismo significado: esto no es un código.
 
-**`SECTIONING` y `ANCHORAGE` son las columnas multivalor.** Un perfil puede llevar varios
+**`SECTIONING`, `ANCHORAGE` y `SECTIONING_FEEDING` son las columnas multivalor.** Un perfil puede llevar varios
 seccionamientos a la vez —`A/S P50(CS)` son dos, corriente en estaciones— y varios anclajes
-—`FP+AnMC CP+AnMC` es uno con regulación de tensión y otro sin ella—. El modelo es N:M en
-las dos desde `V14` y `V15`. El generador **primero prueba la celda entera** como código y solo la parte si
+—`FP+AnMC CP+AnMC` es uno con regulación de tensión y otro sin ella—. Y varios aparatos de seccionamiento —`Disc SECT-I` es un disconnector más un aislador de
+sección—. El modelo es N:M en las tres desde `V14`, `V15` y `V16`. El generador **primero prueba la celda entera** como código y solo la parte si
 **todas** sus partes son códigos válidos; si no, la deja intacta y la saca en
 `NO_RECONOCIDO`. Sin esa condición, `A/S Diag` —que es `A/S-Diag` escrito con espacio— se
 convertiría en `A/S` más un `Diag` inventado. En las demás columnas, dos códigos en una celda

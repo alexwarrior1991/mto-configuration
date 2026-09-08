@@ -236,7 +236,7 @@ lo precede por `kp`.
 
 ---
 
-## 4 ter. `sectionings` y `anchorages`: el perfil lleva VARIOS
+## 4 ter. `sectionings`, `anchorages` y `sectioningFeedings`: el perfil lleva VARIOS
 
 Un perfil puede tener más de un seccionamiento a la vez —es corriente en estaciones: un
 perfil puede ser `A/S` y `P50(CS)`—, así que desde `V14` la relación es N:M. Lo mismo pasa con los **anclajes** (`V15`): un perfil puede llevar uno de catenaria **con**
@@ -244,7 +244,11 @@ regulación de tensión y otro **sin** ella (`FP+AnMC CP+AnMC`), o uno de catena
 retorno (`CP+AnMC AnRW`). Que el origen escriba el mismo par en los dos órdenes confirma que
 el orden no significa nada.
 
-Son las **dos únicas** relaciones N:M del perfil: las demás listas de valores llevan una
+Y con los **aparatos de seccionamiento y alimentación** (`V16`): `Disc SECT-I` es un
+disconnector **más** un aislador de sección. Ese campo usa el catálogo
+`DisconnectorFunction`, y su nombre viene del papel que juega, no del catálogo.
+
+Son las **tres únicas** relaciones N:M del perfil: las demás listas de valores llevan una
 sola, y ahí una celda con dos códigos sigue siendo una anomalía que se reporta.
 
 ```jsonc
@@ -254,6 +258,7 @@ sola, y ahí una celda con dos códigos sigue siendo una anomalía que se report
 // ahora
 "sectionings": [ { "code": "A/S" }, { "code": "P50(CS)" } ]
 "anchorages":  [ { "code": "CP+AnMC" }, { "code": "FP+AnMC" } ]
+"sectioningFeedings": [ { "code": "Disc" }, { "code": "SECT-I" } ]
 ```
 
 Como el resto de colecciones de esta API (§4), **mandar la lista reemplaza el conjunto

@@ -44,5 +44,9 @@ public class ProfileDTO extends BaseDTO {
      */
     private List<SectioningDTO> sectionings;
     /** Columna {@code Sectioning Feeding} del origen; usa el catálogo DisconnectorFunction. */
-    private DisconnectorFunctionDTO sectioningFeeding;
+    /**
+     * Aparatos de seccionamiento y alimentacion: <b>varios</b>. 'Disc SECT-I' es un
+     * disconnector mas un aislador de seccion. Usa el catalogo DisconnectorFunction.
+     */
+    private List<DisconnectorFunctionDTO> sectioningFeedings;
 }

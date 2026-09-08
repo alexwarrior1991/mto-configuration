@@ -97,7 +97,7 @@ public class Profile extends CRUDEntity {
     private ProfileStatus profileStatus;
     private ReturnSupport returnSupport;
     private Set<Sectioning> sectionings = new LinkedHashSet<>();
-    private DisconnectorFunction sectioningFeeding;
+    private Set<DisconnectorFunction> sectioningFeedings = new LinkedHashSet<>();
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO, generator = PROFILE_GENERATOR)
@@ -280,11 +280,14 @@ public class Profile extends CRUDEntity {
      * {@code PP-4}— y los 22 ya están en ese catálogo. El campo se llama por su papel; el
      * catálogo no se duplica.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "SECTIONING_FEEDING_ID")
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "PROFILE_SECTIONING_FEEDING",
+            joinColumns = @JoinColumn(name = "PROFILE_ID"),
+            inverseJoinColumns = @JoinColumn(name = "SECTIONING_FEEDING_ID"))
     @Audited(targetAuditMode = NOT_AUDITED)
-    public DisconnectorFunction getSectioningFeeding() {
-        return sectioningFeeding;
+    public Set<DisconnectorFunction> getSectioningFeedings() {
+        return sectioningFeedings;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
