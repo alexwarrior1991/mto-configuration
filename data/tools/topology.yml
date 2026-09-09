@@ -239,7 +239,7 @@ execution_packages:
     length: 0                     # REVISAR: longitud en metros
     start_date: 2018-01-25        # REVISAR
     end_date: 2020-03-31          # REVISAR
-    company_identification_number: ""   # REVISAR: NIF de la empresa
+    company_identification_number: "B10744258"   # REVISAR: NIF de la empresa
     stations:
       - BUMA # REVISAR: estaciones del paquete
     tracks:
@@ -255,6 +255,10 @@ execution_packages:
       - sheet: "HR Track 4"
         name: "TRACK 4"          # REVISAR: derivado de A1
         station: BUMA            # REVISAR
+      - sheet: "HR Track 5"
+        skip: "hoja vacia: solo titulo y cabecera, ni un perfil"
+      - sheet: "HR Track 6"
+        skip: "hoja vacia: solo titulo y cabecera, ni un perfil"
   EP4:
     file: EP4.xlsm
     name: "EP4"                  # REVISAR: nombre real del paquete
@@ -308,7 +312,7 @@ execution_packages:
     length: 41647                     # REVISAR: longitud en metros
     start_date: 2018-01-25        # REVISAR
     end_date: 2022-11-30          # REVISAR
-    company_identification_number: ""   # REVISAR: NIF de la empresa
+    company_identification_number: "B10744258"   # REVISAR: NIF de la empresa
     # Candidatas derivadas de los titulos de la celda A1 de cada hoja.
     # REVISAR: confirma los nombres reales y anade las que falten.
     stations:
@@ -510,6 +514,8 @@ execution_packages:
       - sheet: "HR Track 4 ET-INT (1)"
         name: "TRACK 4 END TRACK WITH INT NORTH"          # REVISAR: derivado de A1
         station: ELI            # REVISAR: A1 no nombra estacion
+      - sheet: "HR Track X AAA"
+        skip: "hoja vacia: solo titulo y cabecera, ni un perfil"
   EP9A:
     file: EP9A.xlsm
     name: "EP9A"                  # REVISAR: nombre real del paquete
