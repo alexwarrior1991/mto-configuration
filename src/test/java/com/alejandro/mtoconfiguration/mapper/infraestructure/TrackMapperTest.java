@@ -1,9 +1,11 @@
 package com.alejandro.mtoconfiguration.mapper.infraestructure;
 
+import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
@@ -205,16 +207,16 @@ class TrackMapperTest {
             Track track = new Track();
             track.setName("VIA 1");
             Profile perfil = profile(1L, "P-001", "10.000");
-            com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever mensula =
-                    new com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever();
+            Cantilever mensula =
+                    new Cantilever();
             mensula.setId(50L);
             mensula.setCwHeight(new BigDecimal("5.500"));
             perfil.setCantilevers(new ArrayList<>(List.of(mensula)));
             track.setProfiles(new ArrayList<>(List.of(perfil)));
 
             ProfileDTO perfilDto = profileDto(1L, "P-001", "10.000");
-            com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO mensulaDto =
-                    new com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO();
+           CantileverDTO mensulaDto =
+                    new CantileverDTO();
             mensulaDto.setId(50L);
             mensulaDto.setCwHeight(new BigDecimal("9.999"));
             perfilDto.setCantilevers(new ArrayList<>(List.of(mensulaDto)));
