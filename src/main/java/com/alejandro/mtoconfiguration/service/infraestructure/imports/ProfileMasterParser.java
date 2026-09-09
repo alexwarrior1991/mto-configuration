@@ -176,7 +176,8 @@ public class ProfileMasterParser {
                     if (ep.isBlank() || track.isBlank() || profileId.isBlank() || slot == null) {
                         return null;
                     }
-                    return new CantileverMasterRow(ep, track, profileId, slot.intValue(),
+                    return new CantileverMasterRow(ep, track, profileId,
+                            whole(row, columns.get("ORDEN")), slot.intValue(),
                             text(row, columns.get("CANTILEVER_TYPE")),
                             decimal(row, columns.get("STAGGER")),
                             decimal(row, columns.get("CATENARY_HEIGHT")),

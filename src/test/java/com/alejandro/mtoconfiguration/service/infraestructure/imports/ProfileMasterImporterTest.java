@@ -236,10 +236,10 @@ class ProfileMasterImporterTest {
     @DisplayName("cada perfil recibe SOLO sus mensulas")
     void mensulasPorPerfil() {
         givenMaster(List.of(ep("EP6")), List.of(), List.of(track("EP6", "TRACK 1", "")),
-                List.of(profile("EP6", "TRACK 1", "A"), profile("EP6", "TRACK 1", "B")),
-                List.of(cantilever("EP6", "TRACK 1", "A", 1),
-                        cantilever("EP6", "TRACK 1", "A", 2),
-                        cantilever("EP6", "TRACK 1", "B", 1)));
+                List.of(profile("EP6", "TRACK 1", "A", 1), profile("EP6", "TRACK 1", "B", 2)),
+                List.of(cantilever("EP6", "TRACK 1", "A", 1, 1),
+                        cantilever("EP6", "TRACK 1", "A", 1, 2),
+                        cantilever("EP6", "TRACK 1", "B", 2, 1)));
 
         importer.importFrom(ANY_FILE, false);
 
@@ -250,6 +250,29 @@ class ProfileMasterImporterTest {
 
         assertThat(captor.getAllValues().get(0)).hasSize(2);
         assertThat(captor.getAllValues().get(1)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("dos perfiles con el MISMO identificador no se reparten mal las mensulas")
+    void mensulasConIdentificadorRepetido() {
+        // Es el caso de una via con dos tramos concatenados: 'A' existe dos veces, con
+        // distinto KP. Agrupando por identificador, cada uno se llevaba las mensulas de los
+        // dos —hasta seis, el doble del maximo que admite un perfil—. Las separa el ORDEN.
+        givenMaster(List.of(ep("EP9A")), List.of(), List.of(track("EP9A", "TRACK 1", "")),
+                List.of(profile("EP9A", "TRACK 1", "A", 1), profile("EP9A", "TRACK 1", "A", 2)),
+                List.of(cantilever("EP9A", "TRACK 1", "A", 1, 1),
+                        cantilever("EP9A", "TRACK 1", "A", 2, 1),
+                        cantilever("EP9A", "TRACK 1", "A", 2, 2)));
+
+        importer.importFrom(ANY_FILE, false);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<CantileverMasterRow>> captor = ArgumentCaptor.forClass(List.class);
+        verify(upsertService, org.mockito.Mockito.times(2))
+                .upsertProfile(any(), anyLong(), captor.capture(), anyBoolean());
+
+        assertThat(captor.getAllValues().get(0)).hasSize(1);
+        assertThat(captor.getAllValues().get(1)).hasSize(2);
     }
 
     @Test
@@ -308,12 +331,26 @@ class ProfileMasterImporterTest {
     }
 
     private static ProfileMasterRow profile(String ep, String track, String profileId) {
-        return new ProfileMasterRow(ep, track, profileId, "83063.410", 1, "DEFINITIVE",
+        return profile(ep, track, profileId, 1);
+    }
+
+    /**
+     * El ORDEN identifica al perfil dentro de la via, y es lo que agrupa sus mensulas. Dos
+     * perfiles de la misma via tienen que llevar ORDEN distinto: el identificador no basta,
+     * porque una via con dos tramos concatenados lo repite a proposito.
+     */
+    private static ProfileMasterRow profile(String ep, String track, String profileId, int orden) {
+        return new ProfileMasterRow(ep, track, profileId, "83063.410", orden, "DEFINITIVE",
                 ProfileLovCodes.empty(), new BigDecimal("52.000"), null, null, null, true, 7);
     }
 
     private static CantileverMasterRow cantilever(String ep, String track, String profileId, int slot) {
-        return new CantileverMasterRow(ep, track, profileId, slot, "EMT-1", null, null, null,
+        return cantilever(ep, track, profileId, 1, slot);
+    }
+
+    private static CantileverMasterRow cantilever(String ep, String track, String profileId,
+                                                  int orden, int slot) {
+        return new CantileverMasterRow(ep, track, profileId, orden, slot, "EMT-1", null, null, null,
                 null, null, null, "PH", 1150L, true, 9);
     }
 }

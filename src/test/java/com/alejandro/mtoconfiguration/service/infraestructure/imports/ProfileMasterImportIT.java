@@ -119,7 +119,9 @@ class ProfileMasterImportIT {
         ProfileImportReport second = importMaster(false);
 
         assertThat(second.getCreated())
-                .as("reimportar el mismo fichero no puede crear nada")
+                .as("reimportar el mismo fichero no puede crear nada.%n"
+                        + "  primera pasada: %s%n"
+                        + "  segunda pasada: %s", desglose(first), desglose(second))
                 .isZero();
         assertThat(profileRepository.count())
                 .as("los perfiles no pueden duplicarse: para eso estan los indices unicos de V12")
@@ -180,6 +182,27 @@ class ProfileMasterImportIT {
     }
 
     /**
+     * Recuento por entidad en una linea, para que un fallo de idempotencia diga QUE se ha
+     * creado y no solo cuanto. Con 11.714 perfiles, "esperaba 0 y fue 831" no permite ni
+     * empezar a mirar; "Profile creados=831" apunta al sitio.
+     */
+    private static String desglose(ProfileImportReport report) {
+        String entidades = report.getByEntity().entrySet().stream()
+                .map(entry -> "%s[+%d ~%d =%d]".formatted(entry.getKey(),
+                        entry.getValue().getCreated(), entry.getValue().getUpdated(),
+                        entry.getValue().getUnchanged()))
+                .collect(Collectors.joining(" "));
+        String errores = report.getErrors().stream()
+                .limit(3)
+                .map(error -> "fila %d %s: %s".formatted(error.row(), error.reference(), error.message()))
+                .collect(Collectors.joining(" | "));
+        return "%s mensulas=%d saltadas=%d fallidas=%d%s".formatted(
+                entidades, report.getCantileversWritten(), report.getSkippedDisabled(),
+                report.getFailed(), errores.isEmpty() ? "" : " -> " + errores);
+    }
+
+    /**
+     * Deja el entorno listo, o salta el test si el maestro todavia es un borrador.    /**
      * Deja el entorno listo, o salta el test si el maestro todavia es un borrador.
      *
      * <p>Los metadatos de los paquetes no estan en los workbooks: los declara una persona en

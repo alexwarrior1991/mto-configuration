@@ -180,7 +180,7 @@ public class ProfileMasterImporter {
         Map<ProfileKey, List<CantileverMasterRow>> cantileversByProfile = content.cantilevers().stream()
                 .filter(CantileverMasterRow::enabled)
                 .collect(Collectors.groupingBy(row -> new ProfileKey(
-                        key(row.executionPackage()), key(row.track()), key(row.profileId()))));
+                        key(row.executionPackage()), key(row.track()), row.orderInTrack())));
 
         for (ProfileMasterRow row : content.profiles()) {
             if (!row.enabled()) {
@@ -195,8 +195,11 @@ public class ProfileMasterImporter {
                 continue;
             }
 
+            // Por ORDEN y no por identificador: una via con dos tramos concatenados repite el
+            // identificador de perfil, asi que agrupar por el juntaria las mensulas de los DOS
+            // y cada perfil se llevaria hasta seis, el doble del maximo que admite.
             List<CantileverMasterRow> cantilevers = cantileversByProfile.getOrDefault(
-                    new ProfileKey(trackKey.executionPackage(), trackKey.name(), key(row.profileId())),
+                    new ProfileKey(trackKey.executionPackage(), trackKey.name(), row.orderInTrack()),
                     List.of());
 
             try {
@@ -279,6 +282,6 @@ public class ProfileMasterImporter {
     private record TrackKey(String executionPackage, String name) {
     }
 
-    private record ProfileKey(String executionPackage, String track, String profileId) {
+    private record ProfileKey(String executionPackage, String track, Integer orderInTrack) {
     }
 }

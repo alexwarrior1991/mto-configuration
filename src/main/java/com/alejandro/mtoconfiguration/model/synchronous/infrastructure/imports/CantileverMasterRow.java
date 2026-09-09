@@ -16,6 +16,7 @@ public record CantileverMasterRow(
         String executionPackage,
         String track,
         String profileId,
+        Integer orderInTrack,
         int slot,
         String cantileverType,
         BigDecimal stagger,

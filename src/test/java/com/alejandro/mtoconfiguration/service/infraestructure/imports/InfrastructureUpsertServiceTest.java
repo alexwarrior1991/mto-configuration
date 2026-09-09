@@ -259,7 +259,7 @@ class InfrastructureUpsertServiceTest {
             when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
             when(masterDataService.getCantileverTypeByCode("H-ARM")).thenReturn(null);
 
-            CantileverMasterRow cantilever = new CantileverMasterRow("EP6", "TRACK 1", "83-1.02",
+            CantileverMasterRow cantilever = new CantileverMasterRow("EP6", "TRACK 1", "83-1.02", 1,
                     2, "H-ARM", null, null, null, null, null, null, "", null, true, 5);
 
             assertThatThrownBy(() -> service.upsertProfile(profile(""), 1L, List.of(cantilever), false))
@@ -278,7 +278,7 @@ class InfrastructureUpsertServiceTest {
                     .thenReturn(Optional.empty());
             when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
 
-            CantileverMasterRow cantilever = new CantileverMasterRow("EP6", "TRACK 1", "83-1.02",
+            CantileverMasterRow cantilever = new CantileverMasterRow("EP6", "TRACK 1", "83-1.02", 1,
                     1, "EMT-1", null, null, null, null, null, null, "", null, true, 5);
 
             service.upsertProfile(profile("S1T"), 1L, List.of(cantilever), false);

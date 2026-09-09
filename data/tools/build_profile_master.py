@@ -621,8 +621,11 @@ def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master
             continue
 
         review = False
+        # ORDEN y no solo PROFILE_ID: una via con dos tramos concatenados repite el
+        # identificador, asi que sin el orden las mensulas de los DOS perfiles se
+        # agruparian juntas y cada uno se llevaria las del otro.
         record = {"EP": ep, "VIA": profile["VIA"], "PROFILE_ID": profile["PROFILE_ID"],
-                  "SLOT": slot + 1, "FILA_ORIGEN": number}
+                  "ORDEN": profile["ORDEN"], "SLOT": slot + 1, "FILA_ORIGEN": number}
 
         raw_type = values.get("CANTILEVER_TYPE")
         type_code = squash(raw_type)
@@ -782,7 +785,7 @@ SHEETS = {
                  "POLE_TYPE", "PORTAL", "RETURN_SUPPORT", "SECTIONING_FEEDING",
                  "SPAN", "HEIGHT_CANTILEVER_SUPPORT", "POLE_GAUGE_LOCATION",
                  "RAIL_POLE_DISTANCE", "ENABLED", "REVISAR", "HOJA_ORIGEN", "FILA_ORIGEN"],
-    "CANTILEVERS": ["EP", "VIA", "PROFILE_ID", "SLOT", "CANTILEVER_TYPE", "STAGGER",
+    "CANTILEVERS": ["EP", "VIA", "PROFILE_ID", "ORDEN", "SLOT", "CANTILEVER_TYPE", "STAGGER",
                     "CATENARY_HEIGHT", "CW_ELEVATION", "CW_HEIGHT", "WIND_DEFLECTION",
                     "ARM_ANGLE", "STEADY_ARM_TYPE", "STEADY_ARM_LENGTH",
                     "ENABLED", "REVISAR", "FILA_ORIGEN"],
