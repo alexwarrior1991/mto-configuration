@@ -378,17 +378,14 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
     # Huecos conocidos del maestro que hay hoy en data/. La lista NO es una excusa: es lo
     # que queda por cerrar, y tiene que llegar a cero.
     #
-    #   - las 8 'estacion no declarada' de EP6 son de topology.yml a medio rellenar: la via
-    #     nombra HERZLIYA y TSA, que todavia no estan en la lista 'stations:' de ese paquete.
-    #   - las 14 restantes son codigos sueltos que el catalogo no tiene. No queda ninguna
-    #     familia: son casos de uno en uno, y bajaron de 5.814 a 16 perfiles afectados.
+    # Son 14 codigos sueltos que el catalogo no tiene. No queda ninguna familia: son casos
+    # de uno en uno, y bajaron de 5.814 a 16 perfiles afectados. Los huecos de topology.yml
+    # —estaciones sin declarar, hojas sin declarar— ya estan todos cerrados.
     #
     # Lo que este test protege es que no aparezca NINGUNO NUEVO. Un valor sin reconocer que
     # no este aqui listado hace fallar el test, que es justo lo que se perdia si se dejaba
     # el assertEqual(..., []) 'temporalmente' comentado.
     HUECOS_CONOCIDOS = {
-        ("estacion no declarada en el paquete", "HERZLIYA"),
-        ("estacion no declarada en el paquete", "TSA"),
         ("codigo sin Foundation habilitado", "P8"),
         ("codigo sin Foundation habilitado", "Ø500*1700"),
         ("codigo sin ReturnSupport habilitado", "RW2 RW2T-C"),
@@ -410,31 +407,57 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         aparecidos = {(r["TIPO"], r["VALOR"]) for r in self.unknown}
         self.assertEqual(self.HUECOS_CONOCIDOS - aparecidos, set())
 
-    def test_estan_las_179_vias_declaradas(self):
-        # 177 hojas, con dos de EP9A partidas en dos tramos cada una.
-        self.assertEqual(len(self.tracks), 179)
+    def test_estan_las_174_vias_declaradas(self):
+        # 177 hojas menos las 3 vacias, que se declaran con 'skip'. Las dos de EP9A que
+        # llevan dos tramos concatenados cuentan como UNA via cada una desde V18.
+        self.assertEqual(len(self.tracks), 174)
 
-    def test_la_hoja_con_dos_tramos_sale_como_dos_vias(self):
+    def test_la_hoja_con_dos_tramos_sale_como_UNA_via(self):
+        # Era al reves hasta V18: se partia en dos porque el identificador de perfil se
+        # repite entre los dos tramos. Ahora la clave natural lleva el KP y no hace falta.
         ep9a = [t for t in self.tracks if t["EP"] == "EP9A" and t["HOJA_ORIGEN"] == "HR Track 1"]
-        self.assertEqual(len(ep9a), 2)
-        self.assertNotEqual(ep9a[0]["NOMBRE"], ep9a[1]["NOMBRE"])
+        self.assertEqual(len(ep9a), 1)
+        self.assertIsNone(ep9a[0]["FILA_INICIO"], "ya no se corta por filas")
 
     def test_ninguna_clave_natural_cargable_se_repite(self):
-        # (via, profileId) es la clave natural del perfil: dos filas cargables con la
-        # misma clave chocarian al importar. El origen las repite alguna vez, y la
-        # segunda tiene que salir sin cargar, no colarse.
+        # (via, profileId, KP) es la clave natural del perfil desde V18: dos filas
+        # cargables con la misma clave chocarian contra ux_profile_track_profile_id_kp.
+        # El identificador SOLO ya no vale como clave —una via con dos tramos lo repite a
+        # proposito— y por eso el KP entra aqui.
         seen = set()
         for profile in self.profiles:
             if profile["ENABLED"] != "SI":
                 continue
-            key = (profile["EP"], profile["VIA"], str(profile["PROFILE_ID"]).upper())
+            key = (profile["EP"], profile["VIA"], str(profile["PROFILE_ID"]).upper(),
+                   str(profile["KP"]))
             self.assertNotIn(key, seen, key)
             seen.add(key)
 
-    def test_un_identificador_repetido_queda_sin_cargar_y_marcado(self):
+    def test_el_identificador_repetido_con_otro_kp_SI_se_carga(self):
+        # Es lo que permite no partir la via. Sin esto, el test de arriba pasaria tambien
+        # con el comportamiento viejo, que descartaba la segunda aparicion.
+        ep9a = [p for p in self.profiles
+                if p["EP"] == "EP9A" and p["VIA"] == "TRACK 1" and p["ENABLED"] == "SI"]
+        self.assertTrue(ep9a)
+        repetidos = {p["PROFILE_ID"] for p in ep9a
+                     if sum(1 for q in ep9a if q["PROFILE_ID"] == p["PROFILE_ID"]) > 1}
+        self.assertGreater(len(repetidos), 40,
+                           "los dos tramos de EP9A repiten decenas de identificadores")
+
+    def test_los_perfiles_de_una_via_van_numerados_en_orden(self):
+        # ORDEN es lo que ordena los perfiles desde V18, porque el KP dejo de servir: el
+        # segundo tramo reinicia la kilometracion.
+        porvia = {}
+        for p in self.profiles:
+            porvia.setdefault((p["EP"], p["VIA"]), []).append(p["ORDEN"])
+        for via, ordenes in porvia.items():
+            self.assertEqual(ordenes, list(range(1, len(ordenes) + 1)), via)
+
+    def test_una_clave_repetida_queda_sin_cargar_y_marcada(self):
         counts = {}
         for profile in self.profiles:
-            key = (profile["EP"], profile["VIA"], str(profile["PROFILE_ID"]).upper())
+            key = (profile["EP"], profile["VIA"], str(profile["PROFILE_ID"]).upper(),
+                   str(profile["KP"]))
             counts.setdefault(key, []).append(profile)
 
         repeated = [rows for rows in counts.values() if len(rows) > 1]
@@ -483,12 +506,7 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
                   for t in self.tracks if t["ESTACIONES"]
                   for nombre in str(t["ESTACIONES"]).split("|") if nombre.strip()}
 
-        # EP6 declara vias en HERZLIYA y TSA sin haberlas puesto en su lista 'stations:'.
-        # Es el hueco de topology.yml que recoge HUECOS_CONOCIDOS; se quita de aqui en
-        # cuanto esas dos estaciones esten declaradas.
-        pendientes = {("EP6", "HERZLIYA"), ("EP6", "TSA")}
-
-        self.assertEqual(usadas - declared - pendientes, set())
+        self.assertEqual(usadas - declared, set())
 
     def test_los_tipos_de_brazo_son_los_del_catalogo(self):
         used = {c["STEADY_ARM_TYPE"] for c in self.cantilevers if c["STEADY_ARM_TYPE"]}
