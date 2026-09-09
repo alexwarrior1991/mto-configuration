@@ -165,11 +165,22 @@ class ProfileMasterImportIT {
 
         ProfileImportReport second = importMaster(false);
 
-        assertThat(second.getCreated())
+        SoftAssertions segundaPasada = new SoftAssertions();
+        segundaPasada.assertThat(second.getCreated())
                 .as("reimportar el mismo fichero no puede crear nada.%n"
                         + "  primera pasada: %s%n"
                         + "  segunda pasada: %s", desglose(first), desglose(second))
                 .isZero();
+        // Y tampoco puede fallar. Sin esta linea la idempotencia daba verde mientras las
+        // 11.714 modificaciones reventaban una por una: crear cero es lo que se esperaba,
+        // pero lo estaba consiguiendo por no llegar a escribir nada.
+        segundaPasada.assertThat(second.getFailed())
+                .as("la segunda pasada tiene que MODIFICAR, no fallar: %s", desglose(second))
+                .isZero();
+        segundaPasada.assertThat(second.getUpdated())
+                .as("y modificar TODO lo que cargo la primera: %s", desglose(second))
+                .isEqualTo(first.getCreated());
+        segundaPasada.assertAll();
         assertThat(profileRepository.count())
                 .as("los perfiles no pueden duplicarse: para eso estan los indices unicos de V12")
                 .isEqualTo(profilesAfterFirst);

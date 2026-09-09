@@ -16,6 +16,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.T
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.BusinessEntityRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.CantileverRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.StationRepository;
@@ -85,6 +86,8 @@ class InfrastructureUpsertServiceTest {
     private TrackRepository trackRepository;
     @Mock
     private ProfileRepository profileRepository;
+    @Mock
+    private CantileverRepository cantileverRepository;
     @Mock
     private BusinessEntityRepository businessEntityRepository;
     @Mock

@@ -29,6 +29,8 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.SteadyArmTypeDTO;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.BusinessEntityRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.CantileverRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.CantileverRepository.CantileverIds;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.StationRepository;
@@ -86,6 +88,7 @@ public class InfrastructureUpsertService {
     private final StationRepository stationRepository;
     private final TrackRepository trackRepository;
     private final ProfileRepository profileRepository;
+    private final CantileverRepository cantileverRepository;
     private final BusinessEntityRepository businessEntityRepository;
     private final MasterDataService masterDataService;
 
@@ -192,10 +195,15 @@ public class InfrastructureUpsertService {
         // El KP entra en la clave natural desde V18 (ver ProfileRepository). Viaja como texto,
         // asi que hay que convertirlo; si no es un numero no se busca nada y la fila entra por
         // el camino de alta, donde ProfileValidator la rechaza con el campo señalado.
-        Optional<ProfileDTO> existing = kilometricPoint(row.kp())
+        // Solo el ID. Antes se traia el perfil entero con profileService.getById, que
+        // devuelve un proxy de getReferenceById: fuera de una transaccion —y este metodo
+        // no la abre— mapearlo revienta con LazyInitializationException, asi que las
+        // 11.714 modificaciones de la segunda pasada fallaban una por una. De la mensula
+        // que ya existe basta con su id, y eso es una proyeccion de escalares.
+        Optional<Long> existing = kilometricPoint(row.kp())
                 .flatMap(kp -> profileRepository
                         .findByTrackIdAndProfileIdIgnoreCaseAndKp(trackId, row.profileId(), kp))
-                .map(entity -> profileService.getById(entity.getId()));
+                .map(entity -> entity.getId());
 
         ProfileDTO dto = new ProfileDTO();
         dto.setProfileId(row.profileId());
@@ -209,27 +217,22 @@ public class InfrastructureUpsertService {
         requireResolvableCodes(row, cantilevers);
         applyLovCodes(dto, row.profileStatus(), row.lov());
         dto.setCantilevers(buildCantilevers(cantilevers,
-                existing.map(ProfileDTO::getCantilevers).orElse(List.of())));
+                existing.map(cantileverRepository::findIdsByProfileIdOrderByIdAsc)
+                        .orElseGet(List::of)));
 
-        return write(existing.map(ProfileDTO::getId), dto, profileService::create,
-                profileService::update, dryRun);
+        return write(existing, dto, profileService::create, profileService::update, dryRun);
     }
 
     /**
      * Empareja cada mensula del maestro con la que ya existe en la misma posicion.
      *
-     * <p>Las existentes llegan en el orden estable del {@code @OrderBy("id ASC")} de la
-     * entidad, asi que el {@code SLOT} 1 del maestro es la primera, el 2 la segunda y
-     * asi. Las que sobran no se mandan, y la reconciliacion del mapper las borra: es lo
+     * <p>Las existentes llegan ya ordenadas por id —lo pide la consulta, que es el mismo
+     * orden estable del {@code @OrderBy("id ASC")} de la entidad—, asi que el {@code SLOT} 1
+     * del maestro es la primera, el 2 la segunda y asi. Las que sobran no se mandan, y la reconciliacion del mapper las borra: es lo
      * correcto cuando un perfil pasa de tres mensulas a dos.
      */
     private List<CantileverDTO> buildCantilevers(List<CantileverMasterRow> rows,
-                                                 List<CantileverDTO> existing) {
-        List<CantileverDTO> sorted = existing.stream()
-                .sorted(Comparator.comparing(CantileverDTO::getId,
-                        Comparator.nullsLast(Comparator.naturalOrder())))
-                .toList();
-
+                                                 List<CantileverIds> existing) {
         List<CantileverDTO> result = new ArrayList<>();
         List<CantileverMasterRow> ordered = rows.stream()
                 .sorted(Comparator.comparingInt(CantileverMasterRow::slot))
@@ -237,10 +240,10 @@ public class InfrastructureUpsertService {
 
         for (int index = 0; index < ordered.size(); index++) {
             CantileverMasterRow row = ordered.get(index);
-            CantileverDTO previous = index < sorted.size() ? sorted.get(index) : null;
+            CantileverIds previous = index < existing.size() ? existing.get(index) : null;
 
             CantileverDTO dto = new CantileverDTO();
-            dto.setId(previous == null ? null : previous.getId());
+            dto.setId(previous == null ? null : previous.getCantileverId());
             dto.setStagger(row.stagger());
             dto.setCatenaryHeight(row.catenaryHeight());
             dto.setCwElevation(row.cwElevation());
@@ -260,14 +263,14 @@ public class InfrastructureUpsertService {
      * <p>4.816 de las 14.592 mensulas del maestro no traen ninguno, y la relacion es
      * opcional desde V12. Mandar un brazo vacio crearia una fila sin sentido.
      */
-    private SteadyArmDTO buildSteadyArm(CantileverMasterRow row, CantileverDTO previous) {
+    private SteadyArmDTO buildSteadyArm(CantileverMasterRow row, CantileverIds previous) {
         if (StringUtils.isBlank(row.steadyArmType())) {
             return null;
         }
 
         SteadyArmDTO dto = new SteadyArmDTO();
-        if (previous != null && previous.getSteadyArm() != null) {
-            dto.setId(previous.getSteadyArm().getId());
+        if (previous != null && previous.getSteadyArmId() != null) {
+            dto.setId(previous.getSteadyArmId());
         }
         dto.setLength(row.steadyArmLength());
         dto.setSteadyArmType(lov(row.steadyArmType(), SteadyArmTypeDTO::new));

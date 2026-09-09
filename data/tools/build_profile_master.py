@@ -668,7 +668,12 @@ def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master
         review = review or sin_resolver
         record["STEADY_ARM_LENGTH"] = arm_length
 
-        record["ENABLED"] = "SI" if record["CANTILEVER_TYPE"] else "NO"
+        # Y no se carga sin su perfil. El importador agrupa las mensulas por (EP, via,
+        # ORDEN) y solo escribe las del perfil que esta cargando, asi que una mensula de un
+        # perfil ENABLED=NO no llegaba nunca a la base de datos y el maestro seguia
+        # contandola como cargable: cuatro mensulas que decian SI y no podian entrar.
+        record["ENABLED"] = ("SI" if (record["CANTILEVER_TYPE"] and profile["ENABLED"] == "SI")
+                             else "NO")
         record["REVISAR"] = "SI" if review or record["ENABLED"] == "NO" else "NO"
         master.cantilevers.append(record)
         written += 1

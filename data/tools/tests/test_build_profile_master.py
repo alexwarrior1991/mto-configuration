@@ -483,6 +483,20 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         self.assertTrue(all(c["CANTILEVER_TYPE"]
                             for c in self.cantilevers if c["ENABLED"] == "SI"))
 
+    def test_ninguna_mensula_cargable_cuelga_de_un_perfil_que_no_carga(self):
+        """Una mensula sin su perfil no llega a la base de datos, asi que no es cargable.
+
+        El importador agrupa las mensulas por (EP, via, ORDEN) y solo escribe las del perfil
+        que esta cargando. Cuatro mensulas decian ENABLED=SI colgando de perfiles que el
+        maestro descarta —identificador y KP repetidos—, asi que el recuento de cargables
+        prometia cuatro que no podian entrar.
+        """
+        cargables = {(p["EP"], p["VIA"], p["ORDEN"])
+                     for p in self.profiles if p["ENABLED"] == "SI"}
+        huerfanas = [c for c in self.cantilevers if c["ENABLED"] == "SI"
+                     and (c["EP"], c["VIA"], c["ORDEN"]) not in cargables]
+        self.assertEqual(huerfanas, [])
+
     def test_un_perfil_no_lleva_mas_de_tres_mensulas(self):
         # Es el limite de la entidad y del origen.
         self.assertTrue(all(1 <= c["SLOT"] <= 3 for c in self.cantilevers))

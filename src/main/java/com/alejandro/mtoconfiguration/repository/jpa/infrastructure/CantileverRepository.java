@@ -19,6 +19,34 @@ public interface CantileverRepository extends CRUDRepository<Cantilever>,
     // Optimización: Búsqueda directa por Profile (relación frecuente)
     List<Cantilever> findByProfileId(Long profileId);
 
+    /**
+     * Identificadores de las mensulas de un perfil, y el de su brazo, en el orden estable
+     * que fija {@code @OrderBy("id ASC")} en la entidad.
+     *
+     * <p>Existe para el importador del maestro, que reconcilia las mensulas <b>por posicion</b>
+     * y de cada una solo necesita el id. Antes se traia el perfil entero con
+     * {@code ProfileService.getById}, que ademas de mapear un DTO completo con sus diez listas
+     * de valores por cada uno de los 11.714 perfiles, devuelve un <b>proxy</b>
+     * ({@code getReferenceById}) que fuera de una transaccion no se puede inicializar.
+     *
+     * <p>Al ser una proyeccion de escalares no hay proxy que inicializar ni sesion que haga
+     * falta: el resultado ya viene materializado.
+     */
+    @Query("""
+            select c.id as cantileverId, sa.id as steadyArmId
+            from Cantilever c left join c.steadyArm sa
+            where c.profile.id = :profileId
+            order by c.id asc
+            """)
+    List<CantileverIds> findIdsByProfileIdOrderByIdAsc(@Param("profileId") Long profileId);
+
+    /** Lo unico que el importador necesita de una mensula que ya existe. */
+    interface CantileverIds {
+        Long getCantileverId();
+
+        Long getSteadyArmId();
+    }
+
     // Optimización: Keyset Pagination para scroll infinito o procesos masivos
     @Query("SELECT c FROM Cantilever c WHERE c.profile.id = :profileId AND c.id > :lastId ORDER BY c.id ASC")
     List<Cantilever> findNextPageByProfile(@Param("profileId") Long profileId, @Param("lastId") Long lastId, Pageable pageable);
