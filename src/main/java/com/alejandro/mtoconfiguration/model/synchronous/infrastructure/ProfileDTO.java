@@ -17,6 +17,12 @@ public class ProfileDTO extends BaseDTO {
     private String profileId;
     private String kp;
 
+    /**
+     * Posicion del perfil a lo largo de la via, 1..N. Opcional: solo la trae la importacion,
+     * que es la unica que conoce el orden del origen. Ver {@code Profile.orderInTrack}.
+     */
+    private Integer orderInTrack;
+
     /** Vano hasta el perfil siguiente, en metros. */
     private BigDecimal span;
     /** Altura del soporte de ménsula, en milímetros. */

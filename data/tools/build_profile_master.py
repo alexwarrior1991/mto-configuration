@@ -512,11 +512,19 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
         start, end = max(start, declared_first - 1), min(end, declared_last)
 
     profiles = cantilevers = 0
-    # (via, profileId) es la clave natural del perfil. El origen la repite alguna vez
-    # dentro de una misma via —no por tramos concatenados, que se cortan con 'rows',
-    # sino por duplicados de verdad—, y dos filas con la misma clave chocarian al
-    # importar. Se carga la primera y la siguiente sale marcada.
-    seen_ids = set()
+    # (via, profileId, KP) es la clave natural del perfil desde V18. El identificador solo
+    # no basta: una via puede llevar dos tramos concatenados con la numeracion reiniciada
+    # —'HR Track 1' de EP9A repite 47 identificadores— y ahi '5-1.01' son DOS mastiles, uno
+    # en el KP 5421 y otro en el 5017. El KP es lo que los distingue.
+    #
+    # Lo que sigue chocando es la fila que repite identificador Y kp: eso ya no es un tramo
+    # nuevo, es un error del origen (en EP9A hay uno, '8-1.12' en el KP 8447, con distinto
+    # tipo de poste en cada aparicion). Se carga la primera y la siguiente sale marcada.
+    seen_keys = set()
+
+    # Posicion a lo largo de la via, que es lo que ordena los perfiles desde V18: con dos
+    # tramos concatenados el KP no vale, porque el segundo reinicia la kilometracion.
+    position = 0
 
     for offset in range(start, end):
         row = rows[offset]
@@ -560,12 +568,16 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
             text = "" if is_blank(raw) or is_noise(text) else text
             record[field] = resolve_lov(field, text, cfg, ep, sheet, number, master)
 
-        duplicated = code.upper() in seen_ids
+        key = (code.upper(), None if kp is None else str(kp))
+        duplicated = key in seen_keys
         if duplicated:
-            master.discard(motivo="PROFILE_ID repetido dentro de la via", ep=ep,
-                           hoja=sheet, fila=number, detalle=f"{track_name} / {code}")
+            master.discard(motivo="PROFILE_ID y KP repetidos dentro de la via", ep=ep,
+                           hoja=sheet, fila=number, detalle=f"{track_name} / {code} / kp {kp}")
             review = True
-        seen_ids.add(code.upper())
+        seen_keys.add(key)
+
+        position += 1
+        record["ORDEN"] = position
 
         record["PROFILE_STATUS"] = cfg_default_status(cfg, ep)
         record["ENABLED"] = ("SI" if (record["PROFILE_ID"] and kp is not None
@@ -765,7 +777,7 @@ SHEETS = {
             "COMPANY_ID_NUMBER", "ENABLED"],
     "STATIONS": ["EP", "NOMBRE"],
     "TRACKS": ["EP", "NOMBRE", "ESTACIONES", "ENABLED", "HOJA_ORIGEN", "FILA_INICIO", "FILA_FIN"],
-    "PROFILES": ["EP", "VIA", "PROFILE_ID", "KP", "PROFILE_STATUS",
+    "PROFILES": ["EP", "VIA", "PROFILE_ID", "KP", "ORDEN", "PROFILE_STATUS",
                  "SECTIONING", "ANCHORAGE", "ANCHORAGE_FOUNDATION", "FOUNDATION",
                  "POLE_TYPE", "PORTAL", "RETURN_SUPPORT", "SECTIONING_FEEDING",
                  "SPAN", "HEIGHT_CANTILEVER_SUPPORT", "POLE_GAUGE_LOCATION",
@@ -860,20 +872,26 @@ def write_master(path, master: Master):
 # --------------------------------------------------------------------------------
 
 def track_stations(track):
-    """Las estaciones que declara una via, en singular o en plural.
+    """Las estaciones que declara una via. Cualquiera de las cuatro formas vale.
 
-    'station: ZIC' (una) y 'stations: [ZIC, BIN, HAD]' (varias) valen las dos, y se
-    admiten a la vez por una razon practica: las 124 vias que ya estaban rellenas con la
-    forma en singular no hay que reescribirlas para que sigan valiendo.
+        station:  ZIC                 stations: [ZIC, BIN, HAD]
+        station:  [ZIC, BIN, HAD]     stations: ZIC
+
+    Las dos claves y las dos formas, a proposito. 'station' en singular es lo que hay en
+    las vias rellenas antes de V17 y no hay por que reescribirlas; y una lista bajo la
+    clave en singular es lo que sale solo al rellenar a mano, sin que la intencion sea
+    dudosa. La alternativa era que 27 vias del fichero acabaran con una estacion llamada
+    "['MOM', 'PMO']", que no existe y que solo se habria visto al fallar la comprobacion.
     """
     nombres = []
-    uno = squash(track.get("station"))
-    if uno:
-        nombres.append(uno)
-    for nombre in (track.get("stations") or []):
-        nombre = squash(nombre)
-        if nombre and nombre.upper() not in {n.upper() for n in nombres}:
-            nombres.append(nombre)
+    for clave in ("station", "stations"):
+        valor = track.get(clave)
+        if valor is None:
+            continue
+        for nombre in (valor if isinstance(valor, (list, tuple)) else [valor]):
+            nombre = squash(nombre)
+            if nombre and nombre.upper() not in {n.upper() for n in nombres}:
+                nombres.append(nombre)
     return nombres
 
 

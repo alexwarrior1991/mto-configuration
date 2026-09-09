@@ -153,6 +153,7 @@ public class ProfileMasterParser {
                             text(row, columns.get("SECTIONING_FEEDING")));
                     return new ProfileMasterRow(ep, track, profileId,
                             text(row, columns.get("KP")),
+                            whole(row, columns.get("ORDEN")),
                             text(row, columns.get("PROFILE_STATUS")),
                             lov,
                             decimal(row, columns.get("SPAN")),
@@ -285,6 +286,11 @@ public class ProfileMasterParser {
     private Long longer(ExcelRow row, Integer column) {
         BigDecimal value = decimal(row, column);
         return value == null ? null : value.longValue();
+    }
+
+    private Integer whole(ExcelRow row, Integer column) {
+        BigDecimal value = decimal(row, column);
+        return value == null ? null : value.intValue();
     }
 
     private LocalDate date(ExcelRow row, Integer column) {

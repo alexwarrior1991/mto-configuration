@@ -257,6 +257,27 @@ se puede, que sería lo natural: de las 176 vías medidas, **31 traen el KP no m
 `EP9B / TRACK 1 LOD_S` llega a un KP de 1.110.546 (un dedazo por 110.546), así que un límite
 declarado en KP metería perfiles en la estación equivocada sin avisar.
 
+**Una hoja con dos tramos concatenados YA NO se parte en dos vías.** `HR Track 1` y `HR Track 2`
+de EP9A traen dos tramos seguidos con la kilometración reiniciada, y hasta `V18` había que
+cortarlos con `rows` porque cada tramo se numeró por su cuenta y el identificador de perfil se
+repetía —47 veces en la vía 1, 46 en la vía 2—. Son **una sola vía**, y ahora se declaran como
+tal:
+
+```yaml
+      - sheet: "HR Track 1"
+        name: "TRACK 1"
+        stations: [TZG, BEN, TFAM]
+```
+
+Lo que lo hace posible: la clave natural del perfil pasa a ser `(vía, profileId, kp)`. Medido
+sobre el origen, `5-1.01` aparece dos veces pero en KP distintos (5421 y 5017), así que el KP es
+lo que distingue un mástil del otro. Sigue chocando —y sale en `DESCARTADOS`— la fila que repite
+identificador **y** KP: en EP9A hay una, `8-1.12` en el KP 8447, con distinto tipo de poste en
+cada aparición, que es un error del origen.
+
+Y el orden de los perfiles pasa a una columna propia, `ORDEN` (1..N en el orden de la hoja),
+porque ordenar por KP mezclaría los dos tramos en vez de ponerlos uno detrás del otro.
+
 **Los tramos de una hoja partida** —`rows`, que sigue siendo solo para las hojas que llevan
 **dos tramos concatenados**, como `EP9A / HR Track 1`— **tienen que cubrirla entera, y una sola
 vez.** Si las filas

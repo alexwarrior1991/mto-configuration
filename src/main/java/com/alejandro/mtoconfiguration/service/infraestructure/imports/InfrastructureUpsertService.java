@@ -42,6 +42,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -134,6 +135,18 @@ public class InfrastructureUpsertService {
         return write(existing, dto, trackService::create, trackService::update, dryRun);
     }
 
+    /** El KP de la fila como numero, o vacio si el origen no trajo uno utilizable. */
+    private static Optional<BigDecimal> kilometricPoint(String value) {
+        if (value == null || value.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(new BigDecimal(value.trim()));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
+    }
+
     /**
      * Alta o modificacion de un perfil <b>con sus mensulas</b>, en una sola transaccion.
      *
@@ -146,13 +159,18 @@ public class InfrastructureUpsertService {
      */
     public UpsertResult upsertProfile(ProfileMasterRow row, Long trackId,
                                       List<CantileverMasterRow> cantilevers, boolean dryRun) {
-        Optional<ProfileDTO> existing = profileRepository
-                .findByTrackIdAndProfileIdIgnoreCase(trackId, row.profileId())
+        // El KP entra en la clave natural desde V18 (ver ProfileRepository). Viaja como texto,
+        // asi que hay que convertirlo; si no es un numero no se busca nada y la fila entra por
+        // el camino de alta, donde ProfileValidator la rechaza con el campo señalado.
+        Optional<ProfileDTO> existing = kilometricPoint(row.kp())
+                .flatMap(kp -> profileRepository
+                        .findByTrackIdAndProfileIdIgnoreCaseAndKp(trackId, row.profileId(), kp))
                 .map(entity -> profileService.getById(entity.getId()));
 
         ProfileDTO dto = new ProfileDTO();
         dto.setProfileId(row.profileId());
         dto.setKp(row.kp());
+        dto.setOrderInTrack(row.orderInTrack());
         dto.setTrackId(trackId);
         dto.setSpan(row.span());
         dto.setHeightCantileverSupport(row.heightCantileverSupport());

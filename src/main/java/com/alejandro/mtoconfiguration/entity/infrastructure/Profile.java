@@ -79,6 +79,7 @@ public class Profile extends CRUDEntity {
 
     private String profileId;
     private BigDecimal kp;
+    private Integer orderInTrack;
 
     private BigDecimal span;
     private BigDecimal heightCantileverSupport;
@@ -127,6 +128,23 @@ public class Profile extends CRUDEntity {
             nullable = false)
     public BigDecimal getKp() {
         return kp;
+    }
+
+    /**
+     * Posicion del perfil a lo largo de la via, 1..N en el orden del origen.
+     *
+     * <p>Existe porque el KP dejo de servir para ordenar. Una via puede llevar dos tramos
+     * concatenados con la kilometracion reiniciada —'HR Track 1' de EP9A acaba el primero en
+     * el KP 8947 y empieza el segundo en el 270—, de modo que ordenar por KP no pone un tramo
+     * detras del otro: los MEZCLA. Y no es un caso aislado: de las 176 vias medidas, 31 traen
+     * el KP no monotono.
+     *
+     * <p>Anulable a proposito. Un perfil dado de alta por la API no tiene posicion conocida, y
+     * en PostgreSQL {@code order by ... asc} deja los nulos al final, que es donde debe ir.
+     */
+    @Column(name = "ORDER_IN_TRACK")
+    public Integer getOrderInTrack() {
+        return orderInTrack;
     }
 
     /**

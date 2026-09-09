@@ -221,7 +221,7 @@ class ProfileMasterImporterTest {
     @DisplayName("las filas con ENABLED=NO se saltan y se cuentan")
     void filasDeshabilitadas() {
         ProfileMasterRow disabled = new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "10.5",
-                "DEFINITIVE", ProfileLovCodes.empty(), null, null, null, null, false, 7);
+                1, "DEFINITIVE", ProfileLovCodes.empty(), null, null, null, null, false, 7);
 
         givenMaster(List.of(ep("EP6")), List.of(), List.of(track("EP6", "TRACK 1", "")),
                 List.of(disabled), List.of());
@@ -308,7 +308,7 @@ class ProfileMasterImporterTest {
     }
 
     private static ProfileMasterRow profile(String ep, String track, String profileId) {
-        return new ProfileMasterRow(ep, track, profileId, "83063.410", "DEFINITIVE",
+        return new ProfileMasterRow(ep, track, profileId, "83063.410", 1, "DEFINITIVE",
                 ProfileLovCodes.empty(), new BigDecimal("52.000"), null, null, null, true, 7);
     }
 

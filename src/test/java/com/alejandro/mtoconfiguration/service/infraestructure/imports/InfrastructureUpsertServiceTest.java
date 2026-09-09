@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -227,7 +228,7 @@ class InfrastructureUpsertServiceTest {
         void seAcumulanTodosLosQueFallan() {
             when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
 
-            ProfileMasterRow row = new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1+000",
+            ProfileMasterRow row = new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1000", 7,
                     "DEFINITIVE",
                     new ProfileLovCodes("SEC-X", "", "", "", "PT-X", "", "", ""),
                     null, null, null, null, true, 5);
@@ -242,7 +243,7 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("un hueco no se comprueba: la mayoria de columnas vienen vacias")
         void elHuecoNoSeComprueba() {
             when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
-            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCaseAndKp(anyLong(), any(), any()))
                     .thenReturn(Optional.empty());
             when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -273,7 +274,7 @@ class InfrastructureUpsertServiceTest {
             when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
             when(masterDataService.getPoleTypeByCode("S1T")).thenReturn(new PoleType());
             when(masterDataService.getCantileverTypeByCode("EMT-1")).thenReturn(new CantileverType());
-            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCaseAndKp(anyLong(), any(), any()))
                     .thenReturn(Optional.empty());
             when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -307,7 +308,7 @@ class InfrastructureUpsertServiceTest {
             when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
             when(masterDataService.getSectioningByCode("A/S")).thenReturn(new Sectioning());
             when(masterDataService.getSectioningByCode("P50(CS)")).thenReturn(new Sectioning());
-            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCaseAndKp(anyLong(), any(), any()))
                     .thenReturn(Optional.empty());
             when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -325,7 +326,7 @@ class InfrastructureUpsertServiceTest {
         void unoSolo() {
             when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
             when(masterDataService.getSectioningByCode("A/S")).thenReturn(new Sectioning());
-            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCaseAndKp(anyLong(), any(), any()))
                     .thenReturn(Optional.empty());
             when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -340,7 +341,7 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("la celda vacia deja el perfil sin seccionamientos")
         void celdaVacia() {
             when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
-            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCaseAndKp(anyLong(), any(), any()))
                     .thenReturn(Optional.empty());
             when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -368,16 +369,60 @@ class InfrastructureUpsertServiceTest {
         }
 
         @Test
+        @DisplayName("el mismo identificador con OTRO kp es otro perfil, no una modificacion")
+        void mismoIdentificadorConOtroKpEsOtroPerfil() {
+            // Es lo que permite dejar de partir en dos vias una hoja con dos tramos
+            // concatenados: '5-1.01' existe en los dos, pero uno esta en el KP 5421 y el otro
+            // en el 5017. Si la busqueda no mirara el KP, el segundo pisaria al primero.
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCaseAndKp(1L, "5-1.01",
+                    new java.math.BigDecimal("5017"))).thenReturn(Optional.empty());
+            when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            ProfileMasterRow row = new ProfileMasterRow("EP9A", "TRACK 1", "5-1.01", "5017", 190,
+                    "DEFINITIVE", ProfileLovCodes.empty(),
+                    null, null, null, null, true, 361);
+            service.upsertProfile(row, 1L, List.of(), false);
+
+            verify(profileRepository)
+                    .findByTrackIdAndProfileIdIgnoreCaseAndKp(1L, "5-1.01",
+                            new java.math.BigDecimal("5017"));
+            ArgumentCaptor<ProfileDTO> captor = ArgumentCaptor.forClass(ProfileDTO.class);
+            verify(profileService).create(captor.capture());
+            assertThat(captor.getValue().getOrderInTrack())
+                    .as("la posicion en la via viaja con el perfil: es lo que lo ordena")
+                    .isEqualTo(190);
+        }
+
+        @Test
+        @DisplayName("un kp que no es un numero no busca nada y entra por el alta")
+        void kpIlegibleNoBusca() {
+            // El validador lo rechazara con el campo señalado. Lo que no puede pasar es que
+            // reviente aqui al convertirlo.
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            ProfileMasterRow row = new ProfileMasterRow("EP9A", "TRACK 1", "5-1.01", "1+000", 1,
+                    "DEFINITIVE", ProfileLovCodes.empty(),
+                    null, null, null, null, true, 5);
+
+            assertThatCode(() -> service.upsertProfile(row, 1L, List.of(), false))
+                    .doesNotThrowAnyException();
+            verify(profileRepository, never())
+                    .findByTrackIdAndProfileIdIgnoreCaseAndKp(anyLong(), any(), any());
+        }
+
+        @Test
         @DisplayName("una celda con dos anclajes se parte en dos")
         void dosAnclajesEnUnaCelda() {
             when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
             when(masterDataService.getAnchorageByCode("FP+AnMC")).thenReturn(new Anchorage());
             when(masterDataService.getAnchorageByCode("CP+AnMC")).thenReturn(new Anchorage());
-            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCaseAndKp(anyLong(), any(), any()))
                     .thenReturn(Optional.empty());
             when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
 
-            ProfileMasterRow row = new ProfileMasterRow("EP7", "TRACK 1", "86-02.20", "1+000",
+            ProfileMasterRow row = new ProfileMasterRow("EP7", "TRACK 1", "86-02.20", "1000", 7,
                     "DEFINITIVE",
                     new ProfileLovCodes("", "FP+AnMC CP+AnMC", "", "", "", "", "", ""),
                     null, null, null, null, true, 586);
@@ -397,7 +442,7 @@ class InfrastructureUpsertServiceTest {
             when(masterDataService.getAnchorageByCode("FP+AnMC")).thenReturn(new Anchorage());
             when(masterDataService.getAnchorageByCode("NO-EXISTE")).thenReturn(null);
 
-            ProfileMasterRow row = new ProfileMasterRow("EP7", "TRACK 1", "86-02.20", "1+000",
+            ProfileMasterRow row = new ProfileMasterRow("EP7", "TRACK 1", "86-02.20", "1000", 7,
                     "DEFINITIVE",
                     new ProfileLovCodes("", "FP+AnMC NO-EXISTE", "", "", "", "", "", ""),
                     null, null, null, null, true, 586);
@@ -417,12 +462,12 @@ class InfrastructureUpsertServiceTest {
                     .thenReturn(new DisconnectorFunction());
             when(masterDataService.getDisconnectorFunctionByCode("SECT-I"))
                     .thenReturn(new DisconnectorFunction());
-            when(profileRepository.findByTrackIdAndProfileIdIgnoreCase(anyLong(), any()))
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCaseAndKp(anyLong(), any(), any()))
                     .thenReturn(Optional.empty());
             when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
 
             ProfileMasterRow row = new ProfileMasterRow("EP14A", "TRACK 138", "154-138.13",
-                    "1+000", "DEFINITIVE",
+                    "1000", 7, "DEFINITIVE",
                     new ProfileLovCodes("", "", "", "", "", "", "", "Disc SECT-I"),
                     null, null, null, null, true, 17);
             service.upsertProfile(row, 1L, List.of(), false);
@@ -435,13 +480,13 @@ class InfrastructureUpsertServiceTest {
         }
 
         private ProfileMasterRow conSeccionamiento(String codes) {
-            return new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1+000", "DEFINITIVE",
+            return new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1000", 7, "DEFINITIVE",
                     new ProfileLovCodes(codes, "", "", "", "", "", "", ""),
                     null, null, null, null, true, 5);
         }
 
         private ProfileMasterRow profile(String poleType) {
-            return new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1+000", "DEFINITIVE",
+            return new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1000", 7, "DEFINITIVE",
                     new ProfileLovCodes("", "", "", "", poleType, "", "", ""),
                     null, null, null, null, true, 5);
         }

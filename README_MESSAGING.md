@@ -14,6 +14,8 @@ En `track`, la clave `station` (objeto) pasa a `stations` (**lista**): una vía 
 varias estaciones sin dejar de ser una vía. Y donde una vía viaja anidada dentro de otro evento
 —`profile` y `executionPackage`—, su `stationId` pasa a `stationIds`.
 
+El evento `profile` gana además `orderInTrack`, la posición del perfil a lo largo de la vía.
+
 `mto-stock` consume estos eventos pero solo los registra, así que no hay nada que cambiar allí;
 queda escrito porque el contrato lo posee este repositorio.
 

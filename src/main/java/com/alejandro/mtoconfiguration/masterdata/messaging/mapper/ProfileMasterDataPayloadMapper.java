@@ -30,6 +30,7 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         values.put("id", profile.getId());
         values.put("profileId", profile.getProfileId());
         values.put("kp", profile.getKp());
+        values.put("orderInTrack", profile.getOrderInTrack());
         values.put("span", profile.getSpan());
         values.put("heightCantileverSupport", profile.getHeightCantileverSupport());
         values.put("poleGaugeLocation", profile.getPoleGaugeLocation());

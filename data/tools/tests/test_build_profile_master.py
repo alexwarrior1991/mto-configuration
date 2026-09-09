@@ -803,3 +803,62 @@ class EstacionesDeUnaVia(unittest.TestCase):
             "tracks": [{"sheet": "HR Track 1", "stations": ["ZIC", "BIN", "HAD"]}],
         }, master)
         self.assertEqual([k[1] for k in master.unknown], ["HAD"])
+
+
+class ClaveNaturalYOrdenDeLaVia(unittest.TestCase):
+    """Una via puede llevar dos tramos concatenados sin partirse en dos.
+
+    'HR Track 1' de EP9A lleva dos tramos con la kilometracion reiniciada, y cada uno
+    se numero por su cuenta: '5-1.01' existe en los dos. Antes eso obligaba a partir la
+    hoja en dos vias con 'rows'. Desde V18 la clave natural incluye el KP, que es lo que
+    distingue un mastil del otro, y el orden lo lleva una columna propia porque ordenar
+    por KP mezclaria los dos tramos en vez de ponerlos uno detras del otro.
+    """
+
+    @staticmethod
+    def hoja_con_dos_tramos():
+        filas = [["TRACK 1"], HEADER, [None] * len(HEADER)]
+        # tramo 1: kp 5421 y 5481
+        for numero, kp in (("5-1.01", 5421), ("5-1.02", 5481)):
+            filas.append([None, numero, kp, None, "A/S", "S1T", "EMT-2T",
+                          None, None, 20, None, None, "PH-950"])
+            filas.append([None, None, None, 45.5])
+        # tramo 2: la kilometracion REINICIA y repite los identificadores
+        for numero, kp in (("5-1.01", 270), ("5-1.02", 330)):
+            filas.append([None, numero, kp, None, "A/S", "S1T", "EMT-2T",
+                          None, None, 20, None, None, "PH-950"])
+            filas.append([None, None, None, 45.5])
+        return FakeSheet("HR Track 1", [pad(r) for r in filas])
+
+    def lee(self):
+        master = bpm.Master()
+        bpm.read_track(self.hoja_con_dos_tramos(), "EP9A", {"name": "TRACK 1"}, CFG, master)
+        return master
+
+    def test_el_identificador_repetido_con_otro_kp_se_carga(self):
+        # Es el cambio entero: antes la segunda aparicion se descartaba por repetida y por
+        # eso habia que partir la hoja en dos vias.
+        master = self.lee()
+        cargables = [p for p in master.profiles if p["ENABLED"] == "SI"]
+        self.assertEqual(len(cargables), 4)
+        self.assertEqual([p["PROFILE_ID"] for p in cargables],
+                         ["5-1.01", "5-1.02", "5-1.01", "5-1.02"])
+
+    def test_el_orden_sigue_a_la_hoja_y_no_al_kp(self):
+        # Ordenar por KP pondria el segundo tramo (270, 330) DELANTE del primero.
+        master = self.lee()
+        self.assertEqual([p["ORDEN"] for p in master.profiles], [1, 2, 3, 4])
+        self.assertEqual([p["KP"] for p in master.profiles], [5421, 5481, 270, 330])
+
+    def test_repetir_identificador_Y_kp_sigue_siendo_un_error(self):
+        # Eso ya no es un tramo nuevo: son dos filas para el mismo mastil.
+        filas = [["TRACK 1"], HEADER, [None] * len(HEADER)]
+        for _ in range(2):
+            filas.append([None, "8-1.12", 8447, None, "A/S", "S1T", "EMT-2T",
+                          None, None, 20, None, None, "PH-950"])
+            filas.append([None, None, None, 45.5])
+        master = bpm.Master()
+        bpm.read_track(FakeSheet("HR Track 1", [pad(r) for r in filas]),
+                       "EP9A", {"name": "TRACK 1"}, CFG, master)
+        self.assertEqual([p["ENABLED"] for p in master.profiles], ["SI", "NO"])
+        self.assertTrue(any("repetidos" in d["motivo"] for d in master.discarded))

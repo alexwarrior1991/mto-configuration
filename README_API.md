@@ -194,8 +194,15 @@ perfiles, y dentro de cada perfil sus ménsulas. Cada nivel se reconcilia con la
 
 El orden lo decide el servidor, no la posición en la que los mandaste:
 
-- **Perfiles de una vía** → por punto kilométrico (`kp`), y el `id` desempata. Es el orden físico a
-  lo largo de la vía, y el mismo que devuelven `/profiles/track/{id}/keyset` y `/range`.
+- **Perfiles de una vía** → por `orderInTrack`, con el `kp` y el `id` de desempate. Es el orden
+  físico a lo largo de la vía. Hasta `V18` ordenaba el `kp` solo, y dejó de valer: una vía puede
+  llevar **dos tramos concatenados** con la kilometración reiniciada —el segundo tramo de
+  `EP9A / TRACK 1` empieza en el KP 270 cuando el primero acaba en el 8947—, así que ordenar por
+  `kp` no pone un tramo detrás del otro, los **mezcla**. Los perfiles sin `orderInTrack` (los dados
+  de alta por la API, que no tienen posición conocida) van al final.
+  ⚠️ `/profiles/track/{id}/keyset` y `/range` **siguen paginando por `kp`**: son ventanas
+  kilométricas, no el recorrido de la vía, y en una vía con dos tramos ya no coinciden con el
+  orden físico.
 - **Resto de colecciones** → por `id`, que es simplemente un orden estable.
 
 Mandar los hijos en otro orden no cambia nada: no hay forma de reordenarlos desde la API. Si
@@ -256,6 +263,12 @@ disconnector **más** un aislador de sección. Ese campo usa el catálogo
 
 Son las **tres únicas** relaciones N:M del perfil: las demás listas de valores llevan una
 sola, y ahí una celda con dos códigos sigue siendo una anomalía que se reporta.
+
+**La clave natural del perfil incluye el `kp`** desde `V18`. El identificador solo dejó de bastar
+al dejar de partir las vías con dos tramos: cada tramo se numeró por su cuenta, así que `5-1.01`
+existe **dos veces** en `EP9A / TRACK 1` — uno en el KP 5421 y otro en el 5017, dos mástiles
+distintos. Un `PUT` que quiera modificar un perfil concreto tiene que mandar su `kp`; mandarlo
+cambiado crea uno nuevo en vez de modificar el que había.
 
 **La vía tiene la suya propia** (`V17`): `stationId` pasa a `stationIds`, porque una vía larga
 atraviesa varias estaciones sin dejar de ser una vía —`TRACK 1` de EP4 pasa por ZIC, por BIN y

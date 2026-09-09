@@ -23,10 +23,16 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
      *
      * <p>Ignora mayusculas porque el origen no es consistente ({@code HR TRACK 3 HAD} y
      * {@code HR Track 3 BIN} conviven en el mismo workbook) y porque es lo que indexa
-     * {@code ux_profile_track_profile_id} (V12). El borrado logico lo filtra la
+     * {@code ux_profile_track_profile_id_kp} (V18). El borrado logico lo filtra la
      * {@code @SQLRestriction} de {@code CRUDEntity}, igual que ese indice parcial.
+     *
+     * <p>El KP entra en la clave desde V18. Una via puede llevar dos tramos concatenados con
+     * la numeracion reiniciada, asi que '5-1.01' existe dos veces en la misma via: uno en el
+     * KP 5421 y otro en el 5017. Son dos mastiles distintos, y sin el KP el importador
+     * actualizaria el primero con los datos del segundo.
      */
-    Optional<Profile> findByTrackIdAndProfileIdIgnoreCase(Long trackId, String profileId);
+    Optional<Profile> findByTrackIdAndProfileIdIgnoreCaseAndKp(Long trackId, String profileId,
+                                                               BigDecimal kp);
 
     List<Profile> findByTrackNameContainingIgnoreCase(String trackName);
 

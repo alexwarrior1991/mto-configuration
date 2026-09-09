@@ -103,7 +103,13 @@ public class Track extends CRUDEntity {
      * Perfiles de la via, ordenados por su punto kilometrico.
      *
      * <p>{@code @OrderBy} y no {@code @OrderColumn}: el orden que importa aqui es el fisico a lo
-     * largo de la via, que es el KP, no el orden en que se dieron de alta. Ademas es el orden que
+     * largo de la via, no el orden en que se dieron de alta.
+     *
+     * <p>Desde V18 lo manda {@code orderInTrack} y el KP queda de desempate. El KP solo no
+     * vale: una via puede llevar dos tramos concatenados con la kilometracion reiniciada, y
+     * entonces ordenar por KP no pone el segundo detras del primero, los mezcla. Los nulos de
+     * orderInTrack —un perfil dado de alta por la API— caen al final, que es lo que hace
+     * PostgreSQL con 'asc' y es donde deben ir. Ademas es el orden que
      * ya usa todo lo demas ({@code findByTrackIdOrderByKpAscIdAsc}, la paginacion por keyset, la
      * exportacion), asi que antes convivian dos ordenes distintos para los mismos datos.
      *
@@ -117,7 +123,7 @@ public class Track extends CRUDEntity {
      */
     @OneToMany(mappedBy = "track", cascade = CascadeType.ALL, orphanRemoval = true)
     @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
-    @OrderBy("kp ASC, id ASC")
+    @OrderBy("orderInTrack ASC, kp ASC, id ASC")
     @Audited(targetAuditMode = NOT_AUDITED)
     public List<Profile> getProfiles() {
         return profiles;

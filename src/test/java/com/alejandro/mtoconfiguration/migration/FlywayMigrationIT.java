@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18");
     }
 
     /**
@@ -219,7 +219,7 @@ class FlywayMigrationIT {
         }, SCHEMA);
 
         for (String nombre : List.of("ux_execution_package_name", "ux_station_ep_name",
-                "ux_track_ep_name", "ux_profile_track_profile_id")) {
+                "ux_track_ep_name", "ux_profile_track_profile_id_kp")) {
             assertThat(indices).containsKey(nombre);
             assertThat(indices.get(nombre))
                     .as("%s tiene que ser UNIQUE y parcial", nombre)
@@ -545,6 +545,41 @@ class FlywayMigrationIT {
                 """, String.class, SCHEMA);
 
         assertThat(referenciadas).containsExactly("station");
+    }
+
+    /**
+     * V18: la clave natural del perfil incluye el KP, y la via tiene orden propio.
+     *
+     * <p>El identificador solo dejo de bastar cuando una via lleva dos tramos concatenados: cada
+     * tramo se numero por su cuenta, asi que '5-1.01' existe dos veces en la misma via. Son dos
+     * mastiles distintos —KP 5421 y KP 5017— y sin el KP en el indice el importador actualizaria
+     * uno con los datos del otro, en silencio y sin violar ninguna restriccion.
+     */
+    @Test
+    void laClaveNaturalDelPerfilIncluyeElPuntoKilometrico() {
+        Map<String, String> indices = new java.util.HashMap<>();
+        jdbc().query("select indexname, indexdef from pg_indexes"
+                        + " where schemaname = ? and indexname like 'ux_profile%'", rs -> {
+            indices.put(rs.getString("indexname"), rs.getString("indexdef"));
+        }, SCHEMA);
+
+        assertThat(indices)
+                .as("el indice que solo miraba el identificador ya no puede seguir ahi: dejaria "
+                        + "fuera el segundo tramo de la via")
+                .doesNotContainKey("ux_profile_track_profile_id");
+        assertThat(indices.get("ux_profile_track_profile_id_kp"))
+                .contains("UNIQUE")
+                .contains("kilometric_point")
+                .contains("deleted = false");
+    }
+
+    /** V18: el orden a lo largo de la via, que el KP ya no puede dar. */
+    @Test
+    void elPerfilYSuGemelaDeAuditoriaTienenElOrdenEnLaVia() {
+        assertThat(existeColumna("profile", "order_in_track")).isTrue();
+        assertThat(existeColumna("profile_aud", "order_in_track"))
+                .as("sin la columna en la gemela, la primera revision de un perfil revienta")
+                .isTrue();
     }
 
     private boolean existeTabla(String tabla) {
