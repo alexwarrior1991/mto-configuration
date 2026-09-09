@@ -89,6 +89,14 @@ PROFILE_LOV_FIELDS = ("SECTIONING", "ANCHORAGE", "ANCHORAGE_FOUNDATION", "FOUNDA
 # eso alli sigue saliendo a NO_RECONOCIDO.
 LOV_MULTIVALUE = {"SECTIONING", "ANCHORAGE", "SECTIONING_FEEDING"}
 
+# Separador de las columnas multivalor del maestro. NO es el espacio, y no puede serlo:
+# hay codigos del catalogo que LLEVAN espacios —'A/S Diag S/A', 'T-SIGN FOUND.',
+# 'CP+AnMC 265,00'—, asi que una celda separada por espacios es ambigua y el importador
+# no puede deshacerla. Partiendo 'P30(CS) A/S Diag' —que es UN codigo del catalogo— se
+# inventaba un 'Diag' que no existe, y con el se caian 142 perfiles al importar. La barra
+# es la misma que ya usa la columna ESTACIONES.
+LOV_SEPARATOR = "|"
+
 LOV_ENTITY = {
     "SECTIONING": "Sectioning",
     "ANCHORAGE": "Anchorage",
@@ -313,15 +321,22 @@ def load_lov_catalog(path):
 def resolve_lov(field, text, cfg, ep, sheet, row, master: Master):
     """Canonicaliza un codigo y comprueba que el catalogo lo tiene habilitado.
 
-    Devuelve el codigo canonico. Si no resuelve, lo deja tal cual —tirarlo escondería el
-    problema— y lo anota en NO_RECONOCIDO, que es lo que hace terminar con codigo != 0.
+    Devuelve (codigo, sin_resolver). Los codigos que resuelven salen con la grafia del
+    catalogo y, si son varios, unidos por LOV_SEPARATOR.
+
+    El que NO resuelve sale VACIO, no tal cual. Escribirlo daba un maestro que no se
+    puede cargar: el importador comprueba cada codigo contra su catalogo —tiene que
+    hacerlo, porque MasterDataService resuelve un codigo desconocido a null sin quejarse—
+    y tumbaba la fila entera por el valor de una relacion opcional. Vaciarlo no lo
+    esconde: sigue anotado en NO_RECONOCIDO con su EP, su hoja y su fila, la fila sale
+    marcada REVISAR y el generador sigue terminando con codigo != 0.
     """
     if not text:
-        return text
+        return text, False
 
     entity = LOV_ENTITY.get(field)
     if entity is None:
-        return text
+        return text, False
 
     # Multivalor: PRIMERO se prueba la celda entera. Solo si no es un codigo se intenta
     # partirla, y solo se acepta la particion cuando TODAS las partes son codigos validos.
@@ -345,7 +360,7 @@ def resolve_lov(field, text, cfg, ep, sheet, row, master: Master):
                 exacto = conocidos[part.upper()]     # la grafia del catalogo, no la del origen
                 if exacto.upper() not in {v.upper() for v in vistos}:
                     vistos.append(exacto)
-            return " ".join(vistos)
+            return LOV_SEPARATOR.join(vistos), False
 
     return resolve_lov_single(field, text, cfg, ep, sheet, row, master)
 
@@ -364,7 +379,7 @@ def canonical_code(entity, text, cfg):
 def resolve_lov_single(field, text, cfg, ep, sheet, row, master: Master):
     """Un solo codigo: canonicaliza y comprueba que el catalogo lo tiene habilitado."""
     if not text:
-        return text
+        return text, False
 
     entity = LOV_ENTITY[field]
 
@@ -373,7 +388,7 @@ def resolve_lov_single(field, text, cfg, ep, sheet, row, master: Master):
     # (code_rejections) los convierte aqui en el hueco que son. Dejarlos pasar los sacaria
     # en NO_RECONOCIDO como si faltara una LOV por declarar, que es justo lo contrario.
     if any(squash(marker).upper() == text.upper() for marker in cfg.get("code_rejections", [])):
-        return ""
+        return "", False
 
     # La misma errata mecanica que corrige el catalogo: 'P50 (CS)' es 'P50(CS)'.
     text = normalize_code(text)
@@ -390,9 +405,9 @@ def resolve_lov_single(field, text, cfg, ep, sheet, row, master: Master):
 
     catalog = cfg.get("lov_catalog")
     if catalog is None:
-        return text
+        return text, False
     if upper in catalog.get(entity, {}):
-        return catalog[entity][upper]        # la grafia del catalogo: findByCode distingue
+        return catalog[entity][upper], False  # la grafia del catalogo: findByCode distingue
 
     # 'AnM-R AnM-R', 'AnRW/Tunnel AnRW/Tunnel': no son dos valores, es uno escrito dos
     # veces. Se colapsa solo cuando TODAS las partes son identicas, asi que no puede
@@ -404,10 +419,10 @@ def resolve_lov_single(field, text, cfg, ep, sheet, row, master: Master):
         if single.upper() in catalog.get(entity, {}):
             master.discard(motivo=f"{entity}: codigo repetido en la celda", ep=ep,
                            hoja=sheet, fila=row, detalle=text)
-            return catalog[entity][single.upper()]
+            return catalog[entity][single.upper()], False
 
     master.unrecognised(f"codigo sin {entity} habilitado", text, ep, sheet, row)
-    return text
+    return "", True
 
 
 # El plano de una hoja: sus filas y donde cae cada cosa. Se resuelve UNA vez por hoja
@@ -566,7 +581,9 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
             raw = cell(row, single.get(field))
             text = squash(raw)
             text = "" if is_blank(raw) or is_noise(text) else text
-            record[field] = resolve_lov(field, text, cfg, ep, sheet, number, master)
+            record[field], sin_resolver = resolve_lov(field, text, cfg, ep, sheet,
+                                                      number, master)
+            review = review or sin_resolver
 
         key = (code.upper(), None if kp is None else str(kp))
         duplicated = key in seen_keys
@@ -630,8 +647,9 @@ def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master
         raw_type = values.get("CANTILEVER_TYPE")
         type_code = squash(raw_type)
         type_code = "" if is_blank(raw_type) or is_noise(type_code) else type_code
-        record["CANTILEVER_TYPE"] = resolve_lov("CANTILEVER_TYPE", type_code, cfg, ep,
-                                                sheet, number, master)
+        record["CANTILEVER_TYPE"], sin_resolver = resolve_lov(
+            "CANTILEVER_TYPE", type_code, cfg, ep, sheet, number, master)
+        review = review or sin_resolver
 
         for field in ("STAGGER", "CATENARY_HEIGHT", "CW_ELEVATION", "CW_HEIGHT",
                       "WIND_DEFLECTION", "ARM_ANGLE"):
@@ -645,8 +663,9 @@ def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master
             master.discard(motivo=f"STEADY_ARM: {reason}", ep=ep, hoja=sheet,
                            fila=number, detalle=squash(values.get("STEADY_ARM")))
             review = True
-        record["STEADY_ARM_TYPE"] = resolve_lov("STEADY_ARM_TYPE", arm_type or "", cfg,
-                                                ep, sheet, number, master)
+        record["STEADY_ARM_TYPE"], sin_resolver = resolve_lov(
+            "STEADY_ARM_TYPE", arm_type or "", cfg, ep, sheet, number, master)
+        review = review or sin_resolver
         record["STEADY_ARM_LENGTH"] = arm_length
 
         record["ENABLED"] = "SI" if record["CANTILEVER_TYPE"] else "NO"
@@ -809,6 +828,12 @@ READ_ME = [
      "Hoja y numero de fila del workbook, tal como los enseña Excel, para poder ir a la celda."),
     ("SPAN", "Vano HASTA EL PERFIL SIGUIENTE, en metros. En el origen vive en la fila intermedia."),
     ("SLOT", "1, 2 o 3. Posicion de la mensula dentro del perfil (columnas M1/M2/M3)."),
+    ("SECTIONING / ANCHORAGE / SECTIONING_FEEDING",
+     "Admiten VARIOS codigos, separados por '|'. No por espacio: hay codigos del catalogo "
+     "que llevan espacios ('A/S Diag S/A', 'T-SIGN FOUND.'). Sin barra, uno solo."),
+    ("Codigo vacio con REVISAR=SI",
+     "El origen traia un codigo que el catalogo no tiene habilitado. Sale en NO_RECONOCIDO "
+     "con su hoja y su fila; el resto del perfil se carga igual."),
     ("STEADY_ARM_TYPE / LENGTH",
      "La columna 'Arm Type' del origen trae los dos juntos ('PH-1150'). Sin longitud es normal."),
     ("NO_MAPEADO",

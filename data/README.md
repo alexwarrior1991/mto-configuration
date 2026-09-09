@@ -321,10 +321,26 @@ generadores con el mismo significado: esto no es un código.
 seccionamientos a la vez —`A/S P50(CS)` son dos, corriente en estaciones— y varios anclajes
 —`FP+AnMC CP+AnMC` es uno con regulación de tensión y otro sin ella—. Y varios aparatos de seccionamiento —`Disc SECT-I` es un disconnector más un aislador de
 sección—. El modelo es N:M en las tres desde `V14`, `V15` y `V16`. El generador **primero prueba la celda entera** como código y solo la parte si
-**todas** sus partes son códigos válidos; si no, la deja intacta y la saca en
+**todas** sus partes son códigos válidos; si no, la vacía y la saca en
 `NO_RECONOCIDO`. Sin esa condición, `A/S Diag` —que es `A/S-Diag` escrito con espacio— se
 convertiría en `A/S` más un `Diag` inventado. En las demás columnas, dos códigos en una celda
 siguen siendo una anomalía y se reportan.
+
+**El separador del maestro es la barra `|`, no el espacio**, y no puede ser el espacio: hay
+códigos del catálogo que **llevan** espacios (`A/S Diag S/A`, `T-SIGN FOUND.`,
+`CP+AnMC 265,00`), así que una celda separada por espacios es ambigua y el importador no
+puede deshacerla. Es la misma barra que ya usa `ESTACIONES` en `TRACKS`. La barra solo se
+escribe cuando el generador ha comprobado que **cada** parte está habilitada en el catálogo,
+de modo que el importador puede partir por ella sin volver a decidir nada. Con el espacio,
+`P30(CS) A/S Diag` —que es **un** código del catálogo— se partía en tres y se caían 142
+perfiles al importar.
+
+**Un código que no resuelve sale VACÍO, no tal cual.** Escribirlo daba un maestro que no se
+puede cargar: el importador comprueba cada código contra su catálogo y tumbaba el perfil
+entero por el valor de una relación opcional. Vaciarlo no lo esconde —queda en
+`NO_RECONOCIDO` con su EP, su hoja y su fila, la fila sale `REVISAR=SI` y el generador sigue
+terminando con código distinto de cero—, pero deja que el resto del perfil entre mientras se
+decide qué hacer con ese código.
 
 Dos erratas mecánicas se corrigen antes de nada, en los dos generadores: el **espacio antes
 de un paréntesis** (`P50 (CS)` es `P50(CS)`, 50 códigos de cuatro catálogos) y el **código

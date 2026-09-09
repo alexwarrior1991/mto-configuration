@@ -89,6 +89,18 @@ public class InfrastructureUpsertService {
     private final BusinessEntityRepository businessEntityRepository;
     private final MasterDataService masterDataService;
 
+    /**
+     * Separador de las columnas multivalor del maestro.
+     *
+     * <p>No es el espacio, y no puede serlo: hay codigos del catalogo que <b>llevan</b>
+     * espacios —{@code 'A/S Diag S/A'}, {@code 'T-SIGN FOUND.'}, {@code 'CP+AnMC 265,00'}—,
+     * asi que partir por espacios rompe uno de esos en trozos que no existen. Partiendo
+     * {@code 'P30(CS) A/S Diag'}, que es UN codigo, se inventaba un {@code 'Diag'} y con el
+     * se caian 142 perfiles. {@code build_profile_master.py} escribe la barra, y solo la
+     * escribe cuando ha comprobado que cada parte esta en el catalogo.
+     */
+    private static final String LOV_SEPARATOR = "\\|";
+
     public UpsertResult upsertExecutionPackage(ExecutionPackageMasterRow row, boolean dryRun) {
         Optional<Long> existing = executionPackageRepository.findByNameIgnoreCase(row.name())
                 .map(entity -> entity.getId());
@@ -264,7 +276,7 @@ public class InfrastructureUpsertService {
 
     private void applyLovCodes(ProfileDTO dto, String profileStatus, ProfileLovCodes lov) {
         dto.setProfileStatus(lov(profileStatus, ProfileStatusDTO::new));
-        // El maestro trae los codigos separados por espacio: 'A/S P50' son DOS.
+        // El maestro trae los codigos separados por barra: 'A/S|P50' son DOS.
         dto.setSectionings(lovList(lov.sectioning(), SectioningDTO::new));
         dto.setAnchorages(lovList(lov.anchorage(), AnchorageDTO::new));
         dto.setAnchorageFoundation(lov(lov.anchorageFoundation(), AnchorageFoundationDTO::new));
@@ -328,12 +340,12 @@ public class InfrastructureUpsertService {
         ProfileLovCodes lov = row.lov();
         // El seccionamiento viene en plural: se comprueba codigo a codigo.
         if (!StringUtils.isBlank(lov.sectioning())) {
-            for (String code : lov.sectioning().trim().split("\\s+")) {
+            for (String code : lov.sectioning().trim().split(LOV_SEPARATOR)) {
                 check(unresolved, "sectioning", code, masterDataService::getSectioningByCode);
             }
         }
         if (!StringUtils.isBlank(lov.anchorage())) {
-            for (String code : lov.anchorage().trim().split("\\s+")) {
+            for (String code : lov.anchorage().trim().split(LOV_SEPARATOR)) {
                 check(unresolved, "anchorage", code, masterDataService::getAnchorageByCode);
             }
         }
@@ -344,7 +356,7 @@ public class InfrastructureUpsertService {
         check(unresolved, "portal", lov.portal(), masterDataService::getPortalByCode);
         check(unresolved, "returnSupport", lov.returnSupport(), masterDataService::getReturnSupportByCode);
         if (!StringUtils.isBlank(lov.sectioningFeeding())) {
-            for (String code : lov.sectioningFeeding().trim().split("\s+")) {
+            for (String code : lov.sectioningFeeding().trim().split(LOV_SEPARATOR)) {
                 check(unresolved, "sectioningFeeding", code,
                         masterDataService::getDisconnectorFunctionByCode);
             }
@@ -368,7 +380,7 @@ public class InfrastructureUpsertService {
     }
 
     /**
-     * Varios codigos en una celda, separados por espacio.
+     * Varios codigos en una celda, separados por {@link #LOV_SEPARATOR}.
      *
      * <p>Solo el seccionamiento admite mas de uno: es corriente que un perfil de estacion lleve
      * 'A/S' y 'P50' a la vez. En las demas listas de valores una celda con dos codigos es una
@@ -387,9 +399,12 @@ public class InfrastructureUpsertService {
             return new ArrayList<>();
         }
         List<T> result = new ArrayList<>();
-        for (String code : codes.trim().split("\\s+")) {
+        for (String code : codes.trim().split(LOV_SEPARATOR)) {
+            if (StringUtils.isBlank(code)) {
+                continue;
+            }
             T dto = factory.get();
-            dto.setCode(code);
+            dto.setCode(code.trim());
             result.add(dto);
         }
         return result;

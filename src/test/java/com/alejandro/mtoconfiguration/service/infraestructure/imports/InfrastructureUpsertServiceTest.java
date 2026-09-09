@@ -303,7 +303,7 @@ class InfrastructureUpsertServiceTest {
         }
 
         /**
-         * El maestro trae 'A/S P50(CS)' en una celda porque el perfil lleva los dos. Antes
+         * El maestro trae 'A/S|P50(CS)' en una celda porque el perfil lleva los dos. Antes
          * cabia uno y la celda entera se quedaba fuera por no ser un codigo conocido.
          */
         @Test
@@ -316,7 +316,7 @@ class InfrastructureUpsertServiceTest {
                     .thenReturn(Optional.empty());
             when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
 
-            service.upsertProfile(conSeccionamiento("A/S P50(CS)"), 1L, List.of(), false);
+            service.upsertProfile(conSeccionamiento("A/S|P50(CS)"), 1L, List.of(), false);
 
             ArgumentCaptor<ProfileDTO> captor = ArgumentCaptor.forClass(ProfileDTO.class);
             verify(profileService).create(captor.capture());
@@ -365,7 +365,7 @@ class InfrastructureUpsertServiceTest {
             when(masterDataService.getSectioningByCode("NO-EXISTE")).thenReturn(null);
 
             assertThatThrownBy(() -> service.upsertProfile(
-                    conSeccionamiento("A/S NO-EXISTE"), 1L, List.of(), false))
+                    conSeccionamiento("A/S|NO-EXISTE"), 1L, List.of(), false))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessageContaining("NO-EXISTE");
 
@@ -417,6 +417,29 @@ class InfrastructureUpsertServiceTest {
         }
 
         @Test
+        @DisplayName("un codigo del catalogo que lleva espacios NO se parte")
+        void elCodigoConEspaciosNoSeParte() {
+            // 'P30(CS) A/S Diag' es UN codigo del catalogo, no tres. Partiendo por espacios
+            // se inventaba un 'Diag' que no existe y se caian 142 perfiles al importar; por
+            // eso el separador del maestro es la barra, que el generador solo escribe cuando
+            // ha comprobado que cada parte esta en el catalogo.
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(masterDataService.getSectioningByCode("P30(CS) A/S Diag"))
+                    .thenReturn(new Sectioning());
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCaseAndKp(anyLong(), any(), any()))
+                    .thenReturn(Optional.empty());
+            when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            service.upsertProfile(conSeccionamiento("P30(CS) A/S Diag"), 1L, List.of(), false);
+
+            ArgumentCaptor<ProfileDTO> captor = ArgumentCaptor.forClass(ProfileDTO.class);
+            verify(profileService).create(captor.capture());
+            assertThat(captor.getValue().getSectionings())
+                    .extracting(SectioningDTO::getCode)
+                    .containsExactly("P30(CS) A/S Diag");
+        }
+
+        @Test
         @DisplayName("una celda con dos anclajes se parte en dos")
         void dosAnclajesEnUnaCelda() {
             when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
@@ -428,7 +451,7 @@ class InfrastructureUpsertServiceTest {
 
             ProfileMasterRow row = new ProfileMasterRow("EP7", "TRACK 1", "86-02.20", "1000", 7,
                     "DEFINITIVE",
-                    new ProfileLovCodes("", "FP+AnMC CP+AnMC", "", "", "", "", "", ""),
+                    new ProfileLovCodes("", "FP+AnMC|CP+AnMC", "", "", "", "", "", ""),
                     null, null, null, null, true, 586);
             service.upsertProfile(row, 1L, List.of(), false);
 
@@ -448,7 +471,7 @@ class InfrastructureUpsertServiceTest {
 
             ProfileMasterRow row = new ProfileMasterRow("EP7", "TRACK 1", "86-02.20", "1000", 7,
                     "DEFINITIVE",
-                    new ProfileLovCodes("", "FP+AnMC NO-EXISTE", "", "", "", "", "", ""),
+                    new ProfileLovCodes("", "FP+AnMC|NO-EXISTE", "", "", "", "", "", ""),
                     null, null, null, null, true, 586);
 
             assertThatThrownBy(() -> service.upsertProfile(row, 1L, List.of(), false))
@@ -472,7 +495,7 @@ class InfrastructureUpsertServiceTest {
 
             ProfileMasterRow row = new ProfileMasterRow("EP14A", "TRACK 138", "154-138.13",
                     "1000", 7, "DEFINITIVE",
-                    new ProfileLovCodes("", "", "", "", "", "", "", "Disc SECT-I"),
+                    new ProfileLovCodes("", "", "", "", "", "", "", "Disc|SECT-I"),
                     null, null, null, null, true, 17);
             service.upsertProfile(row, 1L, List.of(), false);
 

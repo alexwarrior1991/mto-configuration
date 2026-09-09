@@ -534,7 +534,7 @@ class CodigosDeListaDeValores(unittest.TestCase):
 
     def resolver(self, field, text, cfg=None):
         master = bpm.Master()
-        value = bpm.resolve_lov(field, text, cfg or self.CFG_LOV, "EP1", "H", 7, master)
+        value, _ = bpm.resolve_lov(field, text, cfg or self.CFG_LOV, "EP1", "H", 7, master)
         return value, master.unknown
 
     def test_un_alias_se_convierte_en_su_codigo_canonico(self):
@@ -553,8 +553,10 @@ class CodigosDeListaDeValores(unittest.TestCase):
 
     def test_un_codigo_que_no_esta_habilitado_va_a_no_reconocido(self):
         value, unknown = self.resolver("POLE_TYPE", "NO_EXISTE")
-        # Se conserva el valor: tirarlo escondería el problema en vez de enseñarlo.
-        self.assertEqual(value, "NO_EXISTE")
+        # Sale VACIO, no tal cual: escribirlo daba un maestro que el importador no puede
+        # cargar —comprueba cada codigo contra su catalogo— y tumbaba la fila entera por
+        # una relacion opcional. No se esconde: queda en NO_RECONOCIDO, con su fila.
+        self.assertEqual(value, "")
         self.assertEqual(len(unknown), 1)
         item = next(iter(unknown.values()))
         self.assertIn("PoleType", item["tipo"])
@@ -576,14 +578,14 @@ class CodigosDeListaDeValores(unittest.TestCase):
         """Es la unica columna multivalor: un perfil de estacion lleva 'A/S' y 'P50' a la vez."""
         cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S": "A/S", "P50(CS)": "P50(CS)"}})
         value, unknown = self.resolver("SECTIONING", "A/S P50(CS)", cfg)
-        self.assertEqual(value, "A/S P50(CS)")
+        self.assertEqual(value, "A/S|P50(CS)")
         self.assertEqual(unknown, {})
 
     def test_solo_parte_si_TODAS_las_partes_son_codigos(self):
         """'A/S Diag' es 'A/S-Diag' con un espacio, no dos valores. Partirla inventaria 'Diag'."""
         cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S": "A/S", "A/S-DIAG": "A/S-Diag"}})
         value, unknown = self.resolver("SECTIONING", "A/S Diag", cfg)
-        self.assertEqual(value, "A/S Diag")
+        self.assertEqual(value, "")
         self.assertEqual(len(unknown), 1)
 
     def test_la_celda_entera_gana_a_la_particion(self):
@@ -597,7 +599,22 @@ class CodigosDeListaDeValores(unittest.TestCase):
         """'P50 (CS) S/A' son DOS valores, no tres: la errata no puede romper 'P50(CS)'."""
         cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"P50(CS)": "P50(CS)", "S/A": "S/A"}})
         value, unknown = self.resolver("SECTIONING", "P50 (CS) S/A", cfg)
-        self.assertEqual(value, "P50(CS) S/A")
+        self.assertEqual(value, "P50(CS)|S/A")
+        self.assertEqual(unknown, {})
+
+    def test_un_codigo_con_espacios_sale_entero_y_sin_separador(self):
+        """'P30(CS) A/S Diag' es UN codigo del catalogo, no tres.
+
+        Es lo que obliga a que el separador del maestro sea la barra y no el espacio: con
+        el espacio, el importador partia este codigo en 'P30(CS)', 'A/S' y un 'Diag' que
+        no existe, y se caian 142 perfiles.
+        """
+        cfg = dict(self.CFG_LOV,
+                   lov_catalog={"Sectioning": {"P30(CS) A/S DIAG": "P30(CS) A/S Diag",
+                                               "A/S": "A/S"}})
+        value, unknown = self.resolver("SECTIONING", "P30(CS) A/S Diag", cfg)
+        self.assertEqual(value, "P30(CS) A/S Diag")
+        self.assertNotIn(bpm.LOV_SEPARATOR, value)
         self.assertEqual(unknown, {})
 
     def test_el_mismo_seccionamiento_dos_veces_es_uno(self):
@@ -615,7 +632,7 @@ class CodigosDeListaDeValores(unittest.TestCase):
         cfg = dict(self.CFG_LOV,
                    lov_catalog={"Anchorage": {"FP+ANMC": "FP+AnMC", "CP+ANMC": "CP+AnMC"}})
         value, unknown = self.resolver("ANCHORAGE", "FP+AnMC CP+AnMC", cfg)
-        self.assertEqual(value, "FP+AnMC CP+AnMC")
+        self.assertEqual(value, "FP+AnMC|CP+AnMC")
         self.assertEqual(unknown, {})
 
     def test_el_aparato_de_seccionamiento_tambien_admite_varios(self):
@@ -623,14 +640,14 @@ class CodigosDeListaDeValores(unittest.TestCase):
         cfg = dict(self.CFG_LOV,
                    lov_catalog={"DisconnectorFunction": {"DISC": "Disc", "SECT-I": "SECT-I"}})
         value, unknown = self.resolver("SECTIONING_FEEDING", "Disc SECT-I", cfg)
-        self.assertEqual(value, "Disc SECT-I")
+        self.assertEqual(value, "Disc|SECT-I")
         self.assertEqual(unknown, {})
 
     def test_las_columnas_de_una_sola_LOV_NO_admiten_varios(self):
         """En return_support dos codigos en una celda siguen siendo una anomalia."""
         cfg = dict(self.CFG_LOV, lov_catalog={"ReturnSupport": {"RW2": "RW2", "RW2T-C": "RW2T-C"}})
         value, unknown = self.resolver("RETURN_SUPPORT", "RW2 RW2T-C", cfg)
-        self.assertEqual(value, "RW2 RW2T-C")
+        self.assertEqual(value, "")
         self.assertEqual(len(unknown), 1)
 
     def test_un_codigo_repetido_en_la_celda_se_colapsa_en_uno(self):
@@ -641,11 +658,17 @@ class CodigosDeListaDeValores(unittest.TestCase):
         self.assertEqual(unknown, {})
 
     def test_dos_codigos_DISTINTOS_no_se_eligen_solos(self):
-        """Quedarse con uno seria decidir por el humano cual de los dos vale."""
+        """Quedarse con uno seria decidir por el humano cual de los dos vale.
+
+        POLE_TYPE no es multivalor: la columna admite un codigo y aqui vienen dos. Sale
+        vacia y anotada en NO_RECONOCIDO, que es lo que pone la decision delante de quien
+        puede tomarla, en vez de elegir por el o de tumbar el perfil al importar.
+        """
         cfg = dict(self.CFG_LOV, lov_catalog={"PoleType": {"S1T": "S1T", "S2T": "S2T"}})
         value, unknown = self.resolver("POLE_TYPE", "S1T S2T", cfg)
-        self.assertEqual(value, "S1T S2T")
+        self.assertEqual(value, "")
         self.assertEqual(len(unknown), 1)
+        self.assertEqual(next(iter(unknown.values()))["valor"], "S1T S2T")
 
     def test_un_codigo_con_espacio_no_se_parte(self):
         """'T-SIGN FOUND.' lleva espacio y es un codigo entero."""
