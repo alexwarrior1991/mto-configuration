@@ -101,6 +101,13 @@ public class InfrastructureUpsertService {
         dto.setEndDate(row.endDate());
         dto.setEnabled(row.enabled());
         dto.setCompanyId(resolveCompany(row.companyIdentificationNumber()));
+        // Las vias y las estaciones las escribe este importador UNA A UNA, mas abajo. Aqui se
+        // mandan a null para decir "de estas colecciones no digo nada": el DTO las inicializa a
+        // lista vacia, y una lista vacia significa "este paquete ya no tiene ninguna", que con
+        // cascade=ALL y orphanRemoval borraba en la segunda pasada las 39 estaciones, las 174
+        // vias y con ellas los 11.714 perfiles, para volver a crearlo todo acto seguido.
+        dto.setStations(null);
+        dto.setTracks(null);
 
         return write(existing, dto, executionPackageService::create, executionPackageService::update,
                 dryRun);
@@ -114,6 +121,12 @@ public class InfrastructureUpsertService {
         StationDTO dto = new StationDTO();
         dto.setName(row.name());
         dto.setExecutionPackageId(executionPackageId);
+        // Ver upsertExecutionPackage: null es "no toques esta coleccion". Las vias las liga cada
+        // via consigo misma (el lado dueño de la N:M es Track.stations) y los seccionadores y
+        // aisladores no los trae el maestro todavia; mandar la lista vacia los borraria.
+        dto.setTracks(null);
+        dto.setDisconnectors(null);
+        dto.setSectionInsulators(null);
 
         return write(existing, dto, stationService::create, stationService::update, dryRun);
     }
@@ -130,7 +143,12 @@ public class InfrastructureUpsertService {
         dto.setExecutionPackageId(executionPackageId);
         // Lista vacia es una respuesta valida: la via cuelga del paquete, no de una estacion.
         // Y son VARIAS porque una via larga atraviesa varias sin dejar de ser una via.
-        dto.setStationIds(stationIds == null ? List.of() : stationIds);
+        // Modificable por lo mismo que lovList: el mapper generado la reconcilia con clear().
+        dto.setStationIds(new ArrayList<>(stationIds == null ? List.of() : stationIds));
+        // Ver upsertExecutionPackage: los perfiles los escribe este importador uno a uno. Con la
+        // lista vacia, reimportar borraba los perfiles de la via —hasta 634 en la mas larga—
+        // antes de volver a crearlos.
+        dto.setProfiles(null);
 
         return write(existing, dto, trackService::create, trackService::update, dryRun);
     }
@@ -355,10 +373,18 @@ public class InfrastructureUpsertService {
      * <p>Solo el seccionamiento admite mas de uno: es corriente que un perfil de estacion lleve
      * 'A/S' y 'P50' a la vez. En las demas listas de valores una celda con dos codigos es una
      * anomalia, no el caso normal, y por eso alli sigue fallando.
+     *
+     * <p><b>La lista vacia tiene que ser MODIFICABLE</b>, y no {@code List.of()}. Al terminar
+     * el alta, {@code BaseService.create} vuelca la entidad guardada sobre el DTO, y el mapper
+     * generado reconcilia cada coleccion con {@code dto.getX().clear()} seguido de
+     * {@code addAll(...)}. Sobre una lista inmutable eso es un
+     * {@code UnsupportedOperationException} <b>despues</b> del insert, que tira la transaccion
+     * entera: 11.091 de los 11.714 perfiles del maestro —todos los que no traen seccionamiento,
+     * anclaje o alimentacion— se perdian asi, y el sintoma no nombraba ni el campo ni la fila.
      */
     private <T extends SLovDTO> List<T> lovList(String codes, Supplier<T> factory) {
         if (StringUtils.isBlank(codes)) {
-            return List.of();
+            return new ArrayList<>();
         }
         List<T> result = new ArrayList<>();
         for (String code : codes.trim().split("\\s+")) {

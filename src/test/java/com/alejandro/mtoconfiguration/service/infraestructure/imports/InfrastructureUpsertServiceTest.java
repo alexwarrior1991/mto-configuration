@@ -11,6 +11,10 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.C
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileLovCodes;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.StationMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.TrackMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.BusinessEntityRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
@@ -489,6 +493,101 @@ class InfrastructureUpsertServiceTest {
             return new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1000", 7, "DEFINITIVE",
                     new ProfileLovCodes("", "", "", "", poleType, "", "", ""),
                     null, null, null, null, true, 5);
+        }
+    }
+
+    @Nested
+    @DisplayName("Lo que el importador NO escribe")
+    class LoQueNoEscribe {
+
+        /**
+         * El importador va entidad a entidad: escribe el paquete, luego sus estaciones, luego sus
+         * vias y luego sus perfiles. Pero los DTO inicializan sus colecciones de hijos a lista
+         * vacia, y una lista vacia significa "este padre ya no tiene ninguno". Con
+         * {@code cascade = ALL} y {@code orphanRemoval}, modificar el paquete borraba sus 39
+         * estaciones y sus 174 vias, y con ellas los 11.714 perfiles, para volver a crearlo todo
+         * a continuacion: la segunda pasada daba 836 altas donde tenia que dar cero.
+         */
+        @Test
+        @DisplayName("modificar el paquete no toca sus estaciones ni sus vias")
+        void elPaqueteNoArrastraSusHijos() {
+            when(businessEntityRepository.findByIdentificationNumber("B12345678"))
+                    .thenReturn(Optional.of(company(7L)));
+            when(executionPackageRepository.findByNameIgnoreCase(any())).thenReturn(Optional.empty());
+            when(executionPackageService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            service.upsertExecutionPackage(row("B12345678"), false);
+
+            ArgumentCaptor<ExecutionPackageDTO> captor =
+                    ArgumentCaptor.forClass(ExecutionPackageDTO.class);
+            verify(executionPackageService).create(captor.capture());
+            assertThat(captor.getValue().getStations()).isNull();
+            assertThat(captor.getValue().getTracks()).isNull();
+        }
+
+        @Test
+        @DisplayName("modificar la estacion no toca sus vias ni sus aparatos")
+        void laEstacionNoArrastraSusHijos() {
+            when(stationRepository.findByExecutionPackageIdAndNameIgnoreCase(anyLong(), any()))
+                    .thenReturn(Optional.empty());
+            when(stationService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            service.upsertStation(new StationMasterRow("EP6", "HERZLIYA", 3), 7L, false);
+
+            ArgumentCaptor<StationDTO> captor = ArgumentCaptor.forClass(StationDTO.class);
+            verify(stationService).create(captor.capture());
+            assertThat(captor.getValue().getTracks()).isNull();
+            assertThat(captor.getValue().getDisconnectors()).isNull();
+            assertThat(captor.getValue().getSectionInsulators()).isNull();
+        }
+
+        @Test
+        @DisplayName("modificar la via no toca sus perfiles")
+        void laViaNoArrastraSusPerfiles() {
+            when(trackRepository.findByExecutionPackageIdAndNameIgnoreCase(anyLong(), any()))
+                    .thenReturn(Optional.empty());
+            when(trackService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            service.upsertTrack(new TrackMasterRow("EP6", "TRACK 1", List.of("HERZLIYA"), true, 4),
+                    7L, List.of(11L), false);
+
+            ArgumentCaptor<TrackDTO> captor = ArgumentCaptor.forClass(TrackDTO.class);
+            verify(trackService).create(captor.capture());
+            assertThat(captor.getValue().getProfiles())
+                    .as("los perfiles los escribe el importador uno a uno, no la via")
+                    .isNull();
+            assertThat(captor.getValue().getStationIds()).containsExactly(11L);
+        }
+
+        /**
+         * Al terminar el alta, {@code BaseService.create} vuelca la entidad guardada sobre el DTO
+         * y el mapper generado reconcilia cada coleccion con {@code clear()} y {@code addAll()}.
+         * Sobre una lista inmutable eso es un {@code UnsupportedOperationException} DESPUES del
+         * insert, que tira la transaccion entera. Asi se perdieron 11.091 de los 11.714 perfiles
+         * del maestro —todos los que no traen seccionamiento, anclaje ni alimentacion—, y el
+         * sintoma no nombraba ni el campo ni la fila.
+         */
+        @Test
+        @DisplayName("las listas de valores vacias del perfil son modificables")
+        void lasListasVaciasSePuedenVaciar() {
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE")).thenReturn(new ProfileStatus());
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCaseAndKp(anyLong(), any(), any()))
+                    .thenReturn(Optional.empty());
+            when(profileService.create(any())).thenAnswer(i -> i.getArgument(0));
+
+            ProfileMasterRow row = new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1000", 7,
+                    "DEFINITIVE", ProfileLovCodes.empty(), null, null, null, null, true, 5);
+            service.upsertProfile(row, 1L, List.of(), false);
+
+            ArgumentCaptor<ProfileDTO> captor = ArgumentCaptor.forClass(ProfileDTO.class);
+            verify(profileService).create(captor.capture());
+            ProfileDTO dto = captor.getValue();
+            assertThatCode(() -> {
+                dto.getSectionings().clear();
+                dto.getAnchorages().clear();
+                dto.getSectioningFeedings().clear();
+                dto.getCantilevers().clear();
+            }).doesNotThrowAnyException();
         }
     }
 

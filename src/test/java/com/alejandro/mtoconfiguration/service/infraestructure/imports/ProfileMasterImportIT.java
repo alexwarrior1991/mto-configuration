@@ -2,11 +2,13 @@ package com.alejandro.mtoconfiguration.service.infraestructure.imports;
 
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileImportReport;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackRepository;
 import com.alejandro.mtoconfiguration.service.lov.imports.LovMasterImporter;
 import com.alejandro.mtoconfiguration.support.PostgresTestDatabase;
+import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -99,22 +101,67 @@ class ProfileMasterImportIT {
         jdbcTemplate.execute("truncate table " + tables + " restart identity cascade");
     }
 
+    /**
+     * La carga entera, comprobada de una sola pasada.
+     *
+     * <p>Las cuatro cosas que se miran aqui —que carga, que ningun perfil se queda sin estado,
+     * que la clave natural no se repite y que reimportar no crea nada— comparten la misma
+     * importacion <b>a proposito</b>. Cada pasada escribe 11.714 perfiles y 14.244 mensulas con
+     * una transaccion por elemento; una por asercion eran cuatro pasadas y un cuarto de hora de
+     * CI para mirar exactamente las mismas filas. Con {@link SoftAssertions} un fallo no tapa a
+     * los otros, que es lo unico que se perdia al juntarlas.
+     */
     @Test
-    @DisplayName("carga el maestro y reimportarlo no crea nada nuevo")
+    @DisplayName("carga el maestro entero y reimportarlo no crea nada nuevo")
     void importaYEsIdempotente() throws IOException {
         prepara();
 
         ProfileImportReport first = importMaster(false);
 
         assertThat(first.getCreated())
-                .as("la primera pasada tiene que cargar el maestro")
+                .as("la primera pasada tiene que cargar el maestro: %s", desglose(first))
                 .isPositive();
-        assertThat(executionPackageRepository.count()).isPositive();
-        assertThat(trackRepository.count()).isPositive();
-        assertThat(profileRepository.count()).isPositive();
 
         long profilesAfterFirst = profileRepository.count();
         long tracksAfterFirst = trackRepository.count();
+
+        SoftAssertions comprobaciones = new SoftAssertions();
+        // Ninguna fila del maestro puede quedarse por el camino: el maestro se genera ya filtrado
+        // (lo que no se puede cargar sale ENABLED=NO y se cuenta aparte), asi que un fallo aqui
+        // es un defecto de la carga, no un dato malo.
+        comprobaciones.assertThat(first.getFailed())
+                .as("ninguna fila del maestro puede fallar: %s", desglose(first))
+                .isZero();
+        comprobaciones.assertThat(executionPackageRepository.count()).isPositive();
+        comprobaciones.assertThat(tracksAfterFirst).isPositive();
+        comprobaciones.assertThat(profilesAfterFirst)
+                .as("no basta con que entre alguno: tienen que entrar TODOS los cargables, y son "
+                        + "los que el maestro marca ENABLED=SI. %s", desglose(first))
+                .isEqualTo(perfilesCargables());
+
+        // El fallo silencioso que tapa V12: sin las tres filas de profile_status, el codigo se
+        // resuelve a null sin quejarse y el perfil entra con la clave ajena vacia.
+        comprobaciones.assertThat(jdbcTemplate.queryForObject(
+                        "select count(*) from profile where profile_status_id is null", Integer.class))
+                .as("ningun perfil cargado puede quedarse sin estado")
+                .isZero();
+
+        // EP9A / HR Track 1 y HR Track 2 llevan dos tramos concatenados, y con ellos 47 y 46
+        // codigos de perfil repetidos dentro de la MISMA via: no se parten en dos, van juntos y
+        // en orden. Lo que no puede repetirse es la clave natural que fija V18, que incluye el
+        // punto kilometrico: dos perfiles con el mismo identificador estan en dos sitios
+        // distintos de la via. Comprobar solo (via, identificador) seria comprobar lo contrario
+        // de lo que el esquema permite desde V18.
+        comprobaciones.assertThat(jdbcTemplate.queryForObject("""
+                        select count(*) from (
+                            select track_id, upper(profile_id), kilometric_point
+                            from profile where deleted = false
+                            group by 1, 2, 3 having count(*) > 1
+                        ) repetidos
+                        """, Integer.class))
+                .as("ningun perfil puede repetir identificador Y punto kilometrico en su via")
+                .isZero();
+        comprobaciones.assertAll();
 
         ProfileImportReport second = importMaster(false);
 
@@ -127,41 +174,6 @@ class ProfileMasterImportIT {
                 .as("los perfiles no pueden duplicarse: para eso estan los indices unicos de V12")
                 .isEqualTo(profilesAfterFirst);
         assertThat(trackRepository.count()).isEqualTo(tracksAfterFirst);
-    }
-
-    @Test
-    @DisplayName("ningun perfil cargado se queda sin estado")
-    void todoPerfilTieneEstado() throws IOException {
-        // Es el fallo silencioso que tapa V12: sin las tres filas de profile_status, el
-        // codigo se resuelve a null sin quejarse y el perfil entra con la FK vacia.
-        prepara();
-        importMaster(false);
-
-        Integer sinEstado = jdbcTemplate.queryForObject(
-                "select count(*) from profile where profile_status_id is null", Integer.class);
-
-        assertThat(sinEstado).isZero();
-    }
-
-    @Test
-    @DisplayName("una hoja partida en dos tramos da dos vias distintas")
-    void hojaConDosTramos() throws IOException {
-        // EP9A / HR Track 1 lleva dos tramos concatenados con 47 codigos de perfil
-        // repetidos. Sin el corte de topology.yml chocarian por (via, profileId).
-        prepara();
-        importMaster(false);
-
-        Integer duplicados = jdbcTemplate.queryForObject("""
-                select count(*) from (
-                    select track_id, upper(profile_id)
-                    from profile where deleted = false
-                    group by 1, 2 having count(*) > 1
-                ) repetidos
-                """, Integer.class);
-
-        assertThat(duplicados)
-                .as("ningun identificador de perfil puede repetirse dentro de una via")
-                .isZero();
     }
 
     @Test
@@ -202,7 +214,6 @@ class ProfileMasterImportIT {
     }
 
     /**
-     * Deja el entorno listo, o salta el test si el maestro todavia es un borrador.    /**
      * Deja el entorno listo, o salta el test si el maestro todavia es un borrador.
      *
      * <p>Los metadatos de los paquetes no estan en los workbooks: los declara una persona en
@@ -257,6 +268,22 @@ class ProfileMasterImportIT {
             return parser.parseAll(in).executionPackages().stream()
                     .filter(ExecutionPackageMasterRow::enabled)
                     .toList();
+        }
+    }
+
+    /**
+     * Cuantos perfiles tiene que cargar el maestro.
+     *
+     * <p>Se cuenta del fichero, no de una constante: el maestro se regenera y el numero cambia.
+     * Y se compara el total, no "que entre alguno": con {@code isPositive()}, 11.091 de los
+     * 11.714 perfiles se caian con la misma excepcion sin que ninguna asercion lo dijera. Lo que
+     * acabo delatandolo fue la idempotencia, que habla de otra cosa.
+     */
+    private long perfilesCargables() throws IOException {
+        try (InputStream in = Files.newInputStream(PROFILE_MASTER)) {
+            return parser.parseAll(in).profiles().stream()
+                    .filter(ProfileMasterRow::enabled)
+                    .count();
         }
     }
 

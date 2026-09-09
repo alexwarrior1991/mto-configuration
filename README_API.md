@@ -164,6 +164,12 @@ id=57    INSERT  cw_height=7.777    <- venía sin id: fila nueva
 Si sólo quieres cambiar el `kp` del perfil, **devuelve las ménsulas tal como las leíste**, con sus
 `id`.
 
+> `"cantilevers": null` —el valor JSON `null`, no una lista vacía ni el campo omitido— es lo único
+> que significa *«de esta colección no digo nada»* y deja los hijos intactos. **Omitir el campo no
+> vale**: el DTO lo inicializa a lista vacía, así que el servidor lee `[]` y borra. Es una salida
+> para quien construye la petición desde código y sabe que no está tocando esa rama; para un
+> cliente normal la regla práctica de abajo sigue siendo la buena.
+
 **Perder los `id` al reenviar.** Si mandas los mismos hijos pero sin su `id`, el servidor entiende
 que los existentes se han quitado y que llegan otros nuevos: borra tres filas e inserta tres. Los
 datos acaban pareciendo correctos pero cambian de `id`, pierden su histórico de auditoría y
