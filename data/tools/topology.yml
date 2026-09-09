@@ -261,7 +261,7 @@ execution_packages:
     initial_package: false        # REVISAR
     length: 69505                     # REVISAR: longitud en metros
     start_date: 2018-01-25        # REVISAR
-    end_date: 2023-20-02          # REVISAR
+    end_date: 2023-02-20          # REVISAR
     company_identification_number: "B10744258"   # REVISAR: NIF de la empresa
     # Candidatas derivadas de los titulos de la celda A1 de cada hoja.
     # REVISAR: confirma los nombres reales y anade las que falten.
@@ -560,21 +560,11 @@ execution_packages:
       # codigos de perfil se repiten (47 y 46 respectivamente). Sin el corte, ambos
       # tramos caerian en la misma via y chocarian por (via, profileId).
       - sheet: "HR Track 1"
-        name: "TRACK 1 (5+421 a 8+948)"   # REVISAR: nombre real del primer tramo
-        station: [TZG, BEN, TFAM]            # REVISAR: A1 no nombra estacion
-        rows: [5, 135]
-      - sheet: "HR Track 1"
-        name: "TRACK 1 (0+270 a 10+758)"  # REVISAR: nombre real del segundo tramo
-        station: [TZG, BEN, TFAM]            # REVISAR: A1 no nombra estacion
-        rows: [137, 785]
+        name: "TRACK 1"
+        stations: [ TZG, BEN, TFAM ]
       - sheet: "HR Track 2"
-        name: "TRACK 2 (5+421 a 8+770)"   # REVISAR: nombre real del primer tramo
-        station: [TZG, BEN, TFAM]            # REVISAR: A1 no nombra estacion
-        rows: [5, 131]
-      - sheet: "HR Track 2"
-        name: "TRACK 2 (0+108 a 10+758)"  # REVISAR: nombre real del segundo tramo
-        station: [TZG, BEN, TFAM]            # REVISAR: A1 no nombra estacion
-        rows: [133, 1052]
+        name: "TRACK 2"
+        stations: [ TZG, BEN, TFAM ]
       - sheet: "HR Track 3"
         name: "TRACK 3 GANOT"          # REVISAR: derivado de A1
         station: TZG     # REVISAR: derivado del titulo A1
