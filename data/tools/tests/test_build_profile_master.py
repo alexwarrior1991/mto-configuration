@@ -421,16 +421,36 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
     # no este aqui listado hace fallar el test, que es justo lo que se perdia si se dejaba
     # el assertEqual(..., []) 'temporalmente' comentado.
     HUECOS_CONOCIDOS = {
-        ("codigo sin Foundation habilitado", "P8"),
-        ("codigo sin Foundation habilitado", "Ø500*1700"),
-        ("codigo sin ReturnSupport habilitado", "RW2 RW2T-C"),
-        ("codigo sin Portal habilitado", "2PRD"),
-        ("codigo sin Portal habilitado", "S1PR"),
-        ("codigo sin Portal habilitado", "MP-ISusp"),
-        ("codigo sin Sectioning habilitado", "P27 S/A A/S Diag"),
-        ("codigo sin Sectioning habilitado", "A/S Diag MP S/A"),
-        ("codigo sin DisconnectorFunction habilitado", "PHQ-1150"),
-        ("codigo sin DisconnectorFunction habilitado", "FP"),
+        # Codigos de otros catalogos que el origen escribe en su columna y que nadie ha
+        # decidido todavia: habilitarlos o descartarlos. La fila entra igual, sin ese valor.
+        ('codigo sin DisconnectorFunction habilitado', 'FP'),
+        ('codigo sin DisconnectorFunction habilitado', 'PHQ-1150'),
+        ('codigo sin Foundation habilitado', 'P8'),
+        ('codigo sin Foundation habilitado', 'Ø500*1700'),
+        ('codigo sin Portal habilitado', '2PRD'),
+        ('codigo sin Portal habilitado', 'MP-ISusp'),
+        ('codigo sin Portal habilitado', 'S1PR'),
+        ('codigo sin ReturnSupport habilitado', 'RW2 RW2T-C'),
+
+        # Seccionamiento. Casi todos son codigos de ANCHORAGE escritos en la columna
+        # SECTIONNING: la leyenda declara AnRW (Return Anchor), AnFW (Feeder Anchor) e IO
+        # (Insulated Overlap) en el otro catalogo. Se corrigen en el workbook, no aqui.
+        # 'POLE TRACK 14S' es una anotacion; '2MP', 'T' y 'MPA' son erratas sin identificar.
+        ('codigo sin Sectioning habilitado', '2MP S/A'),
+        ('codigo sin Sectioning habilitado', 'A/S-Diag AnRW'),
+        ('codigo sin Sectioning habilitado', 'AnFW AnFW'),
+        ('codigo sin Sectioning habilitado', 'AnMP AnRw'),
+        ('codigo sin Sectioning habilitado', 'AnMP T A/S-Diag'),
+        ('codigo sin Sectioning habilitado', 'AnRW'),
+        ('codigo sin Sectioning habilitado', 'AnRW/Tunnel'),
+        ('codigo sin Sectioning habilitado', 'AnRW2'),
+        ('codigo sin Sectioning habilitado', 'IO'),
+        ('codigo sin Sectioning habilitado', 'P120(Tg) S/A IO'),
+        ('codigo sin Sectioning habilitado', 'P50(CS) MPA'),
+        ('codigo sin Sectioning habilitado', 'POLE TRACK 14S'),
+        ('codigo sin Sectioning habilitado', 'S/A A/S AnRW1 AnRW2'),
+        ('codigo sin Sectioning habilitado', 'S/A IO'),
+        ('codigo sin Sectioning habilitado', 'S/A IO S/A'),
     }
 
     def test_no_aparece_ningun_hueco_nuevo(self):
@@ -630,12 +650,43 @@ class CodigosDeListaDeValores(unittest.TestCase):
         self.assertEqual(value, "A/S|P50(CS)")
         self.assertEqual(unknown, {})
 
-    def test_solo_parte_si_TODAS_las_partes_son_codigos(self):
-        """'A/S Diag' es 'A/S-Diag' con un espacio, no dos valores. Partirla inventaria 'Diag'."""
+    def test_A_S_Diag_es_UN_codigo_y_no_dos(self):
+        """'A/S Diag' es 'A/S-Diag' escrito con espacio, no 'A/S' mas un 'Diag' inventado.
+
+        Lo dice la leyenda de los workbooks: 'Diagonal Anchorage' es A/S-Diag, y un 'Diag'
+        suelto no existe en SECTIONNING. La regla la aplica code_tokens, compartida con el
+        generador del catalogo para que los dos partan igual.
+        """
         cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S": "A/S", "A/S-DIAG": "A/S-Diag"}})
         value, unknown = self.resolver("SECTIONING", "A/S Diag", cfg)
+        self.assertEqual(value, "A/S-Diag")
+        self.assertEqual(unknown, {})
+
+    def test_una_celda_con_un_token_que_no_es_codigo_no_se_parte(self):
+        """La condicion sigue siendo que TODAS las partes sean codigos.
+
+        'AnMP T A/S-Diag' lleva una 'T' que nadie ha sabido identificar, asi que la celda
+        no se reparte a medias: sale entera en NO_RECONOCIDO, con su hoja y su fila.
+        """
+        cfg = dict(self.CFG_LOV,
+                   lov_catalog={"Sectioning": {"ANMP": "AnMP", "A/S-DIAG": "A/S-Diag"}})
+        value, unknown = self.resolver("SECTIONING", "AnMP T A/S-Diag", cfg)
         self.assertEqual(value, "")
         self.assertEqual(len(unknown), 1)
+
+    def test_el_guion_suelto_separa_dos_codigos(self):
+        """'A/S - S/A' son dos: Overlap Anchorage y Overlap Semi-Axis."""
+        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"A/S": "A/S", "S/A": "S/A"}})
+        value, unknown = self.resolver("SECTIONING", "A/S - S/A", cfg)
+        self.assertEqual(value, "A/S|S/A")
+        self.assertEqual(unknown, {})
+
+    def test_el_sufijo_de_via_no_es_parte_del_codigo(self):
+        """'AnMP(T1)' es 'AnMP': el (T1) dice en que via esta, y eso ya lo sabe la via."""
+        cfg = dict(self.CFG_LOV, lov_catalog={"Sectioning": {"ANMP": "AnMP"}})
+        value, unknown = self.resolver("SECTIONING", "AnMP(T1)", cfg)
+        self.assertEqual(value, "AnMP")
+        self.assertEqual(unknown, {})
 
     def test_la_celda_entera_gana_a_la_particion(self):
         """Si la celda ES un codigo, se respeta aunque lleve espacio."""

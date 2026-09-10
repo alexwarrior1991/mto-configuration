@@ -399,6 +399,26 @@ profile_columns:
 # es (entidad, CODIGO en mayusculas), asi que 'DISC/IO' y 'Disc/IO' colapsan solos.
 # Esto es para lo que ademas cambia de caracteres.
 # --------------------------------------------------------------------------------
+# Codigos ATOMICOS de las columnas que admiten varios valores.
+#
+# Son los que declara la hoja Legend de los workbooks, mas la familia de agujas, que la
+# leyenda no enumera una a una porque cada valor es una aguja distinta ('Switch Point 50'
+# es P50, 'Switch Point 90' es P90, y en casos puntuales hay otras).
+#
+# Lo que esta aqui SE PARTE al cosechar: una celda cuyos trozos sean TODOS atomos se
+# registra como varios codigos y no como uno. Lo que no esta, se queda entero, y eso es
+# lo que salva a los codigos legitimos con espacio ('T-SIGN FOUND.', 'UNIQUE SOLUTION').
+#
+# Sin esto, un atomo que el origen solo escribe DENTRO de una celda compuesta —P59(CS)
+# solo aparece en 'A/S P59(CS)'— no llegaba a existir como fila del catalogo, y no habia
+# nada que habilitar.
+# --------------------------------------------------------------------------------
+code_atoms:
+  Sectioning:
+    exact: ['A/S', 'A/S-Diag', 'S/A', 'A', 'MP', 'MP/Tunnel', 'AnMP', 'AnMP/Tunnel', 'P50', 'P90']
+    regex: '^P\d+(\([A-Za-z]+\))?$'          # agujas: P50, P90, P30(CS), P120(Tg)...
+
+# --------------------------------------------------------------------------------
 code_canonical:
   Anchorage:
     # Alguien anoto al lado del codigo. El numero y la via no son parte del anclaje.
@@ -409,6 +429,10 @@ code_canonical:
     # ('A/S' y un 'Diag' que no existe) justo ahora que el seccionamiento admite varios.
     'A/S Diag': A/S-Diag
     'A/S  Diag': A/S-Diag
+    # Erratas de la misma grafia, vistas en el origen.
+    'A/S-Diang': A/S-Diag
+    'A/S-Diag1': A/S-Diag
+    'SA': S/A
   AnchorageFoundation:
     'U.S.': UNIQUE SOLUTION
     'Unique Solution': UNIQUE SOLUTION
@@ -662,231 +686,72 @@ track_accepted:
     - RW3
     - RWT-S
   Sectioning:
-    - '2MP S/A'
-    - 'A A/S Diag'
-    - 'A A/S-Diag'
+    # Las agujas son la misma familia que P50 y P90: 'Switch Point' de otro valor.
+    # Vienen solo de hojas Track, asi que el catalogo las saca con ENABLED=NO y se
+    # aceptan aqui.
+    #
+    # Las CONCATENACIONES que llenaban esta lista ya no hacen falta: desde que
+    # code_tokens sabe que 'A/S Diag' es 'A/S-Diag', drop_concatenations las saca del
+    # catalogo, y aceptar un codigo que ha dejado de existir no significa nada.
+    - 2MP S/A
+    - A/S Diag
+    - A/S Diag 1
+    - A/S Diag1
+    - A/S Diag2
     - A/S(T1)
-    - 'A/S - S/A'
-    - 'A/S A/S'
-    - 'A/S A/S Diag'
-    - 'A/S A/S-Diag'
-    - 'A/S AnMP'
-    - 'A/S AnMP S/A'
-    - 'A/S Diag'
-    - 'A/S Diag 1'
-    - 'A/S Diag 1 - AnMP(T1)'
-    - 'A/S Diag A/S'
-    - 'A/S Diag AnMP'
-    - 'A/S Diag MP'
-    - 'A/S Diag S/A'
-    - 'A/S Diag S/A A/S'
-    - 'A/S Diag S/A AnMP'
-    - 'A/S Diag S/A S/A'
-    - 'A/S Diag1'
-    - 'A/S Diag2'
-    - 'A/S MP'
-    - 'A/S P30(CS)'
-    - 'A/S P30(CS) S/A'
-    - 'A/S P35(CS)'
-    - 'A/S P44(CS)'
-    - 'A/S P50'
-    - 'A/S P50(CS)'
-    - 'A/S P50(CS) A/S'
-    - 'A/S P50(CS)'
-    - 'A/S P50(CS) A/S'
-    - 'A/S P50(CS) A/S-Diag'
-    - 'A/S P50(CS) S/A'
-    - 'A/S P59(CS)'
-    - 'A/S P90'
-    - 'A/S S/A'
-    - 'A/S S/A P50(CS)'
-    - 'A/S S/A S/A A/S'
-    - 'A/S-Diag A/S'
-    - 'A/S-Diag A/S-Diag'
-    - 'A/S-Diag AnMP'
-    - 'A/S-Diag AnRW'
-    - 'A/S-DiaG MP'
-    - 'A/S-Diag MP S/A'
-    - 'A/S-Diag P40(CS) AnMP'
-    - 'A/S-Diag P50(CS)'
-    - 'A/S-Diag P50(CS) S/A'
-    - 'A/S-Diag P50 S/A'
-    - 'A/S-Diag P50(CS)'
-    - 'A/S-Diag S/A'
-    - 'A/S-Diag S/A A/S'
-    - 'A/S-Diag S/A AnMP'
-    - 'A/S-Diag S/A S/A'
     - A/S-Diag1
     - A/S-Diang
-    - 'AnFW AnFW'
-    - 'AnMP - AnMP(T1)'
-    - 'AnMP - MP(T1)'
-    - 'AnMP A/S-Diag'
-    - 'AnMP AnMP'
-    - 'AnMP AnRw'
-    - 'AnMP MP'
-    - 'AnMP MP AnMP'
-    - 'AnMP P40(CS) S/A'
-    - 'AnMP P50(CS)'
-    - 'AnMP P50(CS)'
-    - 'AnMP S/A'
-    - 'AnMP S/A A/S'
-    - 'AnMP S/A A/S-Diag'
-    - 'AnMP S/A AnMP'
-    - 'AnMP T A/S-Diag'
+    - AnFW AnFW
+    - AnMP T A/S-Diag
     - AnRW
     - AnRW/Tunnel
     - AnRW2
     - IO
-    - 'MP A/S'
-    - 'MP A/S-Diag'
-    - 'MP A/S-Diag A/S-Diag'
-    - 'MP AnMP'
-    - 'MP P30(CS)'
-    - 'MP P50(CS) A/S'
-    - 'MP P50(CS)'
-    - 'MP S/A S/A'
     - P0(CS)
     - P100
     - P100(TgS)
     - P120(Tg)
-    - 'P120(Tg) S/A'
-    - 'P120(Tg) S/A IO'
     - P15
     - P21(CS)
     - P22(CS)
-    - 'P22(CS) A/S Diag'
     - P25(CS)
-    - 'P25(CS) S/A'
+    - P27
     - P27(CS)
-    - 'P27(CS) A/S'
-    - 'P29(CS) A/S Diag'
+    - P29(CS)
     - P30
     - P30(CS)
-    - 'P30(CS) A/S-Diag'
-    - 'P30(CS) S/A'
-    - 'P30 A/S Diag'
-    - P30(CS)
-    - 'P30(CS) A/S'
-    - 'P30(CS) A/S Diag'
-    - 'P30(CS) A/S Diag A/S Diag'
-    - 'P30(CS) A/S-Diag'
-    - 'P30(CS) AnMP'
-    - 'P30(CS) S/A'
-    - 'P30(CS) S/A A/S Diag'
-    - 'P30(CS) SA'
     - P32(CS)
     - P35
     - P35(CS)
-    - 'P35(CS) AnMP'
     - P37(CS)
     - P39(CS)
-    - 'P39(CS) A/S'
-    - 'P39(CS) S/A'
     - P40(CS)
-    - 'P40(CS) S/A'
-    - P40(CS)
-    - 'P40(CS) A/S Diag'
-    - 'P40(CS) S/A'
-    - 'P40(CS) S/A A/S'
-    - 'P45(CS) A/S'
+    - P44(CS)
     - P45(CS)
     - P48(CS)
     - P49(CS)
-    - 'P49(CS) S/A'
     - P5(CS)
-    - 'P50(CS) A/S'
-    - 'P50(CS) A/S MP'
-    - 'P50(CS) A/S-Diag'
-    - 'P50(CS) AnMP'
-    - 'P50(CS) MP'
-    - 'P50(CS) S/A'
-    - 'P50(CS) S/A A/S'
-    - 'P50(CS) S/A A/S A/S'
-    - 'P50(CS) S/A A/S AnMP'
-    - 'P50(CS) S/A AnMP'
-    - 'P50 A/S'
-    - 'P50 A/S Diag 2'
-    - 'P50 A/S Diag2'
-    - 'P50 A/S-Diag'
-    - 'P50 AnMP'
-    - 'P50 MP'
-    - 'P50 S/A'
-    - 'P50 S/A A/S'
-    - 'P50 S/A A/S-Diag'
-    - 'P50 S/A MP'
     - P50(CS)
-    - 'P50(CS) A/S'
-    - 'P50(CS) A/S A/S'
-    - 'P50(CS) A/S Diag'
-    - 'P50(CS) A/S Diag S/A'
-    - 'P50(CS) A/S-Diag'
-    - 'P50(CS) MP'
-    - 'P50(CS) MPA'
-    - 'P50(CS) S/A'
-    - 'P50(CS) S/A A/S'
-    - 'P50(CS) S/A A/S-Diag'
-    - 'P50(CS) S/A AnMP'
-    - 'P50(CS) SA'
-    - 'P50(CS)S/A AnMP'
+    - P50(CS) MPA
     - P51(CS)
-    - 'P52(CS) A/S'
+    - P52(CS)
     - P55(CS)
-    - 'P55(CS) AnMP'
+    - P59(CS)
     - P60
     - P60(CS)
     - P64(CS)
     - P65
     - P65(CS)
-    - 'P65(CS) A/S'
-    - 'P65(CS) S/A'
-    - 'P65(CS) S/A A/S'
     - P67(CS)
-    - 'P70 A/S'
+    - P70
     - P70(CS)
-    - 'P70(CS) S/A'
-    - 'P71 A/S(T1)'
+    - P71
     - P80(TgS)
-    - 'P85(CS) S/A A/S Diag'
-    - 'P90 - A/S'
-    - 'P90 A/S'
-    - 'P90 A/S - Diag'
-    - 'P90 S/A'
+    - P85
+    - P85(CS)
     - P90(TgS)
-    - 'POLE TRACK 14S'
-    - 'S/A A/S'
-    - 'S/A A/S A/S-Diag'
-    - 'S/A A/S AnMP'
-    - 'S/A A/S AnRW1 AnRW2'
-    - 'S/A A/S Diag'
-    - 'S/A A/S S/A'
-    - 'S/A A/S-Diag'
-    - 'S/A A/S-Diag MP'
-    - 'S/A A/S-Diag1'
-    - 'S/A AnMP'
-    - 'S/A AnMP A/S-Diag'
-    - 'S/A IO'
-    - 'S/A IO S/A'
-    - 'S/A MP'
-    - 'S/A P120(Tg)'
-    - 'S/A P30(CS)'
-    - 'S/A P30(CS)'
-    - 'S/A P40(CS)'
-    - 'S/A P50'
-    - 'S/A P50(CS)'
-    - 'S/A P50(CS) A/S-Diag'
-    - 'S/A P50(CS)'
-    - 'S/A P50(CS) A/S'
-    - 'S/A P50(CS) A/S-Diag'
-    - 'S/A P50(CS) AnMP'
-    - 'S/A P50(CS) MP'
-    - 'S/A P50(CS) MP A/S Diag'
-    - 'S/A P55(CS)'
-    - 'S/A P60(CS)'
-    - 'S/A P85 A/S'
-    - 'S/A S/A'
-    - 'S/A S/A A/S'
-    - 'S/A S/A A/S-Diag'
+    - POLE TRACK 14S
+    - S/A A/S AnRW1 AnRW2
     - SA
 
 # --------------------------------------------------------------------------------
@@ -924,6 +789,16 @@ code_reassignment:
   - {from: DisconnectorFunction, regex: "^(DISC SECT-I|FS-1 VOLTAGED|LOADB/NS FS-1|LOADB/PP FS-1)$", to: null}
   # Fugas de otras columnas: PHQ-1150 es un brazo y FP un anclaje (FP+AnMC).
   - {from: DisconnectorFunction, regex: "^(PHQ-\\d+|FP)$", to: null}
+
+  # Fugas de la columna Anchorage dentro de SECTIONNING. La leyenda de los workbooks
+  # declara AnRW (Return Anchor), AnFW (Feeder Anchor) e IO (Insulated Overlap) en
+  # ANCHORAGE. Fuera del catalogo de seccionamiento: asi la celda que los trae sale en
+  # NO_RECONOCIDO con su hoja y su fila —que es lo que hay que corregir, en el workbook—
+  # en vez de cargarse como si fuera un seccionamiento.
+  - {from: Sectioning, regex: "ANRW|ANFW|(^|\\s)IO($|\\s)", to: null}
+  # 'POLE TRACK 14S' es una anotacion, no un codigo. '2MP', 'T' y 'MPA' son erratas que
+  # nadie ha sabido identificar: la celda sale nombrada en vez de cargarse a medias.
+  - {from: Sectioning, regex: "^(POLE TRACK 14S|2MP S/A|ANMP T A/S-DIAG|P50\\(CS\\) MPA)$", to: null}
 
 # --------------------------------------------------------------------------------
 # Derivacion de las relaciones @ManyToOne obligatorias hacia los catalogos *Type.

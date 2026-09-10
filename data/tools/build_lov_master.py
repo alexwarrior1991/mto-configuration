@@ -45,6 +45,7 @@ from workbook_common import (  # noqa: E402  (necesita el sys.path de arriba)
     MAX_CODE_LEN,
     MAX_COLS,
     MAX_ROWS_TRACK,
+    code_tokens,
     discover,
     is_noise,
     norm_category,
@@ -176,6 +177,24 @@ class Catalogue:
         # Despues del enrutado, no antes: la forma canonica depende de la entidad
         # de destino, que es la que route_code acaba de decidir.
         code = canonical_code(entity, code, self.cfg)
+
+        # Una celda con VARIOS codigos se registra como varios, no como uno.
+        #
+        # El catalogo se cosecha leyendo cada celda de las hojas Track como si fuera un
+        # codigo, y asi entraron 45 celdas de seccionamiento —'P30(CS) A/S Diag'— como si
+        # lo fueran. Partirlas aqui, y no despues, es lo que hace existir a los atomos que
+        # el origen solo escribe acompanados: 'P59(CS)' no aparece suelto en ningun sitio.
+        # canonical_code TAMBIEN por trozo: 'P30(CS) SA' lleva la errata de 'S/A' dentro,
+        # y la tabla de grafias se aplica a la celda entera, que no casa con nada.
+        parts = [canonical_code(entity, part, self.cfg) for part in code_tokens(code)]
+        if len(parts) > 1 and all(is_code_atom(entity, part, self.cfg) for part in parts):
+            self.discard(motivo="celda con varios valores, no un codigo",
+                         entidad=entity, codigo=code, ep=ep, detalle=" + ".join(parts))
+            for part in dict.fromkeys(parts):        # 'S/A S/A' es uno, no dos
+                self.add(entity, part, source=source, ep=ep, desc_es=desc_es,
+                         desc_en=desc_en, drawing=drawing, boq_category=boq_category,
+                         track_uses=track_uses)
+            return
 
         key = self._key(entity, code)
         row = self.rows.get(key)
@@ -482,6 +501,18 @@ def is_track_accepted(entity, code, cfg):
     return any(squash(value).upper() == upper for value in accepted)
 
 
+def is_code_atom(entity, code, cfg) -> bool:
+    """True si el codigo es uno de los atomos declarados para su entidad."""
+    atoms = cfg.get("code_atoms", {}).get(entity)
+    if not atoms:
+        return False
+    upper = squash(code).upper()
+    if any(squash(value).upper() == upper for value in atoms.get("exact", [])):
+        return True
+    pattern = atoms.get("regex")
+    return bool(pattern) and re.fullmatch(pattern, squash(code)) is not None
+
+
 def drop_concatenations(cat):
     """Saca del catalogo las celdas con VARIOS codigos que se colaron como si fueran uno.
 
@@ -494,6 +525,12 @@ def drop_concatenations(cat):
     son codigos legitimos con espacio. Lo que las delata es que TODAS sus partes son, a su
     vez, codigos de la misma entidad. 'UNIQUE' y 'SOLUTION' no lo son; 'S/A' y 'A/S-Diag'
     si.
+
+    La particion la hace code_tokens, que es la MISMA que usa el maestro de perfiles para
+    repartir la celda entre varios codigos. Tenerla en un solo sitio es lo que impide que
+    el catalogo y las referencias discrepen: mientras aqui se partia por espacios a secas,
+    'A/S Diag' no se reconocia como 'A/S-Diag' —la grafia con espacio de 'Diagonal
+    Anchorage'— y 45 celdas se quedaron en el catalogo como si fueran codigos.
     """
     by_entity = collections.defaultdict(set)
     for row in cat.rows.values():
@@ -501,11 +538,12 @@ def drop_concatenations(cat):
 
     for key, row in list(cat.rows.items()):
         code = row["code"]
-        if " " not in code.strip():
-            continue
-        parts = code.split()
-        if len(parts) < 2:
-            continue
+        parts = code_tokens(code)
+        if not parts or parts == [code.strip()]:
+            continue   # el codigo tal cual: nada que repartir
+        # Tambien cuando se reduce a UNO: 'A/S Diag1' y 'A/S(T1)' son 'A/S-Diag' y 'A/S'
+        # escritos de otra manera, no codigos nuevos. Lo que decide no es cuantos trozos
+        # salen, sino que todos sean codigos de la misma entidad.
         codes = by_entity[row["entity"]]
         if all(part.upper() in codes for part in parts):
             cat.discard(motivo="celda con varios valores, no un codigo",

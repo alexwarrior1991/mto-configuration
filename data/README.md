@@ -326,6 +326,35 @@ sección—. El modelo es N:M en las tres desde `V14`, `V15` y `V16`. El generad
 convertiría en `A/S` más un `Diag` inventado. En las demás columnas, dos códigos en una celda
 siguen siendo una anomalía y se reportan.
 
+**La partición la decide la leyenda de los workbooks, no el espacio.** El catálogo de
+`Sectioning` se cosechó leyendo cada celda de las hojas Track como si fuera un código, así
+que llegó a tener **45 códigos que en realidad eran varios juntos** (`P30(CS) A/S Diag`,
+`S/A A/S Diag`…). La hoja `Legend` dice cuáles son los de verdad —diez: `A/S`, `A/S-Diag`,
+`S/A`, `A`, `MP`, `MP/Tunnel`, `AnMP`, `AnMP/Tunnel`, `P50`, `P90`— más la familia de
+agujas `P<valor>` y `P<valor>(CS)`.
+
+`workbook_common.code_tokens` aplica esas reglas y **la usan los dos generadores**, que es
+lo que impide que el catálogo y las referencias de los perfiles discrepen:
+
+| Celda | Se parte en | Por qué |
+|---|---|---|
+| `A/S Diag` | `A/S-Diag` | *Diagonal Anchorage* es `A/S-Diag`; un `Diag` suelto no existe |
+| `A/S Diag 2` | `A/S-Diag` | el número cuenta diagonales del poste, no es código |
+| `A/S - S/A` | `A/S` · `S/A` | el guion suelto separa: *Overlap Anchorage* y *Overlap Semi-Axis* |
+| `P50 (CS) S/A` | `P50(CS)` · `S/A` | el espacio antes del paréntesis es errata |
+| `P50(CS)S/A` | `P50(CS)` · `S/A` | dos códigos pegados |
+| `AnMP(T1)` | `AnMP` | el `(T1)` dice en qué vía está, y eso ya lo sabe la vía |
+| `T-SIGN FOUND.` | `T-SIGN FOUND.` | ninguna de sus partes es código: **no** se parte |
+
+La condición no cambia: se acepta la partición **solo si todas las partes son códigos** de
+la misma entidad. `AnMP T A/S-Diag` lleva una `T` que nadie ha identificado, así que la
+celda entera sale en `NO_RECONOCIDO` en vez de cargarse a medias.
+
+**Códigos de `Anchorage` en la columna `SECTIONNING`.** `AnRW`, `AnFW` e `IO` los declara
+la leyenda en `ANCHORAGE`, no en `SECTIONNING`. Están fuera del catálogo de seccionamiento
+(`code_reassignment` con `to: null`), así que la celda que los trae sale nombrada con su
+hoja y su fila: es un error del workbook, y ahí es donde hay que corregirlo.
+
 **El separador del maestro es la barra `|`, no el espacio**, y no puede ser el espacio: hay
 códigos del catálogo que **llevan** espacios (`A/S Diag S/A`, `T-SIGN FOUND.`,
 `CP+AnMC 265,00`), así que una celda separada por espacios es ambigua y el importador no

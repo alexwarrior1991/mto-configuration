@@ -123,3 +123,47 @@ def normalize_code(text: str) -> str:
     entraba al catalogo como si fuera un codigo mas.
     """
     return re.sub(r"\s+\(", "(", text)
+
+
+def code_tokens(text: str) -> list[str]:
+    """Parte una celda en los codigos que lleva dentro.
+
+    Una celda de seccionamiento o de anclaje puede llevar VARIOS codigos, y el origen
+    los separa por espacios. Partir por espacios a secas no vale: hay codigos que
+    llevan espacio dentro y hay grafias que el espacio rompe por la mitad. Esta funcion
+    aplica las reglas que la leyenda de los workbooks deja claras, y solo esas:
+
+    - ``'P50 (CS) S/A'`` -> ``P50(CS)``, ``S/A``. El espacio antes del parentesis es una
+      errata de tecleo repetida en 50 codigos de cuatro catalogos.
+    - ``'P50(CS)S/A'`` -> ``P50(CS)``, ``S/A``. Dos codigos pegados sin espacio.
+    - ``'A/S - S/A'`` -> ``A/S``, ``S/A``. El guion suelto separa, no es un codigo:
+      'Overlap Anchorage' y 'Overlap Semi-Axis' son dos cosas distintas.
+    - ``'A/S Diag'`` -> ``A/S-Diag``. 'Diagonal Anchorage' es ``A/S-Diag`` y **no existe
+      un 'Diag' suelto**: cuando aparece detras de ``A/S`` es esa misma grafia escrita
+      con espacio. Vale igual para ``'A/S Diag1'`` y ``'A/S Diag 2'``, donde el numero
+      es la cuenta de diagonales del poste y no forma parte de ningun codigo.
+    - ``'AnMP(T1)'`` -> ``AnMP``; ``'MP(T1)'`` -> ``MP``. El ``(T<n>)`` dice en que via
+      esta, que ya lo sabe la via.
+
+    Lo que NO hace es decidir si el resultado son codigos: eso lo comprueba cada
+    generador contra su catalogo, y lo que no resuelve sale nombrado.
+    """
+    if not text:
+        return []
+
+    text = normalize_code(str(text))
+    text = re.sub(r"\(T\d+\)", "", text)            # AnMP(T1) -> AnMP
+    text = re.sub(r"(?<=\))(?=[^\s)])", " ", text)  # P50(CS)S/A -> P50(CS) S/A
+
+    tokens: list[str] = []
+    for token in text.split():
+        if token == "-":                            # separador, no codigo
+            continue
+        previous = tokens[-1] if tokens else ""
+        if re.fullmatch(r"Diag\d?", token, re.IGNORECASE) and previous.upper() == "A/S":
+            tokens[-1] = "A/S-Diag"                 # 'A/S Diag' es 'A/S-Diag'
+            continue
+        if re.fullmatch(r"\d", token) and previous.upper() == "A/S-DIAG":
+            continue                                # 'A/S-Diag 2': el 2 no es codigo
+        tokens.append(token)
+    return tokens

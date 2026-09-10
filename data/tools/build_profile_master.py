@@ -42,6 +42,7 @@ from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from workbook_common import (  # noqa: E402  (necesita el sys.path de arriba)
+    code_tokens,
     MAX_ROWS_TRACK,
     TRACK_DATA_MAX_COL,
     discover,
@@ -338,23 +339,25 @@ def resolve_lov(field, text, cfg, ep, sheet, row, master: Master):
     if entity is None:
         return text, False
 
-    # Multivalor: PRIMERO se prueba la celda entera. Solo si no es un codigo se intenta
-    # partirla, y solo se acepta la particion cuando TODAS las partes son codigos validos.
-    # Sin esa condicion 'A/S Diag' —que es 'A/S-Diag' escrito con espacio— se convertiria
-    # en 'A/S' mas un 'Diag' inventado, que es peor que no reconocerla.
+    # Multivalor: PRIMERO se prueba la celda entera. Solo si no es un codigo se parte, y
+    # solo se acepta la particion cuando TODAS las partes son codigos validos. El orden
+    # importa: hay codigos legitimos con espacio dentro ('T-SIGN FOUND.'), y probar la
+    # celda entera primero es lo que impide romperlos.
+    #
+    # La particion la hace code_tokens, la MISMA que limpia el catalogo en
+    # build_lov_master.py. Ahi estan las reglas que dice la leyenda de los workbooks:
+    # 'A/S Diag' es 'A/S-Diag', el guion suelto separa, el (T1) sobra. Partiendo por
+    # espacios a secas, 'P30(CS) A/S Diag' se convertia en 'P30(CS)' + 'A/S' + un 'Diag'
+    # que no existe.
     if field in LOV_MULTIVALUE:
-        # Normalizar ANTES de partir: 'P50 (CS) S/A' son dos valores, no tres. Partiendo
-        # la cadena cruda, el espacio de la errata rompe 'P50(CS)' por la mitad.
-        text = normalize_code(text)
-    if field in LOV_MULTIVALUE and " " in text.strip():
         catalog = cfg.get("lov_catalog")
         entero = canonical_code(entity, text, cfg)
         if catalog is None or entero.upper() in catalog.get(entity, {}):
             return resolve_lov_single(field, text, cfg, ep, sheet, row, master)
 
-        partes = [canonical_code(entity, part, cfg) for part in text.split()]
+        partes = [canonical_code(entity, part, cfg) for part in code_tokens(text)]
         conocidos = catalog.get(entity, {})
-        if all(part.upper() in conocidos for part in partes):
+        if partes and all(part.upper() in conocidos for part in partes):
             vistos = []
             for part in partes:                      # 'S/A S/A' es uno, no dos
                 exacto = conocidos[part.upper()]     # la grafia del catalogo, no la del origen
