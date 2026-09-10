@@ -566,6 +566,23 @@ def drop_concatenations(cat):
             del cat.rows[key]
 
 
+def add_synthetic_codes(cat, cfg):
+    """Codigos que no estan en ningun workbook y pone este proyecto.
+
+    Van despues de leer los ficheros para que un codigo que SI aparezca en el origen
+    gane: Catalogue.add funde por (entidad, CODIGO), asi que lo unico que se aporta
+    entonces es la descripcion y el ORIGEN, no una fila duplicada.
+
+    Salen con ORIGEN=MTO, que los distingue a simple vista de BOQ, LEGEND y TRACK. Es
+    deliberado que se vea: un codigo que el origen no nombra tiene que poder auditarse.
+    """
+    for entity, codes in (cfg.get("synthetic_codes") or {}).items():
+        for declared in codes:
+            cat.add(entity, declared["code"], source="MTO", ep="",
+                    desc_en=declared.get("desc_en", ""),
+                    desc_es=declared.get("desc_es", ""))
+
+
 def decide_enabled(row, cfg) -> bool:
     """Fija 'type', 'revisar' y 'enabled' de una fila. Devuelve False si falta el tipo.
 
@@ -784,6 +801,7 @@ def main():
             wb.close()
         print(f"  {ep:8} BOQ={boq_sheets}  Legend={legend_sheets}  Track={track_sheets}")
 
+    add_synthetic_codes(cat, cfg)
     drop_concatenations(cat)
 
     # Derivacion de tipos y decision de ENABLED / REVISAR.

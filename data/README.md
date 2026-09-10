@@ -355,6 +355,42 @@ la leyenda en `ANCHORAGE`, no en `SECTIONNING`. Están fuera del catálogo de se
 (`code_reassignment` con `to: null`), así que la celda que los trae sale nombrada con su
 hoja y su fila: es un error del workbook, y ahí es donde hay que corregirlo.
 
+### El tipo de ménsula cuando el origen no lo escribe
+
+`cantileverType` es una relación **obligatoria**: es lo único que `CantileverValidator`
+sigue exigiendo después de relajar los seis numéricos. Y hay **348 huecos** M1/M2/M3 en
+los que la celda del tipo está vacía pero otras columnas del mismo hueco traen números.
+Sin un tipo al que colgarlas, esas ménsulas no se pierden a medias: se pierden **enteras**.
+
+No todas son ménsulas, y ahí está la distinción que importa:
+
+| Lo que trae el hueco | Qué es | Qué se hace |
+|---|---|---|
+| `stagger`, `catenaryHeight`, `cwElevation`, `windDeflection` o el brazo | una ménsula descrita a la que le falta el **nombre** | entra, con tipo supuesto y `REVISAR=SI` |
+| solo `cwHeight` y/o `armAngle` | `cwHeight` es un valor de proyecto repetido a lo largo del tramo y `armAngle` es calculado: aparecen igual **donde no hay ménsula** | se descarta el hueco entero |
+
+Son **217 y 131**. La lista de campos que sirven de prueba está en
+`cantilever_type_fallback.evidence`, en `aliases.yml`, y que `cwHeight` y `armAngle`
+queden fuera **no es un olvido**: son justamente los dos que aparecen sin ménsula.
+
+El tipo supuesto sale de la columna `Supports` de la misma fila cuando ésta lo nombra:
+
+- **`Supports = OCR SUPPORT`** → tipo **`OCR`** (*Overhead Conductor Rail*, catenaria
+  rígida). Son las 58 de `EP6 / HR Track 1 TSA-THA` y `HR Track 2 TSA-THA`. **No hace
+  falta un código nuevo**: `OCR` ya está en el catálogo, con 23 usos en `EP9B`, que sí lo
+  escribe en la columna del tipo. Darle otro nombre partiría en dos una sola cosa.
+- **El resto** → **`UNKNOWN`**, 159, casi todas de `EP14A`.
+
+`UNKNOWN` es el único código que **no sale de ningún workbook**: lo declara
+`synthetic_codes` en `aliases.yml` y el generador lo emite con **`ORIGEN=MTO`**, que lo
+distingue a simple vista de `BOQ`, `LEGEND` y `TRACK`. Es deliberado que se vea: un código
+que el origen no nombra tiene que poder auditarse. Las ménsulas que lo llevan salen todas
+con `REVISAR=SI`.
+
+Las 217 quedan anotadas en `DESCARTADOS` con el motivo `tipo de mensula supuesto: …`, su
+hoja, su fila y el tipo que se les puso. Rellenar el tipo en el workbook las saca de esa
+lista sin tocar nada aquí.
+
 ### `ANCHORAGE`: lo que la leyenda escribe al lado del código
 
 El bloque `ANCHORAGE` de la leyenda declara **doce anclajes** —`CP+AnMC`, `FP+AnMC`,

@@ -35,7 +35,8 @@ ARM_TYPES = ["BC", "BCE", "BTC", "PH", "PH-C", "PH-Q", "PHC", "PHQ"]
 
 # Cabecera minima con los grupos de tres columnas donde los pone el origen.
 HEADER = ["Survey", "Profile", "KP", "Span", "Sectionning", "Pole Type", "Cantilevers",
-          None, None, "Stagger", None, None, "Arm Type", None, None, "Soil Found"]
+          None, None, "Stagger", None, None, "Arm Type", None, None, "Soil Found",
+          "Supports", "CW height", None, None]
 # Misma hoja SIN la columna 'Sectionning': es el caso real de EP6 / HR Track 1 HER,
 # donde todo lo posterior queda desplazado una posicion.
 HEADER_SHIFTED = [h for h in HEADER if h != "Sectionning"]
@@ -45,8 +46,8 @@ CFG = {
         "profile": {"profile": "PROFILE_ID", "kp": "KP", "span": "SPAN",
                     "sectionning": "SECTIONING", "pole type": "POLE_TYPE"},
         "cantilever": {"cantilevers": "CANTILEVER_TYPE", "stagger": "STAGGER",
-                       "arm type": "STEADY_ARM"},
-        "unmapped": ["survey", "soil found"],
+                       "arm type": "STEADY_ARM", "cw height": "CW_HEIGHT"},
+        "unmapped": ["survey", "soil found", "supports"],
     },
     "steady_arm_types": ARM_TYPES,
     "defaults": {"profile_status": "DEFINITIVE"},
@@ -202,7 +203,7 @@ class ResolucionDeColumnasPorNombre(unittest.TestCase):
 
     def test_las_columnas_sin_campo_en_el_dominio_se_recogen_aparte(self):
         _, _, unmapped, _ = self.resolve(HEADER)
-        self.assertEqual(set(unmapped), {"Survey", "Soil Found"})
+        self.assertEqual(set(unmapped), {"Survey", "Soil Found", "Supports"})
 
     def test_una_cabecera_desconocida_no_pasa_en_silencio(self):
         _, _, _, master = self.resolve(HEADER + ["Columna Que No Existe"])
@@ -213,11 +214,11 @@ class ResolucionDeColumnasPorNombre(unittest.TestCase):
 class LecturaDeUnaHojaDeTrazado(unittest.TestCase):
     """Las filas alternan: perfil, fila intermedia con el vano, perfil, ..."""
 
-    def read(self, rows, decl=None):
+    def read(self, rows, decl=None, cfg=None):
         master = bpm.Master()
         sheet = FakeSheet("HR Track 1", [pad(r) for r in rows])
         profiles, cantilevers = bpm.read_track(sheet, "EP1", decl or {"name": "VIA 1"},
-                                               CFG, master)
+                                               cfg or CFG, master)
         return master, profiles, cantilevers
 
     @staticmethod
@@ -294,6 +295,82 @@ class LecturaDeUnaHojaDeTrazado(unittest.TestCase):
         self.assertEqual(profiles, 2)
         self.assertEqual([c["PROFILE_ID"] for c in master.cantilevers], ["30-1.16", "30-1.16"])
         self.assertEqual([d for d in master.discarded if "slot sin tipo" in d["motivo"]], [])
+
+    # --- Tipo de mensula supuesto ---------------------------------------------------
+    #
+    # El CFG de los tests de arriba no trae 'cantilever_type_fallback', asi que alli la
+    # regla no actua y el slot sin tipo se sigue tirando: es a proposito, para que las
+    # dos conductas queden probadas por separado.
+
+    CFG_FALLBACK = {
+        "default": "UNKNOWN",
+        "by_support": {"OCR SUPPORT": "OCR"},
+        "evidence": ["STAGGER", "CATENARY_HEIGHT", "CW_ELEVATION", "WIND_DEFLECTION",
+                     "STEADY_ARM"],
+    }
+
+    def leer_con_fallback(self, rows):
+        """El valor de 'Supports' viaja en la fila, en su columna, como en el origen."""
+        cfg = dict(CFG,
+                   cantilever_type_fallback=self.CFG_FALLBACK,
+                   lov_catalog={"CantileverType": {"UNKNOWN": "UNKNOWN", "OCR": "OCR",
+                                                   "EMT-1": "EMT-1", "EMT-T": "EMT-T",
+                                                   "EMT-2T": "EMT-2T"}})
+        return self.read(rows, cfg=cfg)
+
+    def test_un_slot_con_medidas_propias_y_sin_tipo_recibe_UNKNOWN(self):
+        """La mensula ESTA; lo que falta es su nombre, que no es lo mismo.
+
+        Una desviacion de -30 cm describe una mensula puesta: no se rellena donde no hay
+        ninguna. Sin un tipo al que colgarla, la mensula se perdia ENTERA —217 en el
+        maestro real—, porque el tipo es una relacion obligatoria. Entra marcada
+        REVISAR=SI: el tipo no viene del origen y eso tiene que verse.
+        """
+        rows = self.sheet_rows()
+        rows[5] = pad([None, "30-1.16", 30716, None, "S/A", "S1T",
+                       "EMT-1", "EMT-T", None, 15, -30, 40, "PH", "PHQ", "BC-1200"])
+        master, _, cantilevers = self.leer_con_fallback(rows)
+
+        self.assertEqual(cantilevers, 4)
+        tercera = [c for c in master.cantilevers if c["SLOT"] == 3][0]
+        self.assertEqual(tercera["CANTILEVER_TYPE"], "UNKNOWN")
+        self.assertEqual(tercera["STAGGER"], Decimal("40"))
+        self.assertEqual(tercera["REVISAR"], "SI")
+        self.assertEqual([d for d in master.discarded if "slot sin tipo" in d["motivo"]], [])
+        supuestos = [d for d in master.discarded if "tipo de mensula supuesto" in d["motivo"]]
+        self.assertEqual(len(supuestos), 1)
+        self.assertIn("UNKNOWN", supuestos[0]["detalle"])
+
+    def test_en_catenaria_rigida_el_tipo_sale_de_la_columna_Supports(self):
+        """'OCR SUPPORT' es catenaria rigida, y su mensula es 'OCR', que ya esta en el
+        catalogo. No es un tipo desconocido: es uno que el origen deja de escribir en la
+        columna del tipo y escribe en la de al lado.
+        """
+        rows = self.sheet_rows()
+        rows[5] = pad([None, "30-1.16", 30716, None, "S/A", "S1T",
+                       "EMT-1", "EMT-T", None, 15, -30, 40, "PH", "PHQ", "BC-1200"])
+        rows[5][16] = "OCR SUPPORT"        # la columna Supports de esa misma fila
+        master, _, _ = self.leer_con_fallback(rows)
+
+        tercera = [c for c in master.cantilevers if c["SLOT"] == 3][0]
+        self.assertEqual(tercera["CANTILEVER_TYPE"], "OCR")
+        self.assertEqual(tercera["REVISAR"], "SI")
+
+    def test_un_slot_que_solo_trae_cwHeight_no_recibe_tipo(self):
+        """cwHeight es un valor de proyecto que se repite a lo largo del tramo y aparece
+        igual donde no hay ninguna mensula. Por si solo no prueba nada, asi que el slot
+        se sigue tirando entero aunque la regla del tipo supuesto este activa.
+        """
+        rows = self.sheet_rows()
+        # Solo CW_HEIGHT en el slot 3 (columna 19): ni desviacion, ni brazo, ni tipo.
+        rows[5] = pad([None, "30-1.16", 30716, None, "S/A", "S1T",
+                       "EMT-1", "EMT-T", None, 15, -30, None, "PH", "PHQ", None])
+        rows[5][19] = 5.5
+        master, _, cantilevers = self.leer_con_fallback(rows)
+
+        self.assertEqual(cantilevers, 3, "el slot 3 sigue sin ser mensula")
+        self.assertEqual(len(
+            [d for d in master.discarded if "slot sin tipo" in d["motivo"]]), 1)
 
     def test_el_brazo_se_parte_al_leer(self):
         master, _, _ = self.read(self.sheet_rows())
@@ -556,6 +633,26 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         huerfanas = [c for c in self.cantilevers if c["ENABLED"] == "SI"
                      and (c["EP"], c["VIA"], c["ORDEN"]) not in cargables]
         self.assertEqual(huerfanas, [])
+
+    def test_el_recuento_de_mensulas_del_maestro_es_el_esperado(self):
+        """Un guardian de recuento, no una comprobacion de logica.
+
+        Faltaba, y por eso una regla nueva pudo mover el total 217 mensulas sin que
+        fallara ni un test. Si estas cifras cambian, cambialas A PROPOSITO y explica por
+        que en el commit: son las que se cargan en base de datos.
+        """
+        self.assertEqual(len(self.cantilevers), 14461)
+        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 14451)
+
+    def test_toda_mensula_con_el_tipo_supuesto_esta_senalada(self):
+        """El tipo no viene del origen, asi que la mensula no puede entrar como las demas.
+
+        'UNKNOWN' es un marcador: dice que ahi hay una mensula y que nadie ha escrito de
+        que tipo es. Sale siempre con REVISAR=SI para que se distinga de un tipo real.
+        """
+        supuestas = [c for c in self.cantilevers if c["CANTILEVER_TYPE"] == "UNKNOWN"]
+        self.assertTrue(supuestas, "el marcador tiene que estar en uso")
+        self.assertEqual([c for c in supuestas if c["REVISAR"] != "SI"], [])
 
     def test_un_perfil_no_lleva_mas_de_tres_mensulas(self):
         # Es el limite de la entidad y del origen.

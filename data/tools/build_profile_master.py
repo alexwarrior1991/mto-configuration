@@ -611,7 +611,8 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
         profiles += 1
 
         cantilevers += read_cantilevers(row, multi, cfg, record, ep, sheet,
-                                        number, master)
+                                        number, master, support=column_value(
+                                            row, unmapped_cols, "Supports"))
         collect_unmapped(rows, offset, end, unmapped_cols, record, master)
 
     return profiles, cantilevers
@@ -632,7 +633,56 @@ def lookahead(rows, offset, end, single, field):
     return None
 
 
-def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master):
+def fallback_cantilever_type(values, support, cfg, ep, sheet, number, master: Master):
+    """Tipo de mensula para un hueco que trae medidas propias y no trae tipo.
+
+    Devuelve (codigo, explicacion) o (None, None) cuando no hay que suponer nada.
+
+    La prueba de que ahi hay una mensula son las medidas que NO se rellenan donde no la
+    hay: desviacion, altura de catenaria, elevacion del hilo, deflexion y el brazo. Los
+    dos que quedan fuera —cwHeight y armAngle— aparecen igual en postes sin mensula:
+    el primero es un valor de proyecto repetido a lo largo del tramo y el segundo es
+    calculado. Un hueco que SOLO trae esos dos se sigue tirando entero.
+
+    El codigo sale de la columna 'Supports' de la misma fila cuando esta lo nombra:
+    'OCR SUPPORT' es catenaria rigida (Overhead Conductor Rail) y su mensula es 'OCR',
+    que ya esta en el catalogo. Si no, el marcador 'UNKNOWN', que existe justamente
+    para que la mensula pueda entrar con su relacion obligatoria resuelta.
+    """
+    rules = cfg.get("cantilever_type_fallback")
+    if not rules:
+        return None, None
+
+    evidence = rules.get("evidence", [])
+    if not any(not is_blank(values.get(field)) for field in evidence):
+        return None, None
+
+    texto = squash(support)
+    for declared, code in (rules.get("by_support") or {}).items():
+        if squash(declared).upper() == texto.upper():
+            resuelto, _ = resolve_lov("CANTILEVER_TYPE", code, cfg, ep, sheet, number, master)
+            if resuelto:
+                return resuelto, f"Supports={texto}"
+
+    code = rules.get("default")
+    resuelto, _ = resolve_lov("CANTILEVER_TYPE", code, cfg, ep, sheet, number, master)
+    return (resuelto, "sin declarar en el origen") if resuelto else (None, None)
+
+
+def column_value(row, columns, header):
+    """Valor de una columna del origen buscada por su cabecera, sin importar mayusculas.
+
+    Sirve para leer una columna que NO tiene campo en el maestro —hoy 'Supports', que
+    va a NO_MAPEADO— cuando hace falta para decidir sobre otra que si lo tiene.
+    """
+    for name, index in columns.items():
+        if squash(name).upper() == header.upper():
+            return cell(row, index)
+    return None
+
+
+def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master,
+                     support=None):
     """Hasta tres mensulas por perfil, una por slot ocupado."""
     arm_types = cfg["steady_arm_types"]
     written = 0
@@ -668,12 +718,25 @@ def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master
             tirado = ", ".join(
                 f"{field}={squash(value)}" for field, value in values.items()
                 if field != "CANTILEVER_TYPE" and not is_blank(value))
+
+            # ...SALVO que el hueco traiga una medida que solo tiene sentido con una
+            # mensula puesta. Entonces la mensula ESTA y lo que falta es su nombre, que
+            # no es lo mismo. Tirarla perdia 217 mensulas descritas por completo.
+            cantilever_type, supuesto = fallback_cantilever_type(
+                values, support, cfg, ep, sheet, number, master)
+            if not cantilever_type:
+                master.discard(
+                    motivo="slot sin tipo de mensula: ahi no hay mensula",
+                    ep=ep, hoja=sheet, fila=number,
+                    detalle=f"{profile['PROFILE_ID']} slot {slot + 1}"
+                            + (f": se tira {tirado}" if tirado else ""))
+                continue
             master.discard(
-                motivo="slot sin tipo de mensula: ahi no hay mensula",
+                motivo=f"tipo de mensula supuesto: {supuesto}",
                 ep=ep, hoja=sheet, fila=number,
                 detalle=f"{profile['PROFILE_ID']} slot {slot + 1}"
-                        + (f": se tira {tirado}" if tirado else ""))
-            continue
+                        f" -> {cantilever_type} ({tirado})")
+            review = True      # la mensula entra, pero senalada: el tipo no es del origen
 
         # ORDEN y no solo PROFILE_ID: una via con dos tramos concatenados repite el
         # identificador, asi que sin el orden las mensulas de los DOS perfiles se

@@ -242,6 +242,11 @@ class MaestroGenerado(unittest.TestCase):
                 for r in sheet.iter_rows(min_row=2, values_only=True)
                 if r and r[0] == "Anchorage"
             }
+            cls.cantilever_types = {
+                str(r[1]): (r[index["ENABLED"]], r[index["ORIGEN"]])
+                for r in sheet.iter_rows(min_row=2, values_only=True)
+                if r and r[0] == "CantileverType"
+            }
             cls.foundation_types = {
                 str(r[1]): r[3]
                 for r in wb["TIPOS"].iter_rows(min_row=2, values_only=True)
@@ -369,6 +374,28 @@ class MaestroGenerado(unittest.TestCase):
         """
         for anotacion in ("(Track 02)", "TRACK 5"):
             self.assertNotIn(anotacion, self.anchorage, anotacion)
+
+    def test_el_marcador_de_tipo_de_mensula_sin_declarar_existe_y_se_ve(self):
+        """'UNKNOWN' no sale de ningun workbook: lo pone este proyecto.
+
+        Existe porque el tipo de mensula es una relacion obligatoria y hay 217 huecos con
+        medidas reales y sin tipo: sin un codigo al que colgarlos, esas mensulas se
+        pierden enteras. Sale con ORIGEN=MTO justamente para que se distinga de un codigo
+        del origen y se pueda auditar.
+        """
+        enabled, origen = self.cantilever_types.get("UNKNOWN", (None, None))
+        self.assertEqual(enabled, "SI")
+        self.assertEqual(origen, "MTO")
+
+    def test_la_mensula_de_catenaria_rigida_ya_estaba_en_el_catalogo(self):
+        """'OCR' (Overhead Conductor Rail) lo escribe EP9B en la columna del tipo.
+
+        Por eso los huecos de EP6 con 'OCR SUPPORT' no necesitan un codigo nuevo: es el
+        mismo concepto, y darle otro nombre partiria en dos una sola cosa.
+        """
+        enabled, origen = self.cantilever_types.get("OCR", (None, None))
+        self.assertEqual(enabled, "SI")
+        self.assertIn("TRACK", str(origen))
 
     def test_unique_solution_es_un_valor_real_y_no_un_marcador(self):
         """No es un hueco: es la cimentacion que necesita solucion a medida, aparte, porque

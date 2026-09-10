@@ -413,6 +413,47 @@ profile_columns:
 # solo aparece en 'A/S P59(CS)'— no llegaba a existir como fila del catalogo, y no habia
 # nada que habilitar.
 # --------------------------------------------------------------------------------
+# Codigos que NO estan en ningun workbook y pone este proyecto.
+#
+# Solo para lo que el origen deja sin nombrar y el dominio EXIGE. Hoy es uno.
+#
+# El tipo de mensula es obligatorio (@ManyToOne no anulable, y CantileverValidator lo
+# sigue pidiendo despues de relajar los seis numericos). Hay 217 huecos M1/M2/M3 que
+# traen medidas propias —desviacion, altura de catenaria, brazo— y la celda del tipo
+# vacia. Sin un codigo al que colgarlos, esas 217 mensulas se pierden ENTERAS: no es
+# que les falte un dato, es que no hay fila.
+#
+# Un codigo puesto aqui sale del generador con ORIGEN=MTO, que lo distingue a simple
+# vista de los que vienen del BOQ, del Legend o de las hojas Track.
+# --------------------------------------------------------------------------------
+synthetic_codes:
+  CantileverType:
+    - code: UNKNOWN
+      desc_en: Cantilever type not stated in the source workbook
+      desc_es: Tipo de mensula sin declarar en el workbook de origen
+
+# --------------------------------------------------------------------------------
+# Tipo de mensula cuando el hueco trae medidas propias y no trae tipo.
+#
+# 'default' es el ultimo recurso. Antes se mira la columna 'Supports' de esa misma
+# fila: en los postes de catenaria RIGIDA dice 'OCR SUPPORT' (Overhead Conductor
+# Rail), y ahi la mensula no es que falte, es que es la de OCR —un codigo que ya
+# existe en el catalogo, con 23 usos en EP9B, donde SI lo escriben en la columna del
+# tipo—. Son 61 huecos de EP6 'HR Track 1 TSA-THA' y 'HR Track 2 TSA-THA'.
+#
+# Lo que NO recibe tipo es el hueco que solo trae cwHeight y/o armAngle: el primero
+# es un valor de proyecto repetido a lo largo del tramo y el segundo es calculado,
+# asi que aparecen igual donde no hay ninguna mensula. Esos se siguen tirando.
+# --------------------------------------------------------------------------------
+cantilever_type_fallback:
+  default: UNKNOWN
+  by_support:
+    OCR SUPPORT: OCR
+  # Campos cuya presencia prueba que ahi SI hay una mensula. cwHeight y armAngle no
+  # estan, y no es un olvido: son justamente los dos que aparecen sin mensula.
+  evidence: [STAGGER, CATENARY_HEIGHT, CW_ELEVATION, WIND_DEFLECTION, STEADY_ARM]
+
+# --------------------------------------------------------------------------------
 code_atoms:
   Sectioning:
     exact: ['A/S', 'A/S-Diag', 'S/A', 'A', 'MP', 'MP/Tunnel', 'AnMP', 'AnMP/Tunnel', 'P50', 'P90']
