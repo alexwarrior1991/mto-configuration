@@ -237,6 +237,11 @@ class MaestroGenerado(unittest.TestCase):
                 for r in sheet.iter_rows(min_row=2, values_only=True)
                 if r and r[0] == "Foundation"
             }
+            cls.anchorage = {
+                str(r[1]): r[index["ENABLED"]]
+                for r in sheet.iter_rows(min_row=2, values_only=True)
+                if r and r[0] == "Anchorage"
+            }
             cls.foundation_types = {
                 str(r[1]): r[3]
                 for r in wb["TIPOS"].iter_rows(min_row=2, values_only=True)
@@ -288,6 +293,62 @@ class MaestroGenerado(unittest.TestCase):
     def test_las_celdas_con_dos_valores_no_estan_en_el_catalogo(self):
         for code in ("Disc SECT-I", "FS-1 VoltageD", "LoadB/NS FS-1", "LoadB/PP FS-1"):
             self.assertNotIn(code, self.feeding, code)
+
+    def test_los_doce_codigos_de_la_leyenda_de_anclaje_estan_habilitados(self):
+        # Los que dibuja el bloque ANCHORAGE de la leyenda de los workbooks.
+        legend = {
+            "CP+AnMC", "FP+AnMC", "CP/Tunnel", "FP/Tunnel",
+            "CP/TX-P/1100", "CP/TX-T", "CP/TX-W/1100",
+            "AnFW", "AnRW", "AnFW/Tunnel", "AnRW/Tunnel", "IO",
+        }
+        faltan = {c for c in legend if self.anchorage.get(c) != "SI"}
+        self.assertEqual(faltan, set())
+
+    def test_las_nueve_variantes_de_CP_TX_son_codigos_propios(self):
+        """CP/TX-P, -T y -W, cada uno con o sin longitud: nueve anclajes distintos.
+
+        La leyenda solo dibuja tres, pero los datos traen las nueve combinaciones y son
+        anclajes diferentes, no un tipo con una medida anotada al lado.
+        """
+        for base in ("CP/TX-P", "CP/TX-T", "CP/TX-W"):
+            for code in (base, base + "/1100", base + "/1350"):
+                self.assertEqual(self.anchorage.get(code), "SI", code)
+
+    def test_el_catalogo_de_anclaje_no_tiene_celdas_con_dos_codigos(self):
+        """Ninguna fila del catalogo puede ser dos anclajes escritos seguidos.
+
+        Entraron 28 asi —'CP+AnMC IO', 'AnRW AnRW', 'IO FP+AnMC'— porque el catalogo se
+        cosecha leyendo cada celda de las hojas Track como si fuera un codigo. Una vez
+        dentro, nada las distinguia de las de verdad y un perfil con dos anclajes acababa
+        con uno inventado.
+        """
+        for code in ("CP+AnMC IO", "AnRW AnRW", "IO FP+AnMC", "CP+AnMC CP+AnMC",
+                     "FP+AnMC AnRW", "IO AnRW", "CP+AnMC FP+AnMC", "AnFW AnFW",
+                     "FP+AnMCAnRW", "AnRWAnRW"):
+            self.assertNotIn(code, self.anchorage, code)
+
+    def test_el_catalogo_de_anclaje_no_tiene_longitudes_ni_anotaciones(self):
+        """La longitud de semitension y la via no son parte del anclaje.
+
+        La leyenda las declara aparte ('SEMI TENSION LENGTH xxx m.'), y el dominio no
+        tiene donde guardar la longitud: se queda el codigo y el numero se tira.
+        """
+        for code in ("CP+AnMC 265,00", "CP+AnMC CP+AnMC 527,00", "CP+AnMC 287",
+                     "TRACK 5", "AnRW Portal", "AnRW2 Portal", "AnMP T1",
+                     "AnRW2 track 1"):
+            self.assertNotIn(code, self.anchorage, code)
+
+    def test_las_erratas_de_tecleo_del_anclaje_no_son_codigos_nuevos(self):
+        """Cambiar dos letras de sitio no crea un anclaje."""
+        for errata in ("PF+AnMC", "CP+AnCM", "FP+AnCM", "CP+AMC", "CP+TX-P/1100"):
+            self.assertNotIn(errata, self.anchorage, errata)
+
+    def test_AnRW2_es_un_codigo_propio_y_no_dos_AnRW(self):
+        """El numero forma parte del codigo. Son 108 celdas y un @ManyToMany no guarda
+        cantidades: si fuera 'dos AnRW' el dos se perderia sin que se notara."""
+        self.assertEqual(self.anchorage.get("AnRW2"), "SI")
+        self.assertEqual(self.anchorage.get("AnRW"), "SI")
+        self.assertEqual(self.anchorage.get("AnRW2/Tunnel"), "SI")
 
     def test_unique_solution_es_un_valor_real_y_no_un_marcador(self):
         """No es un hueco: es la cimentacion que necesita solucion a medida, aparte, porque

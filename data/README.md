@@ -355,6 +355,44 @@ la leyenda en `ANCHORAGE`, no en `SECTIONNING`. Están fuera del catálogo de se
 (`code_reassignment` con `to: null`), así que la celda que los trae sale nombrada con su
 hoja y su fila: es un error del workbook, y ahí es donde hay que corregirlo.
 
+### `ANCHORAGE`: lo que la leyenda escribe al lado del código
+
+El bloque `ANCHORAGE` de la leyenda declara **doce anclajes** —`CP+AnMC`, `FP+AnMC`,
+`CP/Tunnel`, `FP/Tunnel`, `CP/TX-P/1100`, `CP/TX-T`, `CP/TX-W/1100`, `AnFW`, `AnRW`,
+`AnFW/Tunnel`, `AnRW/Tunnel` e `IO`— **y algo que no es un anclaje**: una
+`SEMI TENSION LENGTH xxx m.` que el origen teclea pegada al código. El dominio no tiene
+dónde guardar esa longitud, así que se conserva el anclaje y el número se descarta.
+
+Eso, más la palabra `Portal` —que tiene columna y catálogo propios— y las anotaciones de
+vía, es lo que declara `code_noise_tokens` en `aliases.yml`: trozos que esa columna
+escribe **al lado** del código sin formar parte de él. Va **por entidad** a propósito: un
+número suelto no es un código en `ANCHORAGE`, pero eso no vale como regla general.
+
+| Celda | Queda | Por qué |
+|---|---|---|
+| `CP+AnMC 265,00` | `CP+AnMC` | el número es la longitud de semitensión de la leyenda |
+| `AnRW Portal` | `AnRW` | `Portal` es otro catálogo, con su propia columna |
+| `AnMP (Track 02)` | `AnMP` | la vía ya la sabe la vía (igual que el `(T1)`) |
+| `AnRW AnRW` | `AnRW` | el mismo anclaje dos veces es uno: el modelo es un conjunto |
+| `FP+AnMCAnRW` | `FP+AnMC` · `AnRW` | dos pegados; los separa `code_canonical`, porque solos no hay forma de saber dónde parten |
+| `TRACK 5` | — | no queda código: la celda sale en `NO_RECONOCIDO` |
+
+Dos decisiones que **no** son ruido, y por eso están declaradas como códigos atómicos:
+
+- **`AnRW2` es un anclaje distinto de `AnRW`**, no «dos `AnRW`». El número forma parte del
+  código. Importa porque `Profile.anchorages` es un `@ManyToMany`, es decir un conjunto:
+  si el `2` fuera una cantidad no habría dónde guardarlo y 108 perfiles perderían la mitad
+  del dato sin que se notara.
+- **`CP/TX-P`, `CP/TX-T` y `CP/TX-W`, cada uno con o sin longitud, son nueve anclajes
+  distintos.** La leyenda solo dibuja tres de los nueve, pero los datos traen las nueve
+  combinaciones. Ahí el número va pegado con barra y sí es parte del código: por eso el
+  filtro de ruido solo tira números **sueltos**.
+
+Con esto el catálogo `Anchorage` pasa de **45 códigos a 31, todos atómicos**: las 14 que
+salen eran celdas con dos anclajes (`CP+AnMC IO`), erratas de tecleo (`PF+AnMC` por
+`FP+AnMC`) o anotaciones (`TRACK 5`) que habían entrado porque el catálogo se cosecha
+leyendo cada celda de las hojas Track como si fuera un código.
+
 **El separador del maestro es la barra `|`, no el espacio**, y no puede ser el espacio: hay
 códigos del catálogo que **llevan** espacios (`A/S Diag S/A`, `T-SIGN FOUND.`,
 `CP+AnMC 265,00`), así que una celda separada por espacios es ambigua y el importador no

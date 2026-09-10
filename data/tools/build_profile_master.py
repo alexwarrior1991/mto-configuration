@@ -355,7 +355,11 @@ def resolve_lov(field, text, cfg, ep, sheet, row, master: Master):
         if catalog is None or entero.upper() in catalog.get(entity, {}):
             return resolve_lov_single(field, text, cfg, ep, sheet, row, master)
 
-        partes = [canonical_code(entity, part, cfg) for part in code_tokens(text)]
+        # Se trocea 'entero', no 'text': la tabla de grafias puede ser justo lo que
+        # separa dos codigos pegados ('FP+AnMCAnRW' -> 'FP+AnMC AnRW'), y partiendo el
+        # texto original ese arreglo no llegaria a aplicarse nunca.
+        noise = cfg.get("code_noise_tokens", {}).get(entity)
+        partes = [canonical_code(entity, part, cfg) for part in code_tokens(entero, noise)]
         conocidos = catalog.get(entity, {})
         if partes and all(part.upper() in conocidos for part in partes):
             vistos = []

@@ -417,13 +417,46 @@ code_atoms:
   Sectioning:
     exact: ['A/S', 'A/S-Diag', 'S/A', 'A', 'MP', 'MP/Tunnel', 'AnMP', 'AnMP/Tunnel', 'P50', 'P90']
     regex: '^P\d+(\([A-Za-z]+\))?$'          # agujas: P50, P90, P30(CS), P120(Tg)...
+  Anchorage:
+    # Los doce de la leyenda ANCHORAGE, mas AnRW1 / AnRW2 / AnRW2/Tunnel, que son
+    # anclajes DISTINTOS de AnRW y no "dos AnRW": el numero forma parte del codigo.
+    exact: ['CP+AnMC', 'FP+AnMC', 'CP/Tunnel', 'FP/Tunnel', 'AnFW', 'AnRW',
+            'AnFW/Tunnel', 'AnRW/Tunnel', 'AnRW1', 'AnRW2', 'AnRW2/Tunnel', 'IO']
+    # CP/TX-P, CP/TX-T y CP/TX-W, cada uno con o sin longitud: nueve anclajes distintos.
+    # La leyenda solo dibuja tres (CP/TX-P/1100, CP/TX-T, CP/TX-W/1100) pero los datos
+    # traen las nueve combinaciones.
+    regex: '^CP/TX(-[PTW](/\d+)?)?$'
+
+# --------------------------------------------------------------------------------
+# Trozos que una columna escribe AL LADO del codigo sin que formen parte de el.
+# Se tiran al partir la celda; el codigo que queda es el que vale.
+#
+# Solo se declara lo que en ESA columna no puede ser un codigo. Un numero suelto sobra
+# en ANCHORAGE —es la longitud de semitension, el 'xxx m.' de la leyenda, y el dominio
+# no tiene donde guardarla— pero no es una regla general.
+# --------------------------------------------------------------------------------
+code_noise_tokens:
+  Anchorage:
+    # 'Portal' tiene su propia columna y su propio catalogo: aqui es una fuga.
+    # 'T1' y 'track 1' son anotaciones de via, que ya la sabe la via.
+    exact: ['Portal', 'Track', 'T1', 'T2', 'T3']
+    regex: '^\d+([.,]\d+)?$'        # 265,00 / 527,00 / 287: longitud, no codigo
 
 # --------------------------------------------------------------------------------
 code_canonical:
   Anchorage:
-    # Alguien anoto al lado del codigo. El numero y la via no son parte del anclaje.
-    'AnMP(Track 02)': AnMP
-    'CP+AnMC 287': CP+AnMC
+    # Erratas de tecleo sobre codigos de la leyenda. Solo las que cambian de CARACTERES:
+    # las que solo cambian de mayusculas ('FP+ANMC', 'CP+AnmC') colapsan solas, porque la
+    # clave del catalogo ya es el codigo en mayusculas.
+    'PF+AnMC': FP+AnMC          # PF por FP
+    'CP+AnCM': CP+AnMC          # CM por MC
+    'FP+AnCM': FP+AnMC
+    'CP+AMC': CP+AnMC           # se comio la n
+    'CP+TX-P/1100': CP/TX-P/1100   # '+' por '/'
+    # Dos codigos escritos sin el espacio que los separa. Ponerlo aqui es lo que deja
+    # que el troceo los vea como dos: solo, no hay forma de saber donde parte 'FP+AnMCAnRW'.
+    'FP+AnMCAnRW': FP+AnMC AnRW
+    'AnRWAnRW': AnRW AnRW
   Sectioning:
     # 'A/S-Diag' escrito con espacio en vez de guion. Sin esto se lee como dos valores
     # ('A/S' y un 'Diag' que no existe) justo ahora que el seccionamiento admite varios.
@@ -488,35 +521,14 @@ code_canonical:
 # --------------------------------------------------------------------------------
 track_accepted:
   Anchorage:
-    - 'AnFW AnFW'
+    # Solo codigos ATOMICOS: las 28 entradas que habia antes eran, en su mayoria, celdas
+    # con dos anclajes ('CP+AnMC IO'), erratas ('PF+AnMC') o anotaciones ('TRACK 5') que
+    # entraron al catalogo porque se cosecha leyendo cada celda como si fuera un codigo.
     - AnMC
     - AnMP
-    - 'AnMP T1'
-    - 'AnRW AnRW'
-    - 'AnRW Portal'
     - AnRW2
-    - 'AnRW2 track 1'
     - AnRW2/Tunnel
     - CP
-    - CP+AMC
-    - CP+AnCM
-    - 'CP+AnMC 265,00'
-    - 'CP+AnMC AnRW'
-    - 'CP+AnMC CP+AnMC'
-    - 'CP+AnMC CP+AnMC 527,00'
-    - 'CP+AnMC FP+AnMC'
-    - 'CP+AnMC IO'
-    - CP+TX-P/1100
-    - FP+AnCM
-    - 'FP+AnMC AnRW'
-    - 'FP+AnMC AnRW2'
-    - 'FP+AnMC IO'
-    - FP+AnMCAnRW
-    - 'IO AnRW'
-    - 'IO CP+AnMC'
-    - 'IO FP+AnMC'
-    - PF+AnMC
-    - 'TRACK 5'
   AnchorageFoundation:
     - AnFW-RT
     - AnFW-RTL
@@ -799,6 +811,11 @@ code_reassignment:
   # 'POLE TRACK 14S' es una anotacion, no un codigo. '2MP', 'T' y 'MPA' son erratas que
   # nadie ha sabido identificar: la celda sale nombrada en vez de cargarse a medias.
   - {from: Sectioning, regex: "^(POLE TRACK 14S|2MP S/A|ANMP T A/S-DIAG|P50\\(CS\\) MPA)$", to: null}
+
+  # Celdas de ANCHORAGE que no llevan ningun codigo: solo la via ('TRACK 5') o solo la
+  # longitud de semitension ('278 287'). Sin esto se quedan en el catalogo como codigos,
+  # porque al quitarles lo que sobra no queda nada que partir.
+  - {from: Anchorage, regex: "^(TRACK \\d+|\\d+([.,]\\d+)?( \\d+([.,]\\d+)?)*)$", to: null}
 
 # --------------------------------------------------------------------------------
 # Derivacion de las relaciones @ManyToOne obligatorias hacia los catalogos *Type.

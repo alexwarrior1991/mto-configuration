@@ -125,7 +125,7 @@ def normalize_code(text: str) -> str:
     return re.sub(r"\s+\(", "(", text)
 
 
-def code_tokens(text: str) -> list[str]:
+def code_tokens(text: str, noise: dict | None = None) -> list[str]:
     """Parte una celda en los codigos que lleva dentro.
 
     Una celda de seccionamiento o de anclaje puede llevar VARIOS codigos, y el origen
@@ -142,8 +142,15 @@ def code_tokens(text: str) -> list[str]:
       un 'Diag' suelto**: cuando aparece detras de ``A/S`` es esa misma grafia escrita
       con espacio. Vale igual para ``'A/S Diag1'`` y ``'A/S Diag 2'``, donde el numero
       es la cuenta de diagonales del poste y no forma parte de ningun codigo.
-    - ``'AnMP(T1)'`` -> ``AnMP``; ``'MP(T1)'`` -> ``MP``. El ``(T<n>)`` dice en que via
-      esta, que ya lo sabe la via.
+    - ``'AnMP(T1)'`` -> ``AnMP``; ``'MP (Track 02)'`` -> ``AnMP``. El parentesis dice en
+      que via esta, que ya lo sabe la via.
+
+    ``noise`` son los trozos que esa columna escribe al lado del codigo sin que formen
+    parte de el, declarados por entidad en ``aliases.yml``. En ANCHORAGE son la longitud
+    de semitension que la leyenda llama ``xxx m.`` (``'CP+AnMC 265,00'``), la palabra
+    ``Portal`` —que tiene su propia columna— y las anotaciones de via. Va por parametro
+    y no fijo aqui porque lo que sobra depende de la columna: un numero suelto no es un
+    codigo en ANCHORAGE, pero en otra columna podria serlo.
 
     Lo que NO hace es decidir si el resultado son codigos: eso lo comprueba cada
     generador contra su catalogo, y lo que no resuelve sale nombrado.
@@ -152,12 +159,16 @@ def code_tokens(text: str) -> list[str]:
         return []
 
     text = normalize_code(str(text))
-    text = re.sub(r"\(T\d+\)", "", text)            # AnMP(T1) -> AnMP
+    # (T1), (Track 02): la via, que ya la sabe la via. El (CS) de las agujas y el (Tg)
+    # se quedan, porque ahi el parentesis SI es parte del codigo: exige un numero dentro.
+    text = re.sub(r"\((?:T|Track)\s*\d+\)", "", text, flags=re.IGNORECASE)
     text = re.sub(r"(?<=\))(?=[^\s)])", " ", text)  # P50(CS)S/A -> P50(CS) S/A
 
     tokens: list[str] = []
     for token in text.split():
         if token == "-":                            # separador, no codigo
+            continue
+        if is_noise_token(token, noise):            # 'CP+AnMC 265,00' -> CP+AnMC
             continue
         previous = tokens[-1] if tokens else ""
         if re.fullmatch(r"Diag\d?", token, re.IGNORECASE) and previous.upper() == "A/S":
@@ -167,3 +178,19 @@ def code_tokens(text: str) -> list[str]:
             continue                                # 'A/S-Diag 2': el 2 no es codigo
         tokens.append(token)
     return tokens
+
+
+def is_noise_token(token: str, noise: dict | None) -> bool:
+    """True si el trozo es algo escrito al lado del codigo y no parte de el.
+
+    ``noise`` llega de la seccion ``code_noise_tokens`` de aliases.yml, con la misma
+    forma que ``code_atoms``: una lista ``exact`` y un ``regex``. Devuelve False cuando
+    no hay declaracion, que es el caso de casi todas las columnas.
+    """
+    if not noise or not token:
+        return False
+    upper = squash(token).upper()
+    if any(squash(value).upper() == upper for value in noise.get("exact", [])):
+        return True
+    pattern = noise.get("regex")
+    return bool(pattern) and re.fullmatch(pattern, squash(token), re.IGNORECASE) is not None

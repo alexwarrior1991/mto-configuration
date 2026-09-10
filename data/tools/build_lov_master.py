@@ -186,7 +186,8 @@ class Catalogue:
         # el origen solo escribe acompanados: 'P59(CS)' no aparece suelto en ningun sitio.
         # canonical_code TAMBIEN por trozo: 'P30(CS) SA' lleva la errata de 'S/A' dentro,
         # y la tabla de grafias se aplica a la celda entera, que no casa con nada.
-        parts = [canonical_code(entity, part, self.cfg) for part in code_tokens(code)]
+        noise = self.cfg.get("code_noise_tokens", {}).get(entity)
+        parts = [canonical_code(entity, part, self.cfg) for part in code_tokens(code, noise)]
         if len(parts) > 1 and all(is_code_atom(entity, part, self.cfg) for part in parts):
             self.discard(motivo="celda con varios valores, no un codigo",
                          entidad=entity, codigo=code, ep=ep, detalle=" + ".join(parts))
@@ -538,7 +539,7 @@ def drop_concatenations(cat):
 
     for key, row in list(cat.rows.items()):
         code = row["code"]
-        parts = code_tokens(code)
+        parts = code_tokens(code, cat.cfg.get("code_noise_tokens", {}).get(row["entity"]))
         if not parts or parts == [code.strip()]:
             continue   # el codigo tal cual: nada que repartir
         # Tambien cuando se reduce a UNO: 'A/S Diag1' y 'A/S(T1)' son 'A/S-Diag' y 'A/S'

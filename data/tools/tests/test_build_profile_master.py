@@ -421,6 +421,11 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
     # no este aqui listado hace fallar el test, que es justo lo que se perdia si se dejaba
     # el assertEqual(..., []) 'temporalmente' comentado.
     HUECOS_CONOCIDOS = {
+        # Anclaje. 'TRACK 5' es una anotacion de via, no un anclaje: quitandole la palabra
+        # y el numero no queda codigo ninguno, asi que la celda sale nombrada en vez de
+        # colarse en el catalogo como el codigo 'TRACK 5', que es lo que hacia antes.
+        ('codigo sin Anchorage habilitado', 'TRACK 5'),
+
         # Codigos de otros catalogos que el origen escribe en su columna y que nadie ha
         # decidido todavia: habilitarlos o descartarlos. La fila entra igual, sin ese valor.
         ('codigo sin DisconnectorFunction habilitado', 'FP'),
@@ -734,6 +739,104 @@ class CodigosDeListaDeValores(unittest.TestCase):
         value, unknown = self.resolver("ANCHORAGE", "FP+AnMC CP+AnMC", cfg)
         self.assertEqual(value, "FP+AnMC|CP+AnMC")
         self.assertEqual(unknown, {})
+
+    # --- ANCHORAGE: lo que la leyenda escribe al lado del codigo -------------------
+    #
+    # La columna ANCHORAGE no lleva solo anclajes. La leyenda declara ademas una
+    # 'SEMI TENSION LENGTH xxx m.', y el origen la teclea pegada al codigo. Tambien se
+    # cuelan la palabra Portal —que tiene columna propia— y anotaciones de via. Nada de
+    # eso es un anclaje, y mientras se leia como tal cada variante entraba al catalogo
+    # como un codigo mas: 'CP+AnMC 265,00' llego a ser una fila.
+
+    CFG_ANC = None      # se construye en cada test, con el catalogo que ese test necesita
+
+    def anclaje(self, text, catalogo, canonical=None):
+        cfg = dict(self.CFG_LOV,
+                   lov_catalog={"Anchorage": catalogo},
+                   code_canonical={"Anchorage": canonical or {}},
+                   code_noise_tokens={"Anchorage": {
+                       "exact": ["Portal", "Track", "T1"],
+                       "regex": r"^\d+([.,]\d+)?$"}})
+        return self.resolver("ANCHORAGE", text, cfg)
+
+    def test_la_longitud_de_semitension_no_es_parte_del_anclaje(self):
+        """'CP+AnMC 265,00' es un anclaje y una longitud, no un codigo llamado asi.
+
+        El dominio no tiene donde guardar esa longitud, asi que se queda el anclaje y el
+        numero se tira. Lo que no puede pasar es lo de antes: que la celda entera acabe
+        siendo una fila del catalogo que solo casa con ese perfil.
+        """
+        value, unknown = self.anclaje("CP+AnMC 265,00", {"CP+ANMC": "CP+AnMC"})
+        self.assertEqual(value, "CP+AnMC")
+        self.assertEqual(unknown, {})
+
+    def test_el_mismo_anclaje_repetido_con_su_longitud_sigue_siendo_uno(self):
+        value, _ = self.anclaje("CP+AnMC CP+AnMC 527,00", {"CP+ANMC": "CP+AnMC"})
+        self.assertEqual(value, "CP+AnMC")
+
+    def test_Portal_no_es_un_anclaje_sino_una_fuga_de_su_columna(self):
+        """'AnRW Portal' es un AnRW. 'Portal' es otro catalogo y tiene su propia columna."""
+        value, unknown = self.anclaje("AnRW Portal", {"ANRW": "AnRW"})
+        self.assertEqual(value, "AnRW")
+        self.assertEqual(unknown, {})
+
+    def test_la_anotacion_de_via_no_es_parte_del_anclaje(self):
+        """'AnMP (Track 02)' y 'AnRW2 track 1' son el anclaje: la via ya la sabe la via.
+
+        Es la misma regla que el '(T1)' del seccionamiento, escrita con la palabra entera.
+        """
+        self.assertEqual(self.anclaje("AnMP (Track 02)", {"ANMP": "AnMP"})[0], "AnMP")
+        self.assertEqual(self.anclaje("AnRW2 track 1", {"ANRW2": "AnRW2"})[0], "AnRW2")
+
+    def test_AnRW2_es_un_anclaje_DISTINTO_de_AnRW(self):
+        """El numero forma parte del codigo; no es la cuenta de anclajes.
+
+        Importa porque Profile.anchorages es un conjunto: si AnRW2 fuera 'dos AnRW' no
+        habria donde guardar el dos, y 108 perfiles perderian la mitad del dato sin que
+        se notara. Como son codigos distintos, cada uno es su propia fila del catalogo.
+        """
+        catalogo = {"ANRW": "AnRW", "ANRW2": "AnRW2"}
+        self.assertEqual(self.anclaje("AnRW2", catalogo)[0], "AnRW2")
+        self.assertEqual(self.anclaje("AnRW AnRW", catalogo)[0], "AnRW")   # repetido: uno
+        self.assertEqual(self.anclaje("AnRW AnRW2", catalogo)[0], "AnRW|AnRW2")
+
+    def test_dos_anclajes_pegados_sin_espacio_se_separan_por_la_tabla_de_grafias(self):
+        """'FP+AnMCAnRW' son dos. Sin la tabla no hay forma de saber donde parte.
+
+        Y la tabla tiene que aplicarse ANTES de trocear: troceando el texto original, el
+        arreglo no llegaria a usarse nunca y la celda saldria sin resolver.
+        """
+        value, unknown = self.anclaje("FP+AnMCAnRW",
+                                      {"FP+ANMC": "FP+AnMC", "ANRW": "AnRW"},
+                                      canonical={"FP+AnMCAnRW": "FP+AnMC AnRW"})
+        self.assertEqual(value, "FP+AnMC|AnRW")
+        self.assertEqual(unknown, {})
+
+    def test_las_erratas_de_tecleo_del_anclaje_se_canonicalizan(self):
+        """'PF+AnMC' es 'FP+AnMC' con las letras cambiadas, no un anclaje nuevo."""
+        value, _ = self.anclaje("PF+AnMC", {"FP+ANMC": "FP+AnMC"},
+                                canonical={"PF+AnMC": "FP+AnMC"})
+        self.assertEqual(value, "FP+AnMC")
+
+    def test_las_variantes_de_longitud_de_CP_TX_son_anclajes_distintos(self):
+        """CP/TX-P y CP/TX-P/1100 son dos anclajes, no uno con una medida al lado.
+
+        Por eso el numero de CP/TX-* NO se trata como ruido: ahi va pegado con barra y
+        forma parte del codigo, mientras que la longitud de semitension va suelta.
+        """
+        catalogo = {"CP/TX-P": "CP/TX-P", "CP/TX-P/1100": "CP/TX-P/1100"}
+        self.assertEqual(self.anclaje("CP/TX-P", catalogo)[0], "CP/TX-P")
+        self.assertEqual(self.anclaje("CP/TX-P/1100", catalogo)[0], "CP/TX-P/1100")
+
+    def test_una_celda_que_solo_lleva_la_via_no_es_un_anclaje(self):
+        """'TRACK 5' es una anotacion: no queda codigo, y la celda sale nombrada.
+
+        Sale vacia y en NO_RECONOCIDO, que es lo contrario de desaparecer en silencio:
+        es una celda que alguien tiene que mirar en el workbook.
+        """
+        value, unknown = self.anclaje("TRACK 5", {"ANRW": "AnRW"})
+        self.assertEqual(value, "")
+        self.assertEqual(len(unknown), 1)
 
     def test_el_aparato_de_seccionamiento_tambien_admite_varios(self):
         """'Disc SECT-I' es un disconnector MAS un aislador de seccion."""
