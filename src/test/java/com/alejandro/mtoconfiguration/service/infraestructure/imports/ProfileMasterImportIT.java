@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.service.infraestructure.imports;
 
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileImportReport;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileLovCodes;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
@@ -22,7 +23,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -167,6 +170,32 @@ class ProfileMasterImportIT {
                         """, Integer.class))
                 .as("ningun perfil puede repetir identificador Y punto kilometrico en su via")
                 .isZero();
+
+        // Las dos relaciones N:M del perfil, contadas contra el maestro. Un perfil puede llevar
+        // varios seccionamientos y varios anclajes, y el maestro los escribe separados por '|'.
+        //
+        // Comprobar solo que el perfil entra no vale: si el importador se quedase con el primer
+        // codigo de la celda, o si el mapper reconciliase la coleccion dejando uno, el recuento
+        // de perfiles daria exactamente igual y se perderian 850 pertenencias sin un solo error.
+        // Por eso se cuentan las FILAS DE LA TABLA DE UNION, que es donde vive el dato.
+        comprobaciones.assertThat(jdbcTemplate.queryForObject(
+                        "select count(*) from profile_sectioning", Long.class))
+                .as("cada seccionamiento del maestro tiene que ser su propia fila")
+                .isEqualTo(pertenenciasEsperadas(ProfileLovCodes::sectioning));
+        comprobaciones.assertThat(jdbcTemplate.queryForObject(
+                        "select count(*) from profile_anchorage", Long.class))
+                .as("cada anclaje del maestro tiene que ser su propia fila")
+                .isEqualTo(pertenenciasEsperadas(ProfileLovCodes::anchorage));
+
+        // Y que el caso de varios existe de verdad: sin esto, los dos recuentos de arriba
+        // cuadrarian igual con un maestro en el que cada perfil llevara un solo codigo, que es
+        // justo lo que el modelo N:M vino a arreglar.
+        comprobaciones.assertThat(perfilesConVarios("profile_sectioning"))
+                .as("el maestro trae perfiles con varios seccionamientos")
+                .isPositive();
+        comprobaciones.assertThat(perfilesConVarios("profile_anchorage"))
+                .as("el maestro trae perfiles con varios anclajes")
+                .isPositive();
         comprobaciones.assertAll();
 
         ProfileImportReport second = importMaster(false);
@@ -296,6 +325,33 @@ class ProfileMasterImportIT {
      * 11.714 perfiles se caian con la misma excepcion sin que ninguna asercion lo dijera. Lo que
      * acabo delatandolo fue la idempotencia, que habla de otra cosa.
      */
+    /**
+     * Cuantas filas tiene que tener una tabla de union, contadas sobre el maestro.
+     *
+     * <p>Una celda multivalor del maestro lleva los codigos separados por {@code '|'} —el
+     * separador no puede ser el espacio, porque hay codigos del catalogo que lo llevan dentro—,
+     * y cada uno es una pertenencia. Se cuentan aqui y no se fija un numero a mano para que el
+     * test siga valiendo cuando el maestro se regenere.
+     */
+    private long pertenenciasEsperadas(Function<ProfileLovCodes, String> campo) throws IOException {
+        try (InputStream in = Files.newInputStream(PROFILE_MASTER)) {
+            return parser.parseAll(in).profiles().stream()
+                    .filter(ProfileMasterRow::enabled)
+                    .map(row -> campo.apply(row.lov()))
+                    .filter(codes -> codes != null && !codes.isBlank())
+                    .flatMap(codes -> Arrays.stream(codes.trim().split("\\|")))
+                    .filter(code -> !code.isBlank())
+                    .count();
+        }
+    }
+
+    /** Perfiles con mas de una fila en esa tabla de union. */
+    private int perfilesConVarios(String tabla) {
+        return jdbcTemplate.queryForObject(
+                "select count(*) from (select profile_id from " + tabla
+                        + " group by profile_id having count(*) > 1) varios", Integer.class);
+    }
+
     private long perfilesCargables() throws IOException {
         try (InputStream in = Files.newInputStream(PROFILE_MASTER)) {
             return parser.parseAll(in).profiles().stream()
