@@ -382,16 +382,26 @@ Dos decisiones que **no** son ruido, y por eso están declaradas como códigos a
 - **`AnRW2` es un anclaje distinto de `AnRW`**, no «dos `AnRW`». El número forma parte del
   código. Importa porque `Profile.anchorages` es un `@ManyToMany`, es decir un conjunto:
   si el `2` fuera una cantidad no habría dónde guardarlo y 108 perfiles perderían la mitad
-  del dato sin que se notara.
+  del dato sin que se notara. `AnRW1`, en cambio, **es `AnRW`**: uno de algo es ese algo, y
+  el catálogo no puede llevar las dos grafías de lo mismo. Y el `2` **delante** (`2AnRW`)
+  sí cuenta anclajes en vez de nombrar otro, así que colapsa a uno.
 - **`CP/TX-P`, `CP/TX-T` y `CP/TX-W`, cada uno con o sin longitud, son nueve anclajes
   distintos.** La leyenda solo dibuja tres de los nueve, pero los datos traen las nueve
   combinaciones. Ahí el número va pegado con barra y sí es parte del código: por eso el
   filtro de ruido solo tira números **sueltos**.
 
-Con esto el catálogo `Anchorage` pasa de **45 códigos a 31, todos atómicos**: las 14 que
-salen eran celdas con dos anclajes (`CP+AnMC IO`), erratas de tecleo (`PF+AnMC` por
-`FP+AnMC`) o anotaciones (`TRACK 5`) que habían entrado porque el catálogo se cosecha
-leyendo cada celda de las hojas Track como si fuera un código.
+Con esto el catálogo `Anchorage` pasa de **45 códigos a 28, todos atómicos y todos
+habilitados**: las 17 que salen eran celdas con dos anclajes (`CP+AnMC IO`), erratas de
+tecleo (`PF+AnMC` por `FP+AnMC`) o anotaciones (`TRACK 5`, `(Track 02)`) que habían
+entrado porque el catálogo se cosecha leyendo cada celda de las hojas Track como si fuera
+un código.
+
+Dos reglas de `drop_concatenations` salieron de aquí y valen para **todas** las entidades:
+canonicaliza cada trozo antes de comprobarlo —igual que hace `Catalog.add`, porque la
+tabla de grafías se aplica a la celda entera y no casa cuando lleva dos códigos dentro—, y
+distingue «no queda nada» de «no hay nada que partir». Sin lo segundo, una celda que era
+solo una anotación se quedaba dentro del catálogo con `ENABLED=NO`, como si fuera un
+código pendiente de decidir.
 
 **El separador del maestro es la barra `|`, no el espacio**, y no puede ser el espacio: hay
 códigos del catálogo que **llevan** espacios (`A/S Diag S/A`, `T-SIGN FOUND.`,

@@ -448,6 +448,11 @@ code_canonical:
     # Erratas de tecleo sobre codigos de la leyenda. Solo las que cambian de CARACTERES:
     # las que solo cambian de mayusculas ('FP+ANMC', 'CP+AnmC') colapsan solas, porque la
     # clave del catalogo ya es el codigo en mayusculas.
+    # 'AnRW1' es 'AnRW': el 1 es la cuenta, y uno es el codigo a secas. El 2 de 'AnRW2'
+    # SI es parte del codigo —es otro anclaje— y por eso ese no se toca. Lo mismo con el
+    # 2 delante: cuenta anclajes, y el modelo es un conjunto, asi que colapsa a uno.
+    'AnRW1': AnRW
+    '2AnRW': AnRW
     'PF+AnMC': FP+AnMC          # PF por FP
     'CP+AnCM': CP+AnMC          # CM por MC
     'FP+AnCM': FP+AnMC

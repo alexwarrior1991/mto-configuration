@@ -539,8 +539,21 @@ def drop_concatenations(cat):
 
     for key, row in list(cat.rows.items()):
         code = row["code"]
-        parts = code_tokens(code, cat.cfg.get("code_noise_tokens", {}).get(row["entity"]))
-        if not parts or parts == [code.strip()]:
+        entity = row["entity"]
+        # canonical_code TAMBIEN por trozo, igual que en Catalog.add: la tabla de grafias
+        # se aplica a la celda entera, que no casa con nada cuando lleva dos codigos
+        # dentro. Sin esto, 'AnRW1' se arreglaba suelto pero no dentro de '2AnRW Portal'.
+        parts = [canonical_code(entity, part, cat.cfg)
+                 for part in code_tokens(code, cat.cfg.get("code_noise_tokens", {}).get(entity))]
+        if not parts:
+            # No queda NADA: la celda era solo una anotacion ('TRACK 5', '(Track 02)').
+            # No es lo mismo que "no hay nada que partir", y tratarlo igual las dejaba
+            # dentro del catalogo como si fueran codigos.
+            cat.discard(motivo="anotacion, no un codigo", entidad=entity, codigo=code,
+                        ep=row.get("ep", ""), detalle="")
+            del cat.rows[key]
+            continue
+        if parts == [code.strip()]:
             continue   # el codigo tal cual: nada que repartir
         # Tambien cuando se reduce a UNO: 'A/S Diag1' y 'A/S(T1)' son 'A/S-Diag' y 'A/S'
         # escritos de otra manera, no codigos nuevos. Lo que decide no es cuantos trozos

@@ -350,6 +350,26 @@ class MaestroGenerado(unittest.TestCase):
         self.assertEqual(self.anchorage.get("AnRW"), "SI")
         self.assertEqual(self.anchorage.get("AnRW2/Tunnel"), "SI")
 
+    def test_el_uno_de_AnRW1_es_la_cuenta_y_no_parte_del_codigo(self):
+        """'AnRW1' es 'AnRW'. Que el 2 de 'AnRW2' SI cuente no lo contradice: uno de algo
+        es ese algo, y el catalogo no puede llevar las dos grafias de lo mismo.
+
+        Igual con el 2 delante ('2AnRW'), que ahi cuenta anclajes y no nombra otro: el
+        modelo es un conjunto, asi que colapsa a uno.
+        """
+        self.assertNotIn("AnRW1", self.anchorage)
+        self.assertNotIn("2AnRW", self.anchorage)
+        self.assertNotIn("2AnRW Portal", self.anchorage)
+
+    def test_una_celda_que_solo_es_una_anotacion_no_entra_al_catalogo(self):
+        """'(Track 02)' y 'TRACK 5' no dejan codigo al quitarles lo que sobra.
+
+        No es lo mismo que "no hay nada que partir", y tratarlo igual las dejaba dentro
+        del catalogo con ENABLED=NO, como si fueran codigos pendientes de decidir.
+        """
+        for anotacion in ("(Track 02)", "TRACK 5"):
+            self.assertNotIn(anotacion, self.anchorage, anotacion)
+
     def test_unique_solution_es_un_valor_real_y_no_un_marcador(self):
         """No es un hueco: es la cimentacion que necesita solucion a medida, aparte, porque
         ninguna convencional sirve. Estuvo en code_rejections por una suposicion mia y eso
