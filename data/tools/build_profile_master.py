@@ -711,7 +711,8 @@ def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master
             record[field] = value
             review = review or bad
 
-        arm_type, arm_length, reason = split_steady_arm(values.get("STEADY_ARM"), arm_types)
+        arm_type, arm_length, reason = split_steady_arm(
+            values.get("STEADY_ARM"), arm_types, cfg.get("steady_arm_type_aliases"))
         if reason:
             master.discard(motivo=f"STEADY_ARM: {reason}", ep=ep, hoja=sheet,
                            fila=number, detalle=squash(values.get("STEADY_ARM")))

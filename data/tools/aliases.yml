@@ -274,12 +274,20 @@ track_headers_ignored:
 steady_arm_types:
   - BC
   - BCE
+  - BS
   - BTC
   - PH
   - PH-C
   - PH-Q
   - PHC
   - PHQ
+
+# Erratas del TIPO de brazo. Van aparte de code_canonical porque hay que aplicarlas
+# ANTES de separar el tipo de la longitud: 'BHC-1150' no llega entero a ningun sitio
+# donde una tabla de grafias pudiera verlo, y sin esto el brazo se perdia con un
+# "tipo de brazo desconocido".
+steady_arm_type_aliases:
+  BHC: PHC
 
 # --------------------------------------------------------------------------------
 # Cabeceras de las hojas HR Track -> campo del maestro de perfiles.
@@ -566,6 +574,10 @@ code_canonical:
 # estado "pendiente de decidir" y lo deja a la vista sin romper la generacion.
 # --------------------------------------------------------------------------------
 track_accepted:
+  SteadyArmType:
+    # Solo aparece en una hoja de trazado y en ningun BOQ, pero es un tipo de brazo
+    # real, no una errata: 'BS-1400' de EP9B / HR Track 2 LOD_S.
+    - BS
   Anchorage:
     # Solo codigos ATOMICOS: las 28 entradas que habia antes eran, en su mayoria, celdas
     # con dos anclajes ('CP+AnMC IO'), erratas ('PF+AnMC') o anotaciones ('TRACK 5') que

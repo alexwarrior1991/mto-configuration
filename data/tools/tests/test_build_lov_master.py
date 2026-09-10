@@ -402,7 +402,7 @@ class MaestroGenerado(unittest.TestCase):
         self.assertEqual(enabled, "SI")
         self.assertIn("TRACK", str(origen))
 
-    def test_el_catalogo_de_brazos_son_los_ocho_tipos_base(self):
+    def test_el_catalogo_de_brazos_son_solo_los_tipos(self):
         """La longitud del brazo no es parte de su tipo.
 
         El origen escribe 'PHQ-1150' —el tipo y su longitud juntos— y el catalogo se
@@ -412,21 +412,26 @@ class MaestroGenerado(unittest.TestCase):
         habilitar uno habria guardado la misma medida dos veces, en steady_arm.length y
         dentro del codigo.
         """
-        base = {"BC", "BCE", "BTC", "PH", "PH-C", "PH-Q", "PHC", "PHQ"}
+        base = {"BC", "BCE", "BS", "BTC", "PH", "PH-C", "PH-Q", "PHC", "PHQ"}
         habilitados = {c for c, enabled in self.steady_arm_types.items() if enabled == "SI"}
         self.assertEqual(habilitados, base)
         for compuesto in ("PHQ-1150", "PH-1150", "PHQ-950", "PHC-1150", "BTC-1651",
                           "PH950", "PHQ- 1150", "PHC-1500E"):
             self.assertNotIn(compuesto, self.steady_arm_types, compuesto)
 
-    def test_un_tipo_de_brazo_desconocido_sigue_saliendo_nombrado(self):
-        """'BS' no esta entre los ocho, asi que 'BS-1400' NO se toca.
+    def test_no_queda_ningun_tipo_de_brazo_por_decidir(self):
+        """Los dos que salieron nombrados ya estan resueltos, y de dos formas distintas.
 
-        Es la diferencia entre limpiar y esconder: quitarle la longitud daria un 'BS' que
-        nadie ha dado de alta. Se queda entero y sin habilitar, que es lo que hace falta
-        para decidir si es un tipo nuevo o una errata.
+        'BS' era un tipo de verdad —una sola hoja lo usa, EP9B / HR Track 2 LOD_S— y se
+        da de alta. 'BHC' era 'PHC' mal tecleado y se corrige con un alias, no con un
+        codigo nuevo: dar de alta una errata la convierte en un tipo para siempre.
+
+        Que ninguno de los dos siga como fila del catalogo es lo que prueba que se han
+        resuelto de verdad y no aparcado.
         """
-        self.assertEqual(self.steady_arm_types.get("BS-1400"), "NO")
+        self.assertEqual({c for c, e in self.steady_arm_types.items() if e != "SI"}, set())
+        for errata in ("BS-1400", "BHC-1150", "BHC"):
+            self.assertNotIn(errata, self.steady_arm_types, errata)
 
     def test_unique_solution_es_un_valor_real_y_no_un_marcador(self):
         """No es un hueco: es la cimentacion que necesita solucion a medida, aparte, porque

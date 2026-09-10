@@ -31,7 +31,7 @@ def _load(name):
 bpm = _load("build_profile_master")
 common = _load("workbook_common")
 
-ARM_TYPES = ["BC", "BCE", "BTC", "PH", "PH-C", "PH-Q", "PHC", "PHQ"]
+ARM_TYPES = ["BC", "BCE", "BS", "BTC", "PH", "PH-C", "PH-Q", "PHC", "PHQ"]
 
 # Cabecera minima con los grupos de tres columnas donde los pone el origen.
 HEADER = ["Survey", "Profile", "KP", "Span", "Sectionning", "Pole Type", "Cantilevers",
@@ -371,6 +371,22 @@ class LecturaDeUnaHojaDeTrazado(unittest.TestCase):
         self.assertEqual(cantilevers, 3, "el slot 3 sigue sin ser mensula")
         self.assertEqual(len(
             [d for d in master.discarded if "slot sin tipo" in d["motivo"]]), 1)
+
+    def test_una_errata_del_tipo_de_brazo_no_pierde_el_brazo(self):
+        """'BHC-1150' es 'PHC-1150' mal tecleado: se corrige, no se da de alta.
+
+        El alias tiene que aplicarse ANTES de separar el tipo de la longitud, porque
+        'BHC-1150' no llega entero a ningun sitio donde una tabla de grafias pudiera
+        verlo. Sin esto el brazo se perdia con un "tipo de brazo desconocido", y con el
+        se perdia tambien la longitud, que si era buena.
+        """
+        self.assertEqual(bpm.split_steady_arm("BHC-1150", ARM_TYPES, {"BHC": "PHC"}),
+                         ("PHC", 1150, None))
+        # Y sin declararlo sigue siendo un tipo desconocido, que es lo que hace falta
+        # para que a nadie se le cuele una errata nueva.
+        tipo, longitud, motivo = bpm.split_steady_arm("BHC-1150", ARM_TYPES)
+        self.assertIsNone(tipo)
+        self.assertIn("desconocido", motivo)
 
     def test_el_brazo_se_parte_al_leer(self):
         master, _, _ = self.read(self.sheet_rows())

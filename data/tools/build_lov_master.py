@@ -192,7 +192,9 @@ class Catalogue:
         # Un tipo que no esta en la lista ('BS-1400') no se toca: sale nombrado, que es lo
         # que hace falta para decidir si es un tipo nuevo o una errata.
         if entity == "SteadyArmType":
-            arm_type, length, _ = split_steady_arm(code, self.cfg.get("steady_arm_types", []))
+            arm_type, length, _ = split_steady_arm(
+                code, self.cfg.get("steady_arm_types", []),
+                self.cfg.get("steady_arm_type_aliases"))
             if arm_type and arm_type.upper() != code.upper():
                 self.discard(motivo="tipo de brazo con su longitud dentro, no un codigo",
                              entidad=entity, codigo=code, ep=ep,

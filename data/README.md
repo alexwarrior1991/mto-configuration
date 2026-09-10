@@ -409,10 +409,20 @@ escribe el tipo base y manda el número a su columna— pero estaban marcadas
 `REVISAR=SI`, es decir «pendiente de decidir»: habilitar una habría guardado la misma
 medida **dos veces**, en `steady_arm.length` y dentro del código.
 
-Con esto `SteadyArmType` pasa de **71 códigos a 9**: los ocho base, todos habilitados, más
-`BS-1400`. Ése **no se toca a propósito**: `BS` no está entre los ocho, así que quitarle la
-longitud daría un tipo que nadie ha dado de alta. Se queda entero y sin habilitar, que es
-la diferencia entre limpiar y esconder.
+Con esto `SteadyArmType` pasa de **71 códigos a 9**, todos habilitados y ninguno pendiente.
+
+Los dos valores que el catálogo no reconocía se resolvieron **de formas distintas a
+propósito**, porque no eran lo mismo:
+
+- **`BS` es un tipo real** y se da de alta. Solo aparece en una hoja (`EP9B / HR Track 2
+  LOD_S`) y en ningún BOQ, así que va en `track_accepted`: los códigos que solo viven en
+  las hojas de trazado necesitan que una persona los acepte.
+- **`BHC` era `PHC` mal tecleado** y se corrige con un alias en `steady_arm_type_aliases`,
+  **no** con un código nuevo: dar de alta una errata la convierte en un tipo para siempre.
+
+El alias va en su propia sección y no en `code_canonical` porque hay que aplicarlo **antes**
+de separar el tipo de la longitud: `BHC-1150` no llega entero a ningún sitio donde una tabla
+de grafías pudiera verlo, y sin esto se perdía el brazo **y** su longitud, que sí era buena.
 
 ### `ANCHORAGE`: lo que la leyenda escribe al lado del código
 

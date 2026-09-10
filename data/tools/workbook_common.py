@@ -199,7 +199,7 @@ def is_noise_token(token: str, noise: dict | None) -> bool:
     return bool(pattern) and re.fullmatch(pattern, squash(token), re.IGNORECASE) is not None
 
 
-def split_steady_arm(raw, arm_types):
+def split_steady_arm(raw, arm_types, type_aliases=None):
     """Parte 'PH-1150' en tipo y longitud. Devuelve (tipo, longitud, motivo).
 
     El catalogo SteadyArmType solo tiene el tipo base, pero el origen escribe tipo y
@@ -220,8 +220,11 @@ def split_steady_arm(raw, arm_types):
         return None, None, None
 
     by_upper = {t.upper(): t for t in arm_types}
+    aliases = {squash(k).upper(): v for k, v in (type_aliases or {}).items()}
     if text.upper() in by_upper:
         return by_upper[text.upper()], None, None
+    if text.upper() in aliases:                 # el tipo solo, sin longitud
+        return aliases[text.upper()], None, None
 
     # Una letra suelta al final ('PHC-1500E') no es parte de la longitud. Se ignora,
     # pero se dice: si algun dia significa algo, esta a la vista en DESCARTADOS.
@@ -237,6 +240,7 @@ def split_steady_arm(raw, arm_types):
         return None, None, f"tipo de brazo desconocido: {text!r}"
 
     head = text[:index].rstrip("-")
+    head = aliases.get(head.upper(), head)      # 'BHC' es 'PHC' mal tecleado
     if head.upper() not in by_upper:
         return None, None, f"tipo de brazo desconocido: {head!r} (de {text!r})"
 
