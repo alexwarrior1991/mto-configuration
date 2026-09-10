@@ -42,6 +42,8 @@ from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from workbook_common import (  # noqa: E402  (necesita el sys.path de arriba)
+    STEADY_ARM_LENGTH_MAX,
+    STEADY_ARM_LENGTH_MIN,
     code_tokens,
     MAX_ROWS_TRACK,
     TRACK_DATA_MAX_COL,
@@ -52,6 +54,7 @@ from workbook_common import (  # noqa: E402  (necesita el sys.path de arriba)
     is_track_sheet,
     norm_header,
     normalize_code,
+    split_steady_arm,
     squash,
 )
 
@@ -74,7 +77,6 @@ NUMERIC_LIMITS = {
     "ARM_ANGLE": (2, 3, None),
 }
 ARM_ANGLE_MIN, ARM_ANGLE_MAX = Decimal("-90"), Decimal("90")
-STEADY_ARM_LENGTH_MIN, STEADY_ARM_LENGTH_MAX = 1, 2000
 
 PROFILE_LOV_FIELDS = ("SECTIONING", "ANCHORAGE", "ANCHORAGE_FOUNDATION", "FOUNDATION",
                       "POLE_TYPE", "PORTAL", "RETURN_SUPPORT", "SECTIONING_FEEDING")
@@ -209,49 +211,6 @@ def fit_numeric(field, value, *, ep, sheet, row, master: Master):
         return None, True
 
     return number, False
-
-
-def split_steady_arm(raw, arm_types):
-    """Parte 'PH-1150' en tipo y longitud. Devuelve (tipo, longitud, motivo).
-
-    El catalogo SteadyArmType solo tiene el tipo base, pero el origen escribe tipo y
-    longitud juntos. La regla es "sufijo numerico = longitud", y necesita la lista de
-    tipos porque 'PH-C' y 'PH-Q' llevan guion sin ser una longitud.
-
-    5.594 de las 9.921 celdas medidas traen SOLO el tipo. No es un error: la longitud
-    no se conoce, y por eso steady_arm.length es opcional.
-    """
-    text = squash(raw).replace(" ", "").replace("_", "-")   # 'PH- 1450', 'BTC_1651'
-    if not text or is_noise(text):
-        return None, None, None
-
-    by_upper = {t.upper(): t for t in arm_types}
-    if text.upper() in by_upper:
-        return by_upper[text.upper()], None, None
-
-    # Una letra suelta al final ('PHC-1500E') no es parte de la longitud. Se ignora,
-    # pero se dice: si algun dia significa algo, esta a la vista en DESCARTADOS.
-    suffix = ""
-    if len(text) > 1 and text[-1].isalpha() and text[-2].isdigit():
-        text, suffix = text[:-1], text[-1]
-
-    index = len(text)
-    while index > 0 and text[index - 1].isdigit():
-        index -= 1
-    digits = text[index:]
-    if not digits:
-        return None, None, f"tipo de brazo desconocido: {text!r}"
-
-    head = text[:index].rstrip("-")
-    if head.upper() not in by_upper:
-        return None, None, f"tipo de brazo desconocido: {head!r} (de {text!r})"
-
-    length = int(digits)
-    if not STEADY_ARM_LENGTH_MIN <= length <= STEADY_ARM_LENGTH_MAX:
-        return by_upper[head.upper()], None, f"longitud {length} fuera de 1..2000"
-
-    reason = f"sufijo ignorado: {suffix!r}" if suffix else None
-    return by_upper[head.upper()], length, reason
 
 
 # --------------------------------------------------------------------------------

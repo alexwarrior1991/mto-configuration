@@ -51,6 +51,7 @@ from workbook_common import (  # noqa: E402  (necesita el sys.path de arriba)
     norm_category,
     norm_header,
     normalize_code,
+    split_steady_arm,
     squash,
 )
 
@@ -177,6 +178,29 @@ class Catalogue:
         # Despues del enrutado, no antes: la forma canonica depende de la entidad
         # de destino, que es la que route_code acaba de decidir.
         code = canonical_code(entity, code, self.cfg)
+
+        # La longitud del brazo NO es parte de su tipo.
+        #
+        # El origen escribe 'PHQ-1150' en la columna del brazo: el tipo y su longitud
+        # juntos. El maestro de perfiles ya los separa —la longitud va a
+        # steady_arm.length— pero el catalogo se cosecha leyendo la celda entera, asi
+        # que se quedaba con 60 filas que no son tipos de brazo. Ninguna se usaba, pero
+        # estaban marcadas "pendiente de decidir": habilitar una habria guardado la misma
+        # medida dos veces, en la columna y dentro del nombre.
+        #
+        # Se usa la MISMA funcion que el maestro de perfiles, por lo mismo que code_tokens.
+        # Un tipo que no esta en la lista ('BS-1400') no se toca: sale nombrado, que es lo
+        # que hace falta para decidir si es un tipo nuevo o una errata.
+        if entity == "SteadyArmType":
+            arm_type, length, _ = split_steady_arm(code, self.cfg.get("steady_arm_types", []))
+            if arm_type and arm_type.upper() != code.upper():
+                self.discard(motivo="tipo de brazo con su longitud dentro, no un codigo",
+                             entidad=entity, codigo=code, ep=ep,
+                             detalle=f"{arm_type} + {length}" if length else arm_type)
+                self.add(entity, arm_type, source=source, ep=ep, desc_es=desc_es,
+                         desc_en=desc_en, drawing=drawing, boq_category=boq_category,
+                         track_uses=track_uses)
+                return
 
         # Una celda con VARIOS codigos se registra como varios, no como uno.
         #

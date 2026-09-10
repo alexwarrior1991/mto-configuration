@@ -391,6 +391,29 @@ Las 217 quedan anotadas en `DESCARTADOS` con el motivo `tipo de mensula supuesto
 hoja, su fila y el tipo que se les puso. Rellenar el tipo en el workbook las saca de esa
 lista sin tocar nada aquí.
 
+### El brazo: la longitud no es parte del tipo
+
+La columna `Arm Type` escribe el tipo y su longitud juntos, `PHQ-1150`. El catálogo
+`SteadyArmType` solo tiene los **ocho tipos base** —`BC`, `BCE`, `BTC`, `PH`, `PH-C`,
+`PH-Q`, `PHC`, `PHQ`— y la longitud tiene su propia columna, `steady_arm.length`.
+
+`workbook_common.split_steady_arm` aplica la regla «sufijo numérico = longitud», que
+necesita la lista de tipos porque `PH-C` y `PH-Q` llevan guion **sin** que sea una
+longitud. También limpia `PH- 1450` (espacio suelto), `PH950` (sin guion), `BTC_1651`
+(guion bajo) y `PHC-1500E` (letra al final, que se ignora diciéndolo).
+
+La usan **los dos generadores**, por lo mismo que `code_tokens`: mientras solo la aplicaba
+el maestro de perfiles, el catálogo se quedaba con **62 filas que no son tipos de brazo**
+(`PHQ-1150` con 1.160 usos, `PH-1150` con 720…). Nadie las referenciaba —el maestro ya
+escribe el tipo base y manda el número a su columna— pero estaban marcadas
+`REVISAR=SI`, es decir «pendiente de decidir»: habilitar una habría guardado la misma
+medida **dos veces**, en `steady_arm.length` y dentro del código.
+
+Con esto `SteadyArmType` pasa de **71 códigos a 9**: los ocho base, todos habilitados, más
+`BS-1400`. Ése **no se toca a propósito**: `BS` no está entre los ocho, así que quitarle la
+longitud daría un tipo que nadie ha dado de alta. Se queda entero y sin habilitar, que es
+la diferencia entre limpiar y esconder.
+
 ### `ANCHORAGE`: lo que la leyenda escribe al lado del código
 
 El bloque `ANCHORAGE` de la leyenda declara **doce anclajes** —`CP+AnMC`, `FP+AnMC`,

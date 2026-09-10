@@ -31,6 +31,9 @@ TRACK_HEADER_MIN_CELLS = 8
 
 MAX_CODE_LEN = 40
 
+# Rango de la longitud del brazo, tomado de la columna steady_arm.length.
+STEADY_ARM_LENGTH_MIN, STEADY_ARM_LENGTH_MAX = 1, 2000
+
 # Valores que aparecen en las celdas de las hojas Track y que no son datos: marcas de
 # columna vacia, subcabeceras de la fila siguiente a la cabecera y errores de formula.
 TRACK_NOISE = {
@@ -194,3 +197,52 @@ def is_noise_token(token: str, noise: dict | None) -> bool:
         return True
     pattern = noise.get("regex")
     return bool(pattern) and re.fullmatch(pattern, squash(token), re.IGNORECASE) is not None
+
+
+def split_steady_arm(raw, arm_types):
+    """Parte 'PH-1150' en tipo y longitud. Devuelve (tipo, longitud, motivo).
+
+    El catalogo SteadyArmType solo tiene el tipo base, pero el origen escribe tipo y
+    longitud juntos. La regla es "sufijo numerico = longitud", y necesita la lista de
+    tipos porque 'PH-C' y 'PH-Q' llevan guion sin ser una longitud.
+
+    5.691 de las 9.776 celdas del maestro traen SOLO el tipo. No es un error: la
+    longitud no se conoce, y por eso steady_arm.length es opcional.
+
+    La usan LOS DOS generadores, por lo mismo que code_tokens: mientras solo la aplicaba
+    el maestro de perfiles, el catalogo se quedaba con 60 filas —'PHQ-1150', 'PH-950'...—
+    que no son tipos de brazo sino un tipo CON su longitud dentro del nombre. Nadie las
+    referenciaba, pero estaban marcadas "pendiente de decidir", y habilitar una habria
+    guardado la misma medida dos veces: en steady_arm.length y dentro del codigo.
+    """
+    text = squash(raw).replace(" ", "").replace("_", "-")   # 'PH- 1450', 'BTC_1651'
+    if not text or is_noise(text):
+        return None, None, None
+
+    by_upper = {t.upper(): t for t in arm_types}
+    if text.upper() in by_upper:
+        return by_upper[text.upper()], None, None
+
+    # Una letra suelta al final ('PHC-1500E') no es parte de la longitud. Se ignora,
+    # pero se dice: si algun dia significa algo, esta a la vista en DESCARTADOS.
+    suffix = ""
+    if len(text) > 1 and text[-1].isalpha() and text[-2].isdigit():
+        text, suffix = text[:-1], text[-1]
+
+    index = len(text)
+    while index > 0 and text[index - 1].isdigit():
+        index -= 1
+    digits = text[index:]
+    if not digits:
+        return None, None, f"tipo de brazo desconocido: {text!r}"
+
+    head = text[:index].rstrip("-")
+    if head.upper() not in by_upper:
+        return None, None, f"tipo de brazo desconocido: {head!r} (de {text!r})"
+
+    length = int(digits)
+    if not STEADY_ARM_LENGTH_MIN <= length <= STEADY_ARM_LENGTH_MAX:
+        return by_upper[head.upper()], None, f"longitud {length} fuera de 1..2000"
+
+    reason = f"sufijo ignorado: {suffix!r}" if suffix else None
+    return by_upper[head.upper()], length, reason
