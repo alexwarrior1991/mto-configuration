@@ -260,6 +260,41 @@ class LecturaDeUnaHojaDeTrazado(unittest.TestCase):
                                  ("30-1.16", 1, "EMT-1"),
                                  ("30-1.16", 2, "EMT-T")])
 
+    def test_un_slot_sin_tipo_no_es_una_mensula_aunque_traiga_medidas(self):
+        """Sin tipo no hay mensula, y entonces sus parametros son ruido de la hoja.
+
+        Si el perfil lleva mensula en M1 y M2, un valor suelto en M3 esta mal puesto: no
+        es una mensula a la que le falte el tipo. Se tira el slot ENTERO —medidas y
+        brazo— y se anota en DESCARTADOS, que es lo que impide que desaparezca en
+        silencio. En el maestro real son 348 slots.
+        """
+        rows = self.sheet_rows()
+        # Al perfil de dos mensulas se le mete una desviacion y un brazo en M3, sin tipo.
+        rows[5] = [None, "30-1.16", 30716, None, "S/A", "S1T",
+                   "EMT-1", "EMT-T", None, 15, -30, 40, "PH", "PHQ", "BC-1200"]
+        master, _, cantilevers = self.read(rows)
+
+        self.assertEqual(cantilevers, 3, "el slot 3 no llega a ser mensula")
+        self.assertEqual([c["SLOT"] for c in master.cantilevers], [1, 1, 2])
+
+        tirados = [d for d in master.discarded if "slot sin tipo" in d["motivo"]]
+        self.assertEqual(len(tirados), 1)
+        self.assertIn("slot 3", tirados[0]["detalle"])
+        self.assertIn("STAGGER=40", tirados[0]["detalle"])
+
+    def test_un_poste_sin_mensulas_es_normal_y_no_se_descarta(self):
+        """Un poste que solo hace de anclaje no lleva mensulas, y eso no es un error.
+
+        No se anota nada: no hay nada que tirar. El perfil entra igual, sin mensulas.
+        """
+        rows = self.sheet_rows()
+        rows[3] = ["Section C", "30-1.15", 30675, None, "A/S", "S1T"]  # sin nada de mensula
+        master, profiles, cantilevers = self.read(rows)
+
+        self.assertEqual(profiles, 2)
+        self.assertEqual([c["PROFILE_ID"] for c in master.cantilevers], ["30-1.16", "30-1.16"])
+        self.assertEqual([d for d in master.discarded if "slot sin tipo" in d["motivo"]], [])
+
     def test_el_brazo_se_parte_al_leer(self):
         master, _, _ = self.read(self.sheet_rows())
         first = master.cantilevers[0]

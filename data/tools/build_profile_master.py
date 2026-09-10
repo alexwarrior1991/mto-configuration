@@ -637,19 +637,43 @@ def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master
         if all(is_blank(v) for v in values.values()):
             continue
 
-        review = False
+        raw_type = values.get("CANTILEVER_TYPE")
+        type_code = squash(raw_type)
+        type_code = "" if is_blank(raw_type) or is_noise(type_code) else type_code
+        cantilever_type, review = resolve_lov(
+            "CANTILEVER_TYPE", type_code, cfg, ep, sheet, number, master)
+
+        # SIN TIPO NO HAY MENSULA, y sin mensula no hay nada suyo que guardar.
+        #
+        # El slot puede venir con medidas —desviacion, altura de catenaria, hasta un tipo
+        # de brazo— y la celda del tipo vacia o con el marcador '-'. Eso no es una mensula
+        # a la que le falte un dato: es que ahi NO hay mensula, y lo que aparezca en las
+        # demas columnas de ese slot es ruido de la hoja. Si un perfil lleva mensula en M1
+        # y M2, un valor suelto en M3 esta mal puesto.
+        #
+        # Un poste sin ninguna mensula es normal —hace de anclaje, por ejemplo— y entonces
+        # no tiene ni parametros de mensula ni brazo. Es el mismo caso, con las tres vacias.
+        #
+        # Se tira el slot ENTERO, con sus medidas y su brazo, y se anota en DESCARTADOS
+        # con lo que se tira: 348 slots del maestro estaban asi, y antes salian como una
+        # mensula ENABLED=NO que arrastraba unos valores que no describen nada.
+        if not cantilever_type:
+            tirado = ", ".join(
+                f"{field}={squash(value)}" for field, value in values.items()
+                if field != "CANTILEVER_TYPE" and not is_blank(value))
+            master.discard(
+                motivo="slot sin tipo de mensula: ahi no hay mensula",
+                ep=ep, hoja=sheet, fila=number,
+                detalle=f"{profile['PROFILE_ID']} slot {slot + 1}"
+                        + (f": se tira {tirado}" if tirado else ""))
+            continue
+
         # ORDEN y no solo PROFILE_ID: una via con dos tramos concatenados repite el
         # identificador, asi que sin el orden las mensulas de los DOS perfiles se
         # agruparian juntas y cada uno se llevaria las del otro.
         record = {"EP": ep, "VIA": profile["VIA"], "PROFILE_ID": profile["PROFILE_ID"],
-                  "ORDEN": profile["ORDEN"], "SLOT": slot + 1, "FILA_ORIGEN": number}
-
-        raw_type = values.get("CANTILEVER_TYPE")
-        type_code = squash(raw_type)
-        type_code = "" if is_blank(raw_type) or is_noise(type_code) else type_code
-        record["CANTILEVER_TYPE"], sin_resolver = resolve_lov(
-            "CANTILEVER_TYPE", type_code, cfg, ep, sheet, number, master)
-        review = review or sin_resolver
+                  "ORDEN": profile["ORDEN"], "SLOT": slot + 1, "FILA_ORIGEN": number,
+                  "CANTILEVER_TYPE": cantilever_type}
 
         for field in ("STAGGER", "CATENARY_HEIGHT", "CW_ELEVATION", "CW_HEIGHT",
                       "WIND_DEFLECTION", "ARM_ANGLE"):
@@ -668,12 +692,11 @@ def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master
         review = review or sin_resolver
         record["STEADY_ARM_LENGTH"] = arm_length
 
-        # Y no se carga sin su perfil. El importador agrupa las mensulas por (EP, via,
-        # ORDEN) y solo escribe las del perfil que esta cargando, asi que una mensula de un
-        # perfil ENABLED=NO no llegaba nunca a la base de datos y el maestro seguia
-        # contandola como cargable: cuatro mensulas que decian SI y no podian entrar.
-        record["ENABLED"] = ("SI" if (record["CANTILEVER_TYPE"] and profile["ENABLED"] == "SI")
-                             else "NO")
+        # Aqui ya hay tipo; lo que queda por mirar es el perfil. El importador agrupa las
+        # mensulas por (EP, via, ORDEN) y solo escribe las del perfil que esta cargando,
+        # asi que una mensula de un perfil ENABLED=NO no llegaba nunca a la base de datos
+        # y el maestro seguia contandola como cargable: cuatro decian SI y no podian entrar.
+        record["ENABLED"] = "SI" if profile["ENABLED"] == "SI" else "NO"
         record["REVISAR"] = "SI" if review or record["ENABLED"] == "NO" else "NO"
         master.cantilevers.append(record)
         written += 1
@@ -833,6 +856,10 @@ READ_ME = [
      "Hoja y numero de fila del workbook, tal como los enseña Excel, para poder ir a la celda."),
     ("SPAN", "Vano HASTA EL PERFIL SIGUIENTE, en metros. En el origen vive en la fila intermedia."),
     ("SLOT", "1, 2 o 3. Posicion de la mensula dentro del perfil (columnas M1/M2/M3)."),
+    ("Un slot sin tipo no sale",
+     "Si la celda de tipo de mensula viene vacia o con '-', ahi no hay mensula: el slot "
+     "entero se descarta con sus medidas y su brazo, y sale en DESCARTADOS. Un poste sin "
+     "mensulas es normal, hace de anclaje."),
     ("SECTIONING / ANCHORAGE / SECTIONING_FEEDING",
      "Admiten VARIOS codigos, separados por '|'. No por espacio: hay codigos del catalogo "
      "que llevan espacios ('A/S Diag S/A', 'T-SIGN FOUND.'). Sin barra, uno solo."),
