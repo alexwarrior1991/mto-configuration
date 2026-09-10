@@ -68,8 +68,14 @@ class ProfileMasterImportIT {
             "steady_arm", "cantilever", "disconnector", "profile", "track",
             "section_insulator", "station", "execution_package");
 
-    /** Se siembran para que los paquetes puedan resolver su empresa; se limpian igual. */
-    private static final List<String> COMPANY_TABLES = List.of("business_entity", "comercial_entity_type");
+    /**
+     * Las empresas NO se limpian.
+     *
+     * <p>Desde V19 la migracion siembra Syneox —el NIF que declaran los once paquetes— y
+     * el catalogo de tipos de entidad comercial. Vaciar esas tablas al terminar borraria
+     * datos que la migracion da por puestos, y el siguiente test que los mirase
+     * —{@code FlywayMigrationIT}— fallaria por el orden de ejecucion, no por el esquema.
+     */
 
     private static final List<String> LOV_TABLES = List.of(
             "foundation", "foundation_type", "portal", "portal_type",
@@ -94,7 +100,7 @@ class ProfileMasterImportIT {
 
     @AfterEach
     void limpia() {
-        String tables = Stream.of(TABLES, LOV_TABLES, COMPANY_TABLES).flatMap(List::stream)
+        String tables = Stream.of(TABLES, LOV_TABLES).flatMap(List::stream)
                 .flatMap(table -> Stream.of(table, table + "_aud"))
                 .collect(Collectors.joining(", "));
 
@@ -312,6 +318,19 @@ class ProfileMasterImportIT {
      * limpia no existen y el paquete se quedaria sin {@code companyId}. Se siembran con SQL
      * para que el test pruebe la importacion y no la ausencia de datos de referencia.
      */
+    /**
+     * Rellena las empresas que el maestro declara y la migracion no siembra.
+     *
+     * <p>Desde V19, el NIF de los once paquetes —B10744258, Syneox— ya viene puesto, asi
+     * que en la practica esto no inserta nada: la carga se prueba contra la fila de
+     * verdad, que es lo que se quiere. Sigue aqui para que declarar un NIF nuevo en
+     * {@code topology.yml} no rompa el test antes de que a nadie le de tiempo a darlo de
+     * alta donde toque.
+     *
+     * <p>El conflicto se resuelve por {@code identification_number} y no por {@code id}:
+     * la fila sembrada tiene su propio id, asi que insertar una copia con id negativo no
+     * chocaria por id —chocaria por el NIF, que es UNIQUE— y la sentencia moriria.
+     */
     private void seedCompanies(List<String> identificationNumbers) {
         jdbcTemplate.update("""
                 insert into comercial_entity_type (id, code, description, enabled,
@@ -327,7 +346,7 @@ class ProfileMasterImportIT {
                             comercial_entity_type_id, deleted,
                             create_date, create_user, version_date, version_user, version_number)
                     values (?, ?, ?, ?, -1, false, now(), 'test', now(), 'test', 1)
-                    on conflict (id) do nothing
+                    on conflict (identification_number) do nothing
                     """, -(index + 1L), "Empresa " + (index + 1), "IT-" + (index + 1),
                     identificationNumbers.get(index));
         }

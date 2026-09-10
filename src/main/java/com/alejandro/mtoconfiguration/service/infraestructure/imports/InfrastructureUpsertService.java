@@ -312,9 +312,11 @@ public class InfrastructureUpsertService {
     /**
      * Traduce el NIF que declara el maestro al identificador de la empresa.
      *
-     * <p><b>Busca, no da de alta.</b> Las empresas vienen de un maestro externo: este
-     * repositorio no tiene migracion que siembre {@code business_entity} ni servicio ni
-     * endpoint que la escriba, asi que un NIF que no este ahi no se puede resolver.
+     * <p><b>Busca, no da de alta.</b> Este repositorio no tiene servicio ni endpoint que
+     * escriba {@code business_entity}, asi que un NIF que no este en la tabla no se puede
+     * resolver. La unica empresa que viene puesta es la que siembra {@code V19}: Syneox,
+     * NIF B10744258, que es la que declaran los once paquetes de {@code topology.yml}.
+     * Cualquier otra hay que darla de alta por fuera.
      *
      * <p>Por eso los dos casos fallan aqui, con su nombre y su motivo, en vez de devolver
      * {@code null} y dejar que el validador diga <i>«companyId es obligatorio»</i>: ese

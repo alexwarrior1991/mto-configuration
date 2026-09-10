@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19");
     }
 
     /**
@@ -291,6 +291,51 @@ class FlywayMigrationIT {
                 "select code from " + SCHEMA + ".profile_status order by code", String.class);
 
         assertThat(codigos).containsExactly("DEFINITIVE", "DRAFT", "PROVISIONAL");
+    }
+
+    /**
+     * V19 siembra la empresa que declaran los once paquetes de {@code topology.yml}.
+     *
+     * <p>Sin ella una base recien migrada no puede importar el maestro de perfiles:
+     * {@code InfrastructureUpsertService.resolveCompany} traduce el NIF de cada paquete
+     * contra {@code business_entity} y, si no esta, tumba el paquete y con el sus
+     * estaciones, sus vias y sus perfiles. Habia que meter la fila a mano en cada entorno.
+     *
+     * <p>Se comprueba por el NIF y no por el nombre porque el NIF es lo que busca el
+     * importador, y es la unica columna con restriccion UNIQUE.
+     */
+    @Test
+    void laEmpresaDeLosPaquetesEstaSembrada() {
+        Map<String, Object> empresa = jdbc().queryForMap("""
+                select b.name, b.code, b.deleted, t.code as tipo
+                from %s.business_entity b
+                join %s.comercial_entity_type t on t.id = b.comercial_entity_type_id
+                where b.identification_number = 'B10744258'
+                """.formatted(SCHEMA, SCHEMA));
+
+        assertThat(empresa)
+                .containsEntry("name", "Syneox")
+                .containsEntry("code", "SYNEOX")
+                .containsEntry("deleted", false)
+                .as("es la compania ferroviaria: isRailwayCompany() compara contra ese codigo")
+                .containsEntry("tipo", "RAILWAY_COMPANY");
+    }
+
+    /**
+     * El catalogo de tipos de entidad comercial tambien estaba vacio, y la clave ajena
+     * desde {@code business_entity} es obligatoria: sin sus filas no hay empresa posible.
+     * Los tres codigos son los del enum {@code ComercialEntityTypeValue}, que es contra
+     * lo que comparan {@code isCustoms()}, {@code isConsignee()} e
+     * {@code isRailwayCompany()}.
+     */
+    @Test
+    void elCatalogoDeTiposDeEntidadComercialEstaSembrado() {
+        List<String> codigos = jdbc().queryForList(
+                "select code from " + SCHEMA + ".comercial_entity_type"
+                        + " where code in ('CONSIGNEE', 'CUSTOMS', 'RAILWAY_COMPANY')"
+                        + " order by code", String.class);
+
+        assertThat(codigos).containsExactly("CONSIGNEE", "CUSTOMS", "RAILWAY_COMPANY");
     }
 
     @Test

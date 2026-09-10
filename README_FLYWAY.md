@@ -686,7 +686,15 @@ src/main/resources/db/migration
 ├── V8__drop_insertion_order.sql               Quita insertion_order de profile y cantilever
 ├── V9__widen_lov_code_and_unique.sql          LOV.code a varchar(40) + unicidad por codigo
 ├── V10__async_job_type_lov_import.sql         CHECK de async_job.job_type con LOV_IMPORT
-└── V11__profile_technical_fields.sql          span, medidas en mm y sectioning_feeding_id en profile
+├── V11__profile_technical_fields.sql          span, medidas en mm y sectioning_feeding_id en profile
+├── V12__infrastructure_natural_keys.sql       Claves naturales unicas, brazo opcional y siembra de profile_status
+├── V13__async_job_type_profile_import.sql     CHECK de async_job.job_type con PROFILE_IMPORT
+├── V14__profile_sectioning_many_to_many.sql   profile_sectioning: un perfil lleva VARIOS seccionamientos
+├── V15__profile_anchorage_many_to_many.sql    profile_anchorage: y varios anclajes
+├── V16__profile_sectioning_feeding_many_to_many.sql  profile_sectioning_feeding: y varios aparatos
+├── V17__track_station_many_to_many.sql        track_station: una via larga atraviesa varias estaciones
+├── V18__profile_natural_key_and_order.sql     El KP entra en la clave natural, y order_in_track ordena la via
+└── V19__seed_syneox_business_entity.sql       Siembra Syneox (B10744258) y los tipos de entidad comercial
 ```
 
 `V1` va **sin prefijo de schema** a proposito: el nombre real es configurable

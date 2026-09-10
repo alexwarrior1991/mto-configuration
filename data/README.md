@@ -385,9 +385,15 @@ lleva además su propio candado (`InfrastructureUpsertService.requireResolvableC
 rechaza la fila nombrando todos los códigos que fallan de una vez.
 
 **El `company_identification_number` se busca, no se da de alta.** Es el NIF de la
-empresa, no su id: el importador lo traduce contra `business_entity`, y esa tabla viene de
-un maestro externo — este repositorio no tiene migración que la siembre, ni servicio, ni
-endpoint que la escriba. Un NIF que no esté ahí **no se puede resolver**, así que
+empresa, no su id: el importador lo traduce contra `business_entity`.
+
+La empresa de los once paquetes **ya viene puesta**: `V19` siembra *Syneox*, NIF
+`B10744258`, con su tipo `RAILWAY_COMPANY`, de modo que una base recién migrada puede
+importar el maestro sin que nadie inserte nada a mano. Antes no era así, y había que
+meter la fila en cada entorno antes de cada carga.
+
+Para **cualquier otro** NIF sigue sin haber servicio ni endpoint que escriba esa tabla, así
+que hay que darlo de alta por fuera. Un NIF que no esté **no se puede resolver**, así que
 comprueba antes que existe:
 
 ```sql
