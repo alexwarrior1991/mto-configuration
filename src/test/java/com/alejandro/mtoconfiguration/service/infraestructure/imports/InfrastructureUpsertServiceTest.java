@@ -237,7 +237,7 @@ class InfrastructureUpsertServiceTest {
 
             ProfileMasterRow row = new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1000", 7,
                     "DEFINITIVE",
-                    new ProfileLovCodes("SEC-X", "", "", "", "PT-X", "", "", ""),
+                    new ProfileLovCodes("SEC-X", "", "", "", "PT-X", "", "", "", ""),
                     null, null, null, null, true, 5);
 
             assertThatThrownBy(() -> service.upsertProfile(row, 1L, List.of(), false))
@@ -454,7 +454,7 @@ class InfrastructureUpsertServiceTest {
 
             ProfileMasterRow row = new ProfileMasterRow("EP7", "TRACK 1", "86-02.20", "1000", 7,
                     "DEFINITIVE",
-                    new ProfileLovCodes("", "FP+AnMC|CP+AnMC", "", "", "", "", "", ""),
+                    new ProfileLovCodes("", "FP+AnMC|CP+AnMC", "", "", "", "", "", "", ""),
                     null, null, null, null, true, 586);
             service.upsertProfile(row, 1L, List.of(), false);
 
@@ -474,7 +474,7 @@ class InfrastructureUpsertServiceTest {
 
             ProfileMasterRow row = new ProfileMasterRow("EP7", "TRACK 1", "86-02.20", "1000", 7,
                     "DEFINITIVE",
-                    new ProfileLovCodes("", "FP+AnMC|NO-EXISTE", "", "", "", "", "", ""),
+                    new ProfileLovCodes("", "FP+AnMC|NO-EXISTE", "", "", "", "", "", "", ""),
                     null, null, null, null, true, 586);
 
             assertThatThrownBy(() -> service.upsertProfile(row, 1L, List.of(), false))
@@ -498,7 +498,7 @@ class InfrastructureUpsertServiceTest {
 
             ProfileMasterRow row = new ProfileMasterRow("EP14A", "TRACK 138", "154-138.13",
                     "1000", 7, "DEFINITIVE",
-                    new ProfileLovCodes("", "", "", "", "", "", "", "Disc|SECT-I"),
+                    new ProfileLovCodes("", "", "", "", "", "", "", "Disc|SECT-I", ""),
                     null, null, null, null, true, 17);
             service.upsertProfile(row, 1L, List.of(), false);
 
@@ -511,13 +511,13 @@ class InfrastructureUpsertServiceTest {
 
         private ProfileMasterRow conSeccionamiento(String codes) {
             return new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1000", 7, "DEFINITIVE",
-                    new ProfileLovCodes(codes, "", "", "", "", "", "", ""),
+                    new ProfileLovCodes(codes, "", "", "", "", "", "", "", ""),
                     null, null, null, null, true, 5);
         }
 
         private ProfileMasterRow profile(String poleType) {
             return new ProfileMasterRow("EP6", "TRACK 1", "83-1.02", "1000", 7, "DEFINITIVE",
-                    new ProfileLovCodes("", "", "", "", poleType, "", "", ""),
+                    new ProfileLovCodes("", "", "", "", poleType, "", "", "", ""),
                     null, null, null, null, true, 5);
         }
     }

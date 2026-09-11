@@ -44,6 +44,7 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         values.put("portal", toLovPayload(profile.getPortal()));
         values.put("profileStatus", toLovPayload(profile.getProfileStatus()));
         values.put("returnSupport", toLovPayload(profile.getReturnSupport()));
+        values.put("supportType", toLovPayload(profile.getSupportType()));
         // Cambia de objeto a LISTA. Es un cambio de contrato: ver README_MESSAGING.
         values.put("sectionings", profile.getSectionings() == null ? List.of()
                 : profile.getSectionings().stream().map(this::toLovPayload).toList());
@@ -133,6 +134,16 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", profileStatus.getId());
         values.put("code", profileStatus.getCode());
+        return values;
+    }
+
+    private Map<String, Object> toLovPayload(SupportType supportType) {
+        if (supportType == null) {
+            return null;
+        }
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("id", supportType.getId());
+        values.put("code", supportType.getCode());
         return values;
     }
 

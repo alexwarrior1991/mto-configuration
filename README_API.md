@@ -341,6 +341,15 @@ su papel; el catálogo no se duplica.
 { "profileId": "P-001", "sectioningFeeding": { "code": "Disc/IO" } }
 ```
 
+**`profile.supportType`** (desde `V20`) es la pieza que sujeta la catenaria en el poste —la columna
+`Supports` de los workbooks: `S1`, `S2`, `S1/B7`, `OCR SUPPORT`—. Opcional, y **uno solo**, no una
+lista: en las 2.038 celdas medidas no hay ninguna con dos códigos, al revés que `sectionings`,
+`anchorages` y `sectioningFeedings`.
+
+```jsonc
+{ "profileId": "P-001", "supportType": { "code": "S1" } }
+```
+
 Endpoints propios de cada LOV (`anchorages`, `pole-types`, `profile-statuses`, `sectionings`,
 `portals`, `foundations`, `cantilever-types`, `steady-arm-types`, …):
 

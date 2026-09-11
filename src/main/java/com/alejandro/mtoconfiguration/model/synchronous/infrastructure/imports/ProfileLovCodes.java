@@ -18,9 +18,10 @@ public record ProfileLovCodes(
         String poleType,
         String portal,
         String returnSupport,
-        String sectioningFeeding
+        String sectioningFeeding,
+        String supportType
 ) {
     public static ProfileLovCodes empty() {
-        return new ProfileLovCodes("", "", "", "", "", "", "", "");
+        return new ProfileLovCodes("", "", "", "", "", "", "", "", "");
     }
 }

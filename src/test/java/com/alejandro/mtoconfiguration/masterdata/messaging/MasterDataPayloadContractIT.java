@@ -147,7 +147,7 @@ class MasterDataPayloadContractIT {
         // sectioningFeeding entra en el grafo como una LOV mas del perfil: si se cayera de
         // findByIdForMessaging, leer su codigo aqui reventaria con la entidad ya desatachada.
         assertThat(payload).containsKeys("span", "heightCantileverSupport", "poleGaugeLocation",
-                "railPoleDistance", "sectioningFeedings");
+                "railPoleDistance", "sectioningFeedings", "supportType");
         assertThat(asList(payload, "sectioningFeedings")).hasSize(1);
     }
 

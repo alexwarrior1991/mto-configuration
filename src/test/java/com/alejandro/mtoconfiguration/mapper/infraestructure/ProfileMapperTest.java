@@ -16,8 +16,10 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.PoleTypeDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.junit.jupiter.api.BeforeEach;
+import com.alejandro.mtoconfiguration.entity.lov.SupportType;
 import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.SupportTypeDTO;
 import java.util.LinkedHashSet;
 import com.alejandro.mtoconfiguration.entity.lov.Anchorage;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
@@ -190,6 +192,43 @@ class ProfileMapperTest {
     @Nested
     @DisplayName("Listas de valores")
     class ListasDeValores {
+
+        /**
+         * El tipo de soporte es UNO, no una lista: en las 2.038 celdas medidas de la columna
+         * 'Supports' no hay ninguna con dos codigos. Se resuelve por codigo igual que las otras
+         * ocho LOV @ManyToOne del perfil.
+         */
+        @Test
+        @DisplayName("el tipo de soporte se resuelve por codigo en los dos sentidos")
+        void tipoDeSoporte() {
+            SupportType s1 = new SupportType();
+            s1.setId(7L);
+            s1.setCode("S1");
+            when(masterDataService.getSupportTypeByCode("S1")).thenReturn(s1);
+
+            ProfileDTO dto = dto();
+            SupportTypeDTO codigo = new SupportTypeDTO();
+            codigo.setCode("S1");
+            dto.setSupportType(codigo);
+
+            Profile entity = mapper.toEntity(dto);
+            assertThat(entity.getSupportType()).isSameAs(s1);
+
+            SupportTypeDTO enriquecido = new SupportTypeDTO();
+            enriquecido.setId(7L);
+            enriquecido.setCode("S1");
+            when(masterDataService.getSupportTypeByIdAndMapToDTO(7L)).thenReturn(enriquecido);
+            assertThat(mapper.toDTO(entity).getSupportType()).isSameAs(enriquecido);
+        }
+
+        @Test
+        @DisplayName("sin tipo de soporte el perfil entra igual: la columna es opcional")
+        void tipoDeSoporteAusente() {
+            ProfileDTO dto = dto();
+            dto.setSupportType(null);
+
+            assertThat(mapper.toEntity(dto).getSupportType()).isNull();
+        }
 
         /**
          * Un perfil puede llevar VARIOS seccionamientos: 'A/S P50' son dos, y es corriente en

@@ -515,7 +515,7 @@ candados tienen que decir lo mismo, así que el cruce busca sin distinguir mayú
 **Todo código de lista de valores tiene que existir HABILITADO en el catálogo.** El
 generador cruza cada columna de código (`SECTIONING`, `ANCHORAGE`, `ANCHORAGE_FOUNDATION`,
 `FOUNDATION`, `POLE_TYPE`, `PORTAL`, `RETURN_SUPPORT`, `SECTIONING_FEEDING`,
-`CANTILEVER_TYPE`, `STEADY_ARM_TYPE`) contra `lov-master.xlsx` y saca a `NO_RECONOCIDO` los
+`SUPPORT_TYPE`, `CANTILEVER_TYPE`, `STEADY_ARM_TYPE`) contra `lov-master.xlsx` y saca a `NO_RECONOCIDO` los
 que no resuelven, terminando con código distinto de cero. Antes de aplicar el cruce
 canonicaliza con la misma tabla `code_canonical` que usa el generador de LOV: tenerla en un
 solo sitio y aplicarla solo en uno era un fallo que dejaba `FW25` sin convertir en `FW-25`.
@@ -614,12 +614,25 @@ traen brazo. **Que falte la longitud no es un error**: no se conoce, y por eso
 
 ## Qué se importa y qué no
 
-De las ~36 columnas del origen, 16 tienen campo en el dominio. Las demás —`Survey`,
+De las ~36 columnas del origen, 17 tienen campo en el dominio. Las demás —`Survey`,
 `Other KP`, `Theorical/Current Cant`, `Track Layout`, `Anchorage KP`, `Track KP`,
-`Supports`, `Soil Found`, `Terrain Geometry`, `Depth Pole/Anchor F.` y `Approved by`—
-se conservan en `NO_MAPEADO` con su EP, vía, perfil y fila de origen. No se importan,
-pero tampoco se pierden: ampliar el modelo más adelante es un cambio de esquema y un
-mapper, no volver a analizar 60 MB de Excel.
+`Soil Found`, `Terrain Geometry`, `Depth Pole/Anchor F.` y `Approved by`— se conservan en
+`NO_MAPEADO` con su EP, vía, perfil y fila de origen. No se importan, pero tampoco se
+pierden: ampliar el modelo más adelante es un cambio de esquema y un mapper, no volver a
+analizar 60 MB de Excel.
+
+**`Supports` salió de esa lista en `V20`.** Dice qué pieza sujeta la catenaria en el poste
+—`S1`, `S2`, `S1/B7`, `OCR SUPPORT`— y su catálogo, `SupportType`, existía desde `V1` y se
+rellenaba desde los workbooks, pero **nadie apuntaba a él**: la columna se recogía en
+`NO_MAPEADO` y se quedaba ahí. Lo incoherente no era que faltase el campo, sino que el dato
+**ya decidía lo que se carga sin quedar guardado**: el generador lee
+`Supports = OCR SUPPORT` para deducir que la ménsula de ese hueco es de catenaria rígida.
+Se usaba la pista y se tiraba la fuente.
+
+Es `@ManyToOne` y no una N:M como el seccionamiento o el anclaje, y no por comodidad: en
+las 2.038 celdas medidas **no hay ninguna con dos códigos**. Donde el origen escribe varios
+valores en una celda, el modelo lleva tabla de unión; aquí no los escribe. Resuelve en
+**1.967 de los 11.714 perfiles cargables**.
 
 ## Probar
 

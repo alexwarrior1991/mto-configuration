@@ -46,7 +46,8 @@ class ProfileMasterParserTest {
         HEADERS.put(ProfileMasterParser.PROFILES_SHEET, new String[]{
                 "EP", "VIA", "PROFILE_ID", "KP", "PROFILE_STATUS", "SECTIONING", "ANCHORAGE",
                 "ANCHORAGE_FOUNDATION", "FOUNDATION", "POLE_TYPE", "PORTAL", "RETURN_SUPPORT",
-                "SECTIONING_FEEDING", "SPAN", "HEIGHT_CANTILEVER_SUPPORT", "POLE_GAUGE_LOCATION",
+                "SECTIONING_FEEDING", "SUPPORT_TYPE",
+                "SPAN", "HEIGHT_CANTILEVER_SUPPORT", "POLE_GAUGE_LOCATION",
                 "RAIL_POLE_DISTANCE", "ENABLED", "REVISAR", "HOJA_ORIGEN", "FILA_ORIGEN"});
         HEADERS.put(ProfileMasterParser.CANTILEVERS_SHEET, new String[]{
                 "EP", "VIA", "PROFILE_ID", "SLOT", "CANTILEVER_TYPE", "STAGGER", "CATENARY_HEIGHT",
@@ -66,7 +67,7 @@ class ProfileMasterParserTest {
             ProfileMasterParser.ProfileMasterContent content = parser.parseAll(workbook(Map.of(
                     ProfileMasterParser.PROFILES_SHEET, List.<String[]>of(new String[]{
                             "EP6", "TRACK 1 HERZLIYA", "83-1.02", "83063.410", "DEFINITIVE",
-                            "", "CP+AnMC", "", "2C3R", "2HEB-240L", "", "RW2", "Disc/IO",
+                            "", "CP+AnMC", "", "2C3R", "2HEB-240L", "", "RW2", "Disc/IO", "S1",
                             "52.000", "200", "1475", "-4960", "SI", "NO", "HR Track 1 HER", "8"}))));
 
             assertThat(content.profiles()).hasSize(1);
@@ -77,6 +78,9 @@ class ProfileMasterParserTest {
             assertThat(row.kp()).isEqualTo("83063.410");
             assertThat(row.lov().poleType()).isEqualTo("2HEB-240L");
             assertThat(row.lov().sectioningFeeding()).isEqualTo("Disc/IO");
+            assertThat(row.lov().supportType())
+                    .as("la columna Supports es un campo del perfil desde V20, no una columna sin mapear")
+                    .isEqualTo("S1");
             assertThat(row.span()).isEqualByComparingTo("52.000");
             assertThat(row.railPoleDistance()).isEqualByComparingTo("-4960");
             assertThat(row.enabled()).isTrue();

@@ -694,7 +694,8 @@ src/main/resources/db/migration
 ├── V16__profile_sectioning_feeding_many_to_many.sql  profile_sectioning_feeding: y varios aparatos
 ├── V17__track_station_many_to_many.sql        track_station: una via larga atraviesa varias estaciones
 ├── V18__profile_natural_key_and_order.sql     El KP entra en la clave natural, y order_in_track ordena la via
-└── V19__seed_syneox_business_entity.sql       Siembra Syneox (B10744258) y los tipos de entidad comercial
+├── V19__seed_syneox_business_entity.sql       Siembra Syneox (B10744258) y los tipos de entidad comercial
+└── V20__profile_support_type.sql              support_type_id en profile: la columna Supports deja de perderse
 ```
 
 `V1` va **sin prefijo de schema** a proposito: el nombre real es configurable

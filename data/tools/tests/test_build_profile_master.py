@@ -514,6 +514,31 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
     # no este aqui listado hace fallar el test, que es justo lo que se perdia si se dejaba
     # el assertEqual(..., []) 'temporalmente' comentado.
     HUECOS_CONOCIDOS = {
+        # Soportes. La columna 'Supports' pasa a ser un campo del perfil en V20, asi que
+        # sus codigos se comprueban ya contra el catalogo. Estos son los que solo aparecen
+        # en hojas de trazado y ningun catalogo curado recoge: estan en uso real y aceptarlos
+        # es una decision humana, que vive en track_accepted de aliases.yml. Mientras tanto
+        # el perfil entra igual, sin ese valor, y la celda sale nombrada con su hoja y su fila.
+        #
+        # 'SECT-I', 'FS1' y 'FS/PP2' son otra cosa: son aparatos de la columna 'Sectioning
+        # Feeding' escritos en 'Supports'. Se corrigen en el workbook, no habilitandolos.
+        ('codigo sin SupportType habilitado', 'B7'),
+        ('codigo sin SupportType habilitado', 'Beam Support'),
+        ('codigo sin SupportType habilitado', 'FS/PP2'),
+        ('codigo sin SupportType habilitado', 'FS1'),
+        ('codigo sin SupportType habilitado', 'MP-ISusp'),
+        ('codigo sin SupportType habilitado', 'MP-Isusp'),
+        ('codigo sin SupportType habilitado', 'MW-ISusp'),
+        ('codigo sin SupportType habilitado', 'MW-Isusp'),
+        ('codigo sin SupportType habilitado', 'MW/CW-ISusp'),
+        ('codigo sin SupportType habilitado', 'MW/CW-Isusp'),
+        ('codigo sin SupportType habilitado', 'S1(Diag)'),
+        ('codigo sin SupportType habilitado', 'S1-CLAMP'),
+        ('codigo sin SupportType habilitado', 'S2-R'),
+        ('codigo sin SupportType habilitado', 'S3T'),
+        ('codigo sin SupportType habilitado', 'SECT-I'),
+        ('codigo sin SupportType habilitado', 'SF-2PR'),
+
         # Anclaje. 'TRACK 5' es una anotacion de via, no un anclaje: quitandole la palabra
         # y el numero no queda codigo ninguno, asi que la celda sale nombrada en vez de
         # colarse en el catalogo como el codigo 'TRACK 5', que es lo que hacia antes.
@@ -659,6 +684,30 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         """
         self.assertEqual(len(self.cantilevers), 14461)
         self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 14451)
+
+    def test_el_perfil_lleva_su_tipo_de_soporte(self):
+        """La columna 'Supports' es un campo del perfil, no una columna sin mapear.
+
+        Estaba en NO_MAPEADO: se recogia y se quedaba ahi. Y no era inocuo, porque el
+        generador YA la lee para deducir el tipo de mensula en catenaria rigida, asi que
+        el dato decidia lo que se carga sin llegar a guardarse en ninguna parte.
+        """
+        con_soporte = [p for p in self.profiles if p["SUPPORT_TYPE"]]
+        self.assertGreater(len(con_soporte), 1900)
+        # Uno solo, nunca una lista: el origen no escribe dos codigos en esa celda.
+        self.assertEqual([p for p in con_soporte if bpm.LOV_SEPARATOR in str(p["SUPPORT_TYPE"])], [])
+
+    def test_la_columna_supports_ya_no_se_recoge_como_no_mapeada(self):
+        """Si siguiera en NO_MAPEADO estaria en los dos sitios, y uno de los dos mentiria."""
+        import openpyxl
+        wb = openpyxl.load_workbook(MASTER, read_only=True, data_only=True)
+        try:
+            iterator = wb["NO_MAPEADO"].iter_rows(values_only=True)
+            header = list(next(iterator))
+            columna = header.index("COLUMNA")
+            self.assertNotIn("Supports", {r[columna] for r in iterator if r})
+        finally:
+            wb.close()
 
     def test_toda_mensula_con_el_tipo_supuesto_esta_senalada(self):
         """El tipo no viene del origen, asi que la mensula no puede entrar como las demas.

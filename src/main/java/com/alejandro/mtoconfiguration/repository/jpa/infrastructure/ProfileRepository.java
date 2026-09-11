@@ -122,6 +122,7 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
             "returnSupport",
             "sectionings",
             "sectioningFeedings",
+            "supportType",
             "cantilevers",
             "cantilevers.steadyArm",
             "disconnector"

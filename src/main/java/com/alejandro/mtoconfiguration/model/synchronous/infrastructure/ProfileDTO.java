@@ -55,4 +55,9 @@ public class ProfileDTO extends BaseDTO {
      * disconnector mas un aislador de seccion. Usa el catalogo DisconnectorFunction.
      */
     private List<DisconnectorFunctionDTO> sectioningFeedings;
+    /**
+     * Columna {@code Supports} del origen: la pieza que sujeta la catenaria en el poste.
+     * Uno solo, no una lista — el origen no escribe dos en la misma celda.
+     */
+    private SupportTypeDTO supportType;
 }

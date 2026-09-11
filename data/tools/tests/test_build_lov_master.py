@@ -242,6 +242,11 @@ class MaestroGenerado(unittest.TestCase):
                 for r in sheet.iter_rows(min_row=2, values_only=True)
                 if r and r[0] == "Anchorage"
             }
+            cls.support_types = {
+                str(r[1]): r[index["ENABLED"]]
+                for r in sheet.iter_rows(min_row=2, values_only=True)
+                if r and r[0] == "SupportType"
+            }
             cls.cantilever_types = {
                 str(r[1]): (r[index["ENABLED"]], r[index["ORIGEN"]])
                 for r in sheet.iter_rows(min_row=2, values_only=True)
@@ -432,6 +437,29 @@ class MaestroGenerado(unittest.TestCase):
         self.assertEqual({c for c, e in self.steady_arm_types.items() if e != "SI"}, set())
         for errata in ("BS-1400", "BHC-1150", "BHC"):
             self.assertNotIn(errata, self.steady_arm_types, errata)
+
+    def test_el_soporte_de_catenaria_rigida_esta_habilitado(self):
+        """'OCR SUPPORT' ya se usa para deducir el tipo de mensula de EP6 TSA-THA.
+
+        Si el dato decide lo que se carga, guardarlo es lo minimo coherente: dejarlo sin
+        habilitar significaria que influye en la importacion y no llega a la base de datos.
+        """
+        self.assertEqual(self.support_types.get("OCR SUPPORT"), "SI")
+
+    def test_las_grafias_de_la_suspension_aislada_son_una_sola(self):
+        """Repartidas, cada variante quedaba por debajo del umbral de atencion."""
+        for grafia in ("MP_Isusp", "MW/Isusp", "MWISusp", "MW/CW_ISusp", "MW/MC-ISusp",
+                       "S1B7", "S/B7"):
+            self.assertNotIn(grafia, self.support_types, grafia)
+
+    def test_los_aparatos_de_alimentacion_no_son_soportes(self):
+        """'SECT-I', 'FS1' y 'FS/PP2' son de la columna 'Sectioning Feeding'.
+
+        Fuera del catalogo de soportes: asi la celda sale nombrada con su hoja y su fila,
+        que es lo que hay que corregir, en vez de inventar tres tipos de soporte.
+        """
+        for fuga in ("SECT-I", "FS1", "FS/PP2"):
+            self.assertNotIn(fuga, self.support_types, fuga)
 
     def test_unique_solution_es_un_valor_real_y_no_un_marcador(self):
         """No es un hueco: es la cimentacion que necesita solucion a medida, aparte, porque

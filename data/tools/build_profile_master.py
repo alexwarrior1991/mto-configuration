@@ -79,7 +79,8 @@ NUMERIC_LIMITS = {
 ARM_ANGLE_MIN, ARM_ANGLE_MAX = Decimal("-90"), Decimal("90")
 
 PROFILE_LOV_FIELDS = ("SECTIONING", "ANCHORAGE", "ANCHORAGE_FOUNDATION", "FOUNDATION",
-                      "POLE_TYPE", "PORTAL", "RETURN_SUPPORT", "SECTIONING_FEEDING")
+                      "POLE_TYPE", "PORTAL", "RETURN_SUPPORT", "SECTIONING_FEEDING",
+                      "SUPPORT_TYPE")
 
 # A que catalogo pertenece cada columna de codigo. Es lo que permite canonicalizar y,
 # sobre todo, comprobar que el codigo EXISTE habilitado antes de escribir el maestro:
@@ -109,6 +110,7 @@ LOV_ENTITY = {
     "PORTAL": "Portal",
     "RETURN_SUPPORT": "ReturnSupport",
     "SECTIONING_FEEDING": "DisconnectorFunction",
+    "SUPPORT_TYPE": "SupportType",
     "CANTILEVER_TYPE": "CantileverType",
     "STEADY_ARM_TYPE": "SteadyArmType",
 }
@@ -860,7 +862,7 @@ SHEETS = {
     "PROFILES": ["EP", "VIA", "PROFILE_ID", "KP", "ORDEN", "PROFILE_STATUS",
                  "SECTIONING", "ANCHORAGE", "ANCHORAGE_FOUNDATION", "FOUNDATION",
                  "POLE_TYPE", "PORTAL", "RETURN_SUPPORT", "SECTIONING_FEEDING",
-                 "SPAN", "HEIGHT_CANTILEVER_SUPPORT", "POLE_GAUGE_LOCATION",
+                 "SUPPORT_TYPE", "SPAN", "HEIGHT_CANTILEVER_SUPPORT", "POLE_GAUGE_LOCATION",
                  "RAIL_POLE_DISTANCE", "ENABLED", "REVISAR", "HOJA_ORIGEN", "FILA_ORIGEN"],
     "CANTILEVERS": ["EP", "VIA", "PROFILE_ID", "ORDEN", "SLOT", "CANTILEVER_TYPE", "STAGGER",
                     "CATENARY_HEIGHT", "CW_ELEVATION", "CW_HEIGHT", "WIND_DEFLECTION",

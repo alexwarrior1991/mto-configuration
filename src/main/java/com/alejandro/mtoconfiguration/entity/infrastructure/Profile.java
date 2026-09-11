@@ -98,6 +98,7 @@ public class Profile extends CRUDEntity {
     private ProfileStatus profileStatus;
     private ReturnSupport returnSupport;
     private Set<Sectioning> sectionings = new LinkedHashSet<>();
+    private SupportType supportType;
     private Set<DisconnectorFunction> sectioningFeedings = new LinkedHashSet<>();
 
     @Id
@@ -259,6 +260,25 @@ public class Profile extends CRUDEntity {
     @Audited(targetAuditMode = NOT_AUDITED)
     public ReturnSupport getReturnSupport() {
         return returnSupport;
+    }
+
+    /**
+     * Pieza que sujeta la catenaria en este poste: columna {@code Supports} del origen.
+     *
+     * <p>Es <b>uno</b>, no varios: en las 2.038 celdas medidas no hay ni una con dos codigos,
+     * al reves que el seccionamiento o el anclaje.
+     *
+     * <p>El catalogo {@link SupportType} existia desde {@code V1} y se rellena desde los
+     * workbooks, pero nadie apuntaba a el: la columna se recogia en la hoja NO_MAPEADO del
+     * maestro y no llegaba a la base de datos. Se usaba ademas para deducir el tipo de mensula
+     * en catenaria rigida ({@code Supports = OCR SUPPORT}), de modo que el dato ya decidia lo
+     * que se cargaba sin quedar guardado en ninguna parte.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "SUPPORT_TYPE_ID")
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public SupportType getSupportType() {
+        return supportType;
     }
 
     /**

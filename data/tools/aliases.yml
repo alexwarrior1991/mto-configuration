@@ -336,6 +336,7 @@ profile_columns:
     portals: PORTAL
     return support: RETURN_SUPPORT
     sectioning feeding: SECTIONING_FEEDING
+    supports: SUPPORT_TYPE
 
   # Grupos de TRES columnas (subcabecera M1/M2/M3, D1/D2/D3, ...): una mensula por
   # slot ocupado. Un perfil admite tres como maximo, que es justo lo que da el
@@ -386,7 +387,6 @@ profile_columns:
     - track kp
     - track pk
     - current track pk
-    - supports
     - soil found
     - embankment
     - embank.
@@ -533,6 +533,18 @@ code_canonical:
     'U. SOLUTION': UNIQUE SOLUTION
     'T-SING FOUND.': T-SIGN FOUND.
     'T-SIGN FOUND,': T-SIGN FOUND.
+  SupportType:
+    # Una sola grafia por suspension aislada. Las variantes solo cambian el separador
+    # o el orden de dos letras, y repartidas dejaban cada una por debajo del umbral
+    # de atencion: juntas son 37, 27 y 17 usos.
+    'MP_Isusp': MP-ISusp
+    'MW/Isusp': MW-ISusp
+    'MWISusp': MW-ISusp
+    'MW/CW_ISusp': MW/CW-ISusp
+    'MW/MC-ISusp': MW/CW-ISusp     # MC por CW
+    # 'S1/B7' es el codigo del catalogo curado; estas dos son la misma pieza.
+    'S1B7': S1/B7
+    'S/B7': S1/B7
   DisconnectorFunction:
     # '-pp' es una errata de '-pr'. Solo 4 filas, las cuatro en EP9A.
     'Disc-pp': Disc-pr
@@ -574,6 +586,11 @@ code_canonical:
 # estado "pendiente de decidir" y lo deja a la vista sin romper la generacion.
 # --------------------------------------------------------------------------------
 track_accepted:
+  SupportType:
+    # Catenaria rigida (Overhead Conductor Rail). Ya se usa para deducir el tipo de
+    # mensula de EP6 TSA-THA, asi que el dato ya decide lo que se carga: guardarlo es
+    # lo minimo coherente.
+    - 'OCR SUPPORT'
   SteadyArmType:
     # Solo aparece en una hoja de trazado y en ningun BOQ, pero es un tipo de brazo
     # real, no una errata: 'BS-1400' de EP9B / HR Track 2 LOD_S.
@@ -859,6 +876,12 @@ code_reassignment:
   - {from: DisconnectorFunction, regex: "^(DISC SECT-I|FS-1 VOLTAGED|LOADB/NS FS-1|LOADB/PP FS-1)$", to: null}
   # Fugas de otras columnas: PHQ-1150 es un brazo y FP un anclaje (FP+AnMC).
   - {from: DisconnectorFunction, regex: "^(PHQ-\\d+|FP)$", to: null}
+
+  # Fugas de la columna 'Sectioning Feeding' dentro de 'Supports'. SECT-I es un aislador
+  # de seccion y FS-1 / FS/PP-2 son alimentaciones: los tres son aparatos, no soportes.
+  # Fuera del catalogo de soportes para que la celda salga nombrada con su hoja y su
+  # fila, que es lo que hay que corregir, en el workbook.
+  - {from: SupportType, regex: "^(SECT-I|FS1|FS/PP2)$", to: null}
 
   # Fugas de la columna Anchorage dentro de SECTIONNING. La leyenda de los workbooks
   # declara AnRW (Return Anchor), AnFW (Feeder Anchor) e IO (Insulated Overlap) en

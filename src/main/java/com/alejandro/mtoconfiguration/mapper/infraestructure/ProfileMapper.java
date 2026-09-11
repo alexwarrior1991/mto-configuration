@@ -60,6 +60,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "portal", ignore = true)
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
+    @Mapping(target = "supportType", ignore = true)
     @Mapping(target = "sectionings", ignore = true)
     @Mapping(target = "sectioningFeedings", ignore = true)
     public abstract ProfileDTO toDTO(Profile entity);
@@ -74,6 +75,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "portal", ignore = true)
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
+    @Mapping(target = "supportType", ignore = true)
     @Mapping(target = "sectionings", ignore = true)
     @Mapping(target = "sectioningFeedings", ignore = true)
     @ToEntityIgnoreAudit
@@ -89,6 +91,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "portal", ignore = true)
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
+    @Mapping(target = "supportType", ignore = true)
     @Mapping(target = "sectionings", ignore = true)
     @Mapping(target = "sectioningFeedings", ignore = true)
     @ToEntityIgnoreAudit
@@ -126,6 +129,9 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         }
         if (dto.getProfileStatus() != null) {
             entity.setProfileStatus(masterDataService.getProfileStatusByCode(dto.getProfileStatus().getCode()));
+        }
+        if (dto.getSupportType() != null) {
+            entity.setSupportType(masterDataService.getSupportTypeByCode(dto.getSupportType().getCode()));
         }
         if (dto.getReturnSupport() != null) {
             entity.setReturnSupport(masterDataService.getReturnSupportByCode(dto.getReturnSupport().getCode()));
@@ -206,6 +212,9 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         }
         if (entity.getProfileStatus() != null) {
             dto.setProfileStatus(masterDataService.getProfileStatusByIdAndMapToDTO(entity.getProfileStatus().getId()));
+        }
+        if (entity.getSupportType() != null) {
+            dto.setSupportType(masterDataService.getSupportTypeByIdAndMapToDTO(entity.getSupportType().getId()));
         }
         if (entity.getReturnSupport() != null) {
             dto.setReturnSupport(masterDataService.getReturnSupportByIdAndMapToDTO(entity.getReturnSupport().getId()));

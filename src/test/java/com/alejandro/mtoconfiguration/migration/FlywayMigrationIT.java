@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20");
     }
 
     /**
@@ -551,6 +551,46 @@ class FlywayMigrationIT {
         assertThat(existeTabla("profile_anchorage_aud")).isTrue();
         assertThat(existeColumna("profile", "anchorage_id")).isFalse();
         assertThat(existeColumna("profile_aud", "anchorage_id")).isFalse();
+    }
+
+    /**
+     * V20: el perfil guarda su tipo de soporte.
+     *
+     * <p>El catalogo existia desde V1 y se rellenaba desde los workbooks, pero nadie apuntaba a
+     * el: la columna 'Supports' se quedaba en la hoja NO_MAPEADO del maestro. Es @ManyToOne y no
+     * una N:M porque en las 2.038 celdas medidas no hay ninguna con dos codigos.
+     */
+    @Test
+    void elPerfilGuardaSuTipoDeSoporte() {
+        assertThat(existeColumna("profile", "support_type_id")).isTrue();
+        assertThat(existeColumna("profile_aud", "support_type_id"))
+                .as("la gemela de Envers tiene que llevar la misma columna, o ddl-auto validate no arranca")
+                .isTrue();
+
+        List<String> referenciadas = jdbc().queryForList(
+                """
+                select ccu.table_name
+                from information_schema.table_constraints tc
+                join information_schema.key_column_usage kcu
+                  on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
+                join information_schema.constraint_column_usage ccu
+                  on ccu.constraint_name = tc.constraint_name and ccu.table_schema = tc.table_schema
+                where tc.table_schema = ? and tc.table_name = 'profile'
+                  and tc.constraint_type = 'FOREIGN KEY'
+                  and kcu.column_name = 'support_type_id'
+                """, String.class, SCHEMA);
+        assertThat(referenciadas).containsExactly("support_type");
+
+        assertThat(jdbc().queryForList(
+                """
+                select tc.constraint_name
+                from information_schema.table_constraints tc
+                where tc.table_schema = ? and tc.table_name = 'profile_aud'
+                  and tc.constraint_type = 'FOREIGN KEY'
+                """, String.class, SCHEMA))
+                .as("profile_aud no lleva claves ajenas: apuntarian a filas que pueden haber "
+                        + "cambiado desde la revision que se esta guardando")
+                .isEmpty();
     }
 
     /** V16: tercera y ultima N:M del perfil. */
