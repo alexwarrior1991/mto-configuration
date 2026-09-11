@@ -145,9 +145,14 @@ regenera y se lleva por delante cualquier edición manual; en `aliases.yml` qued
 revisable en el PR.
 
 Lo que no está aceptado se queda con `ENABLED=NO` y `REVISAR=SI`, que es exactamente el estado
-«pendiente de decidir»: a la vista, sin romper la generación. Hoy están ahí los siete códigos de
-`DisconnectorFunction` con sufijo `-pr` / `-pp` (`Disc/IO-pr`, `Disc-pr`, …), a la espera de saber
-qué significa el sufijo.
+«pendiente de decidir»: a la vista, sin romper la generación. Hoy quedan ahí 18 códigos repartidos
+entre `AnchorageFoundation`, `Foundation`, `Portal`, `ReturnSupport` y `SupportType`, y ninguno es
+una familia: son casos de uno en uno.
+
+**Aceptar no es la única salida, ni siempre la correcta.** Un código que el origen escribe en la
+columna de otro catálogo no se acepta, se corrige en el workbook: dar de alta `B7` en `SupportType`
+—cuando `B7` es un semipórtico, código de `Portal` con 140 usos en su propia columna— crearía un
+soporte que no existe y lo dejaría ahí para siempre.
 
 > Nota de coherencia pendiente: `LoadB/IO-pr` y `LoadB/PP-pr` **sí** están habilitados, porque vienen
 > del BOQ y no solo de las hojas Track. Es la misma familia con dos tratamientos distintos; se
@@ -632,7 +637,19 @@ Se usaba la pista y se tiraba la fuente.
 Es `@ManyToOne` y no una N:M como el seccionamiento o el anclaje, y no por comodidad: en
 las 2.038 celdas medidas **no hay ninguna con dos códigos**. Donde el origen escribe varios
 valores en una celda, el modelo lleva tabla de unión; aquí no los escribe. Resuelve en
-**1.967 de los 11.714 perfiles cargables**.
+**2.033 de los 11.714 perfiles cargables**.
+
+Al pasar la columna por el catálogo salieron 13 grafías que nadie había revisado, porque hasta
+`V20` esa columna no se comprobaba contra nada. **Nueve describían un soporte** y se aceptan en
+`track_accepted` (`SF-2PR` 27 celdas, `Beam Support` 10, `MW/CW-ISusp` 7, `S1-CLAMP` 6, `S3T` 4,
+`S2-R` 4, `MP-ISusp` 4, `MW-ISusp` 3, `S1(Diag)` 1). **Las otras cuatro no son soportes**: `SECT-I`,
+`FS1` y `FS/PP2` son aparatos de `Sectioning Feeding`, y `B7` es un semipórtico de `Portal`; las
+cuatro son celdas escritas en la columna equivocada y se arreglan en el workbook. El soporte que va
+sobre ese semipórtico ya tiene código propio, `S1/B7`, con 119 usos.
+
+Tres de las nueve llegaban con la mayúscula bailando (`MP-Isusp`, `MW-Isusp`, `MW/CW-Isusp`). Van a
+`code_canonical` junto a las variantes que ya estaban: si no, el catálogo guardaría la grafía que
+llegase primero y `findByCode` distingue mayúsculas.
 
 ## Probar
 

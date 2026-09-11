@@ -1132,8 +1132,9 @@ def main():
 
     if master.unknown:
         unknown = list(master.unknown.values())
-        print(f"\nATENCION: {len(unknown)} valores NO RECONOCIDOS "
-              f"({sum(u['apariciones'] for u in unknown)} apariciones).")
+        distintos = len({(u["tipo"], u["valor"]) for u in unknown})
+        print(f"\nATENCION: {distintos} valores NO RECONOCIDOS en {len(unknown)} filas "
+              f"({sum(u['apariciones'] for u in unknown)} celdas).")
         print("El maestro esta incompleto. Revisa la hoja NO_RECONOCIDO, declara la hoja "
               "en topology.yml o amplia data/tools/aliases.yml:")
         for item in unknown[:15]:

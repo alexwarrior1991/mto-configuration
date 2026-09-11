@@ -538,10 +538,13 @@ code_canonical:
     # o el orden de dos letras, y repartidas dejaban cada una por debajo del umbral
     # de atencion: juntas son 37, 27 y 17 usos.
     'MP_Isusp': MP-ISusp
+    'MP-Isusp': MP-ISusp
     'MW/Isusp': MW-ISusp
     'MWISusp': MW-ISusp
+    'MW-Isusp': MW-ISusp
     'MW/CW_ISusp': MW/CW-ISusp
     'MW/MC-ISusp': MW/CW-ISusp     # MC por CW
+    'MW/CW-Isusp': MW/CW-ISusp
     # 'S1/B7' es el codigo del catalogo curado; estas dos son la misma pieza.
     'S1B7': S1/B7
     'S/B7': S1/B7
@@ -591,6 +594,24 @@ track_accepted:
     # mensula de EP6 TSA-THA, asi que el dato ya decide lo que se carga: guardarlo es
     # lo minimo coherente.
     - 'OCR SUPPORT'
+    # Piezas que sujetan la catenaria y que solo nombra la columna 'Supports'. Ningun
+    # BOQ las recoge, pero el trazado las escribe donde van los soportes y describen
+    # un soporte, no otra cosa.
+    - SF-2PR              # 27 celdas, todas de EP5
+    - 'Beam Support'      # 10, EP11A
+    - MW/CW-ISusp         # 7 -- suspension aislada de sustentador y de hilo de contacto
+    - S1-CLAMP            # 6, EP7
+    - S3T                 # 4, EP11A -- tres mensulas en tunel, como S1T y S2T
+    - S2-R                # 4, EP6
+    - MP-ISusp            # 4 -- suspension aislada en poste
+    - MW-ISusp            # 3 -- suspension aislada de sustentador
+    - 'S1(Diag)'          # 1, EP6 -- S1 en diagonal
+    #
+    # 'B7' NO se acepta, y es el unico de la lista que se queda fuera: es un codigo de
+    # Portal (semiportico B7, plano 6127, 140 usos en la columna PORTALS), no de
+    # SupportType. Aparece una sola vez, en EP4, escrito en la columna equivocada. El
+    # soporte sobre ese semiportico ya tiene codigo propio y es 'S1/B7', con 119 usos.
+    # Por lo mismo se quedan fuera 'SECT-I', 'FS1' y 'FS/PP2': son de alimentacion.
   SteadyArmType:
     # Solo aparece en una hoja de trazado y en ningun BOQ, pero es un tipo de brazo
     # real, no una errata: 'BS-1400' de EP9B / HR Track 2 LOD_S.

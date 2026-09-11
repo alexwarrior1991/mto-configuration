@@ -506,38 +506,26 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
     # Huecos conocidos del maestro que hay hoy en data/. La lista NO es una excusa: es lo
     # que queda por cerrar, y tiene que llegar a cero.
     #
-    # Son 14 codigos sueltos que el catalogo no tiene. No queda ninguna familia: son casos
-    # de uno en uno, y bajaron de 5.814 a 16 perfiles afectados. Los huecos de topology.yml
-    # —estaciones sin declarar, hojas sin declarar— ya estan todos cerrados.
+    # Son codigos sueltos que el catalogo no tiene. No queda ninguna familia: son casos
+    # de uno en uno. Los huecos de topology.yml —estaciones sin declarar, hojas sin
+    # declarar— ya estan todos cerrados.
     #
     # Lo que este test protege es que no aparezca NINGUNO NUEVO. Un valor sin reconocer que
     # no este aqui listado hace fallar el test, que es justo lo que se perdia si se dejaba
     # el assertEqual(..., []) 'temporalmente' comentado.
     HUECOS_CONOCIDOS = {
-        # Soportes. La columna 'Supports' pasa a ser un campo del perfil en V20, asi que
-        # sus codigos se comprueban ya contra el catalogo. Estos son los que solo aparecen
-        # en hojas de trazado y ningun catalogo curado recoge: estan en uso real y aceptarlos
-        # es una decision humana, que vive en track_accepted de aliases.yml. Mientras tanto
-        # el perfil entra igual, sin ese valor, y la celda sale nombrada con su hoja y su fila.
-        #
-        # 'SECT-I', 'FS1' y 'FS/PP2' son otra cosa: son aparatos de la columna 'Sectioning
-        # Feeding' escritos en 'Supports'. Se corrigen en el workbook, no habilitandolos.
+        # Soportes. La columna 'Supports' es un campo del perfil desde V20, asi que sus
+        # codigos se comprueban contra el catalogo. Los nueve que describian un soporte
+        # de verdad ya estan habilitados en track_accepted; estos cuatro no lo estan
+        # porque NO son soportes:
+        #   'SECT-I', 'FS1' y 'FS/PP2' son aparatos de 'Sectioning Feeding', y
+        #   'B7' es un semiportico, codigo de Portal (plano 6127, 140 usos en su columna).
+        # Los cuatro se corrigen en el workbook, no habilitandolos: el soporte sobre el
+        # semiportico B7 ya tiene codigo propio, 'S1/B7', con 119 usos.
         ('codigo sin SupportType habilitado', 'B7'),
-        ('codigo sin SupportType habilitado', 'Beam Support'),
         ('codigo sin SupportType habilitado', 'FS/PP2'),
         ('codigo sin SupportType habilitado', 'FS1'),
-        ('codigo sin SupportType habilitado', 'MP-ISusp'),
-        ('codigo sin SupportType habilitado', 'MP-Isusp'),
-        ('codigo sin SupportType habilitado', 'MW-ISusp'),
-        ('codigo sin SupportType habilitado', 'MW-Isusp'),
-        ('codigo sin SupportType habilitado', 'MW/CW-ISusp'),
-        ('codigo sin SupportType habilitado', 'MW/CW-Isusp'),
-        ('codigo sin SupportType habilitado', 'S1(Diag)'),
-        ('codigo sin SupportType habilitado', 'S1-CLAMP'),
-        ('codigo sin SupportType habilitado', 'S2-R'),
-        ('codigo sin SupportType habilitado', 'S3T'),
         ('codigo sin SupportType habilitado', 'SECT-I'),
-        ('codigo sin SupportType habilitado', 'SF-2PR'),
 
         # Anclaje. 'TRACK 5' es una anotacion de via, no un anclaje: quitandole la palabra
         # y el numero no queda codigo ninguno, asi que la celda sale nombrada en vez de
