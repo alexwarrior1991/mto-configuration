@@ -581,16 +581,20 @@ class FlywayMigrationIT {
                 """, String.class, SCHEMA);
         assertThat(referenciadas).containsExactly("support_type");
 
+        // La gemela de auditoria lleva UNA clave ajena, rev -> audit_revision, que es la de
+        // Envers. Lo que no lleva es una hacia el catalogo: apuntaria a filas que pueden
+        // haber cambiado desde la revision que se esta guardando.
         assertThat(jdbc().queryForList(
                 """
-                select tc.constraint_name
+                select kcu.column_name
                 from information_schema.table_constraints tc
+                join information_schema.key_column_usage kcu
+                  on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
                 where tc.table_schema = ? and tc.table_name = 'profile_aud'
                   and tc.constraint_type = 'FOREIGN KEY'
                 """, String.class, SCHEMA))
-                .as("profile_aud no lleva claves ajenas: apuntarian a filas que pueden haber "
-                        + "cambiado desde la revision que se esta guardando")
-                .isEmpty();
+                .as("profile_aud solo referencia la revision, nunca un catalogo")
+                .containsExactly("rev");
     }
 
     /** V16: tercera y ultima N:M del perfil. */

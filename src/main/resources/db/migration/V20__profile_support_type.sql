@@ -23,9 +23,10 @@
 ALTER TABLE profile     ADD COLUMN IF NOT EXISTS support_type_id bigint;
 ALTER TABLE profile_aud ADD COLUMN IF NOT EXISTS support_type_id bigint;
 
--- La clave ajena solo en la tabla base. profile_aud no lleva ninguna, igual que las
--- otras nueve LOV del perfil: apuntaria a filas que pueden haber cambiado desde la
--- revision que se esta guardando.
+-- La clave ajena solo en la tabla base. profile_aud no lleva ninguna HACIA EL CATALOGO,
+-- igual que las otras nueve LOV del perfil: apuntaria a filas que pueden haber cambiado
+-- desde la revision que se esta guardando. La unica que si lleva es rev -> audit_revision,
+-- que es la de Envers y la ponen todas las tablas _aud.
 --
 -- DROP IF EXISTS + ADD, y no un DO con un SELECT sobre pg_constraint: ese SELECT hay que
 -- acotarlo a un esquema, y en cuanto la tabla se resuelve por search_path desde OTRO
