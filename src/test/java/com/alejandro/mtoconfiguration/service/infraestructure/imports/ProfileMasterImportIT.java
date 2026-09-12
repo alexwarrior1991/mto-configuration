@@ -196,6 +196,34 @@ class ProfileMasterImportIT {
         comprobaciones.assertThat(perfilesConVarios("profile_anchorage"))
                 .as("el maestro trae perfiles con varios anclajes")
                 .isPositive();
+
+        // Y las SEIS de un solo valor, por el mismo motivo que las N:M y con el mismo agujero
+        // detras: si el mapper dejara de resolver una —o el @Mapping(ignore) se quedara sin su
+        // linea en el @AfterMapping— el importador seguiria diciendo 11.938 altas y 0 errores,
+        // porque una LOV que no resuelve se guarda como null SIN QUEJARSE. Es el mismo fallo que
+        // tapo V12 con profile_status, y el recuento de perfiles no lo ve.
+        //
+        // 'support_type_id' es el ultimo en llegar (V20) y el que menos filas informa, asi que
+        // seria tambien el que mas facil pasaria desapercibido.
+        record Lov(String columna, Function<ProfileLovCodes, String> campo) { }
+        List<Lov> unaSolaLov = List.of(
+                new Lov("anchorage_foundation_id", ProfileLovCodes::anchorageFoundation),
+                new Lov("foundation_id", ProfileLovCodes::foundation),
+                new Lov("pole_type_id", ProfileLovCodes::poleType),
+                new Lov("portal_id", ProfileLovCodes::portal),
+                new Lov("return_support_id", ProfileLovCodes::returnSupport),
+                new Lov("support_type_id", ProfileLovCodes::supportType));
+        for (Lov lov : unaSolaLov) {
+            long esperados = perfilesConCodigo(lov.campo());
+            comprobaciones.assertThat(esperados)
+                    .as("el maestro tiene que traer algun valor de " + lov.columna())
+                    .isPositive();
+            comprobaciones.assertThat(jdbcTemplate.queryForObject(
+                            "select count(*) from profile where " + lov.columna() + " is not null",
+                            Long.class))
+                    .as("cada codigo de " + lov.columna() + " del maestro tiene que llegar a la tabla")
+                    .isEqualTo(esperados);
+        }
         comprobaciones.assertAll();
 
         ProfileImportReport second = importMaster(false);
@@ -341,6 +369,24 @@ class ProfileMasterImportIT {
                     .filter(codes -> codes != null && !codes.isBlank())
                     .flatMap(codes -> Arrays.stream(codes.trim().split("\\|")))
                     .filter(code -> !code.isBlank())
+                    .count();
+        }
+    }
+
+    /**
+     * Cuantos perfiles trae el maestro con un valor en esa columna de una sola LOV.
+     *
+     * <p>Hermana de {@link #pertenenciasEsperadas}, y separada a proposito: aquella parte la
+     * celda por {@code '|'} porque cuenta pertenencias, y aqui la celda es UN codigo. Si el dia
+     * de manana el origen escribiera dos en una de estas columnas, contarlos como uno es lo
+     * correcto: la clave ajena solo admite uno y el importador fallaria esa fila.
+     */
+    private long perfilesConCodigo(Function<ProfileLovCodes, String> campo) throws IOException {
+        try (InputStream in = Files.newInputStream(PROFILE_MASTER)) {
+            return parser.parseAll(in).profiles().stream()
+                    .filter(ProfileMasterRow::enabled)
+                    .map(row -> campo.apply(row.lov()))
+                    .filter(code -> code != null && !code.isBlank())
                     .count();
         }
     }

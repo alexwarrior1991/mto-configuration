@@ -636,8 +636,9 @@ Se usaba la pista y se tiraba la fuente.
 
 Es `@ManyToOne` y no una N:M como el seccionamiento o el anclaje, y no por comodidad: en
 las 2.038 celdas medidas **no hay ninguna con dos códigos**. Donde el origen escribe varios
-valores en una celda, el modelo lleva tabla de unión; aquí no los escribe. Resuelve en
-**2.033 de los 11.714 perfiles cargables**.
+valores en una celda, el modelo lleva tabla de unión; aquí no los escribe. El maestro trae
+**2.033 perfiles con tipo de soporte**, de los cuales **2.032 son cargables** —el que falta va
+`ENABLED=NO` por otro motivo de su fila, no por el soporte—.
 
 Al pasar la columna por el catálogo salieron 13 grafías que nadie había revisado, porque hasta
 `V20` esa columna no se comprobaba contra nada. **Nueve describían un soporte** y se aceptan en
