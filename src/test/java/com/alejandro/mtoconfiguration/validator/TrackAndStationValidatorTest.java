@@ -48,13 +48,22 @@ class TrackAndStationValidatorTest {
         }
 
         @Test
-        @DisplayName("stationId es opcional: la columna STATION_ID de TRACK es anulable")
-        void noExigeStationId() {
+        @DisplayName("stationIds es opcional: una via entre estaciones cuelga del paquete")
+        void noExigeStationIds() {
             TrackDTO dto = ValidDtos.rootTrack();
-            dto.setStationId(null);
+            dto.setStationIds(List.of());
 
             assertNoErrors(trackValidator.validateBeforeSave(dto));
-            assertNoError(trackValidator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD, "stationId");
+            assertNoError(trackValidator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD, "stationIds");
+        }
+
+        @Test
+        @DisplayName("varias estaciones tampoco molestan: una via larga atraviesa varias")
+        void admiteVariasEstaciones() {
+            TrackDTO dto = ValidDtos.rootTrack();
+            dto.setStationIds(List.of(1L, 2L, 3L));
+
+            assertNoErrors(trackValidator.validateBeforeSave(dto));
         }
 
         @Test

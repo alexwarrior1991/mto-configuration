@@ -676,9 +676,26 @@ arrancar**: no hay `FlywayAutoConfiguration`, toda la configuracion
 
 ```text
 src/main/resources/db/migration
-├── V1__init_schema.sql                       Esquema completo (generado desde las entidades)
-├── V2__outbox_message_payload_and_status.sql Pone al dia outbox_message
-└── V3__outbox_message_indexes.sql            Indices parciales del outbox
+├── V1__init_schema.sql                        Esquema completo (generado desde las entidades)
+├── V2__outbox_message_payload_and_status.sql  Pone al dia outbox_message
+├── V3__outbox_message_indexes.sql             Indices parciales del outbox
+├── V4__outbox_message_trace_context.sql       Contexto de traza en el outbox
+├── V5__outbox_message_sequence.sql            Numero de secuencia del outbox
+├── V6__create_async_job_table.sql             Tabla async_job
+├── V7__async_job_heartbeat.sql                Columna heartbeat_at de async_job
+├── V8__drop_insertion_order.sql               Quita insertion_order de profile y cantilever
+├── V9__widen_lov_code_and_unique.sql          LOV.code a varchar(40) + unicidad por codigo
+├── V10__async_job_type_lov_import.sql         CHECK de async_job.job_type con LOV_IMPORT
+├── V11__profile_technical_fields.sql          span, medidas en mm y sectioning_feeding_id en profile
+├── V12__infrastructure_natural_keys.sql       Claves naturales unicas, brazo opcional y siembra de profile_status
+├── V13__async_job_type_profile_import.sql     CHECK de async_job.job_type con PROFILE_IMPORT
+├── V14__profile_sectioning_many_to_many.sql   profile_sectioning: un perfil lleva VARIOS seccionamientos
+├── V15__profile_anchorage_many_to_many.sql    profile_anchorage: y varios anclajes
+├── V16__profile_sectioning_feeding_many_to_many.sql  profile_sectioning_feeding: y varios aparatos
+├── V17__track_station_many_to_many.sql        track_station: una via larga atraviesa varias estaciones
+├── V18__profile_natural_key_and_order.sql     El KP entra en la clave natural, y order_in_track ordena la via
+├── V19__seed_syneox_business_entity.sql       Siembra Syneox (B10744258) y los tipos de entidad comercial
+└── V20__profile_support_type.sql              support_type_id en profile: la columna Supports deja de perderse
 ```
 
 `V1` va **sin prefijo de schema** a proposito: el nombre real es configurable
@@ -688,7 +705,7 @@ use otro.
 
 ### 12.3. Base nueva
 
-Flyway aplica `V1`, `V2` y `V3` en orden y despues Hibernate valida. No hay nada
+Flyway aplica las migraciones en orden y despues Hibernate valida. No hay nada
 que preparar.
 
 ### 12.4. Base que ya tiene el esquema

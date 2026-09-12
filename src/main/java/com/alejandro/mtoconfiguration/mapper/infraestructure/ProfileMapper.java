@@ -9,6 +9,16 @@ import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
+import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
+import com.alejandro.mtoconfiguration.entity.lov.Anchorage;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
+import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
+import java.util.LinkedHashSet;
+import java.util.Objects;
+import java.util.Set;
+
 import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -43,41 +53,47 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
 
     @Override
     @Mapping(target = "trackId", source = "track.id")
-    @Mapping(target = "anchorage", ignore = true)
+    @Mapping(target = "anchorages", ignore = true)
     @Mapping(target = "anchorageFoundation", ignore = true)
     @Mapping(target = "foundation", ignore = true)
     @Mapping(target = "poleType", ignore = true)
     @Mapping(target = "portal", ignore = true)
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
-    @Mapping(target = "sectioning", ignore = true)
+    @Mapping(target = "supportType", ignore = true)
+    @Mapping(target = "sectionings", ignore = true)
+    @Mapping(target = "sectioningFeedings", ignore = true)
     public abstract ProfileDTO toDTO(Profile entity);
 
     @Override
     @Mapping(target = "track", source = "trackId")
     @Mapping(target = "cantilevers", ignore = true) // se reconcilia en mapDtoToEntity
-    @Mapping(target = "anchorage", ignore = true)
+    @Mapping(target = "anchorages", ignore = true)
     @Mapping(target = "anchorageFoundation", ignore = true)
     @Mapping(target = "foundation", ignore = true)
     @Mapping(target = "poleType", ignore = true)
     @Mapping(target = "portal", ignore = true)
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
-    @Mapping(target = "sectioning", ignore = true)
+    @Mapping(target = "supportType", ignore = true)
+    @Mapping(target = "sectionings", ignore = true)
+    @Mapping(target = "sectioningFeedings", ignore = true)
     @ToEntityIgnoreAudit
     public abstract Profile toEntity(ProfileDTO dto);
 
     @Override
     @Mapping(target = "track", source = "trackId")
     @Mapping(target = "cantilevers", ignore = true) // se reconcilia en mapDtoToEntity
-    @Mapping(target = "anchorage", ignore = true)
+    @Mapping(target = "anchorages", ignore = true)
     @Mapping(target = "anchorageFoundation", ignore = true)
     @Mapping(target = "foundation", ignore = true)
     @Mapping(target = "poleType", ignore = true)
     @Mapping(target = "portal", ignore = true)
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
-    @Mapping(target = "sectioning", ignore = true)
+    @Mapping(target = "supportType", ignore = true)
+    @Mapping(target = "sectionings", ignore = true)
+    @Mapping(target = "sectioningFeedings", ignore = true)
     @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(ProfileDTO dto, @MappingTarget Profile entity);
 
@@ -86,8 +102,18 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
 
 
         // 1. Resolución de múltiples LOVs usando MasterDataService
-        if (dto.getAnchorage() != null) {
-            entity.setAnchorage(masterDataService.getAnchorageByCode(dto.getAnchorage().getCode()));
+        if (dto.getAnchorages() != null) {
+            Set<Anchorage> resolved = new LinkedHashSet<>();
+            for (AnchorageDTO each : dto.getAnchorages()) {
+                if (each == null || each.getCode() == null) {
+                    continue;
+                }
+                Anchorage anchorage = masterDataService.getAnchorageByCode(each.getCode());
+                if (anchorage != null) {
+                    resolved.add(anchorage);
+                }
+            }
+            entity.setAnchorages(resolved);
         }
         if (dto.getAnchorageFoundation() != null) {
             entity.setAnchorageFoundation(masterDataService.getAnchorageFoundationByCode(dto.getAnchorageFoundation().getCode()));
@@ -104,11 +130,40 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         if (dto.getProfileStatus() != null) {
             entity.setProfileStatus(masterDataService.getProfileStatusByCode(dto.getProfileStatus().getCode()));
         }
+        if (dto.getSupportType() != null) {
+            entity.setSupportType(masterDataService.getSupportTypeByCode(dto.getSupportType().getCode()));
+        }
         if (dto.getReturnSupport() != null) {
             entity.setReturnSupport(masterDataService.getReturnSupportByCode(dto.getReturnSupport().getCode()));
         }
-        if (dto.getSectioning() != null) {
-            entity.setSectioning(masterDataService.getSectioningByCode(dto.getSectioning().getCode()));
+        if (dto.getSectionings() != null) {
+            // Se reemplaza el conjunto entero, no se anade: mandar la lista es declarar cuales
+            // son TODOS los seccionamientos del perfil, igual que en el resto de la API.
+            Set<Sectioning> resolved = new LinkedHashSet<>();
+            for (SectioningDTO each : dto.getSectionings()) {
+                if (each == null || each.getCode() == null) {
+                    continue;
+                }
+                Sectioning sectioning = masterDataService.getSectioningByCode(each.getCode());
+                if (sectioning != null) {
+                    resolved.add(sectioning);
+                }
+            }
+            entity.setSectionings(resolved);
+        }
+        if (dto.getSectioningFeedings() != null) {
+            Set<DisconnectorFunction> resolved = new LinkedHashSet<>();
+            for (DisconnectorFunctionDTO each : dto.getSectioningFeedings()) {
+                if (each == null || each.getCode() == null) {
+                    continue;
+                }
+                DisconnectorFunction function =
+                        masterDataService.getDisconnectorFunctionByCode(each.getCode());
+                if (function != null) {
+                    resolved.add(function);
+                }
+            }
+            entity.setSectioningFeedings(resolved);
         }
 
         // 2. Reconciliación de la colección de Cantilevers.
@@ -137,8 +192,11 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     protected void mapEntityToDto(Profile entity, @MappingTarget ProfileDTO dto) {
 
         // 4. Enriquecimiento del DTO con LOVs usando la caché del MasterDataService
-        if (entity.getAnchorage() != null) {
-            dto.setAnchorage(masterDataService.getAnchorageByIdAndMapToDTO(entity.getAnchorage().getId()));
+        if (entity.getAnchorages() != null) {
+            dto.setAnchorages(entity.getAnchorages().stream()
+                    .map(each -> masterDataService.getAnchorageByIdAndMapToDTO(each.getId()))
+                    .filter(Objects::nonNull)
+                    .toList());
         }
         if (entity.getAnchorageFoundation() != null) {
             dto.setAnchorageFoundation(masterDataService.getAnchorageFoundationByIdAndMapToDTO(entity.getAnchorageFoundation().getId()));
@@ -155,11 +213,23 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         if (entity.getProfileStatus() != null) {
             dto.setProfileStatus(masterDataService.getProfileStatusByIdAndMapToDTO(entity.getProfileStatus().getId()));
         }
+        if (entity.getSupportType() != null) {
+            dto.setSupportType(masterDataService.getSupportTypeByIdAndMapToDTO(entity.getSupportType().getId()));
+        }
         if (entity.getReturnSupport() != null) {
             dto.setReturnSupport(masterDataService.getReturnSupportByIdAndMapToDTO(entity.getReturnSupport().getId()));
         }
-        if (entity.getSectioning() != null) {
-            dto.setSectioning(masterDataService.getSectioningByIdAndMapToDTO(entity.getSectioning().getId()));
+        if (entity.getSectionings() != null) {
+            dto.setSectionings(entity.getSectionings().stream()
+                    .map(each -> masterDataService.getSectioningByIdAndMapToDTO(each.getId()))
+                    .filter(Objects::nonNull)
+                    .toList());
+        }
+        if (entity.getSectioningFeedings() != null) {
+            dto.setSectioningFeedings(entity.getSectioningFeedings().stream()
+                    .map(each -> masterDataService.getDisconnectorFunctionByIdAndMapToDTO(each.getId()))
+                    .filter(Objects::nonNull)
+                    .toList());
         }
     }
 }

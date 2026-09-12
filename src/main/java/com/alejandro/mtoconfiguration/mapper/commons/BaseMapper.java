@@ -163,8 +163,19 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
      * <p>Un DTO con un id que no pertenece a este padre se ignora: aceptarlo insertaria una fila
      * a partir de datos de otro registro.
      *
-     * @param dtos           hijos que manda el cliente; {@code null} equivale a "ninguno", asi que
-     *                       vacia la coleccion
+     * <p><b>{@code null} no es lo mismo que una lista vacia.</b> Vacia significa "el cliente
+     * dice que este padre ya no tiene hijos" y borra los que hubiera; {@code null} significa
+     * "de esta coleccion no se ha dicho nada" y la deja intacta. La distincion es la misma que
+     * ya hacen {@code TrackDTO.stationIds} y {@code StationMapper.linkTracks}, y hace falta
+     * porque hay escritores que solo tocan al padre: el importador del maestro actualiza el
+     * paquete de ejecucion sin mandar sus vias, y con {@code null} equivalente a vacia eso
+     * borraba las 174 vias y, en cascada, los 11.714 perfiles. Un DTO que llega por la API
+     * nunca es {@code null} —el campo se inicializa a lista vacia, asi que omitirlo en el JSON
+     * sigue borrando, como documenta {@code README_API.md} §4—, de modo que esto solo cambia lo
+     * que ve quien construye el DTO en Java.
+     *
+     * @param dtos           hijos que manda el cliente; {@code null} es "no viene la coleccion" y
+     *                       no toca nada, una lista vacia si vacia la coleccion
      * @param entities       coleccion viva de la entidad padre, que se modifica en el sitio
      * @param parent         entidad padre
      * @param toNewEntity    mapea un DTO sin id a un hijo nuevo
@@ -180,11 +191,11 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
             BiConsumer<C, P> linker
     ) {
 
-        if (entities == null || parent == null) {
+        if (entities == null || parent == null || dtos == null) {
             return;
         }
 
-        List<D> incoming = dtos == null ? List.of() : dtos.stream().filter(Objects::nonNull).toList();
+        List<D> incoming = dtos.stream().filter(Objects::nonNull).toList();
 
         Set<Long> incomingIds = incoming.stream()
                 .map(BaseDTO::getId)

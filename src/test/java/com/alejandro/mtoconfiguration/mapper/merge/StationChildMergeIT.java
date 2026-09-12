@@ -71,7 +71,7 @@ class StationChildMergeIT extends AbstractChildMergeIT {
         Track via = new Track();
         via.setName(nombre);
         via.setEnabled(true);
-        via.setStation(estacion);
+        via.addStation(estacion);
         via.setExecutionPackage(paquete);
         em.persist(via);
         return via;
@@ -162,9 +162,16 @@ class StationChildMergeIT extends AbstractChildMergeIT {
                 List.of(seccionadorDto(seccionadorId, "SECC-RENOMBRADO")),
                 List.of(aisladorDto(null, "AISL-1"))));          // aislador nuevo
 
-        assertThat(contarFilas("track")).isEqualTo(2);
+        // Tres vias, no dos: VIA 2 no viene en la peticion y con la N:M de V17 eso la DESLIGA
+        // de ATOCHA, no la borra. La que se crea es VIA 3.
+        assertThat(contarFilas("track")).isEqualTo(3);
         assertThat(em.find(Track.class, primeraViaId).getName()).isEqualTo("VIA PRINCIPAL");
-        assertThat(em.find(Track.class, segundaViaId)).isNull();
+        assertThat(em.find(Track.class, segundaViaId))
+                .as("la via que no viene sobrevive, solo pierde el vinculo")
+                .isNotNull();
+        assertThat(contarFilas("track_station"))
+                .as("quedan ligadas VIA PRINCIPAL y VIA 3")
+                .isEqualTo(2);
         assertThat(em.find(Disconnector.class, seccionadorId).getName()).isEqualTo("SECC-RENOMBRADO");
         assertThat(contarFilas("section_insulator")).isEqualTo(1);
     }
@@ -185,15 +192,47 @@ class StationChildMergeIT extends AbstractChildMergeIT {
     }
 
     @Test
-    @DisplayName("vaciar una coleccion borra sus filas sin tocar las otras dos")
-    void vaciarUnaSolaColeccion() {
+    @DisplayName("vaciar la lista de vias las DESLIGA, no las borra")
+    void vaciarLaListaDeVias() {
+        // Esta es la diferencia que trae V17, y es la que hace que la N:M sea segura. Con la
+        // relacion 1:N de antes, la estacion era la dueña de sus vias y una lista vacia las
+        // borraba, que es lo correcto cuando el hijo no existe sin su padre. Ahora una via
+        // puede estar en tres estaciones: si un PUT sobre ZIC que no la menciona la borrara,
+        // se la habria llevado por delante tambien a BIN y a HAD, con todos sus perfiles.
         aplicar(peticion(
                 List.of(),
                 List.of(seccionadorDto(seccionadorId, "SECC-1")),
                 List.of()));
 
-        assertThat(contarFilas("track")).isZero();
+        assertThat(contarFilas("track")).as("las vias siguen existiendo").isEqualTo(2);
+        assertThat(contarFilas("track_station")).as("lo que se va es el vinculo").isZero();
         assertThat(contarFilas("disconnector")).as("el seccionador sigue ahi").isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("una via puede estar en dos estaciones a la vez sin duplicarse")
+    void unaViaEnDosEstaciones() {
+        Station segunda = new Station();
+        segunda.setName("CHAMARTIN");
+        segunda.setExecutionPackage(em.find(Station.class, estacionId).getExecutionPackage());
+        em.persist(segunda);
+        flushAndClear();
+
+        StationDTO dto = new StationDTO();
+        dto.setId(segunda.getId());
+        dto.setName("CHAMARTIN");
+        dto.setTracks(new ArrayList<>(List.of(viaDto(primeraViaId, "VIA 1"))));
+        dto.setDisconnectors(new ArrayList<>());
+        dto.setSectionInsulators(new ArrayList<>());
+
+        Station gestionada = em.find(Station.class, segunda.getId());
+        mapper.updateEntityFromDTO(dto, gestionada);
+        flushAndClear();
+
+        assertThat(contarFilas("track")).as("sigue habiendo dos vias, no tres").isEqualTo(2);
+        assertThat(contarFilas("track_station"))
+                .as("VIA 1 en dos estaciones, VIA 2 en una")
+                .isEqualTo(3);
     }
 
     @Test

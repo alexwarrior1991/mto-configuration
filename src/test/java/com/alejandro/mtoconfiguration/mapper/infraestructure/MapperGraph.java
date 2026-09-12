@@ -62,6 +62,9 @@ final class MapperGraph {
     /** Colaboraciones que tiene todo mapper: el resolutor de referencias y el catalogo de LOV. */
     private void base(Object mapper) {
         setIfPresent(mapper, "referenceMapper", referenceMapper);
+        // El de la clase abstracta, que lleva otro nombre justo para no quedar sombreado por el
+        // que genera MapStruct. Ver TrackMapper.referenceResolver.
+        setIfPresent(mapper, "referenceResolver", referenceMapper);
         setIfPresent(mapper, "masterDataService", masterDataService);
     }
 

@@ -144,6 +144,11 @@ class MasterDataPayloadContractIT {
 
         assertThat(asList(payload, "cantilevers")).hasSize(2);
         assertThat(payload).containsKeys("track", "foundation", "poleType", "disconnector");
+        // sectioningFeeding entra en el grafo como una LOV mas del perfil: si se cayera de
+        // findByIdForMessaging, leer su codigo aqui reventaria con la entidad ya desatachada.
+        assertThat(payload).containsKeys("span", "heightCantileverSupport", "poleGaugeLocation",
+                "railPoleDistance", "sectioningFeedings", "supportType");
+        assertThat(asList(payload, "sectioningFeedings")).hasSize(1);
     }
 
     @Test
@@ -179,7 +184,10 @@ class MasterDataPayloadContractIT {
         Map<String, Object> payload = payloadOfDetached(trackRepository, ids.track());
 
         assertThat(asList(payload, "profiles")).hasSize(2);
-        assertThat(payload).containsKeys("executionPackage", "station");
+        assertThat(payload).containsKeys("executionPackage", "stations");
+        // Una coleccion, no un @ManyToOne: si 'stations' se cayera del grafo esto no daria un
+        // null discreto, reventaria con LazyInitializationException al publicar el evento.
+        assertThat(asList(payload, "stations")).hasSize(1);
     }
 
     /**
@@ -257,6 +265,11 @@ class MasterDataPayloadContractIT {
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> asList(Map<String, Object> payload, String key) {
         return (List<Map<String, Object>>) payload.get(key);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(Map<String, Object> payload, String key) {
+        return (Map<String, Object>) payload.get(key);
     }
 
     private record Ids(Long cantilever, Long disconnector, Long executionPackage, Long profile,
@@ -346,14 +359,18 @@ class MasterDataPayloadContractIT {
             Profile profile = new Profile();
             profile.setProfileId(profileId);
             profile.setKp(new BigDecimal(kp));
-            profile.setAnchorage(lov(new Anchorage(), "ANC" + profileId.charAt(4)));
+            profile.setAnchorages(new java.util.LinkedHashSet<>(java.util.List.of(
+                    lov(new Anchorage(), "ANC" + profileId.charAt(4)))));
             profile.setAnchorageFoundation(lov(new AnchorageFoundation(), "ANF" + profileId.charAt(4)));
             profile.setFoundation(lov(new Foundation(), "FUN" + profileId.charAt(4)));
             profile.setPoleType(lov(new PoleType(), "POL" + profileId.charAt(4)));
             profile.setPortal(lov(new Portal(), "POR" + profileId.charAt(4)));
             profile.setProfileStatus(lov(new ProfileStatus(), "EST" + profileId.charAt(4)));
             profile.setReturnSupport(lov(new ReturnSupport(), "RET" + profileId.charAt(4)));
-            profile.setSectioning(lov(new Sectioning(), "SEC" + profileId.charAt(4)));
+            profile.setSectionings(new java.util.LinkedHashSet<>(java.util.List.of(
+                    lov(new Sectioning(), "SEC" + profileId.charAt(4)))));
+            profile.setSectioningFeedings(new java.util.LinkedHashSet<>(java.util.List.of(
+                    lov(new DisconnectorFunction(), "ALI" + profileId.charAt(4)))));
             track.addProfile(profile);
             return profile;
         }

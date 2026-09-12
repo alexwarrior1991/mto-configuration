@@ -39,8 +39,9 @@ public class TrackValidator extends NormalEntityValidator<TrackDTO> {
     }
 
     /**
-     * {@code stationId} no se exige: la columna {@code STATION_ID} de {@code TRACK} es anulable a
-     * propósito, así que una vía puede colgar directamente del paquete de ejecución.
+     * {@code stationIds} no se exige, y la lista vacía es una respuesta válida: una vía que va
+     * entre estaciones cuelga directamente del paquete de ejecución. Desde {@code V17} son
+     * varias, porque una vía larga atraviesa varias estaciones sin dejar de ser una vía.
      */
     @Override
     protected void validateParentReferences(TrackDTO dto, List<Alert> alerts) {

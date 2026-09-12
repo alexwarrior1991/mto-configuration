@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.service.infraestructure.jobs;
 
+import com.alejandro.mtoconfiguration.enums.jobs.JobType;
 import com.alejandro.mtoconfiguration.repository.jpa.jobs.AsyncJobRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -58,12 +59,21 @@ class AsyncJobPurgeTest {
     }
 
     private AsyncJobRepository.PurgeCandidate candidate(String fileName) {
+        return candidate(JobType.PROFILE_EXPORT, fileName);
+    }
+
+    private AsyncJobRepository.PurgeCandidate candidate(JobType type, String fileName) {
         UUID id = UUID.randomUUID();
 
         return new AsyncJobRepository.PurgeCandidate() {
             @Override
             public UUID getId() {
                 return id;
+            }
+
+            @Override
+            public JobType getType() {
+                return type;
             }
 
             @Override
@@ -79,6 +89,24 @@ class AsyncJobPurgeTest {
     }
 
     @Test
+    @DisplayName("cada fichero se borra con su tipo, porque no todos viven en el mismo directorio")
+    void borraSegunElTipoDeTrabajo() {
+        // Antes se borraba todo contra el directorio de exportacion, asi que los informes de las
+        // importaciones no se borraban NUNCA.
+        when(repository.findByStatusNotInAndCreatedAtBeforeOrderByCreatedAt(anyCollection(), any(), any()))
+                .thenReturn(List.of(
+                        candidate(JobType.PROFILE_EXPORT, "profiles-track-1-abc.csv"),
+                        candidate(JobType.PROFILE_IMPORT, "profile-import-abc.json"),
+                        candidate(JobType.LOV_IMPORT, "lov-import-abc.json")));
+
+        purgeService.purgeBatch(Instant.now(), 3);
+
+        verify(files).delete(JobType.PROFILE_EXPORT, "profiles-track-1-abc.csv");
+        verify(files).delete(JobType.PROFILE_IMPORT, "profile-import-abc.json");
+        verify(files).delete(JobType.LOV_IMPORT, "lov-import-abc.json");
+    }
+
+    @Test
     @DisplayName("borra el fichero ANTES que la fila")
     void elFicheroVaPrimero() {
         when(repository.findByStatusNotInAndCreatedAtBeforeOrderByCreatedAt(anyCollection(), any(), any()))
@@ -90,7 +118,7 @@ class AsyncJobPurgeTest {
         // que ninguna pasada volveria a mirar. Asi el peor caso es un fichero borrado cuya fila
         // sigue ahi, que la siguiente pasada recoge sin inmutarse.
         var order = inOrder(files, repository);
-        order.verify(files).delete("profiles-track-1-abc.csv");
+        order.verify(files).delete(JobType.PROFILE_EXPORT, "profiles-track-1-abc.csv");
         order.verify(repository).deleteAllByIdInBatch(anyCollection());
     }
 
@@ -102,7 +130,7 @@ class AsyncJobPurgeTest {
 
         assertThat(purgeService.purgeBatch(Instant.now(), 2)).isEqualTo(1);
 
-        verify(files, never()).delete(anyString());
+        verify(files, never()).delete(any(), anyString());
         verify(repository).deleteAllByIdInBatch(anyCollection());
     }
 

@@ -5,6 +5,9 @@ import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.lov.*;
 import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
 import jakarta.persistence.*;
+
+import java.util.LinkedHashSet;
+import java.util.Set;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -20,10 +23,18 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.HEIGHT_CANTILEVER_SUPPORT_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.HEIGHT_CANTILEVER_SUPPORT_INTEGER_DIGITS;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_FRACTION_DIGITS;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.POLE_GAUGE_LOCATION_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.POLE_GAUGE_LOCATION_INTEGER_DIGITS;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.PROFILE_ID_MAX_LENGTH;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.PROFILE_MAX_CANTILEVERS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.RAIL_POLE_DISTANCE_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.RAIL_POLE_DISTANCE_INTEGER_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.SPAN_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.SPAN_INTEGER_DIGITS;
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
 @Setter
@@ -68,19 +79,27 @@ public class Profile extends CRUDEntity {
 
     private String profileId;
     private BigDecimal kp;
+    private Integer orderInTrack;
+
+    private BigDecimal span;
+    private BigDecimal heightCantileverSupport;
+    private BigDecimal poleGaugeLocation;
+    private BigDecimal railPoleDistance;
 
     private Track track;
     private Disconnector disconnector;
     private List<Cantilever> cantilevers = new ArrayList<>();
 
-    private Anchorage anchorage;
+    private Set<Anchorage> anchorages = new LinkedHashSet<>();
     private AnchorageFoundation anchorageFoundation;
     private Foundation foundation;
     private PoleType poleType;
     private Portal portal;
     private ProfileStatus profileStatus;
     private ReturnSupport returnSupport;
-    private Sectioning sectioning;
+    private Set<Sectioning> sectionings = new LinkedHashSet<>();
+    private SupportType supportType;
+    private Set<DisconnectorFunction> sectioningFeedings = new LinkedHashSet<>();
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO, generator = PROFILE_GENERATOR)
@@ -112,11 +131,93 @@ public class Profile extends CRUDEntity {
         return kp;
     }
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ANCHORAGE_ID")
+    /**
+     * Posicion del perfil a lo largo de la via, 1..N en el orden del origen.
+     *
+     * <p>Existe porque el KP dejo de servir para ordenar. Una via puede llevar dos tramos
+     * concatenados con la kilometracion reiniciada —'HR Track 1' de EP9A acaba el primero en
+     * el KP 8947 y empieza el segundo en el 270—, de modo que ordenar por KP no pone un tramo
+     * detras del otro: los MEZCLA. Y no es un caso aislado: de las 176 vias medidas, 31 traen
+     * el KP no monotono.
+     *
+     * <p>Anulable a proposito. Un perfil dado de alta por la API no tiene posicion conocida, y
+     * en PostgreSQL {@code order by ... asc} deja los nulos al final, que es donde debe ir.
+     */
+    @Column(name = "ORDER_IN_TRACK")
+    public Integer getOrderInTrack() {
+        return orderInTrack;
+    }
+
+    /**
+     * Vano hasta el perfil siguiente, en metros.
+     *
+     * <p>El sentido lo fija el origen: en los workbooks el valor no está en la fila del perfil
+     * sino en la intermedia, entre ese perfil y el siguiente, así que pertenece al tramo que
+     * arranca aquí y no al punto.
+     *
+     * <p>Opcional: el origen lo trae en el 95 % de los perfiles, no en todos.
+     */
+    @PositiveOrZero
+    @Digits(integer = SPAN_INTEGER_DIGITS, fraction = SPAN_FRACTION_DIGITS)
+    @Column(name = "SPAN",
+            precision = SPAN_INTEGER_DIGITS + SPAN_FRACTION_DIGITS,
+            scale = SPAN_FRACTION_DIGITS)
+    public BigDecimal getSpan() {
+        return span;
+    }
+
+    /** Altura del soporte de ménsula, en milímetros. Opcional. */
+    @PositiveOrZero
+    @Digits(integer = HEIGHT_CANTILEVER_SUPPORT_INTEGER_DIGITS,
+            fraction = HEIGHT_CANTILEVER_SUPPORT_FRACTION_DIGITS)
+    @Column(name = "HEIGHT_CANTILEVER_SUPPORT",
+            precision = HEIGHT_CANTILEVER_SUPPORT_INTEGER_DIGITS + HEIGHT_CANTILEVER_SUPPORT_FRACTION_DIGITS,
+            scale = HEIGHT_CANTILEVER_SUPPORT_FRACTION_DIGITS)
+    public BigDecimal getHeightCantileverSupport() {
+        return heightCantileverSupport;
+    }
+
+    /** Separación del poste respecto al gálibo, en milímetros. Opcional. */
+    @PositiveOrZero
+    @Digits(integer = POLE_GAUGE_LOCATION_INTEGER_DIGITS, fraction = POLE_GAUGE_LOCATION_FRACTION_DIGITS)
+    @Column(name = "POLE_GAUGE_LOCATION",
+            precision = POLE_GAUGE_LOCATION_INTEGER_DIGITS + POLE_GAUGE_LOCATION_FRACTION_DIGITS,
+            scale = POLE_GAUGE_LOCATION_FRACTION_DIGITS)
+    public BigDecimal getPoleGaugeLocation() {
+        return poleGaugeLocation;
+    }
+
+    /**
+     * Distancia entre el carril y el poste, en milímetros.
+     *
+     * <p><b>Lleva signo a propósito</b>, y por eso es la única de las tres sin
+     * {@code @PositiveOrZero}: indica a qué lado de la vía queda el poste. En el origen va de
+     * -6.290 a 9.125.
+     */
+    @Digits(integer = RAIL_POLE_DISTANCE_INTEGER_DIGITS, fraction = RAIL_POLE_DISTANCE_FRACTION_DIGITS)
+    @Column(name = "RAIL_POLE_DISTANCE",
+            precision = RAIL_POLE_DISTANCE_INTEGER_DIGITS + RAIL_POLE_DISTANCE_FRACTION_DIGITS,
+            scale = RAIL_POLE_DISTANCE_FRACTION_DIGITS)
+    public BigDecimal getRailPoleDistance() {
+        return railPoleDistance;
+    }
+
+    /**
+     * Anclajes del perfil. <b>Varios</b>, como los seccionamientos.
+     *
+     * <p>Un perfil puede llevar un anclaje de catenaria CON regulacion de tension y otro SIN
+     * ella ({@code FP+AnMC CP+AnMC}), o uno de catenaria mas uno de retorno
+     * ({@code CP+AnMC AnRW}). Que el origen escriba el mismo par en los dos ordenes confirma
+     * que el orden no significa nada, y por eso es un {@code Set}.
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "PROFILE_ANCHORAGE",
+            joinColumns = @JoinColumn(name = "PROFILE_ID"),
+            inverseJoinColumns = @JoinColumn(name = "ANCHORAGE_ID"))
     @Audited(targetAuditMode = NOT_AUDITED)
-    public Anchorage getAnchorage() {
-        return anchorage;
+    public Set<Anchorage> getAnchorages() {
+        return anchorages;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -161,11 +262,70 @@ public class Profile extends CRUDEntity {
         return returnSupport;
     }
 
+    /**
+     * Pieza que sujeta la catenaria en este poste: columna {@code Supports} del origen.
+     *
+     * <p>Es <b>uno</b>, no varios: en las 2.038 celdas medidas no hay ni una con dos codigos,
+     * al reves que el seccionamiento o el anclaje.
+     *
+     * <p>El catalogo {@link SupportType} existia desde {@code V1} y se rellena desde los
+     * workbooks, pero nadie apuntaba a el: la columna se recogia en la hoja NO_MAPEADO del
+     * maestro y no llegaba a la base de datos. Se usaba ademas para deducir el tipo de mensula
+     * en catenaria rigida ({@code Supports = OCR SUPPORT}), de modo que el dato ya decidia lo
+     * que se cargaba sin quedar guardado en ninguna parte.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "SECTIONING_ID")
+    @JoinColumn(name = "SUPPORT_TYPE_ID")
     @Audited(targetAuditMode = NOT_AUDITED)
-    public Sectioning getSectioning() {
-        return sectioning;
+    public SupportType getSupportType() {
+        return supportType;
+    }
+
+    /**
+     * Seccionamientos del perfil. <b>Varios</b>, no uno.
+     *
+     * <p>Un perfil puede llevar mas de uno a la vez —es corriente en estaciones: 'A/S P50' son
+     * dos— y el modelo tenia una clave ajena, que solo admite uno. La celda del origen con dos
+     * valores no era un error de tecleo: era el dominio que no cabia en el esquema.
+     *
+     * <p>{@code Set} y no {@code List} porque el orden no significa nada: un perfil TIENE estos
+     * seccionamientos, no los tiene en un orden. {@code LinkedHashSet} para que dos lecturas
+     * devuelvan lo mismo, que es lo unico que se necesita para que exportaciones y eventos sean
+     * reproducibles.
+     *
+     * <p>Es la unica relacion N:M del perfil: las demas listas de valores llevan una sola por
+     * perfil, y ampliarlas seria complicar el modelo sin motivo.
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "PROFILE_SECTIONING",
+            joinColumns = @JoinColumn(name = "PROFILE_ID"),
+            inverseJoinColumns = @JoinColumn(name = "SECTIONING_ID"))
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Set<Sectioning> getSectionings() {
+        return sectionings;
+    }
+
+    /**
+     * Elemento de seccionamiento y alimentación del perfil (columna {@code Sectioning Feeding} de
+     * los workbooks).
+     *
+     * <p>Reutiliza el catálogo {@link DisconnectorFunction} en lugar de una LOV propia: el bloque
+     * {@code FEEDING} de la leyenda define 22 códigos —{@code Disc}, {@code Disc/NS},
+     * {@code Disc/IO}, {@code Disc/SI}, {@code Disc/t}, {@code LoadB} y variantes, {@code ED},
+     * {@code ED/T}, {@code SurgeA}, {@code VoltageD}, {@code SECT-I}, {@code CurrentT},
+     * {@code FS-1}, {@code FS-1D}, {@code FS/PP-2}, {@code FS/PP-3}, {@code PP-2}, {@code PP-3} y
+     * {@code PP-4}— y los 22 ya están en ese catálogo. El campo se llama por su papel; el
+     * catálogo no se duplica.
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "PROFILE_SECTIONING_FEEDING",
+            joinColumns = @JoinColumn(name = "PROFILE_ID"),
+            inverseJoinColumns = @JoinColumn(name = "SECTIONING_FEEDING_ID"))
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Set<DisconnectorFunction> getSectioningFeedings() {
+        return sectioningFeedings;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)

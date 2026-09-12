@@ -1,4 +1,9 @@
-# Tablas de alias para build_lov_master.py
+# Tablas de alias de los generadores de data/tools.
+#
+# Las usan los dos: build_lov_master.py (catalogo de LOVs) y build_profile_master.py
+# (perfiles, vias, estaciones y EPs). Comparten fichero a proposito, porque leen LAS
+# MISMAS hojas: si una grafia de cabecera nueva aparece, los dos tienen que conocerla
+# y en dos ficheros acabarian discrepando.
 #
 # Este fichero existe para que ampliar el mapeo NO sea tocar el script. Cuando el
 # generador encuentra algo que no esta aqui NO lo descarta en silencio: lo vuelca en
@@ -256,20 +261,640 @@ track_headers_ignored:
   - total
 
 # --------------------------------------------------------------------------------
+# Tipos de brazo, para poder partir la columna 'Arm Type'.
+#
+# El origen escribe el tipo y la longitud juntos ('PH-1150', 'BTC-1651') pero el
+# catalogo SteadyArmType solo tiene el tipo base. La regla para separarlos es
+# "sufijo numerico = longitud", y hace falta esta lista porque 'PH-C' y 'PH-Q' son
+# tipos que TAMBIEN llevan guion: sin saber cuales existen, 'PH-C' se partiria mal.
+#
+# Tiene que coincidir con los codigos habilitados de SteadyArmType en
+# lov-master.xlsx. Hay un test que lo comprueba.
+# --------------------------------------------------------------------------------
+steady_arm_types:
+  - BC
+  - BCE
+  - BS
+  - BTC
+  - PH
+  - PH-C
+  - PH-Q
+  - PHC
+  - PHQ
+
+# Erratas del TIPO de brazo. Van aparte de code_canonical porque hay que aplicarlas
+# ANTES de separar el tipo de la longitud: 'BHC-1150' no llega entero a ningun sitio
+# donde una tabla de grafias pudiera verlo, y sin esto el brazo se perdia con un
+# "tipo de brazo desconocido".
+steady_arm_type_aliases:
+  BHC: PHC
+
+# --------------------------------------------------------------------------------
+# Cabeceras de las hojas HR Track -> campo del maestro de perfiles.
+#
+# Las 177 hojas escriben las mismas ~36 columnas logicas de 66 formas distintas, y
+# hay una hoja (EP6 / HR Track 1 HER) sin columna 'Sectionning' que desplaza todo lo
+# posterior una posicion. Por eso el generador resuelve POR NOMBRE y nunca por
+# indice: leer por posicion corromperia esa hoja en silencio.
+#
+# La clave se compara en minusculas y con espacios colapsados. Una cabecera que no
+# este en ninguna de las tres listas va a NO_RECONOCIDO y el generador termina con
+# codigo != 0.
+# --------------------------------------------------------------------------------
+profile_columns:
+
+  # Una columna por perfil.
+  profile:
+    profile: PROFILE_ID
+
+    kp: KP
+    k.p. (m): KP
+    theorical k.p. (m): KP
+
+    # El vano vive en la fila INTERMEDIA, entre este perfil y el siguiente: 11.475
+    # de los 11.490 valores medidos estan ahi. Es el vano hasta el perfil siguiente.
+    span: SPAN
+    span (m): SPAN
+    th. span: SPAN
+    th span: SPAN
+
+    height cantilever support: HEIGHT_CANTILEVER_SUPPORT
+    height cant. support (mm): HEIGHT_CANTILEVER_SUPPORT
+
+    gauge pole location: POLE_GAUGE_LOCATION
+    pole gauge location (mm): POLE_GAUGE_LOCATION
+
+    distance rail-pole: RAIL_POLE_DISTANCE
+    rail-pole distance (mm): RAIL_POLE_DISTANCE
+
+    # Listas de valores: se resuelven por codigo contra el catalogo.
+    sectionning: SECTIONING
+    anchorage: ANCHORAGE
+    anchorage foundation: ANCHORAGE_FOUNDATION
+    pole type: POLE_TYPE
+    foundation: FOUNDATION
+    portals: PORTAL
+    return support: RETURN_SUPPORT
+    sectioning feeding: SECTIONING_FEEDING
+    supports: SUPPORT_TYPE
+
+  # Grupos de TRES columnas (subcabecera M1/M2/M3, D1/D2/D3, ...): una mensula por
+  # slot ocupado. Un perfil admite tres como maximo, que es justo lo que da el
+  # origen y lo que impone la entidad.
+  cantilever:
+    cantilevers: CANTILEVER_TYPE
+    arm type: STEADY_ARM          # lleva tipo y longitud juntos: 'PH-1150'
+
+    stagger: STAGGER
+    stagger (cm): STAGGER
+
+    catenary height: CATENARY_HEIGHT
+    catenary height (m): CATENARY_HEIGHT
+    catenary heigh: CATENARY_HEIGHT
+
+    elevation cw: CW_ELEVATION
+    elevation cw (m): CW_ELEVATION
+
+    cw height: CW_HEIGHT
+    cw height (m): CW_HEIGHT
+    cw heigh: CW_HEIGHT
+    contact wire height: CW_HEIGHT
+
+    wind deflection: WIND_DEFLECTION
+    arm angle: ARM_ANGLE
+
+  # Columnas reales del origen que HOY no tienen campo en el dominio. No se
+  # descartan: van a la hoja NO_MAPEADO con su EP, via, perfil y fila de origen, de
+  # modo que ampliar el modelo mas adelante sea un cambio de esquema y no volver a
+  # analizar 60 MB de Excel.
+  unmapped:
+    - survey
+    - other pk
+    - other kp
+    - theorical cant
+    - theorical cant (mm)
+    - track layout
+    - track layout (m)
+    - anchorage kp
+    - anchorage pk
+    - anchorages pk
+    - current cant
+    - current cant (mm)
+    - current track layout
+    - current track layout (m)
+    - current span
+    - current span (m)
+    - track kp
+    - track pk
+    - current track pk
+    - soil found
+    - embankment
+    - embank.
+    - terrain geometry
+    - depth found
+    - depth pole f. (m)
+    - depth anchor
+    - depth anchor f. (m)
+    - approved by kedmor
+    - pole calculation reference
+
+# --------------------------------------------------------------------------------
+# Grafias distintas del MISMO codigo. La clave es como aparece en el origen; el
+# valor, la forma canonica. Se aplica antes de agrupar, asi que los usos se suman
+# en una unica fila en lugar de repartirse entre variantes.
+#
+# Las diferencias de solo mayusculas NO hacen falta aqui: la clave del catalogo ya
+# es (entidad, CODIGO en mayusculas), asi que 'DISC/IO' y 'Disc/IO' colapsan solos.
+# Esto es para lo que ademas cambia de caracteres.
+# --------------------------------------------------------------------------------
+# Codigos ATOMICOS de las columnas que admiten varios valores.
+#
+# Son los que declara la hoja Legend de los workbooks, mas la familia de agujas, que la
+# leyenda no enumera una a una porque cada valor es una aguja distinta ('Switch Point 50'
+# es P50, 'Switch Point 90' es P90, y en casos puntuales hay otras).
+#
+# Lo que esta aqui SE PARTE al cosechar: una celda cuyos trozos sean TODOS atomos se
+# registra como varios codigos y no como uno. Lo que no esta, se queda entero, y eso es
+# lo que salva a los codigos legitimos con espacio ('T-SIGN FOUND.', 'UNIQUE SOLUTION').
+#
+# Sin esto, un atomo que el origen solo escribe DENTRO de una celda compuesta —P59(CS)
+# solo aparece en 'A/S P59(CS)'— no llegaba a existir como fila del catalogo, y no habia
+# nada que habilitar.
+# --------------------------------------------------------------------------------
+# Codigos que NO estan en ningun workbook y pone este proyecto.
+#
+# Solo para lo que el origen deja sin nombrar y el dominio EXIGE. Hoy es uno.
+#
+# El tipo de mensula es obligatorio (@ManyToOne no anulable, y CantileverValidator lo
+# sigue pidiendo despues de relajar los seis numericos). Hay 217 huecos M1/M2/M3 que
+# traen medidas propias —desviacion, altura de catenaria, brazo— y la celda del tipo
+# vacia. Sin un codigo al que colgarlos, esas 217 mensulas se pierden ENTERAS: no es
+# que les falte un dato, es que no hay fila.
+#
+# Un codigo puesto aqui sale del generador con ORIGEN=MTO, que lo distingue a simple
+# vista de los que vienen del BOQ, del Legend o de las hojas Track.
+# --------------------------------------------------------------------------------
+synthetic_codes:
+  CantileverType:
+    - code: UNKNOWN
+      desc_en: Cantilever type not stated in the source workbook
+      desc_es: Tipo de mensula sin declarar en el workbook de origen
+
+# --------------------------------------------------------------------------------
+# Tipo de mensula cuando el hueco trae medidas propias y no trae tipo.
+#
+# 'default' es el ultimo recurso. Antes se mira la columna 'Supports' de esa misma
+# fila: en los postes de catenaria RIGIDA dice 'OCR SUPPORT' (Overhead Conductor
+# Rail), y ahi la mensula no es que falte, es que es la de OCR —un codigo que ya
+# existe en el catalogo, con 23 usos en EP9B, donde SI lo escriben en la columna del
+# tipo—. Son 61 huecos de EP6 'HR Track 1 TSA-THA' y 'HR Track 2 TSA-THA'.
+#
+# Lo que NO recibe tipo es el hueco que solo trae cwHeight y/o armAngle: el primero
+# es un valor de proyecto repetido a lo largo del tramo y el segundo es calculado,
+# asi que aparecen igual donde no hay ninguna mensula. Esos se siguen tirando.
+# --------------------------------------------------------------------------------
+cantilever_type_fallback:
+  default: UNKNOWN
+  by_support:
+    OCR SUPPORT: OCR
+  # Campos cuya presencia prueba que ahi SI hay una mensula. cwHeight y armAngle no
+  # estan, y no es un olvido: son justamente los dos que aparecen sin mensula.
+  evidence: [STAGGER, CATENARY_HEIGHT, CW_ELEVATION, WIND_DEFLECTION, STEADY_ARM]
+
+# --------------------------------------------------------------------------------
+code_atoms:
+  Sectioning:
+    exact: ['A/S', 'A/S-Diag', 'S/A', 'A', 'MP', 'MP/Tunnel', 'AnMP', 'AnMP/Tunnel', 'P50', 'P90']
+    regex: '^P\d+(\([A-Za-z]+\))?$'          # agujas: P50, P90, P30(CS), P120(Tg)...
+  Anchorage:
+    # Los doce de la leyenda ANCHORAGE, mas AnRW1 / AnRW2 / AnRW2/Tunnel, que son
+    # anclajes DISTINTOS de AnRW y no "dos AnRW": el numero forma parte del codigo.
+    exact: ['CP+AnMC', 'FP+AnMC', 'CP/Tunnel', 'FP/Tunnel', 'AnFW', 'AnRW',
+            'AnFW/Tunnel', 'AnRW/Tunnel', 'AnRW1', 'AnRW2', 'AnRW2/Tunnel', 'IO']
+    # CP/TX-P, CP/TX-T y CP/TX-W, cada uno con o sin longitud: nueve anclajes distintos.
+    # La leyenda solo dibuja tres (CP/TX-P/1100, CP/TX-T, CP/TX-W/1100) pero los datos
+    # traen las nueve combinaciones.
+    regex: '^CP/TX(-[PTW](/\d+)?)?$'
+
+# --------------------------------------------------------------------------------
+# Trozos que una columna escribe AL LADO del codigo sin que formen parte de el.
+# Se tiran al partir la celda; el codigo que queda es el que vale.
+#
+# Solo se declara lo que en ESA columna no puede ser un codigo. Un numero suelto sobra
+# en ANCHORAGE —es la longitud de semitension, el 'xxx m.' de la leyenda, y el dominio
+# no tiene donde guardarla— pero no es una regla general.
+# --------------------------------------------------------------------------------
+code_noise_tokens:
+  Anchorage:
+    # 'Portal' tiene su propia columna y su propio catalogo: aqui es una fuga.
+    # 'T1' y 'track 1' son anotaciones de via, que ya la sabe la via.
+    exact: ['Portal', 'Track', 'T1', 'T2', 'T3']
+    regex: '^\d+([.,]\d+)?$'        # 265,00 / 527,00 / 287: longitud, no codigo
+
+# --------------------------------------------------------------------------------
+code_canonical:
+  Anchorage:
+    # Erratas de tecleo sobre codigos de la leyenda. Solo las que cambian de CARACTERES:
+    # las que solo cambian de mayusculas ('FP+ANMC', 'CP+AnmC') colapsan solas, porque la
+    # clave del catalogo ya es el codigo en mayusculas.
+    # 'AnRW1' es 'AnRW': el 1 es la cuenta, y uno es el codigo a secas. El 2 de 'AnRW2'
+    # SI es parte del codigo —es otro anclaje— y por eso ese no se toca. Lo mismo con el
+    # 2 delante: cuenta anclajes, y el modelo es un conjunto, asi que colapsa a uno.
+    'AnRW1': AnRW
+    '2AnRW': AnRW
+    'PF+AnMC': FP+AnMC          # PF por FP
+    'CP+AnCM': CP+AnMC          # CM por MC
+    'FP+AnCM': FP+AnMC
+    'CP+AMC': CP+AnMC           # se comio la n
+    'CP+TX-P/1100': CP/TX-P/1100   # '+' por '/'
+    # Dos codigos escritos sin el espacio que los separa. Ponerlo aqui es lo que deja
+    # que el troceo los vea como dos: solo, no hay forma de saber donde parte 'FP+AnMCAnRW'.
+    'FP+AnMCAnRW': FP+AnMC AnRW
+    'AnRWAnRW': AnRW AnRW
+  Sectioning:
+    # 'A/S-Diag' escrito con espacio en vez de guion. Sin esto se lee como dos valores
+    # ('A/S' y un 'Diag' que no existe) justo ahora que el seccionamiento admite varios.
+    'A/S Diag': A/S-Diag
+    'A/S  Diag': A/S-Diag
+    # Erratas de la misma grafia, vistas en el origen.
+    'A/S-Diang': A/S-Diag
+    'A/S-Diag1': A/S-Diag
+    'SA': S/A
+    # 'MPA' es 'MP' mal tecleado, y '2MP' son DOS puntos fijos MP. El seccionamiento del
+    # perfil es un Set, asi que los dos MP de '2MP S/A' se guardan como uno: la cantidad
+    # no cabe en el modelo, y el modelo esta bien como esta —que el orden y la repeticion
+    # no signifiquen nada es justo lo que hace que 'FP+AnMC CP+AnMC' sea el mismo par en
+    # cualquier orden—. Antes de esto la celda entera se descartaba y el perfil perdia
+    # TAMBIEN el 'S/A', que era bueno.
+    'MPA': MP
+    '2MP': MP
+  AnchorageFoundation:
+    'U.S.': UNIQUE SOLUTION
+    'Unique Solution': UNIQUE SOLUTION
+    'U.SOLUTION': UNIQUE SOLUTION
+  Foundation:
+    # 'P8' es 'P8R' sin la R: la cimentacion P8 solo existe reforzada. Un solo uso.
+    'P8': P8R
+    'Unique Solution': UNIQUE SOLUTION
+    'Unique solution': UNIQUE SOLUTION
+    'UnIque Solution': UNIQUE SOLUTION
+    'U.S.': UNIQUE SOLUTION
+    'U.SOLUTION': UNIQUE SOLUTION
+    'U. SOLUTION': UNIQUE SOLUTION
+    'T-SING FOUND.': T-SIGN FOUND.
+    'T-SIGN FOUND,': T-SIGN FOUND.
+  Portal:
+    # Dos erratas de porticos que si estan en el catalogo, las dos con las cifras y las
+    # letras bailadas: 'SP1R' tiene 39 usos y '2PR1D' 79.
+    'S1PR': SP1R
+    '2PRD': 2PR1D
+  SupportType:
+    # Una sola grafia por suspension aislada. Las variantes solo cambian el separador
+    # o el orden de dos letras, y repartidas dejaban cada una por debajo del umbral
+    # de atencion: juntas son 37, 27 y 17 usos.
+    'MP_Isusp': MP-ISusp
+    'MP-Isusp': MP-ISusp
+    'MW/Isusp': MW-ISusp
+    'MWISusp': MW-ISusp
+    'MW-Isusp': MW-ISusp
+    'MW/CW_ISusp': MW/CW-ISusp
+    'MW/MC-ISusp': MW/CW-ISusp     # MC por CW
+    'MW/CW-Isusp': MW/CW-ISusp
+    # 'S1/B7' es el codigo del catalogo curado; estas dos son la misma pieza.
+    'S1B7': S1/B7
+    'S/B7': S1/B7
+  DisconnectorFunction:
+    # '-pp' es una errata de '-pr'. Solo 4 filas, las cuatro en EP9A.
+    'Disc-pp': Disc-pr
+    'LoadB-pp': LoadB-pr
+    # Familia FW (feeder wire): cuatro formas de escribir dos codigos.
+    FW25: FW-25
+    FW+25: FW-25
+    F-25: FW-25
+    2-25FW: 2xFW-25
+
+    # NZ (neutral zone) y NS (neutral section) son lo mismo. Lo confirma la leyenda
+    # de EP9B, que llama "N.Z. Disconnector" justo al codigo Disc/NS.
+    LoadB/NZ: LoadB/NS
+    DISC/NZ: Disc/NS
+
+    # Erratas de tecleo sobre codigos que ya estan en el catalogo.
+    SECT-1: SECT-I          # I mayuscula de "Insulator", no un uno
+    PP/2: PP-2
+    FS/PP2: FS/PP-2
+    Load/IO: LoadB/IO
+    Voltage: VoltageD
+    Voltage D: VoltageD
+    Current: CurrentT
+    Surge A: SurgeA
+    LoadB/IO_pr: LoadB/IO-pr   # guion bajo por guion; el destino ya existe
+
+    # Grafia preferida cuando el catalogo curado no la fija.
+    DISC/PP: Disc/PP
+
+# --------------------------------------------------------------------------------
+# Codigos que SOLO aparecen en las hojas Track y que una persona ha revisado y
+# aceptado. Sin estar aqui saldrian con ENABLED=NO, que es el valor por defecto de
+# ORIGEN=TRACK: son codigos en uso real que ningun catalogo curado recoge.
+#
+# La decision vive aqui y no en el Excel generado a proposito: el maestro se
+# regenera y se llevaria por delante cualquier ENABLED=SI puesto a mano.
+#
+# Lo que NO esta aceptado se queda con ENABLED=NO y REVISAR=SI, que es justo el
+# estado "pendiente de decidir" y lo deja a la vista sin romper la generacion.
+# --------------------------------------------------------------------------------
+track_accepted:
+  SupportType:
+    # Catenaria rigida (Overhead Conductor Rail). Ya se usa para deducir el tipo de
+    # mensula de EP6 TSA-THA, asi que el dato ya decide lo que se carga: guardarlo es
+    # lo minimo coherente.
+    - 'OCR SUPPORT'
+    # Piezas que sujetan la catenaria y que solo nombra la columna 'Supports'. Ningun
+    # BOQ las recoge, pero el trazado las escribe donde van los soportes y describen
+    # un soporte, no otra cosa.
+    - SF-2PR              # 27 celdas, todas de EP5
+    - 'Beam Support'      # 10, EP11A
+    - MW/CW-ISusp         # 7 -- suspension aislada de sustentador y de hilo de contacto
+    - S1-CLAMP            # 6, EP7
+    - S3T                 # 4, EP11A -- tres mensulas en tunel, como S1T y S2T
+    - S2-R                # 4, EP6
+    - MP-ISusp            # 4 -- suspension aislada en poste
+    - MW-ISusp            # 3 -- suspension aislada de sustentador
+    - 'S1(Diag)'          # 1, EP6 -- S1 en diagonal
+    #
+    # 'B7' NO se acepta, y es el unico de la lista que se queda fuera: es un codigo de
+    # Portal (semiportico B7, plano 6127, 140 usos en la columna PORTALS), no de
+    # SupportType. Aparece una sola vez, en EP4, escrito en la columna equivocada. El
+    # soporte sobre ese semiportico ya tiene codigo propio y es 'S1/B7', con 119 usos.
+    # Por lo mismo se quedan fuera 'SECT-I', 'FS1' y 'FS/PP2': son de alimentacion.
+  SteadyArmType:
+    # Solo aparece en una hoja de trazado y en ningun BOQ, pero es un tipo de brazo
+    # real, no una errata: 'BS-1400' de EP9B / HR Track 2 LOD_S.
+    - BS
+  Anchorage:
+    # Solo codigos ATOMICOS: las 28 entradas que habia antes eran, en su mayoria, celdas
+    # con dos anclajes ('CP+AnMC IO'), erratas ('PF+AnMC') o anotaciones ('TRACK 5') que
+    # entraron al catalogo porque se cosecha leyendo cada celda como si fuera un codigo.
+    - AnMC
+    - AnMP
+    - AnRW2
+    - AnRW2/Tunnel
+    - CP
+  AnchorageFoundation:
+    - AnFW-RT
+    - AnFW-RTL
+    - AnMC-W
+    - AnMP-R
+    - AnMP-RT
+    - AnRW-R
+    - AnRW-RT
+    - 'UNIQUE SOLUTION'
+  CantileverType:
+    - 48-1-
+    - EMT-1-RH
+    - EMT-1P(Diag)
+    - EMT-2-RH
+    - EMT-2HR
+    - EMT-P
+    - EMT-R
+    - EMT-TRH
+    - EMT1
+    - EMT1P
+    - EMT2
+    - EMT21P
+    - EMT2P
+    - ENT-1
+    - ENT-2
+    - ETM-2
+    - H-ARM
+    - ISOL.SUSP.
+    - OCR
+  DisconnectorFunction:
+    - 2xFW-25
+    - Disc/PP
+    - FW
+    - FW-25
+    - FW-D
+    - FW-DV
+    - LoadB/ED
+    - LoadB/t
+    - MW/CW-ISusp
+    - 'Disc-pr'
+    - 'Disc/IO-pr'
+    - 'Disc/PP-pr'
+    - 'Disc/SI-pr'
+    - 'LoadB-pr'
+  Foundation:
+    - 2C3R-S
+    - 2C3RT-S
+    - 2C3SR_L
+    - 2C4FR-S
+    - 2C4R-S
+    - 2C4RT-S
+    - 2C4SR_L
+    - 2C9R
+    - '2W3 UNIQUE SOLUTION'
+    - C11R-S
+    - C12R-S
+    - C2H240
+    - C2H240RT
+    - 'C3 SLABTRACK'
+    - C3RL
+    - 'C4 SLABTRACK'
+    - C4R-S
+    - C4RL
+    - C4SR_L
+    - C5R-S
+    - C5RT-S
+    - C5SR_L
+    - C7R-S
+    - C7RT-S
+    - C7SR_L
+    - C8R-S
+    - C9R-S
+    - 'CHEM. ANCHOR'
+    - CV-PAW
+    - PL
+    - 'PLATE TYPE 2'
+    - 'PLATE TYPE 3'
+    - WALL
+    - WL3
+    - 'M3 Ø36'
+    - 'M3 Ø42'
+    - 'M5 Ø36'
+    - 'M5 Ø42'
+    - 'M6 Ø36'
+    - 'M6 Ø42'
+    - 'M7 Ø36'
+    - 'M8 Ø36'
+  PoleType:
+    - 2HBE-240
+    - 2HEB-240LL
+    - 2HEB-260LL
+    - '2HEB-300(CP) V'
+    - 2HEB-320
+    - 2HEB-320A
+    - 2HEB-320AL
+    - HB-280(CP)
+    - 'HEB-240 AirPort'
+    - 'HEB-240 WALL'
+    - 'HEB-260 AirPort'
+    - 'HEB-280 AirPort'
+    - 'LOW WALL'
+    - 'POLE TRACK 02'
+    - 'POLE TRACK 03'
+    - 'POLE TRACK 04'
+    - 'POLE TRACK 04(06)'
+    - 'POLE TRACK 07'
+    - 'POLE TRACK 1'
+    - 'POLE TRACK 11S'
+    - 'POLE TRACK 13D'
+    - 'POLE TRACK 15D'
+    - 'POLE TRACK 1D'
+    - 'POLE TRACK 1S'
+    - 'POLE TRACK 2'
+    - 'POLE TRACK 21D'
+    - 'POLE TRACK 23D'
+    - 'POLE TRACK 2D'
+    - 'POLE TRACK 3'
+    - 'POLE TRACK 3NET'
+    - 'POLE TRACK 3S'
+    - 'POLE TRACK 4'
+    - 'POLE TRACK 4M'
+    - 'POLE TRACK 4S'
+    - 'POLE TRACK 5S'
+    - 'POLE TRACK 6'
+    - 'POLE TRACK 6S'
+    - 'POLE TRACK 7D'
+    - 'POLE TRACK 7S'
+    - 'POLE TRACK 8S'
+    - 'POLE TRACK 9D'
+    - 'POLE TRACK INT'
+    - 'POLE TRACK02'
+    - 'POLE TRACKS 6S'
+    - 'PROFILE TRACK 2'
+    - S-1T-B1
+    - S-1T-B3
+    - S-1T-H
+    - S-1T-L
+    - S-1T-R
+    - S-1T-W
+    - S-1TB1
+    - S-1TB3
+    - S-2T-H
+    - S-2T-R
+    - S-2T-W
+    - S1T
+    - S2T
+    - SUPL-5
+    - 'SUPL-5 + S-1T-W'
+    - T-SING
+    - 'UNIQUE SOLUTION'
+  Portal:
+    - 2PR1E
+    - SPR1
+  ReturnSupport:
+    - PR1B
+    - PR1D
+    - RW1-C
+    - RW1-S
+    - RW1-T
+    - RW1/DIST-R
+    - RW1T-C
+    - RW1T-S
+    - RW1T-S/RW1
+    - RW2T-C
+    - RW2T-S
+    - RW2T-SC
+    - RW3
+    - RWT-S
+  Sectioning:
+    # Las agujas son la misma familia que P50 y P90: 'Switch Point' de otro valor.
+    # Vienen solo de hojas Track, asi que el catalogo las saca con ENABLED=NO y se
+    # aceptan aqui.
+    #
+    # Las CONCATENACIONES que llenaban esta lista ya no hacen falta: desde que
+    # code_tokens sabe que 'A/S Diag' es 'A/S-Diag', drop_concatenations las saca del
+    # catalogo, y aceptar un codigo que ha dejado de existir no significa nada.
+    - 2MP S/A
+    - A/S Diag
+    - A/S Diag 1
+    - A/S Diag1
+    - A/S Diag2
+    - A/S(T1)
+    - A/S-Diag1
+    - A/S-Diang
+    - AnFW AnFW
+    - AnMP T A/S-Diag
+    - AnRW
+    - AnRW/Tunnel
+    - AnRW2
+    - IO
+    - P0(CS)
+    - P100
+    - P100(TgS)
+    - P120(Tg)
+    - P15
+    - P21(CS)
+    - P22(CS)
+    - P25(CS)
+    - P27
+    - P27(CS)
+    - P29(CS)
+    - P30
+    - P30(CS)
+    - P32(CS)
+    - P35
+    - P35(CS)
+    - P37(CS)
+    - P39(CS)
+    - P40(CS)
+    - P44(CS)
+    - P45(CS)
+    - P48(CS)
+    - P49(CS)
+    - P5(CS)
+    - P50(CS)
+    - P50(CS) MPA
+    - P51(CS)
+    - P52(CS)
+    - P55(CS)
+    - P59(CS)
+    - P60
+    - P60(CS)
+    - P64(CS)
+    - P65
+    - P65(CS)
+    - P67(CS)
+    - P70
+    - P70(CS)
+    - P71
+    - P80(TgS)
+    - P85
+    - P85(CS)
+    - P90(TgS)
+    - POLE TRACK 14S
+    - S/A A/S AnRW1 AnRW2
+    - SA
+
+# --------------------------------------------------------------------------------
 # Textos que ocupan la celda del codigo pero no son codigos: marcadores de "esto
 # esta sin definir" y alguna fuga de la columna Obs. Se descartan con motivo.
 # --------------------------------------------------------------------------------
 code_rejections:
   - NON DEFINED
   - N.D.
-  - UNIQUE SOLUTION
-  - U.S.
   - U.S. N.D.
   - EJECUTADO
   - MANUAL
   - CHECK
   - PENDIENTE
   - TIRANTE DE ANCLAJE      # descripcion escrita en la celda del codigo
+  # No es un marcador de "aqui no hay dato" como los de arriba, sino una MEDIDA escrita
+  # donde va el codigo: el diametro y la profundidad de la zapata. No se da de alta —una
+  # medida no es un tipo de cimentacion— y se trata como hueco para que deje de salir
+  # como codigo pendiente. 4 celdas, EP11B.
+  - Ø500*1700
 
 # --------------------------------------------------------------------------------
 # Reenrutado por codigo. Algunas categorias del BOQ son cajones de sastre y meten
@@ -287,6 +912,38 @@ code_reassignment:
   - {from: Portal, regex: "^2?C\\d*[A-Z]*R?T?$", to: Foundation}    # 2C4FR, C12FRT
   - {from: Portal, regex: "^T-SIGN", to: Foundation}
 
+  # 'Sectioning Feeding' es una FK y no puede con dos valores: la celda que lleva
+  # dos equipos no se puede importar y hay que mirarla a mano.
+  - {from: DisconnectorFunction, regex: "^(DISC SECT-I|FS-1 VOLTAGED|LOADB/NS FS-1|LOADB/PP FS-1)$", to: null}
+  # Fugas de otras columnas: PHQ-1150 es un brazo y FP un anclaje (FP+AnMC).
+  - {from: DisconnectorFunction, regex: "^(PHQ-\\d+|FP)$", to: null}
+
+  # Fugas de la columna 'Sectioning Feeding' dentro de 'Supports'. SECT-I es un aislador
+  # de seccion y FS-1 / FS/PP-2 son alimentaciones: los tres son aparatos, no soportes.
+  # Fuera del catalogo de soportes para que la celda salga nombrada con su hoja y su
+  # fila, que es lo que hay que corregir, en el workbook.
+  - {from: SupportType, regex: "^(SECT-I|FS1|FS/PP2)$", to: null}
+
+  # Fugas de la columna Anchorage dentro de SECTIONNING. La leyenda de los workbooks
+  # declara AnRW (Return Anchor), AnFW (Feeder Anchor) e IO (Insulated Overlap) en
+  # ANCHORAGE. Fuera del catalogo de seccionamiento: asi la celda que los trae sale en
+  # NO_RECONOCIDO con su hoja y su fila —que es lo que hay que corregir, en el workbook—
+  # en vez de cargarse como si fuera un seccionamiento.
+  - {from: Sectioning, regex: "ANRW|ANFW|(^|\\s)IO($|\\s)", to: null}
+  # 'POLE TRACK 14S' es una anotacion, no un codigo: hay que vaciar la celda. Y en
+  # 'AnMP T A/S-Diag' la 'T' no es nada, pero 'AnMP' es un ANCLAJE: la celda no se puede
+  # cargar hasta que se separe en el workbook, asi que sale nombrada con su hoja y su
+  # fila en vez de cargarse a medias.
+  #
+  # '2MP S/A' y 'P50(CS) MPA' ya no estan aqui: sus erratas tienen alias en
+  # code_canonical, asi que la celda se parte en codigos buenos y el perfil los recibe.
+  - {from: Sectioning, regex: "^(POLE TRACK 14S|ANMP T A/S-DIAG)$", to: null}
+
+  # Celdas de ANCHORAGE que no llevan ningun codigo: solo la via ('TRACK 5') o solo la
+  # longitud de semitension ('278 287'). Sin esto se quedan en el catalogo como codigos,
+  # porque al quitarles lo que sobra no queda nada que partir.
+  - {from: Anchorage, regex: "^(TRACK \\d+|\\d+([.,]\\d+)?( \\d+([.,]\\d+)?)*)$", to: null}
+
 # --------------------------------------------------------------------------------
 # Derivacion de las relaciones @ManyToOne obligatorias hacia los catalogos *Type.
 # El BOQ no trae el tipo, asi que se deduce del prefijo del codigo. Las reglas se
@@ -294,6 +951,9 @@ code_reassignment:
 # --------------------------------------------------------------------------------
 type_rules:
   Foundation:
+    # M3 Ø36, M5 Ø42... : cimentacion de poste con pernos metricos. Familia propia:
+    # ninguna de las estructurales (CX, WX, WTX, WDX, PLX) describe un anclaje asi.
+    - {regex: "^M[0-9]+ *\u00d8", type: MX}
     - {suffix: "_L", type: CXR_L}
     - {prefix: ["WT", "2WT"], type: WTX}
     - {prefix: ["WD", "2WD"], type: WDX}
@@ -316,6 +976,7 @@ type_rules:
 # sueltos). Clave = codigo en MAYUSCULAS.
 type_overrides:
   Foundation:
+    UNIQUE SOLUTION: USX
     T-SIGN FOUND.: CX
     T-SIGN FOUND: CX
     P8R: CX
@@ -323,6 +984,7 @@ type_overrides:
     P9R: CX
     P9RT: CX
   AnchorageFoundation:
+    UNIQUE SOLUTION: AnUS
     PL*: AnM
     WT3: AnM
 
@@ -331,6 +993,8 @@ type_overrides:
 type_catalog:
   FoundationType:
     CX: Pole foundation Type CX
+    USX: Unique solution - bespoke foundation supplied separately
+    MX: Pole foundation with metric anchor bolts
     CXR_L: Pole foundation Type CX in L
     PLX: Base for pole in viaduct
     WX: Base for pole in Lateral wall
@@ -344,6 +1008,7 @@ type_catalog:
     GANTRY: Gantry
   AnchorageFoundationType:
     AnMC: Messenger and contact wire anchorage foundation
+    AnUS: Unique solution - bespoke anchorage foundation supplied separately
     AnM: Return, Feeder and Midpoint anchorage foundation
 
 # Entidades que llevan columna drawing_number en la entidad JPA.

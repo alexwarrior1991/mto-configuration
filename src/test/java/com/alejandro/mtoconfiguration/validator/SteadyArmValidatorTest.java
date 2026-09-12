@@ -26,12 +26,22 @@ class SteadyArmValidatorTest {
     }
 
     @Test
-    void exigeLosCamposPropios() {
+    void exigeElTipoDeBrazo() {
         List<Alert> alerts = validator.validateBeforeSave(new SteadyArmDTO());
 
-        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "length");
         assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "steadyArmType");
         assertAllDanger(alerts);
+    }
+
+    @Test
+    @DisplayName("la longitud es opcional: 5.691 brazos del origen solo traen el tipo")
+    void noExigeLaLongitud() {
+        // No es un dato que falte por descuido: no se conoce. Exigirlo obligaba a
+        // elegir entre tirar el tipo o inventarse un numero.
+        SteadyArmDTO dto = ValidDtos.existingSteadyArm();
+        dto.setLength(null);
+
+        assertNoErrors(validator.validateBeforeSave(dto));
     }
 
     @Test

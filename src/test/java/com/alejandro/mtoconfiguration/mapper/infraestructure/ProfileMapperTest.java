@@ -4,16 +4,25 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
+import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
 import com.alejandro.mtoconfiguration.entity.lov.PoleType;
 import com.alejandro.mtoconfiguration.entity.lov.ProfileStatus;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.PoleTypeDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.junit.jupiter.api.BeforeEach;
+import com.alejandro.mtoconfiguration.entity.lov.SupportType;
+import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.SupportTypeDTO;
+import java.util.LinkedHashSet;
+import com.alejandro.mtoconfiguration.entity.lov.Anchorage;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -103,6 +112,41 @@ class ProfileMapperTest {
             assertThat(mapper.toEntity(null)).isNull();
             assertThat(mapper.toDTO(null)).isNull();
         }
+
+        @Test
+        @DisplayName("los cuatro campos tecnicos viajan en los dos sentidos sin transformacion")
+        void camposTecnicos() {
+            ProfileDTO dto = dto();
+            dto.setSpan(new BigDecimal("47.970"));
+            dto.setHeightCantileverSupport(new BigDecimal("200"));
+            dto.setPoleGaugeLocation(new BigDecimal("1475"));
+            dto.setRailPoleDistance(new BigDecimal("-4960"));
+
+            Profile entity = mapper.toEntity(dto);
+
+            assertThat(entity.getSpan()).isEqualByComparingTo("47.970");
+            assertThat(entity.getHeightCantileverSupport()).isEqualByComparingTo("200");
+            assertThat(entity.getPoleGaugeLocation()).isEqualByComparingTo("1475");
+            assertThat(entity.getRailPoleDistance()).isEqualByComparingTo("-4960");
+
+            ProfileDTO back = mapper.toDTO(entity);
+
+            assertThat(back.getSpan()).isEqualByComparingTo("47.970");
+            assertThat(back.getHeightCantileverSupport()).isEqualByComparingTo("200");
+            assertThat(back.getPoleGaugeLocation()).isEqualByComparingTo("1475");
+            assertThat(back.getRailPoleDistance()).isEqualByComparingTo("-4960");
+        }
+
+        @Test
+        @DisplayName("los campos tecnicos son opcionales: sin ellos el perfil se mapea igual")
+        void camposTecnicosAusentes() {
+            Profile entity = mapper.toEntity(dto());
+
+            assertThat(entity.getSpan()).isNull();
+            assertThat(entity.getHeightCantileverSupport()).isNull();
+            assertThat(entity.getPoleGaugeLocation()).isNull();
+            assertThat(entity.getRailPoleDistance()).isNull();
+        }
     }
 
     @Nested
@@ -149,6 +193,177 @@ class ProfileMapperTest {
     @DisplayName("Listas de valores")
     class ListasDeValores {
 
+        /**
+         * El tipo de soporte es UNO, no una lista: en las 2.038 celdas medidas de la columna
+         * 'Supports' no hay ninguna con dos codigos. Se resuelve por codigo igual que las otras
+         * ocho LOV @ManyToOne del perfil.
+         */
+        @Test
+        @DisplayName("el tipo de soporte se resuelve por codigo en los dos sentidos")
+        void tipoDeSoporte() {
+            SupportType s1 = new SupportType();
+            s1.setId(7L);
+            s1.setCode("S1");
+            when(masterDataService.getSupportTypeByCode("S1")).thenReturn(s1);
+
+            ProfileDTO dto = dto();
+            SupportTypeDTO codigo = new SupportTypeDTO();
+            codigo.setCode("S1");
+            dto.setSupportType(codigo);
+
+            Profile entity = mapper.toEntity(dto);
+            assertThat(entity.getSupportType()).isSameAs(s1);
+
+            SupportTypeDTO enriquecido = new SupportTypeDTO();
+            enriquecido.setId(7L);
+            enriquecido.setCode("S1");
+            when(masterDataService.getSupportTypeByIdAndMapToDTO(7L)).thenReturn(enriquecido);
+            assertThat(mapper.toDTO(entity).getSupportType()).isSameAs(enriquecido);
+        }
+
+        @Test
+        @DisplayName("sin tipo de soporte el perfil entra igual: la columna es opcional")
+        void tipoDeSoporteAusente() {
+            ProfileDTO dto = dto();
+            dto.setSupportType(null);
+
+            assertThat(mapper.toEntity(dto).getSupportType()).isNull();
+        }
+
+        /**
+         * Un perfil puede llevar VARIOS seccionamientos: 'A/S P50' son dos, y es corriente en
+         * estaciones. Antes cabia uno solo, asi que la segunda mitad se perdia.
+         */
+        @Test
+        @DisplayName("los seccionamientos se resuelven todos, no solo el primero")
+        void variosSeccionamientos() {
+            Sectioning as = new Sectioning();
+            as.setId(1L);
+            as.setCode("A/S");
+            Sectioning p50 = new Sectioning();
+            p50.setId(2L);
+            p50.setCode("P50(CS)");
+            when(masterDataService.getSectioningByCode("A/S")).thenReturn(as);
+            when(masterDataService.getSectioningByCode("P50(CS)")).thenReturn(p50);
+
+            ProfileDTO dto = dto();
+            dto.setSectionings(List.of(sectioningDto("A/S"), sectioningDto("P50(CS)")));
+
+            Profile entity = mapper.toEntity(dto);
+
+            assertThat(entity.getSectionings()).containsExactly(as, p50);
+        }
+
+        @Test
+        @DisplayName("mandar la lista REEMPLAZA los seccionamientos, no los suma")
+        void laListaReemplaza() {
+            Sectioning nuevo = new Sectioning();
+            nuevo.setId(3L);
+            nuevo.setCode("S/A");
+            when(masterDataService.getSectioningByCode("S/A")).thenReturn(nuevo);
+
+            Profile entity = new Profile();
+            Sectioning viejo = new Sectioning();
+            viejo.setId(9L);
+            viejo.setCode("VIEJO");
+            entity.setSectionings(new LinkedHashSet<>(List.of(viejo)));
+
+            ProfileDTO dto = dto();
+            dto.setSectionings(List.of(sectioningDto("S/A")));
+            mapper.updateEntityFromDTO(dto, entity);
+
+            assertThat(entity.getSectionings()).containsExactly(nuevo);
+        }
+
+        @Test
+        @DisplayName("una lista vacia deja el perfil sin seccionamientos")
+        void listaVacia() {
+            ProfileDTO dto = dto();
+            dto.setSectionings(List.of());
+
+            assertThat(mapper.toEntity(dto).getSectionings()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("un codigo que el catalogo no tiene no se inventa: se queda fuera")
+        void codigoDesconocidoNoSeInventa() {
+            Sectioning as = new Sectioning();
+            as.setId(1L);
+            as.setCode("A/S");
+            when(masterDataService.getSectioningByCode("A/S")).thenReturn(as);
+            when(masterDataService.getSectioningByCode("NO-EXISTE")).thenReturn(null);
+
+            ProfileDTO dto = dto();
+            dto.setSectionings(List.of(sectioningDto("A/S"), sectioningDto("NO-EXISTE")));
+
+            assertThat(mapper.toEntity(dto).getSectionings()).containsExactly(as);
+        }
+
+        @Test
+        @DisplayName("de vuelta al DTO salen todos, enriquecidos por id")
+        void deVueltaSalenTodos() {
+            Sectioning as = new Sectioning();
+            as.setId(1L);
+            Sectioning p50 = new Sectioning();
+            p50.setId(2L);
+            SectioningDTO asDto = sectioningDto("A/S");
+            SectioningDTO p50Dto = sectioningDto("P50(CS)");
+            when(masterDataService.getSectioningByIdAndMapToDTO(1L)).thenReturn(asDto);
+            when(masterDataService.getSectioningByIdAndMapToDTO(2L)).thenReturn(p50Dto);
+
+            Profile entity = new Profile();
+            entity.setSectionings(new LinkedHashSet<>(List.of(as, p50)));
+
+            assertThat(mapper.toDTO(entity).getSectionings()).containsExactly(asDto, p50Dto);
+        }
+
+        /**
+         * Mismo caso que los seccionamientos, con otra razon: 'FP+AnMC CP+AnMC' es un anclaje
+         * de catenaria CON regulacion de tension y otro SIN ella en el mismo perfil.
+         */
+        @Test
+        @DisplayName("los anclajes se resuelven todos, no solo el primero")
+        void variosAnclajes() {
+            Anchorage con = new Anchorage();
+            con.setId(1L);
+            con.setCode("CP+AnMC");
+            Anchorage sin = new Anchorage();
+            sin.setId(2L);
+            sin.setCode("FP+AnMC");
+            when(masterDataService.getAnchorageByCode("CP+AnMC")).thenReturn(con);
+            when(masterDataService.getAnchorageByCode("FP+AnMC")).thenReturn(sin);
+
+            ProfileDTO dto = dto();
+            AnchorageDTO conDto = new AnchorageDTO();
+            conDto.setCode("CP+AnMC");
+            AnchorageDTO sinDto = new AnchorageDTO();
+            sinDto.setCode("FP+AnMC");
+            dto.setAnchorages(List.of(conDto, sinDto));
+
+            assertThat(mapper.toEntity(dto).getAnchorages()).containsExactly(con, sin);
+        }
+
+        @Test
+        @DisplayName("de vuelta al DTO salen todos los anclajes")
+        void anclajesDeVuelta() {
+            Anchorage uno = new Anchorage();
+            uno.setId(1L);
+            AnchorageDTO unoDto = new AnchorageDTO();
+            unoDto.setCode("CP+AnMC");
+            when(masterDataService.getAnchorageByIdAndMapToDTO(1L)).thenReturn(unoDto);
+
+            Profile entity = new Profile();
+            entity.setAnchorages(new LinkedHashSet<>(List.of(uno)));
+
+            assertThat(mapper.toDTO(entity).getAnchorages()).containsExactly(unoDto);
+        }
+
+        private SectioningDTO sectioningDto(String code) {
+            SectioningDTO dto = new SectioningDTO();
+            dto.setCode(code);
+            return dto;
+        }
+
         @Test
         @DisplayName("cada LOV se resuelve contra el catalogo por su codigo")
         void resolucionPorCodigo() {
@@ -183,8 +398,71 @@ class ProfileMapperTest {
 
             assertThat(entity.getPoleType()).isNull();
             assertThat(entity.getProfileStatus()).isNull();
-            assertThat(entity.getAnchorage()).isNull();
+            assertThat(entity.getAnchorages()).isEmpty();
+            assertThat(entity.getSectioningFeedings()).isEmpty();
             verifyNoInteractions(masterDataService);
+        }
+
+        /**
+         * Tercera y ultima N:M. 'Disc SECT-I' es un disconnector MAS un aislador de seccion:
+         * quedarse con el primero tiraba el segundo sin que nadie se enterara.
+         */
+        @Test
+        @DisplayName("un perfil puede llevar dos aparatos de seccionamiento")
+        void dosAparatosDeSeccionamiento() {
+            DisconnectorFunction disc = new DisconnectorFunction();
+            disc.setId(1L);
+            disc.setCode("Disc");
+            DisconnectorFunction sect = new DisconnectorFunction();
+            sect.setId(2L);
+            sect.setCode("SECT-I");
+            when(masterDataService.getDisconnectorFunctionByCode("Disc")).thenReturn(disc);
+            when(masterDataService.getDisconnectorFunctionByCode("SECT-I")).thenReturn(sect);
+
+            DisconnectorFunctionDTO discDto = new DisconnectorFunctionDTO();
+            discDto.setCode("Disc");
+            DisconnectorFunctionDTO sectDto = new DisconnectorFunctionDTO();
+            sectDto.setCode("SECT-I");
+            ProfileDTO dto = dto();
+            dto.setSectioningFeedings(List.of(discDto, sectDto));
+
+            assertThat(mapper.toEntity(dto).getSectioningFeedings()).containsExactly(disc, sect);
+        }
+
+        @Test
+        @DisplayName("sectioningFeeding se resuelve contra el catalogo DisconnectorFunction, que es el que usa")
+        void sectioningFeedingPorCodigo() {
+            DisconnectorFunction feeding = new DisconnectorFunction();
+            feeding.setId(7L);
+            feeding.setCode("Disc/IO");
+            when(masterDataService.getDisconnectorFunctionByCode("Disc/IO")).thenReturn(feeding);
+
+            ProfileDTO dto = dto();
+            DisconnectorFunctionDTO feedingDto = new DisconnectorFunctionDTO();
+            feedingDto.setCode("Disc/IO");
+            dto.setSectioningFeedings(List.of(feedingDto));
+
+            assertThat(mapper.toEntity(dto).getSectioningFeedings()).containsExactly(feeding);
+        }
+
+        @Test
+        @DisplayName("de entidad a DTO, sectioningFeeding tambien se enriquece por id")
+        void sectioningFeedingDeVuelta() {
+            DisconnectorFunctionDTO oficial = new DisconnectorFunctionDTO();
+            oficial.setId(7L);
+            oficial.setCode("Disc/IO");
+            oficial.setDescription("Insulated Overlap disconnector");
+            when(masterDataService.getDisconnectorFunctionByIdAndMapToDTO(7L)).thenReturn(oficial);
+
+            DisconnectorFunction feeding = new DisconnectorFunction();
+            feeding.setId(7L);
+            feeding.setCode("Disc/IO");
+
+            Profile entity = new Profile();
+            entity.setProfileId("P-001");
+            entity.setSectioningFeedings(new LinkedHashSet<>(List.of(feeding)));
+
+            assertThat(mapper.toDTO(entity).getSectioningFeedings()).containsExactly(oficial);
         }
 
         @Test

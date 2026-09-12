@@ -97,6 +97,12 @@ public interface AsyncJobRepository extends JpaRepository<AsyncJob, UUID> {
 
         UUID getId();
 
+        /**
+         * Hace falta para saber DE QUE directorio hay que borrar: una exportacion deja su CSV en
+         * uno y cada importacion su informe en otro.
+         */
+        JobType getType();
+
         String getFileName();
 
         Instant getCreatedAt();

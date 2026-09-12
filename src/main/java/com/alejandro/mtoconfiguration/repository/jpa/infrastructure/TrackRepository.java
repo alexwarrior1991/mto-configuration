@@ -8,11 +8,34 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface TrackRepository extends CRUDRepository<Track>,
         MessagingEntityGraphRepository<Track> {
+
+    /**
+     * Busqueda por la clave natural, para el find-or-create del importador.
+     *
+     * <p>Ignora mayusculas porque el origen no es consistente ({@code HR TRACK 3 HAD} y
+     * {@code HR Track 3 BIN} conviven en el mismo workbook) y porque es lo que indexa
+     * {@code ux_track_ep_name} (V12). El borrado logico lo filtra la
+     * {@code @SQLRestriction} de {@code CRUDEntity}, igual que ese indice parcial.
+     */
+    Optional<Track> findByExecutionPackageIdAndNameIgnoreCase(Long executionPackageId, String name);
+
+    /**
+     * Las estaciones que atraviesa la via, como ids y sin inicializar la coleccion.
+     *
+     * <p>Mismo motivo que {@code ExecutionPackageRepository.findCompanyIdById}: la N:M es
+     * {@code LAZY} y quien compara la via con el maestro trabaja fuera de transaccion, con la
+     * entidad ya detached.
+     */
+    @Query("select s.id from Track t join t.stations s where t.id = :id")
+    List<Long> findStationIdsById(@Param("id") Long id);
+
+    List<Track> findByExecutionPackageId(Long executionPackageId);
 
     /**
      * {@code profiles.disconnector} no lo pide TrackMasterDataPayloadMapper, lo impone
@@ -23,11 +46,18 @@ public interface TrackRepository extends CRUDRepository<Track>,
      * <p>
      * Es un join a-uno colgando de profiles, no una segunda coleccion: no multiplica
      * filas.
+     * <p>
+     * {@code stations} SI entra desde V17, y multiplica las filas del resultado —una via de
+     * 200 perfiles en 3 estaciones devuelve 600— porque no hay alternativa: hasta V17 la
+     * estacion era un {@code @ManyToOne} del que el mapper solo leia el id, y el id de un
+     * proxy se lee sin inicializarlo. Ahora es una coleccion, y una coleccion perezosa sobre
+     * la entidad ya desatachada revienta con LazyInitializationException al publicar el
+     * evento. 600 filas en una consulta es un precio pequeño al lado de eso.
      */
     @Override
     @EntityGraph(attributePaths = {
             "executionPackage",
-            "station",
+            "stations",
             "profiles",
             "profiles.disconnector"
     })

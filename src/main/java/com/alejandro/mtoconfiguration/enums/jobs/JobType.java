@@ -29,7 +29,17 @@ public enum JobType {
      * sobre las tablas LOV. Compartir cupo con las cargas de perfiles es deliberado,
      * ya que ambas compiten por las mismas conexiones y por la invalidacion de cache.
      */
-    LOV_IMPORT(JobSlotGroup.BULK);
+    LOV_IMPORT(JobSlotGroup.BULK),
+
+    /**
+     * Carga del maestro de infraestructura desde {@code profile-master.xlsx}: paquetes,
+     * estaciones, vias, perfiles y mensulas.
+     *
+     * <p>Mismo cupo que las demas cargas masivas, y por el mismo motivo: es una rafaga de
+     * escrituras que compite por las mismas conexiones. Ademas escribe sobre las tablas
+     * que exporta {@code PROFILE_EXPORT}, asi que solaparlas no interesa.
+     */
+    PROFILE_IMPORT(JobSlotGroup.BULK);
 
     private final JobSlotGroup slotGroup;
 

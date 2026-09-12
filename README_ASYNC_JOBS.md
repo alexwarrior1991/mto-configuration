@@ -38,11 +38,59 @@ Prefijo: `ConfigurationApiPaths.BASE_PATH + "/profiles/jobs"` → `/api/v1/confi
 | POST | `/export?trackId=123&mapperType=basic` | `CONFIG_READ` | 202 · 429 |
 | POST | `/bulk-create` | `CONFIG_IMPORT` | 202 · 400 · 429 |
 | POST | `/bulk-update` | `CONFIG_IMPORT` | 202 · 400 · 429 |
+| POST | `/import?dryRun=false` (multipart, campo `file`) | `CONFIG_IMPORT` | 202 · 400 · 429 |
 | GET | `/{jobId}` | `CONFIG_READ` | 200 · 404 |
 | GET | `/{jobId}/file` | `CONFIG_READ` | 200 · 404 · 409 · 410 |
 
 `mapperType`: `basic` (por defecto), `default`, `technical`. Un valor desconocido cae en `basic`,
 igual que hacía el endpoint antiguo.
+
+### Importación del maestro de infraestructura
+
+`POST /profiles/jobs/import` carga `data/profile-master.xlsx` (ver `data/README.md`): paquetes de
+ejecución, estaciones, vías, perfiles y ménsulas, **en ese orden**, porque cada nivel necesita el
+identificador del anterior.
+
+Cada entidad se da de alta o se actualiza **por su clave natural** —`execution_package(name)`,
+`station(paquete, name)`, `track(paquete, name)`, `profile(vía, profileId)`—, apoyándose en los
+índices únicos parciales que añade `V12`. Reimportar el mismo maestro no crea nada: eso es lo que
+hace que la carga se pueda repetir sin miedo.
+
+Solo se cargan las filas marcadas `ENABLED=SI`. Con `dryRun=true` no se escribe nada y el informe
+sale con **los mismos recuentos** que la carga real, que es lo único que hace útil una simulación:
+poder comparar lo que dijo con lo que después hizo.
+
+Tres cosas que conviene saber:
+
+- **Las ménsulas no son una entidad más del informe.** Viajan dentro de su perfil y comparten su
+  transacción, así que se cuentan aparte (`cantileversWritten`) en lugar de fingir que se pueden
+  crear sueltas. Se reconcilian por su `SLOT` contra las que ya existen, ordenadas por id: sin eso,
+  cada reimport las borraría y las volvería a insertar, perdiendo sus identificadores y su
+  histórico de auditoría.
+- **Si falla un padre, sus hijos no se intentan.** Se cuentan como error una sola vez y con el
+  motivo real («su paquete EP6 no se ha podido cargar»), en lugar de repetir mil violaciones de
+  clave ajena que solo dicen que algo fue mal más arriba.
+- **El importador va entidad a entidad, nunca por el árbol entero.** Un `PUT` del paquete con sus
+  vías y perfiles sería una línea de código y una bomba: en la reconciliación de colecciones
+  (`README_API.md` §4) **el hijo que no mandas se borra**, así que un maestro al que le faltase una
+  vía la borraría con todos sus perfiles y ménsulas.
+- **Lo que no ha cambiado no se reescribe, y el informe lo dice.** Paquete, estación y vía se
+  comparan contra lo que ya hay antes de tocarlas, y salen como `unchanged` cuando coinciden. No es
+  contabilidad decorativa: `BaseService.update` termina volcando la entidad entera en el DTO, y los
+  DTO de infraestructura anidan el árbol completo (`ExecutionPackageDTO → tracks[], stations[]`,
+  `TrackDTO → profiles[] → cantilevers[]`), de modo que modificar **un** paquete materializa su
+  subárbol entero. Con la base vacía no cuesta nada —se crea sin hijos—, pero con los 11.714
+  perfiles ya dentro cada uno de los 11 paquetes arrastra los suyos, y luego otra vez cada estación
+  y cada vía: medido en local, la primera carga hizo 11.938 elementos en 16 minutos y la segunda
+  iba a 5 por minuto. El perfil **sí** pasa siempre por `update`, a propósito: no anida más que sus
+  ménsulas, así que su escritura ya es proporcional, mientras que compararlo obligaría a mirar seis
+  listas de valores, tres colecciones y las ménsulas con sus brazos once mil veces. Ante la duda se
+  escribe: un falso «sin cambios» sería una corrección del workbook que no llega a la tabla y nadie
+  lo nota.
+
+El informe descargable en `/{jobId}/file` es JSON y está disponible **también cuando el trabajo
+termina con errores por fila**: su fichero *es* el informe de esos errores, y negarlo justo entonces
+dejaría al cliente sin lo único que le dice qué fila falló.
 
 ### Importación del catálogo maestro de LOVs
 
@@ -127,7 +175,10 @@ una ruta que ya no existe.
 | El trabajo no produce fichero (carga masiva) | 404 | no hay recurso |
 | El trabajo no está `COMPLETED` | **409** | el recurso existe y la petición es legítima; falta esperar. Un 404 mandaría al cliente a buscar un error en su identificador |
 | El fichero ya no está | **410** | existió y no está. Un 404 sugiere reintentar; un 410 dice que hay que relanzar la exportación |
-| Todo bien | 200 | `text/csv`, `Content-Disposition: attachment` |
+| Todo bien | 200 | `text/csv` en una exportación, `application/json` en una importación; `Content-Disposition: attachment` |
+
+Una **importación** admite además `COMPLETED_WITH_ERRORS`, y no por laxitud: su fichero es el
+informe de lo que pasó. Una exportación solo se sirve completa, porque un CSV a medias no es un CSV.
 
 ---
 
@@ -284,6 +335,7 @@ app:
       bulk-max-concurrency: 1    # APP_JOBS_PROFILE_BULK_MAX_CONCURRENCY  — de TODO el despliegue
       max-bulk-items: 50000
       export-directory: exports  # APP_JOBS_PROFILE_EXPORT_DIRECTORY
+      import-report-directory: profile-imports  # APP_JOBS_PROFILE_IMPORT_REPORT_DIRECTORY
       progress-flush-interval: 2s
       max-item-errors: 50
       max-item-error-message-length: 500
@@ -373,10 +425,11 @@ Cuatro decisiones que sostienen el resto:
 
 ## 10. Limitaciones conocidas
 
-- **Los CSV se escriben en disco local.** Con varias réplicas, `export-directory` debe apuntar a
-  almacenamiento compartido; si no, la descarga responderá 410 cuando la sirva una réplica distinta
-  de la que generó el fichero. Es la limitación que queda con más filo: el cupo ya es de clúster,
-  pero el fichero no.
+- **Los ficheros se escriben en disco local.** Con varias réplicas, `export-directory`,
+  `import-report-directory` y `app.jobs.lov.report-directory` deben apuntar a almacenamiento
+  compartido; si no, la descarga responderá 410 cuando la sirva una réplica distinta de la que
+  generó el fichero. Es la limitación que queda con más filo: el cupo ya es de clúster, pero el
+  fichero no.
 - **No hay cancelación** de un trabajo en curso.
 - **`max-bulk-items` no protege de la memoria**, solo del trabajo inútil (ver §7).
 - **Un trabajo cuya réplica muere se pierde, no se reanuda.** Se cierra como `FAILED` y hay que

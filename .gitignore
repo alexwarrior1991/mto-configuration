@@ -38,3 +38,7 @@ build/
 
 # Informe agregado de fallos de tests (scripts/test-report.sh)
 test-failures.txt
+
+### Python (generador del catalogo maestro en data/tools) ###
+__pycache__/
+*.py[cod]

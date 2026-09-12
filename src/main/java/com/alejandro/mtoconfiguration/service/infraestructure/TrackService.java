@@ -100,7 +100,8 @@ public class TrackService extends CRUDService<TrackDTO, Track>
         // Filtros específicos usando applyCondition (heredado de BaseService)
         applyCondition(builder, filter.name(), qEntity.name::containsIgnoreCase);
         applyCondition(builder, filter.executionPackageName(), qEntity.executionPackage.name::containsIgnoreCase);
-        applyCondition(builder, filter.stationName(), qEntity.station.name::containsIgnoreCase);
+        applyCondition(builder, filter.stationName(),
+                name -> qEntity.stations.any().name.containsIgnoreCase(name));
 
         // Filtro por estado
         builder.and(qEntity.enabled.eq(filter.enabled()));
@@ -113,7 +114,7 @@ public class TrackService extends CRUDService<TrackDTO, Track>
                     searchBuilder.or(qEntity.name.containsIgnoreCase(text));
                     searchBuilder.or(qEntity.executionPackage.name.containsIgnoreCase(text));
                     // Nota: estación es opcional en la entidad Track
-                    searchBuilder.or(qEntity.station.name.containsIgnoreCase(text));
+                    searchBuilder.or(qEntity.stations.any().name.containsIgnoreCase(text));
 
                     builder.and(searchBuilder);
                 });
