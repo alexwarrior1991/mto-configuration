@@ -613,8 +613,8 @@ catálogo `SteadyArmType` solo tiene el tipo base. La regla es «sufijo numéric
 longitud», y necesita la lista `steady_arm_types` de `aliases.yml` porque `PH-C` y
 `PH-Q` son tipos que **también** llevan guion.
 
-De las 14.592 ménsulas: 4.085 traen tipo y longitud, 5.691 solo el tipo y 4.816 no
-traen brazo. **Que falte la longitud no es un error**: no se conoce, y por eso
+De las 14.461 ménsulas del maestro: 4.087 traen tipo y longitud, 5.691 solo el tipo y
+4.683 no traen brazo. **Que falte la longitud no es un error**: no se conoce, y por eso
 `steady_arm.length` es opcional.
 
 ## Qué se importa y qué no
