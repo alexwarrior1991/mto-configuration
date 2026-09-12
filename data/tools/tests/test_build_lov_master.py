@@ -257,6 +257,21 @@ class MaestroGenerado(unittest.TestCase):
                 for r in sheet.iter_rows(min_row=2, values_only=True)
                 if r and r[0] == "SteadyArmType"
             }
+            cls.portals = {
+                str(r[1]): r[index["ENABLED"]]
+                for r in sheet.iter_rows(min_row=2, values_only=True)
+                if r and r[0] == "Portal"
+            }
+            cls.foundations = {
+                str(r[1]): r[index["ENABLED"]]
+                for r in sheet.iter_rows(min_row=2, values_only=True)
+                if r and r[0] == "Foundation"
+            }
+            cls.sectionings = {
+                str(r[1]): r[index["ENABLED"]]
+                for r in sheet.iter_rows(min_row=2, values_only=True)
+                if r and r[0] == "Sectioning"
+            }
             cls.foundation_types = {
                 str(r[1]): r[3]
                 for r in wb["TIPOS"].iter_rows(min_row=2, values_only=True)
@@ -284,6 +299,44 @@ class MaestroGenerado(unittest.TestCase):
             self.assertEqual(self.feeding.get(code), "SI", code)
         for grafia in ("FW25", "FW+25", "F-25", "2-25FW"):
             self.assertNotIn(grafia, self.feeding, grafia)
+
+    def test_las_erratas_de_portico_se_funden_con_el_codigo_bueno(self):
+        """'S1PR' y '2PRD' son 'SP1R' y '2PR1D' con las cifras bailadas.
+
+        Se corrigen con un alias y no dandolos de alta: un portico nuevo por cada forma de
+        teclear mal el mismo es como el catalogo llego a tener 45 anclajes de los que 17
+        no existian.
+        """
+        self.assertEqual(self.portals.get("SP1R"), "SI")
+        self.assertEqual(self.portals.get("2PR1D"), "SI")
+        self.assertNotIn("S1PR", self.portals)
+        self.assertNotIn("2PRD", self.portals)
+
+    def test_la_cimentacion_p8_es_p8r(self):
+        """La P8 solo existe reforzada: 'P8' a secas es la R que falta."""
+        self.assertEqual(self.foundations.get("P8R"), "SI")
+        self.assertNotIn("P8", self.foundations)
+
+    def test_una_medida_no_entra_como_codigo_de_cimentacion(self):
+        """'Ø500*1700' es el diametro y la profundidad de la zapata, no un tipo.
+
+        No se da de alta Y ademas se trata como hueco, para que deje de contarse como una
+        decision pendiente: no hay nada que decidir, no es un codigo.
+        """
+        self.assertNotIn("Ø500*1700", self.foundations)
+
+    def test_el_punto_fijo_doble_y_su_errata_son_el_codigo_MP(self):
+        """'2MP' son dos puntos fijos MP y 'MPA' es 'MP' mal tecleado.
+
+        Ninguno de los dos entra como codigo propio. Que los DOS puntos fijos de '2MP' se
+        guarden como uno es consecuencia de que el seccionamiento sea un Set, y el Set es
+        deliberado: el orden y la repeticion no significan nada en ese campo.
+        """
+        self.assertEqual(self.sectionings.get("MP"), "SI")
+        self.assertNotIn("2MP", self.sectionings)
+        self.assertNotIn("MPA", self.sectionings)
+        self.assertNotIn("2MP S/A", self.sectionings)
+        self.assertNotIn("P50(CS) MPA", self.sectionings)
 
     def test_las_variantes_nz_se_han_fundido_con_ns(self):
         self.assertNotIn("LoadB/NZ", self.feeding)

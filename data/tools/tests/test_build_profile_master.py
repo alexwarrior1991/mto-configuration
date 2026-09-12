@@ -532,22 +532,22 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         # colarse en el catalogo como el codigo 'TRACK 5', que es lo que hacia antes.
         ('codigo sin Anchorage habilitado', 'TRACK 5'),
 
-        # Codigos de otros catalogos que el origen escribe en su columna y que nadie ha
-        # decidido todavia: habilitarlos o descartarlos. La fila entra igual, sin ese valor.
+        # Codigos de otros catalogos que el origen escribe en la columna equivocada. Se
+        # corrigen en el workbook: reencaminarlos aqui recuperaria el valor, pero dejaria
+        # el Excel mal Y sin aviso. La fila entra igual, sin ese valor.
+        #   'FP' es un anclaje y 'PHQ-1150' un brazo, los dos en 'Sectioning Feeding'.
+        #   'MP-ISusp' es una suspension aislada —un SOPORTE— escrita en 'Portals'.
+        #   'RW2 RW2T-C' son dos soportes de retorno en una celda, y la columna admite uno.
         ('codigo sin DisconnectorFunction habilitado', 'FP'),
         ('codigo sin DisconnectorFunction habilitado', 'PHQ-1150'),
-        ('codigo sin Foundation habilitado', 'P8'),
-        ('codigo sin Foundation habilitado', 'Ø500*1700'),
-        ('codigo sin Portal habilitado', '2PRD'),
         ('codigo sin Portal habilitado', 'MP-ISusp'),
-        ('codigo sin Portal habilitado', 'S1PR'),
         ('codigo sin ReturnSupport habilitado', 'RW2 RW2T-C'),
 
         # Seccionamiento. Casi todos son codigos de ANCHORAGE escritos en la columna
         # SECTIONNING: la leyenda declara AnRW (Return Anchor), AnFW (Feeder Anchor) e IO
         # (Insulated Overlap) en el otro catalogo. Se corrigen en el workbook, no aqui.
-        # 'POLE TRACK 14S' es una anotacion; '2MP', 'T' y 'MPA' son erratas sin identificar.
-        ('codigo sin Sectioning habilitado', '2MP S/A'),
+        # 'POLE TRACK 14S' es una anotacion y la 'T' de 'AnMP T A/S-Diag' no es nada, pero
+        # 'AnMP' si es un anclaje, asi que esa celda tampoco se puede cargar entera.
         ('codigo sin Sectioning habilitado', 'A/S-Diag AnRW'),
         ('codigo sin Sectioning habilitado', 'AnFW AnFW'),
         ('codigo sin Sectioning habilitado', 'AnMP AnRw'),
@@ -557,7 +557,6 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         ('codigo sin Sectioning habilitado', 'AnRW2'),
         ('codigo sin Sectioning habilitado', 'IO'),
         ('codigo sin Sectioning habilitado', 'P120(Tg) S/A IO'),
-        ('codigo sin Sectioning habilitado', 'P50(CS) MPA'),
         ('codigo sin Sectioning habilitado', 'POLE TRACK 14S'),
         ('codigo sin Sectioning habilitado', 'S/A A/S AnRW1 AnRW2'),
         ('codigo sin Sectioning habilitado', 'S/A IO'),

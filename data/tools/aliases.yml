@@ -520,11 +520,21 @@ code_canonical:
     'A/S-Diang': A/S-Diag
     'A/S-Diag1': A/S-Diag
     'SA': S/A
+    # 'MPA' es 'MP' mal tecleado, y '2MP' son DOS puntos fijos MP. El seccionamiento del
+    # perfil es un Set, asi que los dos MP de '2MP S/A' se guardan como uno: la cantidad
+    # no cabe en el modelo, y el modelo esta bien como esta —que el orden y la repeticion
+    # no signifiquen nada es justo lo que hace que 'FP+AnMC CP+AnMC' sea el mismo par en
+    # cualquier orden—. Antes de esto la celda entera se descartaba y el perfil perdia
+    # TAMBIEN el 'S/A', que era bueno.
+    'MPA': MP
+    '2MP': MP
   AnchorageFoundation:
     'U.S.': UNIQUE SOLUTION
     'Unique Solution': UNIQUE SOLUTION
     'U.SOLUTION': UNIQUE SOLUTION
   Foundation:
+    # 'P8' es 'P8R' sin la R: la cimentacion P8 solo existe reforzada. Un solo uso.
+    'P8': P8R
     'Unique Solution': UNIQUE SOLUTION
     'Unique solution': UNIQUE SOLUTION
     'UnIque Solution': UNIQUE SOLUTION
@@ -533,6 +543,11 @@ code_canonical:
     'U. SOLUTION': UNIQUE SOLUTION
     'T-SING FOUND.': T-SIGN FOUND.
     'T-SIGN FOUND,': T-SIGN FOUND.
+  Portal:
+    # Dos erratas de porticos que si estan en el catalogo, las dos con las cifras y las
+    # letras bailadas: 'SP1R' tiene 39 usos y '2PR1D' 79.
+    'S1PR': SP1R
+    '2PRD': 2PR1D
   SupportType:
     # Una sola grafia por suspension aislada. Las variantes solo cambian el separador
     # o el orden de dos letras, y repartidas dejaban cada una por debajo del umbral
@@ -875,6 +890,11 @@ code_rejections:
   - CHECK
   - PENDIENTE
   - TIRANTE DE ANCLAJE      # descripcion escrita en la celda del codigo
+  # No es un marcador de "aqui no hay dato" como los de arriba, sino una MEDIDA escrita
+  # donde va el codigo: el diametro y la profundidad de la zapata. No se da de alta —una
+  # medida no es un tipo de cimentacion— y se trata como hueco para que deje de salir
+  # como codigo pendiente. 4 celdas, EP11B.
+  - Ø500*1700
 
 # --------------------------------------------------------------------------------
 # Reenrutado por codigo. Algunas categorias del BOQ son cajones de sastre y meten
@@ -910,9 +930,14 @@ code_reassignment:
   # NO_RECONOCIDO con su hoja y su fila —que es lo que hay que corregir, en el workbook—
   # en vez de cargarse como si fuera un seccionamiento.
   - {from: Sectioning, regex: "ANRW|ANFW|(^|\\s)IO($|\\s)", to: null}
-  # 'POLE TRACK 14S' es una anotacion, no un codigo. '2MP', 'T' y 'MPA' son erratas que
-  # nadie ha sabido identificar: la celda sale nombrada en vez de cargarse a medias.
-  - {from: Sectioning, regex: "^(POLE TRACK 14S|2MP S/A|ANMP T A/S-DIAG|P50\\(CS\\) MPA)$", to: null}
+  # 'POLE TRACK 14S' es una anotacion, no un codigo: hay que vaciar la celda. Y en
+  # 'AnMP T A/S-Diag' la 'T' no es nada, pero 'AnMP' es un ANCLAJE: la celda no se puede
+  # cargar hasta que se separe en el workbook, asi que sale nombrada con su hoja y su
+  # fila en vez de cargarse a medias.
+  #
+  # '2MP S/A' y 'P50(CS) MPA' ya no estan aqui: sus erratas tienen alias en
+  # code_canonical, asi que la celda se parte en codigos buenos y el perfil los recibe.
+  - {from: Sectioning, regex: "^(POLE TRACK 14S|ANMP T A/S-DIAG)$", to: null}
 
   # Celdas de ANCHORAGE que no llevan ningun codigo: solo la via ('TRACK 5') o solo la
   # longitud de semitension ('278 287'). Sin esto se quedan en el catalogo como codigos,

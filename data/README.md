@@ -145,9 +145,12 @@ regenera y se lleva por delante cualquier edición manual; en `aliases.yml` qued
 revisable en el PR.
 
 Lo que no está aceptado se queda con `ENABLED=NO` y `REVISAR=SI`, que es exactamente el estado
-«pendiente de decidir»: a la vista, sin romper la generación. Hoy quedan ahí 18 códigos repartidos
+«pendiente de decidir»: a la vista, sin romper la generación. Hoy quedan ahí 14 códigos repartidos
 entre `AnchorageFoundation`, `Foundation`, `Portal`, `ReturnSupport` y `SupportType`, y ninguno es
-una familia: son casos de uno en uno.
+una familia: son casos de uno en uno. **De esos 14, sólo uno le quita el valor a un perfil**
+(`MP-ISusp` en `Portal`); los otros trece están en filas que no son perfil —el cosechador recorre
+la columna entera, el generador de perfiles sólo lee filas de perfil—, así que decidirlos es
+limpieza de catálogo, no dato perdido.
 
 **Aceptar no es la única salida, ni siempre la correcta.** Un código que el origen escribe en la
 columna de otro catálogo no se acepta, se corrige en el workbook: dar de alta `B7` en `SupportType`
