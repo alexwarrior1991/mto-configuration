@@ -27,6 +27,10 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SupportTypeDTO;
 import com.alejandro.mtoconfiguration.model.commons.SLovDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SteadyArmTypeDTO;
+import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
+import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.BusinessEntityRepository;
@@ -48,11 +52,14 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Alta o modificacion de una entidad de infraestructura por su clave natural.
@@ -106,8 +113,7 @@ public class InfrastructureUpsertService {
     private static final String LOV_SEPARATOR = "\\|";
 
     public UpsertResult upsertExecutionPackage(ExecutionPackageMasterRow row, boolean dryRun) {
-        Optional<Long> existing = executionPackageRepository.findByNameIgnoreCase(row.name())
-                .map(entity -> entity.getId());
+        Optional<ExecutionPackage> existing = executionPackageRepository.findByNameIgnoreCase(row.name());
 
         ExecutionPackageDTO dto = new ExecutionPackageDTO();
         dto.setName(row.name());
@@ -125,14 +131,14 @@ public class InfrastructureUpsertService {
         dto.setStations(null);
         dto.setTracks(null);
 
-        return write(existing, dto, executionPackageService::create, executionPackageService::update,
-                dryRun);
+        return write(existing.map(entity -> entity.getId()), dto,
+                executionPackageService::create, executionPackageService::update,
+                existing.filter(entity -> sinCambios(entity, dto)).isPresent(), dryRun);
     }
 
     public UpsertResult upsertStation(StationMasterRow row, Long executionPackageId, boolean dryRun) {
-        Optional<Long> existing = stationRepository
-                .findByExecutionPackageIdAndNameIgnoreCase(executionPackageId, row.name())
-                .map(entity -> entity.getId());
+        Optional<Station> existing = stationRepository
+                .findByExecutionPackageIdAndNameIgnoreCase(executionPackageId, row.name());
 
         StationDTO dto = new StationDTO();
         dto.setName(row.name());
@@ -144,14 +150,15 @@ public class InfrastructureUpsertService {
         dto.setDisconnectors(null);
         dto.setSectionInsulators(null);
 
-        return write(existing, dto, stationService::create, stationService::update, dryRun);
+        return write(existing.map(entity -> entity.getId()), dto,
+                stationService::create, stationService::update,
+                existing.filter(entity -> sinCambios(entity, dto)).isPresent(), dryRun);
     }
 
     public UpsertResult upsertTrack(TrackMasterRow row, Long executionPackageId,
                                     List<Long> stationIds, boolean dryRun) {
-        Optional<Long> existing = trackRepository
-                .findByExecutionPackageIdAndNameIgnoreCase(executionPackageId, row.name())
-                .map(entity -> entity.getId());
+        Optional<Track> existing = trackRepository
+                .findByExecutionPackageIdAndNameIgnoreCase(executionPackageId, row.name());
 
         TrackDTO dto = new TrackDTO();
         dto.setName(row.name());
@@ -166,7 +173,9 @@ public class InfrastructureUpsertService {
         // antes de volver a crearlos.
         dto.setProfiles(null);
 
-        return write(existing, dto, trackService::create, trackService::update, dryRun);
+        return write(existing.map(entity -> entity.getId()), dto,
+                trackService::create, trackService::update,
+                existing.filter(entity -> sinCambios(entity, dto)).isPresent(), dryRun);
     }
 
     /** El KP de la fila como numero, o vacio si el origen no trajo uno utilizable. */
@@ -221,7 +230,9 @@ public class InfrastructureUpsertService {
                 existing.map(cantileverRepository::findIdsByProfileIdOrderByIdAsc)
                         .orElseGet(List::of)));
 
-        return write(existing, dto, profileService::create, profileService::update, dryRun);
+        // Un perfil NO se compara: ver la nota de sinCambios(). Su modificacion cuesta lo que
+        // cuesta el perfil y sus tres mensulas, que es lo que se puede pagar por fila.
+        return write(existing, dto, profileService::create, profileService::update, false, dryRun);
     }
 
     /**
@@ -445,9 +456,75 @@ public class InfrastructureUpsertService {
                                 + "de importar"));
     }
 
+    /**
+     * Nada que escribir: lo que trae el maestro es ya lo que hay en la tabla.
+     *
+     * <h2>Por que esto no es una optimizacion cosmetica</h2>
+     *
+     * <p>{@code BaseService.update} termina con un {@code updateDTOFromEntity(savedEntity, dto)},
+     * y los DTO de infraestructura anidan el arbol entero:
+     * {@code ExecutionPackageDTO -> tracks[], stations[]}, {@code StationDTO -> tracks[],
+     * disconnectors[], sectionInsulators[]}, {@code TrackDTO -> profiles[] -> cantilevers[]}.
+     * Modificar <b>un</b> paquete materializa por tanto su subarbol completo. Con la base vacia
+     * —la primera carga— eso no cuesta nada porque el paquete se crea sin hijos; con los 11.714
+     * perfiles ya dentro, cada uno de los 11 paquetes arrastra los suyos, y luego otra vez cada
+     * una de las 39 estaciones y cada una de las 174 vias. Medido contra el entorno local: la
+     * primera carga hizo 11.938 elementos en 16 minutos y la segunda iba por 5 elementos por
+     * minuto, o sea horas.
+     *
+     * <p>La comparacion se hace contra la entidad que YA trajo la busqueda por clave natural, asi
+     * que no cuesta ninguna consulta de mas salvo la coleccion de estaciones de una via, que es
+     * una por via.
+     *
+     * <h2>Por que el perfil no se compara</h2>
+     *
+     * <p>Un perfil no anida mas que sus mensulas, de modo que su modificacion cuesta lo que cuesta
+     * el, y no hay nada patologico que evitar. Compararlo, en cambio, obliga a mirar seis listas de
+     * valores de un solo valor, tres colecciones y las mensulas con sus brazos: una decena de
+     * consultas por perfil, once mil veces, para ahorrar una escritura que ya es proporcional. Y un
+     * falso «sin cambios» ahi es el peor fallo posible de un importador —una correccion del
+     * workbook que no llega a la tabla y nadie lo nota—, asi que ante la duda se escribe.
+     */
+    private static boolean sinCambios(ExecutionPackage entity, ExecutionPackageDTO dto) {
+        return Objects.equals(entity.getName(), dto.getName())
+                && Objects.equals(entity.getInitialPackage(), dto.getInitialPackage())
+                && Objects.equals(entity.getLength(), dto.getLength())
+                && Objects.equals(entity.getStartDate(), dto.getStartDate())
+                && Objects.equals(entity.getEndDate(), dto.getEndDate())
+                && entity.isEnabled() == dto.isEnabled()
+                && Objects.equals(idDe(entity.getCompany()), dto.getCompanyId());
+    }
+
+    /** El nombre es lo unico que el maestro dice de una estacion; el paquete ya lo fija la busqueda. */
+    private static boolean sinCambios(Station entity, StationDTO dto) {
+        return Objects.equals(entity.getName(), dto.getName());
+    }
+
+    /**
+     * Las estaciones de la via entran en la comparacion porque el maestro SI las manda.
+     *
+     * <p>Se comparan como conjunto y no como lista: {@code Track.stations} es un {@code Set} y su
+     * orden no significa nada, asi que una diferencia de orden no es un cambio.
+     */
+    private static boolean sinCambios(Track entity, TrackDTO dto) {
+        Set<Long> actuales = entity.getStations().stream()
+                .map(station -> station.getId())
+                .collect(Collectors.toSet());
+        Set<Long> nuevas = new HashSet<>(
+                dto.getStationIds() == null ? List.of() : dto.getStationIds());
+
+        return Objects.equals(entity.getName(), dto.getName())
+                && Objects.equals(entity.getEnabled(), dto.getEnabled())
+                && actuales.equals(nuevas);
+    }
+
+    private static Long idDe(BusinessEntity entity) {
+        return entity == null ? null : entity.getId();
+    }
+
     private <T extends BaseDTO> UpsertResult write(
             Optional<Long> existingId, T dto,
-            Function<T, T> create, Function<T, T> update, boolean dryRun) {
+            Function<T, T> create, Function<T, T> update, boolean unchanged, boolean dryRun) {
 
         if (existingId.isEmpty()) {
             if (dryRun) {
@@ -457,6 +534,12 @@ public class InfrastructureUpsertService {
         }
 
         Long id = existingId.get();
+        // Tambien en simulacion: el informe del dryRun tiene que poder diffearse contra el de la
+        // carga real, y si uno dijera "modificado" donde el otro dice "sin cambios" no serviria.
+        if (unchanged) {
+            return UpsertResult.unchanged(id);
+        }
+
         dto.setId(id);
         if (dryRun) {
             return UpsertResult.updated(id);
@@ -470,13 +553,27 @@ public class InfrastructureUpsertService {
      * <p>En simulacion el identificador de un alta es null: no se ha escrito nada, asi
      * que no hay id que dar. Los hijos de esa fila se cuentan igual pero no se escriben.
      */
-    public record UpsertResult(Long id, boolean created) {
+    public record UpsertResult(Long id, Outcome outcome) {
+
+        /** Alta, modificacion, o nada que hacer. */
+        public enum Outcome {
+            CREATED, UPDATED, UNCHANGED
+        }
+
         static UpsertResult created(Long id) {
-            return new UpsertResult(id, true);
+            return new UpsertResult(id, Outcome.CREATED);
         }
 
         static UpsertResult updated(Long id) {
-            return new UpsertResult(id, false);
+            return new UpsertResult(id, Outcome.UPDATED);
+        }
+
+        static UpsertResult unchanged(Long id) {
+            return new UpsertResult(id, Outcome.UNCHANGED);
+        }
+
+        public boolean created() {
+            return outcome == Outcome.CREATED;
         }
     }
 }

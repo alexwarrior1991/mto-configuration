@@ -64,13 +64,13 @@ class ProfileMasterImporterTest {
     void setUp() {
         importer = new ProfileMasterImporter(parser, upsertService);
         when(upsertService.upsertExecutionPackage(any(), anyBoolean()))
-                .thenReturn(new UpsertResult(1L, true));
+                .thenReturn(UpsertResult.created(1L));
         when(upsertService.upsertStation(any(), anyLong(), anyBoolean()))
-                .thenReturn(new UpsertResult(2L, true));
+                .thenReturn(UpsertResult.created(2L));
         when(upsertService.upsertTrack(any(), anyLong(), any(), anyBoolean()))
-                .thenReturn(new UpsertResult(3L, true));
+                .thenReturn(UpsertResult.created(3L));
         when(upsertService.upsertProfile(any(), anyLong(), any(), anyBoolean()))
-                .thenReturn(new UpsertResult(4L, true));
+                .thenReturn(UpsertResult.created(4L));
     }
 
     @Test
@@ -88,6 +88,41 @@ class ProfileMasterImporterTest {
         assertThat(report.outcomeOf(ProfileImportReport.TRACK).getCreated()).isEqualTo(1);
         assertThat(report.outcomeOf(ProfileImportReport.PROFILE).getCreated()).isEqualTo(1);
         assertThat(report.getCantileversWritten()).isEqualTo(1);
+        assertThat(report.getFailed()).isZero();
+    }
+
+    /**
+     * El informe distingue los tres estados, no solo alta y modificacion.
+     *
+     * <p>No es contabilidad decorativa: 'sin cambios' es lo que dice que una reimportacion no ha
+     * reescrito nada, y reescribir un paquete, una estacion o una via materializa su subarbol
+     * entero. Si el contador se quedara mudo, la unica senal de que la deteccion ha dejado de
+     * funcionar seria que la carga tarda horas.
+     */
+    @Test
+    @DisplayName("lo que no ha cambiado se cuenta aparte, ni como alta ni como modificacion")
+    void loQueNoHaCambiadoSeCuentaAparte() {
+        when(upsertService.upsertExecutionPackage(any(), anyBoolean()))
+                .thenReturn(UpsertResult.unchanged(1L));
+        when(upsertService.upsertStation(any(), anyLong(), anyBoolean()))
+                .thenReturn(UpsertResult.unchanged(2L));
+        when(upsertService.upsertTrack(any(), anyLong(), any(), anyBoolean()))
+                .thenReturn(UpsertResult.unchanged(3L));
+
+        givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                List.of(track("EP6", "TRACK 1", "HERZLIYA")),
+                List.of(profile("EP6", "TRACK 1", "83-1.02")),
+                List.of(cantilever("EP6", "TRACK 1", "83-1.02", 1)));
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        for (String entidad : List.of(ProfileImportReport.EXECUTION_PACKAGE,
+                ProfileImportReport.STATION, ProfileImportReport.TRACK)) {
+            assertThat(report.outcomeOf(entidad).getUnchanged()).as(entidad).isEqualTo(1);
+            assertThat(report.outcomeOf(entidad).getCreated()).as(entidad).isZero();
+            assertThat(report.outcomeOf(entidad).getUpdated()).as(entidad).isZero();
+        }
+        assertThat(report.getUnchanged()).isEqualTo(3);
         assertThat(report.getFailed()).isZero();
     }
 
@@ -112,7 +147,7 @@ class ProfileMasterImporterTest {
         // el test pasaria aunque el importador se quedara con una sola.
         AtomicLong siguiente = new AtomicLong(10);
         when(upsertService.upsertStation(any(), anyLong(), anyBoolean()))
-                .thenAnswer(invocation -> new UpsertResult(siguiente.getAndIncrement(), true));
+                .thenAnswer(invocation -> UpsertResult.created(siguiente.getAndIncrement()));
 
         givenMaster(List.of(ep("EP4")),
                 List.of(station("EP4", "ZIC"), station("EP4", "BIN"), station("EP4", "HAD")),
@@ -206,7 +241,7 @@ class ProfileMasterImporterTest {
     void unaFilaMalaNoDetieneElResto() {
         when(upsertService.upsertProfile(any(), anyLong(), any(), anyBoolean()))
                 .thenThrow(new IllegalStateException("boom"))
-                .thenReturn(new UpsertResult(9L, true));
+                .thenReturn(UpsertResult.created(9L));
 
         givenMaster(List.of(ep("EP6")), List.of(), List.of(track("EP6", "TRACK 1", "")),
                 List.of(profile("EP6", "TRACK 1", "A"), profile("EP6", "TRACK 1", "B")), List.of());

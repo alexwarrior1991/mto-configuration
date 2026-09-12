@@ -3,6 +3,10 @@ package com.alejandro.mtoconfiguration.service.infraestructure.imports;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
+import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
 import com.alejandro.mtoconfiguration.entity.lov.CantileverType;
 import com.alejandro.mtoconfiguration.entity.lov.PoleType;
@@ -45,8 +49,11 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -617,6 +624,267 @@ class InfrastructureUpsertServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("Reimportar lo que no ha cambiado")
+    class ReimportarLoQueNoHaCambiado {
+
+        /**
+         * Por que este bloque existe, y por que no es una optimizacion cosmetica.
+         *
+         * <p>{@code BaseService.update} termina volcando la entidad entera en el DTO, y los DTO
+         * de infraestructura anidan el arbol completo hasta las mensulas. Modificar UN paquete
+         * materializa por tanto sus 39 estaciones, sus 174 vias y sus 11.714 perfiles. Con la
+         * base vacia no se nota —el paquete se crea sin hijos—, asi que el fallo solo aparece al
+         * reimportar sobre datos ya cargados: medido en local, la primera carga hizo 11.938
+         * elementos en 16 minutos y la segunda iba a 5 por minuto.
+         *
+         * <p>De ahi que cada campo tenga su propio test: si la comparacion se pasa de lista, una
+         * correccion del workbook deja de llegar a la tabla y NADIE se entera. Ese es el fallo
+         * que estos metodos existen para impedir, y por eso hay uno por campo y no uno global.
+         */
+        @Test
+        @DisplayName("el paquete identico no se reescribe")
+        void elPaqueteIdenticoNoSeReescribe() {
+            when(businessEntityRepository.findByIdentificationNumber("B12345678"))
+                    .thenReturn(Optional.of(company(77L)));
+            when(executionPackageRepository.findByNameIgnoreCase("EP-06"))
+                    .thenReturn(Optional.of(paquete(77L)));
+
+            var resultado = service.upsertExecutionPackage(row("B12345678"), false);
+
+            assertThat(resultado.outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UNCHANGED);
+            assertThat(resultado.id()).isEqualTo(5L);
+            verify(executionPackageService, never()).update(any());
+            verify(executionPackageService, never()).create(any());
+        }
+
+        @Test
+        @DisplayName("cambiar la longitud si lo reescribe")
+        void laLongitudQueCambiaSeEscribe() {
+            ExecutionPackage existente = paquete(77L);
+            existente.setLength(999L);
+
+            assertThat(reimporta(existente).outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UPDATED);
+            verify(executionPackageService).update(any());
+        }
+
+        @Test
+        @DisplayName("cambiar una fecha si lo reescribe")
+        void laFechaQueCambiaSeEscribe() {
+            ExecutionPackage existente = paquete(77L);
+            existente.setEndDate(LocalDate.of(2021, 6, 30));
+
+            assertThat(reimporta(existente).outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UPDATED);
+        }
+
+        @Test
+        @DisplayName("cambiar si es el paquete inicial si lo reescribe")
+        void elPaqueteInicialQueCambiaSeEscribe() {
+            ExecutionPackage existente = paquete(77L);
+            existente.setInitialPackage(true);
+
+            assertThat(reimporta(existente).outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UPDATED);
+        }
+
+        @Test
+        @DisplayName("darlo de baja si lo reescribe")
+        void laBajaSeEscribe() {
+            ExecutionPackage existente = paquete(77L);
+            existente.setEnabled(false);
+
+            assertThat(reimporta(existente).outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UPDATED);
+        }
+
+        /**
+         * El NIF del maestro se traduce a un id, y es ESE id el que se compara: un paquete que
+         * cambia de empresa tiene que reescribirse aunque todo lo demas siga igual.
+         */
+        @Test
+        @DisplayName("cambiar de empresa si lo reescribe")
+        void laEmpresaQueCambiaSeEscribe() {
+            ExecutionPackage existente = paquete(88L);
+
+            assertThat(reimporta(existente).outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UPDATED);
+        }
+
+        /**
+         * Tambien en simulacion. El informe del dryRun se diffea contra el de la carga real, y
+         * si uno dijera 'modificado' donde el otro dice 'sin cambios' esa comparacion no valdria
+         * para nada.
+         */
+        @Test
+        @DisplayName("la simulacion tambien dice 'sin cambios'")
+        void laSimulacionTambienLoDetecta() {
+            when(businessEntityRepository.findByIdentificationNumber("B12345678"))
+                    .thenReturn(Optional.of(company(77L)));
+            when(executionPackageRepository.findByNameIgnoreCase("EP-06"))
+                    .thenReturn(Optional.of(paquete(77L)));
+
+            var resultado = service.upsertExecutionPackage(row("B12345678"), true);
+
+            assertThat(resultado.outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UNCHANGED);
+        }
+
+        @Test
+        @DisplayName("la estacion identica no se reescribe")
+        void laEstacionIdenticaNoSeReescribe() {
+            when(stationRepository.findByExecutionPackageIdAndNameIgnoreCase(5L, "HERZLIYA"))
+                    .thenReturn(Optional.of(estacion(9L, "HERZLIYA")));
+
+            var resultado = service.upsertStation(
+                    new StationMasterRow("EP6", "HERZLIYA", 3), 5L, false);
+
+            assertThat(resultado.outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UNCHANGED);
+            verify(stationService, never()).update(any());
+        }
+
+        /**
+         * La busqueda por clave natural ignora mayusculas, asi que 'Herzliya' encuentra la fila
+         * de 'HERZLIYA'. Pero el maestro manda el nombre tal cual, y un cambio de grafia SI es un
+         * cambio: sin esto, corregir la capitalizacion en el workbook no llegaria nunca a la tabla.
+         */
+        @Test
+        @DisplayName("cambiar solo las mayusculas del nombre si la reescribe")
+        void laEstacionQueCambiaDeGrafiaSeEscribe() {
+            when(stationRepository.findByExecutionPackageIdAndNameIgnoreCase(5L, "Herzliya"))
+                    .thenReturn(Optional.of(estacion(9L, "HERZLIYA")));
+            when(stationService.update(any())).thenAnswer(i -> i.getArgument(0));
+
+            var resultado = service.upsertStation(
+                    new StationMasterRow("EP6", "Herzliya", 3), 5L, false);
+
+            assertThat(resultado.outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UPDATED);
+        }
+
+        @Test
+        @DisplayName("la via identica no se reescribe")
+        void laViaIdenticaNoSeReescribe() {
+            when(trackRepository.findByExecutionPackageIdAndNameIgnoreCase(5L, "TRACK 1"))
+                    .thenReturn(Optional.of(via("TRACK 1", 9L, 10L)));
+
+            var resultado = service.upsertTrack(
+                    new TrackMasterRow("EP6", "TRACK 1", List.of("HER", "RIS"), true, 4),
+                    5L, List.of(9L, 10L), false);
+
+            assertThat(resultado.outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UNCHANGED);
+            verify(trackService, never()).update(any());
+        }
+
+        /**
+         * {@code Track.stations} es un {@code Set}: su orden no significa nada y no puede contar
+         * como cambio, o las 25 vias que atraviesan varias estaciones se reescribirian en cada
+         * pasada segun como las devolviera la consulta.
+         */
+        @Test
+        @DisplayName("el orden de las estaciones no es un cambio")
+        void elOrdenDeLasEstacionesNoEsUnCambio() {
+            when(trackRepository.findByExecutionPackageIdAndNameIgnoreCase(5L, "TRACK 1"))
+                    .thenReturn(Optional.of(via("TRACK 1", 10L, 9L)));
+
+            var resultado = service.upsertTrack(
+                    new TrackMasterRow("EP6", "TRACK 1", List.of("HER", "RIS"), true, 4),
+                    5L, List.of(9L, 10L), false);
+
+            assertThat(resultado.outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UNCHANGED);
+        }
+
+        @Test
+        @DisplayName("una via que gana una estacion si se reescribe")
+        void laViaQueGanaUnaEstacionSeEscribe() {
+            when(trackRepository.findByExecutionPackageIdAndNameIgnoreCase(5L, "TRACK 1"))
+                    .thenReturn(Optional.of(via("TRACK 1", 9L)));
+            when(trackService.update(any())).thenAnswer(i -> i.getArgument(0));
+
+            var resultado = service.upsertTrack(
+                    new TrackMasterRow("EP6", "TRACK 1", List.of("HER", "RIS"), true, 4),
+                    5L, List.of(9L, 10L), false);
+
+            assertThat(resultado.outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UPDATED);
+        }
+
+        @Test
+        @DisplayName("una via que pierde su estacion si se reescribe")
+        void laViaQuePierdeSuEstacionSeEscribe() {
+            when(trackRepository.findByExecutionPackageIdAndNameIgnoreCase(5L, "TRACK 1"))
+                    .thenReturn(Optional.of(via("TRACK 1", 9L)));
+            when(trackService.update(any())).thenAnswer(i -> i.getArgument(0));
+
+            var resultado = service.upsertTrack(
+                    new TrackMasterRow("EP6", "TRACK 1", List.of(), true, 4),
+                    5L, List.of(), false);
+
+            assertThat(resultado.outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UPDATED);
+        }
+
+        @Test
+        @DisplayName("dar de baja una via si la reescribe")
+        void laViaDadaDeBajaSeEscribe() {
+            Track existente = via("TRACK 1", 9L);
+            existente.setEnabled(false);
+            when(trackRepository.findByExecutionPackageIdAndNameIgnoreCase(5L, "TRACK 1"))
+                    .thenReturn(Optional.of(existente));
+            when(trackService.update(any())).thenAnswer(i -> i.getArgument(0));
+
+            var resultado = service.upsertTrack(
+                    new TrackMasterRow("EP6", "TRACK 1", List.of("HER"), true, 4),
+                    5L, List.of(9L), false);
+
+            assertThat(resultado.outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UPDATED);
+        }
+
+        /**
+         * El perfil se queda fuera de la comparacion A PROPOSITO: no anida mas que sus mensulas,
+         * asi que su modificacion ya cuesta lo que cuesta el, mientras que compararlo obliga a
+         * mirar seis listas de valores de un solo valor, tres colecciones y las mensulas con sus
+         * brazos. Once mil veces, para ahorrar una escritura proporcional.
+         *
+         * <p>Este test fija esa decision para que un cambio futuro sea deliberado y no un
+         * descuido.
+         */
+        @Test
+        @DisplayName("el perfil siempre pasa por update, aunque no haya cambiado")
+        void elPerfilSiemprePasaPorUpdate() {
+            Profile existente = new Profile();
+            existente.setId(42L);
+            when(profileRepository.findByTrackIdAndProfileIdIgnoreCaseAndKp(
+                    anyLong(), any(), any())).thenReturn(Optional.of(existente));
+            when(cantileverRepository.findIdsByProfileIdOrderByIdAsc(42L)).thenReturn(List.of());
+            when(masterDataService.getProfileStatusByCode("DEFINITIVE"))
+                    .thenReturn(new ProfileStatus());
+            when(profileService.update(any())).thenAnswer(i -> i.getArgument(0));
+
+            var resultado = service.upsertProfile(perfil(), 7L, List.of(), false);
+
+            assertThat(resultado.outcome())
+                    .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UPDATED);
+            verify(profileService).update(any());
+        }
+
+        private InfrastructureUpsertService.UpsertResult reimporta(ExecutionPackage existente) {
+            when(businessEntityRepository.findByIdentificationNumber("B12345678"))
+                    .thenReturn(Optional.of(company(77L)));
+            when(executionPackageRepository.findByNameIgnoreCase("EP-06"))
+                    .thenReturn(Optional.of(existente));
+            when(executionPackageService.update(any())).thenAnswer(i -> i.getArgument(0));
+
+            return service.upsertExecutionPackage(row("B12345678"), false);
+        }
+    }
+
     private ExecutionPackageMasterRow row(String nif) {
         return new ExecutionPackageMasterRow("EP6", "EP-06", false, 21000L,
                 LocalDate.of(2018, 1, 25), LocalDate.of(2020, 12, 31), nif, true, 2);
@@ -626,5 +894,42 @@ class InfrastructureUpsertServiceTest {
         BusinessEntity entity = new BusinessEntity();
         entity.setId(id);
         return entity;
+    }
+
+    /** El paquete tal y como lo dejaria la primera carga de {@link #row(String)}. */
+    private ExecutionPackage paquete(Long companyId) {
+        ExecutionPackage entity = new ExecutionPackage();
+        entity.setId(5L);
+        entity.setName("EP-06");
+        entity.setInitialPackage(false);
+        entity.setLength(21000L);
+        entity.setStartDate(LocalDate.of(2018, 1, 25));
+        entity.setEndDate(LocalDate.of(2020, 12, 31));
+        entity.setEnabled(true);
+        entity.setCompany(company(companyId));
+        return entity;
+    }
+
+    private Station estacion(Long id, String nombre) {
+        Station entity = new Station();
+        entity.setId(id);
+        entity.setName(nombre);
+        return entity;
+    }
+
+    private Track via(String nombre, Long... estaciones) {
+        Track entity = new Track();
+        entity.setId(3L);
+        entity.setName(nombre);
+        entity.setEnabled(true);
+        entity.setStations(Arrays.stream(estaciones)
+                .map(id -> estacion(id, "E" + id))
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
+        return entity;
+    }
+
+    private ProfileMasterRow perfil() {
+        return new ProfileMasterRow("EP6", "TRACK 1", "83-1.01", "83024.210", 1,
+                "DEFINITIVE", ProfileLovCodes.empty(), null, null, null, null, true, 10);
     }
 }

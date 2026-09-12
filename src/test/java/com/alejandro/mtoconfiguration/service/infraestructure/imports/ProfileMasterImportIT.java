@@ -240,9 +240,25 @@ class ProfileMasterImportIT {
         segundaPasada.assertThat(second.getFailed())
                 .as("la segunda pasada tiene que MODIFICAR, no fallar: %s", desglose(second))
                 .isZero();
-        segundaPasada.assertThat(second.getUpdated())
-                .as("y modificar TODO lo que cargo la primera: %s", desglose(second))
+        segundaPasada.assertThat(second.getUpdated() + second.getUnchanged())
+                .as("y volver a ver TODO lo que cargo la primera: %s", desglose(second))
                 .isEqualTo(first.getCreated());
+
+        // Paquete, estacion y via tienen que salir SIN CAMBIOS, no modificados. No es un matiz
+        // del informe: modificar uno de los tres materializa su subarbol entero —el DTO anida
+        // tracks, stations, profiles y cantilevers— y con el maestro cargado eso son horas.
+        // Contarlos como 'updated' seria la senal de que la comparacion de InfrastructureUpsertService
+        // ha dejado de detectar que no hay nada que escribir.
+        for (String entidad : List.of(ProfileImportReport.EXECUTION_PACKAGE,
+                ProfileImportReport.STATION, ProfileImportReport.TRACK)) {
+            segundaPasada.assertThat(second.getByEntity().get(entidad).getUpdated())
+                    .as("reimportar el mismo maestro no puede reescribir ningun %s: %s",
+                            entidad, desglose(second))
+                    .isZero();
+            segundaPasada.assertThat(second.getByEntity().get(entidad).getUnchanged())
+                    .as("%s tiene que contarse como 'sin cambios': %s", entidad, desglose(second))
+                    .isEqualTo(first.getByEntity().get(entidad).getCreated());
+        }
         segundaPasada.assertAll();
         assertThat(profileRepository.count())
                 .as("los perfiles no pueden duplicarse: para eso estan los indices unicos de V12")

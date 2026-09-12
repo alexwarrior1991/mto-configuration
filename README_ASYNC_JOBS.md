@@ -74,6 +74,19 @@ Tres cosas que conviene saber:
   vías y perfiles sería una línea de código y una bomba: en la reconciliación de colecciones
   (`README_API.md` §4) **el hijo que no mandas se borra**, así que un maestro al que le faltase una
   vía la borraría con todos sus perfiles y ménsulas.
+- **Lo que no ha cambiado no se reescribe, y el informe lo dice.** Paquete, estación y vía se
+  comparan contra lo que ya hay antes de tocarlas, y salen como `unchanged` cuando coinciden. No es
+  contabilidad decorativa: `BaseService.update` termina volcando la entidad entera en el DTO, y los
+  DTO de infraestructura anidan el árbol completo (`ExecutionPackageDTO → tracks[], stations[]`,
+  `TrackDTO → profiles[] → cantilevers[]`), de modo que modificar **un** paquete materializa su
+  subárbol entero. Con la base vacía no cuesta nada —se crea sin hijos—, pero con los 11.714
+  perfiles ya dentro cada uno de los 11 paquetes arrastra los suyos, y luego otra vez cada estación
+  y cada vía: medido en local, la primera carga hizo 11.938 elementos en 16 minutos y la segunda
+  iba a 5 por minuto. El perfil **sí** pasa siempre por `update`, a propósito: no anida más que sus
+  ménsulas, así que su escritura ya es proporcional, mientras que compararlo obligaría a mirar seis
+  listas de valores, tres colecciones y las ménsulas con sus brazos once mil veces. Ante la duda se
+  escribe: un falso «sin cambios» sería una corrección del workbook que no llega a la tabla y nadie
+  lo nota.
 
 El informe descargable en `/{jobId}/file` es JSON y está disponible **también cuando el trabajo
 termina con errores por fila**: su fichero *es* el informe de esos errores, y negarlo justo entonces

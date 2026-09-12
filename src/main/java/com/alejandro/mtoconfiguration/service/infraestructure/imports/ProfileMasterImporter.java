@@ -87,7 +87,7 @@ public class ProfileMasterImporter {
             }
             try {
                 var result = upsertService.upsertExecutionPackage(row, dryRun);
-                count(report, ProfileImportReport.EXECUTION_PACKAGE, result.created());
+                count(report, ProfileImportReport.EXECUTION_PACKAGE, result.outcome());
                 byCode.put(key(row.code()), result.id());
                 progress.accept(true);
             } catch (Exception e) {
@@ -110,7 +110,7 @@ public class ProfileMasterImporter {
             }
             try {
                 var result = upsertService.upsertStation(row, packagesByCode.get(code), dryRun);
-                count(report, ProfileImportReport.STATION, result.created());
+                count(report, ProfileImportReport.STATION, result.outcome());
                 byKey.put(new StationKey(code, key(row.name())), result.id());
                 progress.accept(true);
             } catch (Exception e) {
@@ -162,7 +162,7 @@ public class ProfileMasterImporter {
 
             try {
                 var result = upsertService.upsertTrack(row, packagesByCode.get(code), stationIds, dryRun);
-                count(report, ProfileImportReport.TRACK, result.created());
+                count(report, ProfileImportReport.TRACK, result.outcome());
                 byKey.put(new TrackKey(code, key(row.name())), result.id());
                 progress.accept(true);
             } catch (Exception e) {
@@ -204,7 +204,7 @@ public class ProfileMasterImporter {
 
             try {
                 var result = upsertService.upsertProfile(row, tracksByKey.get(trackKey), cantilevers, dryRun);
-                count(report, ProfileImportReport.PROFILE, result.created());
+                count(report, ProfileImportReport.PROFILE, result.outcome());
                 report.addCantilevers(cantilevers.size());
                 progress.accept(true);
             } catch (Exception e) {
@@ -213,11 +213,12 @@ public class ProfileMasterImporter {
         }
     }
 
-    private void count(ProfileImportReport report, String entity, boolean created) {
-        if (created) {
-            report.outcomeOf(entity).create();
-        } else {
-            report.outcomeOf(entity).update();
+    private void count(ProfileImportReport report, String entity,
+                       InfrastructureUpsertService.UpsertResult.Outcome outcome) {
+        switch (outcome) {
+            case CREATED -> report.outcomeOf(entity).create();
+            case UPDATED -> report.outcomeOf(entity).update();
+            case UNCHANGED -> report.outcomeOf(entity).unchanged();
         }
     }
 
