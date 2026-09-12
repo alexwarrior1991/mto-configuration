@@ -25,6 +25,18 @@ public interface ExecutionPackageRepository extends
     Optional<ExecutionPackage> findByNameIgnoreCase(String name);
 
     /**
+     * El identificador de la empresa del paquete, sin tocar la asociacion.
+     *
+     * <p>{@code ExecutionPackage.company} es {@code LAZY}, y quien compara el paquete con lo que
+     * trae el maestro —{@code InfrastructureUpsertService}— NO abre transaccion: la entidad le
+     * llega detached y un {@code getCompany()} alli revienta con {@code LazyInitializationException}.
+     * En JPQL, {@code e.company.id} se resuelve contra la columna {@code COMPANY_ID} y no hace
+     * ninguna union.
+     */
+    @Query("select e.company.id from ExecutionPackage e where e.id = :id")
+    Optional<Long> findCompanyIdById(@Param("id") Long id);
+
+    /**
      * Mismo motivo que en StationRepository: ExecutionPackageMasterDataPayloadMapper
      * lee dos colecciones (tracks y stations) y en un unico {@code @EntityGraph}
      * Hibernate las une en la misma sentencia, multiplicando las filas entre si. Un

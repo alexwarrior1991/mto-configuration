@@ -249,8 +249,18 @@ class ProfileMasterImportIT {
         // tracks, stations, profiles y cantilevers— y con el maestro cargado eso son horas.
         // Contarlos como 'updated' seria la senal de que la comparacion de InfrastructureUpsertService
         // ha dejado de detectar que no hay nada que escribir.
-        for (String entidad : List.of(ProfileImportReport.EXECUTION_PACKAGE,
-                ProfileImportReport.STATION, ProfileImportReport.TRACK)) {
+        List<String> sinHijos = List.of(ProfileImportReport.EXECUTION_PACKAGE,
+                ProfileImportReport.STATION, ProfileImportReport.TRACK);
+        // Antes de mirar los recuentos, que los recuentos existan. Si la segunda pasada revienta
+        // —paso: la comparacion tocaba una asociacion LAZY sobre una entidad detached— byEntity
+        // se queda vacio y un get() directo da un NullPointer que no dice absolutamente nada de
+        // lo que ha fallado. El desglose, en cambio, enseña que solo hay errores.
+        segundaPasada.assertThat(second.getByEntity())
+                .as("la segunda pasada no ha llegado a contar nada: %s", desglose(second))
+                .containsKeys(sinHijos.toArray(String[]::new));
+        segundaPasada.assertAll();
+
+        for (String entidad : sinHijos) {
             segundaPasada.assertThat(second.getByEntity().get(entidad).getUpdated())
                     .as("reimportar el mismo maestro no puede reescribir ningun %s: %s",
                             entidad, desglose(second))

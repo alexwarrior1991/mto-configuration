@@ -49,11 +49,8 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.time.LocalDate;
-import java.util.Arrays;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -648,7 +645,8 @@ class InfrastructureUpsertServiceTest {
             when(businessEntityRepository.findByIdentificationNumber("B12345678"))
                     .thenReturn(Optional.of(company(77L)));
             when(executionPackageRepository.findByNameIgnoreCase("EP-06"))
-                    .thenReturn(Optional.of(paquete(77L)));
+                    .thenReturn(Optional.of(paquete()));
+            when(executionPackageRepository.findCompanyIdById(5L)).thenReturn(Optional.of(77L));
 
             var resultado = service.upsertExecutionPackage(row("B12345678"), false);
 
@@ -662,7 +660,7 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("cambiar la longitud si lo reescribe")
         void laLongitudQueCambiaSeEscribe() {
-            ExecutionPackage existente = paquete(77L);
+            ExecutionPackage existente = paquete();
             existente.setLength(999L);
 
             assertThat(reimporta(existente).outcome())
@@ -673,7 +671,7 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("cambiar una fecha si lo reescribe")
         void laFechaQueCambiaSeEscribe() {
-            ExecutionPackage existente = paquete(77L);
+            ExecutionPackage existente = paquete();
             existente.setEndDate(LocalDate.of(2021, 6, 30));
 
             assertThat(reimporta(existente).outcome())
@@ -683,7 +681,7 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("cambiar si es el paquete inicial si lo reescribe")
         void elPaqueteInicialQueCambiaSeEscribe() {
-            ExecutionPackage existente = paquete(77L);
+            ExecutionPackage existente = paquete();
             existente.setInitialPackage(true);
 
             assertThat(reimporta(existente).outcome())
@@ -693,7 +691,7 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("darlo de baja si lo reescribe")
         void laBajaSeEscribe() {
-            ExecutionPackage existente = paquete(77L);
+            ExecutionPackage existente = paquete();
             existente.setEnabled(false);
 
             assertThat(reimporta(existente).outcome())
@@ -707,9 +705,17 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("cambiar de empresa si lo reescribe")
         void laEmpresaQueCambiaSeEscribe() {
-            ExecutionPackage existente = paquete(88L);
+            when(businessEntityRepository.findByIdentificationNumber("B12345678"))
+                    .thenReturn(Optional.of(company(77L)));
+            when(executionPackageRepository.findByNameIgnoreCase("EP-06"))
+                    .thenReturn(Optional.of(paquete()));
+            // La fila del maestro apunta a la 77; el paquete guardado cuelga de otra.
+            when(executionPackageRepository.findCompanyIdById(5L)).thenReturn(Optional.of(88L));
+            when(executionPackageService.update(any())).thenAnswer(i -> i.getArgument(0));
 
-            assertThat(reimporta(existente).outcome())
+            var resultado = service.upsertExecutionPackage(row("B12345678"), false);
+
+            assertThat(resultado.outcome())
                     .isEqualTo(InfrastructureUpsertService.UpsertResult.Outcome.UPDATED);
         }
 
@@ -724,7 +730,8 @@ class InfrastructureUpsertServiceTest {
             when(businessEntityRepository.findByIdentificationNumber("B12345678"))
                     .thenReturn(Optional.of(company(77L)));
             when(executionPackageRepository.findByNameIgnoreCase("EP-06"))
-                    .thenReturn(Optional.of(paquete(77L)));
+                    .thenReturn(Optional.of(paquete()));
+            when(executionPackageRepository.findCompanyIdById(5L)).thenReturn(Optional.of(77L));
 
             var resultado = service.upsertExecutionPackage(row("B12345678"), true);
 
@@ -769,7 +776,8 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("la via identica no se reescribe")
         void laViaIdenticaNoSeReescribe() {
             when(trackRepository.findByExecutionPackageIdAndNameIgnoreCase(5L, "TRACK 1"))
-                    .thenReturn(Optional.of(via("TRACK 1", 9L, 10L)));
+                    .thenReturn(Optional.of(via("TRACK 1")));
+            when(trackRepository.findStationIdsById(3L)).thenReturn(List.of(9L, 10L));
 
             var resultado = service.upsertTrack(
                     new TrackMasterRow("EP6", "TRACK 1", List.of("HER", "RIS"), true, 4),
@@ -789,7 +797,8 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("el orden de las estaciones no es un cambio")
         void elOrdenDeLasEstacionesNoEsUnCambio() {
             when(trackRepository.findByExecutionPackageIdAndNameIgnoreCase(5L, "TRACK 1"))
-                    .thenReturn(Optional.of(via("TRACK 1", 10L, 9L)));
+                    .thenReturn(Optional.of(via("TRACK 1")));
+            when(trackRepository.findStationIdsById(3L)).thenReturn(List.of(10L, 9L));
 
             var resultado = service.upsertTrack(
                     new TrackMasterRow("EP6", "TRACK 1", List.of("HER", "RIS"), true, 4),
@@ -803,7 +812,8 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("una via que gana una estacion si se reescribe")
         void laViaQueGanaUnaEstacionSeEscribe() {
             when(trackRepository.findByExecutionPackageIdAndNameIgnoreCase(5L, "TRACK 1"))
-                    .thenReturn(Optional.of(via("TRACK 1", 9L)));
+                    .thenReturn(Optional.of(via("TRACK 1")));
+            when(trackRepository.findStationIdsById(3L)).thenReturn(List.of(9L));
             when(trackService.update(any())).thenAnswer(i -> i.getArgument(0));
 
             var resultado = service.upsertTrack(
@@ -818,7 +828,8 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("una via que pierde su estacion si se reescribe")
         void laViaQuePierdeSuEstacionSeEscribe() {
             when(trackRepository.findByExecutionPackageIdAndNameIgnoreCase(5L, "TRACK 1"))
-                    .thenReturn(Optional.of(via("TRACK 1", 9L)));
+                    .thenReturn(Optional.of(via("TRACK 1")));
+            when(trackRepository.findStationIdsById(3L)).thenReturn(List.of(9L));
             when(trackService.update(any())).thenAnswer(i -> i.getArgument(0));
 
             var resultado = service.upsertTrack(
@@ -832,10 +843,11 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("dar de baja una via si la reescribe")
         void laViaDadaDeBajaSeEscribe() {
-            Track existente = via("TRACK 1", 9L);
+            Track existente = via("TRACK 1");
             existente.setEnabled(false);
             when(trackRepository.findByExecutionPackageIdAndNameIgnoreCase(5L, "TRACK 1"))
                     .thenReturn(Optional.of(existente));
+            when(trackRepository.findStationIdsById(3L)).thenReturn(List.of(9L));
             when(trackService.update(any())).thenAnswer(i -> i.getArgument(0));
 
             var resultado = service.upsertTrack(
@@ -879,6 +891,7 @@ class InfrastructureUpsertServiceTest {
                     .thenReturn(Optional.of(company(77L)));
             when(executionPackageRepository.findByNameIgnoreCase("EP-06"))
                     .thenReturn(Optional.of(existente));
+            when(executionPackageRepository.findCompanyIdById(5L)).thenReturn(Optional.of(77L));
             when(executionPackageService.update(any())).thenAnswer(i -> i.getArgument(0));
 
             return service.upsertExecutionPackage(row("B12345678"), false);
@@ -897,7 +910,7 @@ class InfrastructureUpsertServiceTest {
     }
 
     /** El paquete tal y como lo dejaria la primera carga de {@link #row(String)}. */
-    private ExecutionPackage paquete(Long companyId) {
+    private ExecutionPackage paquete() {
         ExecutionPackage entity = new ExecutionPackage();
         entity.setId(5L);
         entity.setName("EP-06");
@@ -906,7 +919,6 @@ class InfrastructureUpsertServiceTest {
         entity.setStartDate(LocalDate.of(2018, 1, 25));
         entity.setEndDate(LocalDate.of(2020, 12, 31));
         entity.setEnabled(true);
-        entity.setCompany(company(companyId));
         return entity;
     }
 
@@ -917,14 +929,11 @@ class InfrastructureUpsertServiceTest {
         return entity;
     }
 
-    private Track via(String nombre, Long... estaciones) {
+    private Track via(String nombre) {
         Track entity = new Track();
         entity.setId(3L);
         entity.setName(nombre);
         entity.setEnabled(true);
-        entity.setStations(Arrays.stream(estaciones)
-                .map(id -> estacion(id, "E" + id))
-                .collect(Collectors.toCollection(LinkedHashSet::new)));
         return entity;
     }
 

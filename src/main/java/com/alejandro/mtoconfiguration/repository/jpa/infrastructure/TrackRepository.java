@@ -25,6 +25,16 @@ public interface TrackRepository extends CRUDRepository<Track>,
      */
     Optional<Track> findByExecutionPackageIdAndNameIgnoreCase(Long executionPackageId, String name);
 
+    /**
+     * Las estaciones que atraviesa la via, como ids y sin inicializar la coleccion.
+     *
+     * <p>Mismo motivo que {@code ExecutionPackageRepository.findCompanyIdById}: la N:M es
+     * {@code LAZY} y quien compara la via con el maestro trabaja fuera de transaccion, con la
+     * entidad ya detached.
+     */
+    @Query("select s.id from Track t join t.stations s where t.id = :id")
+    List<Long> findStationIdsById(@Param("id") Long id);
+
     List<Track> findByExecutionPackageId(Long executionPackageId);
 
     /**

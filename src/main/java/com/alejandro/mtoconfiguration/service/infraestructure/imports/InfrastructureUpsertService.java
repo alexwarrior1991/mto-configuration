@@ -27,7 +27,6 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SupportTypeDTO;
 import com.alejandro.mtoconfiguration.model.commons.SLovDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SteadyArmTypeDTO;
-import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
@@ -59,7 +58,6 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.Set;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
  * Alta o modificacion de una entidad de infraestructura por su clave natural.
@@ -472,9 +470,17 @@ public class InfrastructureUpsertService {
      * primera carga hizo 11.938 elementos en 16 minutos y la segunda iba por 5 elementos por
      * minuto, o sea horas.
      *
-     * <p>La comparacion se hace contra la entidad que YA trajo la busqueda por clave natural, asi
-     * que no cuesta ninguna consulta de mas salvo la coleccion de estaciones de una via, que es
-     * una por via.
+     * <h2>Solo escalares, nunca una asociacion</h2>
+     *
+     * <p>Este servicio NO abre transaccion —cada {@code create}/{@code update} abre la suya—, asi
+     * que la entidad que devuelve la busqueda por clave natural llega <b>detached</b>: tocar ahi
+     * {@code getCompany()} o {@code getStations()}, que son {@code LAZY}, revienta con
+     * {@code LazyInitializationException} y tumba las 224 filas una por una. De ahi que los
+     * escalares se lean de la entidad y todo lo demas venga de una proyeccion
+     * ({@code findCompanyIdById}, {@code findStationIdsById}): una consulta de ids, sin
+     * inicializar nada. Es la misma trampa que ya documenta {@code upsertProfile} sobre
+     * {@code profileService.getById}, y ningun test con dobles puede verla porque un POJO no es
+     * un proxy de Hibernate.
      *
      * <h2>Por que el perfil no se compara</h2>
      *
@@ -485,14 +491,16 @@ public class InfrastructureUpsertService {
      * falso «sin cambios» ahi es el peor fallo posible de un importador —una correccion del
      * workbook que no llega a la tabla y nadie lo nota—, asi que ante la duda se escribe.
      */
-    private static boolean sinCambios(ExecutionPackage entity, ExecutionPackageDTO dto) {
+    private boolean sinCambios(ExecutionPackage entity, ExecutionPackageDTO dto) {
         return Objects.equals(entity.getName(), dto.getName())
                 && Objects.equals(entity.getInitialPackage(), dto.getInitialPackage())
                 && Objects.equals(entity.getLength(), dto.getLength())
                 && Objects.equals(entity.getStartDate(), dto.getStartDate())
                 && Objects.equals(entity.getEndDate(), dto.getEndDate())
                 && entity.isEnabled() == dto.isEnabled()
-                && Objects.equals(idDe(entity.getCompany()), dto.getCompanyId());
+                && Objects.equals(
+                        executionPackageRepository.findCompanyIdById(entity.getId()).orElse(null),
+                        dto.getCompanyId());
     }
 
     /** El nombre es lo unico que el maestro dice de una estacion; el paquete ya lo fija la busqueda. */
@@ -506,20 +514,16 @@ public class InfrastructureUpsertService {
      * <p>Se comparan como conjunto y no como lista: {@code Track.stations} es un {@code Set} y su
      * orden no significa nada, asi que una diferencia de orden no es un cambio.
      */
-    private static boolean sinCambios(Track entity, TrackDTO dto) {
-        Set<Long> actuales = entity.getStations().stream()
-                .map(station -> station.getId())
-                .collect(Collectors.toSet());
+    private boolean sinCambios(Track entity, TrackDTO dto) {
+        if (!Objects.equals(entity.getName(), dto.getName())
+                || !Objects.equals(entity.getEnabled(), dto.getEnabled())) {
+            return false;
+        }
+
+        Set<Long> actuales = new HashSet<>(trackRepository.findStationIdsById(entity.getId()));
         Set<Long> nuevas = new HashSet<>(
                 dto.getStationIds() == null ? List.of() : dto.getStationIds());
-
-        return Objects.equals(entity.getName(), dto.getName())
-                && Objects.equals(entity.getEnabled(), dto.getEnabled())
-                && actuales.equals(nuevas);
-    }
-
-    private static Long idDe(BusinessEntity entity) {
-        return entity == null ? null : entity.getId();
+        return actuales.equals(nuevas);
     }
 
     private <T extends BaseDTO> UpsertResult write(
