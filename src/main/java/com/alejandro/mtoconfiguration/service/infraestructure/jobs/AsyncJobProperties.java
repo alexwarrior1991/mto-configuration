@@ -140,6 +140,20 @@ public class AsyncJobProperties {
         private Path exportDirectory = Path.of("exports");
 
         /**
+         * Directorio donde se deja el informe descargable de las importaciones del maestro
+         * de perfiles.
+         *
+         * <p>Separado de {@code exportDirectory} porque no son lo mismo: alli hay CSV que
+         * genera el usuario y se purgan con el trabajo, aqui JSON de auditoria de una carga.
+         * Mezclarlos haria que la descarga tuviese que adivinar el tipo por el nombre.
+         *
+         * <p>Mismo aviso que los otros dos: con varias replicas tiene que apuntar a
+         * almacenamiento COMPARTIDO, o la descarga dara 410 cuando la atienda una replica
+         * distinta de la que genero el informe.
+         */
+        private Path importReportDirectory = Path.of("profile-imports");
+
+        /**
          * Cada cuanto TIEMPO se refresca el progreso en la base de datos.
          *
          * <p>Por tiempo y no por numero de elementos, que es como estaba y era un error: un

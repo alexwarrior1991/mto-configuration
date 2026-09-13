@@ -61,8 +61,11 @@ class BulkValidationTest {
         return Stream.of(
                 Arguments.of("track", track(), (Supplier<TrackDTO>) ValidDtos::rootTrack, "name"),
                 Arguments.of("station", station(), (Supplier<StationDTO>) ValidDtos::rootStation, "name"),
-                Arguments.of("cantilever", cantilever(), (Supplier<CantileverDTO>) ValidDtos::rootCantilever, "armAngle"),
-                Arguments.of("steadyArm", steadyArm(), (Supplier<SteadyArmDTO>) ValidDtos::existingSteadyArm, "length"),
+                // El campo que se rompe tiene que seguir siendo obligatorio: desde V12 las seis
+                // magnitudes de la mensula y la longitud del brazo son opcionales, asi que
+                // anularlas ya no invalida nada. Los tipos si lo son.
+                Arguments.of("cantilever", cantilever(), (Supplier<CantileverDTO>) ValidDtos::rootCantilever, "cantileverType"),
+                Arguments.of("steadyArm", steadyArm(), (Supplier<SteadyArmDTO>) ValidDtos::existingSteadyArm, "steadyArmType"),
                 Arguments.of("executionPackage", executionPackage(), (Supplier<ExecutionPackageDTO>) ValidDtos::rootExecutionPackage, "name"),
                 Arguments.of("disconnector", new DisconnectorValidator(), (Supplier<DisconnectorDTO>) ValidDtos::rootDisconnector, "name"),
                 Arguments.of("sectionInsulator", new SectionInsulatorValidator(), (Supplier<SectionInsulatorDTO>) ValidDtos::rootSectionInsulator, "name"),
@@ -197,8 +200,8 @@ class BulkValidationTest {
         switch (dto) {
             case TrackDTO t -> t.setName(null);
             case StationDTO s -> s.setName(null);
-            case CantileverDTO c -> c.setArmAngle(null);
-            case SteadyArmDTO s -> s.setLength(null);
+            case CantileverDTO c -> c.setCantileverType(null);
+            case SteadyArmDTO s -> s.setSteadyArmType(null);
             case ExecutionPackageDTO e -> e.setName(null);
             case DisconnectorDTO d -> d.setName(null);
             case SectionInsulatorDTO s -> s.setName(null);

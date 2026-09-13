@@ -45,9 +45,12 @@ public class AsyncJobPurgeService {
         }
 
         candidates.stream()
-                .map(AsyncJobRepository.PurgeCandidate::getFileName)
-                .filter(fileName -> fileName != null && !fileName.isBlank())
-                .forEach(files::delete);
+                .filter(candidate -> candidate.getFileName() != null
+                        && !candidate.getFileName().isBlank())
+                // Con el tipo, y no solo con el nombre: el CSV de una exportacion y el informe de
+                // una importacion viven en directorios distintos, asi que borrarlos todos contra
+                // el de exportacion dejaba los informes ahi para siempre.
+                .forEach(candidate -> files.delete(candidate.getType(), candidate.getFileName()));
 
         List<UUID> ids = candidates.stream().map(AsyncJobRepository.PurgeCandidate::getId).toList();
         repository.deleteAllByIdInBatch(ids);

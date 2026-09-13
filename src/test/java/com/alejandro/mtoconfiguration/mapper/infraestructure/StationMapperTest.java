@@ -148,7 +148,7 @@ class StationMapperTest {
             mapper.updateEntityFromDTO(dto, station);
 
             assertThat(station.getTracks())
-                    .allSatisfy(track -> assertThat(track.getStation()).isSameAs(station));
+                    .allSatisfy(track -> assertThat(track.getStations()).contains(station));
         }
 
         @Test
@@ -226,7 +226,7 @@ class StationMapperTest {
                     .extracting(Track::getName)
                     .containsExactlyInAnyOrder("VIA 1", "VIA 2");
             assertThat(station.getTracks())
-                    .allSatisfy(track -> assertThat(track.getStation()).isSameAs(station));
+                    .allSatisfy(track -> assertThat(track.getStations()).contains(station));
         }
     }
 }

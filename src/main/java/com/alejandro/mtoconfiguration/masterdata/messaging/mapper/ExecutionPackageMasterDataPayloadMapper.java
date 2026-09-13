@@ -11,6 +11,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 @Component
@@ -70,7 +71,8 @@ public class ExecutionPackageMasterDataPayloadMapper implements MasterDataEntity
         values.put("id", track.getId());
         values.put("name", track.getName());
         values.put("enabled", track.getEnabled());
-        values.put("stationId", track.getStation() != null ? track.getStation().getId() : null);
+        values.put("stationIds", track.getStations() == null ? List.of()
+                : track.getStations().stream().map(each -> each.getId()).filter(Objects::nonNull).sorted().toList());
         return values;
     }
 

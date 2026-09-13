@@ -340,6 +340,18 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .orElseThrow(() -> new BaseException("No se puede cancelar un objeto nulo o sin ID"));
     }
 
+    /**
+     * Lee una entidad por su id.
+     *
+     * <p>Es {@code @Transactional} porque {@code getReferenceById} devuelve un <b>proxy</b>, y
+     * el mapeo que viene despues lo inicializa: con {@code open-in-view: false}, un llamante
+     * que no traiga transaccion propia se encontraba con
+     * {@code LazyInitializationException: no session}. Lo destapo el importador del maestro,
+     * que llama desde un metodo sin transaccion y veia fallar asi las 11.714 modificaciones de
+     * su segunda pasada; le pasa igual a cualquier otro llamante que no la abra, empezando por
+     * {@code ReadController}.
+     */
+    @Transactional
     @Cacheable(
             cacheNames = CacheNames.NORMAL_ITEM,
             keyGenerator = "redisCacheKeyGenerator",

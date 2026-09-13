@@ -2,6 +2,8 @@ package com.alejandro.mtoconfiguration.service.infraestructure;
 
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
+import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
+import java.util.LinkedHashSet;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -136,5 +138,42 @@ class ProfileExportServiceCsvTest {
         assertThat(service.resolveMapperName(null)).isEqualTo("basic");
         assertThat(service.resolveMapperName("TECHNICAL")).isEqualTo("technical");
         assertThat(service.resolveMapper("technical")).isNotNull();
+    }
+
+    /**
+     * Un perfil puede llevar varios seccionamientos, y el CSV tiene que seguir teniendo ancho
+     * fijo: una columna con todos los codigos, no una columna por seccionamiento.
+     */
+    @Test
+    @DisplayName("los seccionamientos caben en una sola columna, separados por espacio")
+    void seccionamientosEnUnaColumna() {
+        ProfileExportService service = service();
+        assertThat(service.resolveHeader("default")).endsWith(";sectionings");
+
+        Profile profile = new Profile();
+        profile.setId(1L);
+        profile.setProfileId("83-1.02");
+        profile.setKp(new BigDecimal("1.000"));
+        // Con id: Lov.equals va por id, y dos sin id se consideran el mismo.
+        Sectioning as = new Sectioning();
+        as.setId(1L);
+        as.setCode("A/S");
+        Sectioning p50 = new Sectioning();
+        p50.setId(2L);
+        p50.setCode("P50(CS)");
+        profile.setSectionings(new LinkedHashSet<>(List.of(as, p50)));
+
+        assertThat(service.getDefaultMapper().apply(profile)).endsWith(";A/S P50(CS)");
+    }
+
+    @Test
+    @DisplayName("sin seccionamientos la columna sigue estando, con N/A")
+    void sinSeccionamientosLaColumnaSigue() {
+        Profile profile = new Profile();
+        profile.setId(1L);
+        profile.setProfileId("83-1.02");
+        profile.setKp(new BigDecimal("1.000"));
+
+        assertThat(service().getDefaultMapper().apply(profile)).endsWith(";N/A");
     }
 }

@@ -28,7 +28,8 @@ public class TrackMasterDataPayloadMapper implements MasterDataEntityPayloadMapp
         values.put("name", track.getName());
         values.put("enabled", track.getEnabled());
         values.put("executionPackage", toExecutionPackagePayload(track.getExecutionPackage()));
-        values.put("station", toStationPayload(track.getStation()));
+        values.put("stations", track.getStations() == null ? List.of()
+                : track.getStations().stream().map(this::toStationPayload).toList());
         values.put("profiles", toProfilePayload(track.getProfiles()));
 
         return values;

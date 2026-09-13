@@ -4,6 +4,7 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
@@ -16,6 +17,12 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 @Mapper(config = CentralConfigMapper.class, uses = {
         ReferenceMapper.class,
         TrackMapper.class,
@@ -26,6 +33,10 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
 
     @Autowired
     protected MasterDataService masterDataService;
+
+    /** Ver TrackMapper.referenceResolver: el nombre corto lo ocupa el impl generado. */
+    @Autowired
+    protected ReferenceMapper referenceResolver;
 
     /**
      * Hacen falta aqui, y no solo en el {@code uses} del @Mapper, porque la reconciliacion de las
@@ -69,15 +80,14 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
         // Las tres colecciones se reconcilian FUSIONANDO POR ID, no añadiendo: un hijo que el
         // cliente devuelve con su id tiene que actualizar esa fila, no insertar una copia.
 
-        // 1. Vias
-        mergeCollection(
-                dto.getTracks(),
-                entity.getTracks(),
-                entity,
-                trackChildMapper::toEntity,
-                (childDto, child) -> trackChildMapper.updateEntityFromDTO(childDto, child),
-                Track::setStation
-        );
+        // 1. Vias. NO se reconcilian con mergeCollection, a diferencia de las dos colecciones
+        //    de abajo, y la diferencia no es de estilo: desde V17 la relacion es N:M, asi que
+        //    una via puede estar en tres estaciones a la vez. mergeCollection BORRA el hijo que
+        //    el cliente no manda —es lo correcto cuando la estacion es la duena del hijo—, y
+        //    aqui eso significaba que un PUT sobre ZIC sin mencionar 'TRACK 1' borraba la via
+        //    entera, con sus perfiles, tambien para BIN y para HAD. Lo que hay que hacer al
+        //    quitarla de la lista es DESLIGARLA de esta estacion y nada mas.
+        linkTracks(dto, entity);
 
         // 2. Seccionadores
         mergeCollection(
@@ -100,6 +110,60 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
         );
 
         // 4. Resolución de LOVs (Si Station tuviera alguno en el futuro)
+    }
+
+    /**
+     * Reconcilia las vias de la estacion ligando y desligando, nunca borrando.
+     *
+     * <p>El lado dueño de la N:M es {@code Track.stations}, asi que tocar solo la coleccion de
+     * la estacion no persistiria nada: cada alta y cada baja tiene que ir tambien a la via.
+     */
+    private void linkTracks(StationDTO dto, Station entity) {
+        if (dto.getTracks() == null) {
+            return;
+        }
+
+        Map<Long, Track> ligadas = entity.getTracks().stream()
+                .filter(track -> track.getId() != null)
+                .collect(Collectors.toMap(track -> track.getId(), track -> track, (a, b) -> a));
+
+        Set<Long> entrantes = dto.getTracks().stream()
+                .filter(Objects::nonNull)
+                .map(TrackDTO::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // Las que el cliente ha quitado: fuera el vinculo, la via se queda.
+        for (Track track : List.copyOf(entity.getTracks())) {
+            if (track.getId() != null && !entrantes.contains(track.getId())) {
+                entity.removeTrack(track);
+            }
+        }
+
+        for (TrackDTO childDto : dto.getTracks()) {
+            if (childDto == null) {
+                continue;
+            }
+            Track ligada = childDto.getId() == null ? null : ligadas.get(childDto.getId());
+            if (ligada != null) {
+                trackChildMapper.updateEntityFromDTO(childDto, ligada);
+                // El lado dueño es Track.stations, asi que el vinculo se afirma ahi tambien. Es
+                // idempotente (es un Set) y hace que el mapper no dependa de que quien construyo
+                // la via ya lo hubiera puesto: updateEntityFromDTO no lo toca, porque un TrackDTO
+                // anidado en una estacion no trae stationIds.
+                ligada.addStation(entity);
+            } else if (childDto.getId() != null) {
+                // Una via que YA existe y todavia no estaba en esta estacion. Hay que ligar la
+                // fila, no una copia: toEntity devolveria un objeto desatachado con el mismo id
+                // que Hibernate no reconoce como la fila, de modo que el vinculo no se guardaba
+                // y la peticion respondia 200 sin haber hecho nada.
+                Track existente = referenceResolver.resolve(childDto.getId(), Track.class);
+                trackChildMapper.updateEntityFromDTO(childDto, existente);
+                entity.addTrack(existente);
+            } else {
+                entity.addTrack(trackChildMapper.toEntity(childDto));
+            }
+        }
     }
 
     @AfterMapping

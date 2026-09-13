@@ -18,9 +18,25 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
         MessagingEntityGraphRepository<Profile> {
     List<Profile> findByTrackId(Long trackId);
 
+    /**
+     * Busqueda por la clave natural, para el find-or-create del importador.
+     *
+     * <p>Ignora mayusculas porque el origen no es consistente ({@code HR TRACK 3 HAD} y
+     * {@code HR Track 3 BIN} conviven en el mismo workbook) y porque es lo que indexa
+     * {@code ux_profile_track_profile_id_kp} (V18). El borrado logico lo filtra la
+     * {@code @SQLRestriction} de {@code CRUDEntity}, igual que ese indice parcial.
+     *
+     * <p>El KP entra en la clave desde V18. Una via puede llevar dos tramos concatenados con
+     * la numeracion reiniciada, asi que '5-1.01' existe dos veces en la misma via: uno en el
+     * KP 5421 y otro en el 5017. Son dos mastiles distintos, y sin el KP el importador
+     * actualizaria el primero con los datos del segundo.
+     */
+    Optional<Profile> findByTrackIdAndProfileIdIgnoreCaseAndKp(Long trackId, String profileId,
+                                                               BigDecimal kp);
+
     List<Profile> findByTrackNameContainingIgnoreCase(String trackName);
 
-    List<Profile> findByTrackStationNameContainingIgnoreCase(String stationName);
+    List<Profile> findByTrackStationsNameContainingIgnoreCase(String stationName);
 
     // Método para la primera página (o búsqueda normal)
     // 1. Añade JOIN FETCH a la consulta de la primera página
@@ -77,26 +93,36 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
      * lado INVERSO de un {@code @OneToOne}, que Hibernate no puede proxear, asi que
      * sin ellos se paga un select por fila.
      * <p>
+     * {@code track.stations} entra desde V17 por lo mismo: dejo de ser un {@code @ManyToOne}
+     * del que basta el id del proxy y paso a ser una coleccion, que desatachada no se puede
+     * recorrer.
+     * <p>
      * Las rutas anidadas de las que el mapper solo lee el id se quedan fuera
-     * ({@code track.station}, {@code track.executionPackage},
+     * ({@code track.executionPackage},
      * {@code cantilevers.cantileverType}, {@code cantilevers.steadyArm.steadyArmType}
      * y {@code disconnector.disconnectorFunction}): con acceso por propiedad, leer el
      * id de un proxy no lo inicializa.
      * <p>
-     * {@code cantilevers} es la UNICA coleccion del grafo, y eso es intencionado: en
-     * cuanto entra una segunda, el join pasa a producir un producto cartesiano.
+     * El grafo trae VARIAS colecciones ({@code cantilevers} y las tres N:M de LOVs de
+     * V14-V16, mas {@code track.stations} desde V17), asi que el join produce un producto
+     * cartesiano. Se acepta porque los factores son diminutos —un perfil tiene tres mensulas
+     * como mucho y un puñado de codigos por lista— y la alternativa es un select por
+     * coleccion o, peor, una LazyInitializationException al publicar el evento.
      */
     @Override
     @EntityGraph(attributePaths = {
             "track",
-            "anchorage",
+            "track.stations",
+            "anchorages",
             "anchorageFoundation",
             "foundation",
             "poleType",
             "portal",
             "profileStatus",
             "returnSupport",
-            "sectioning",
+            "sectionings",
+            "sectioningFeedings",
+            "supportType",
             "cantilevers",
             "cantilevers.steadyArm",
             "disconnector"

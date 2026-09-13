@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.masterdata.messaging.mapper;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.entity.lov.*;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataEntityPayloadMapper;
@@ -12,6 +13,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Component
 public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMapper<Profile> {
@@ -28,15 +30,26 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         values.put("id", profile.getId());
         values.put("profileId", profile.getProfileId());
         values.put("kp", profile.getKp());
+        values.put("orderInTrack", profile.getOrderInTrack());
+        values.put("span", profile.getSpan());
+        values.put("heightCantileverSupport", profile.getHeightCantileverSupport());
+        values.put("poleGaugeLocation", profile.getPoleGaugeLocation());
+        values.put("railPoleDistance", profile.getRailPoleDistance());
         values.put("track", toTrackPayload(profile.getTrack()));
-        values.put("anchorage", toLovPayload(profile.getAnchorage()));
+        values.put("anchorages", profile.getAnchorages() == null ? List.of()
+                : profile.getAnchorages().stream().map(this::toLovPayload).toList());
         values.put("anchorageFoundation", toLovPayload(profile.getAnchorageFoundation()));
         values.put("foundation", toLovPayload(profile.getFoundation()));
         values.put("poleType", toLovPayload(profile.getPoleType()));
         values.put("portal", toLovPayload(profile.getPortal()));
         values.put("profileStatus", toLovPayload(profile.getProfileStatus()));
         values.put("returnSupport", toLovPayload(profile.getReturnSupport()));
-        values.put("sectioning", toLovPayload(profile.getSectioning()));
+        values.put("supportType", toLovPayload(profile.getSupportType()));
+        // Cambia de objeto a LISTA. Es un cambio de contrato: ver README_MESSAGING.
+        values.put("sectionings", profile.getSectionings() == null ? List.of()
+                : profile.getSectionings().stream().map(this::toLovPayload).toList());
+        values.put("sectioningFeedings", profile.getSectioningFeedings() == null ? List.of()
+                : profile.getSectioningFeedings().stream().map(this::toLovPayload).toList());
         values.put("cantilevers", toCantileverPayload(profile.getCantilevers()));
         values.put("disconnector", toDisconnectorPayload(profile.getDisconnector()));
 
@@ -52,7 +65,8 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         values.put("id", track.getId());
         values.put("name", track.getName());
         values.put("enabled", track.getEnabled());
-        values.put("stationId", track.getStation() != null ? track.getStation().getId() : null);
+        values.put("stationIds", track.getStations() == null ? List.of()
+                : track.getStations().stream().map(each -> each.getId()).filter(Objects::nonNull).sorted().toList());
         values.put("executionPackageId", track.getExecutionPackage() != null ? track.getExecutionPackage().getId() : null);
         return values;
     }
@@ -123,6 +137,16 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         return values;
     }
 
+    private Map<String, Object> toLovPayload(SupportType supportType) {
+        if (supportType == null) {
+            return null;
+        }
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("id", supportType.getId());
+        values.put("code", supportType.getCode());
+        return values;
+    }
+
     private Map<String, Object> toLovPayload(ReturnSupport returnSupport) {
         if (returnSupport == null) {
             return null;
@@ -142,6 +166,23 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", sectioning.getId());
         values.put("code", sectioning.getCode());
+        return values;
+    }
+
+    /**
+     * {@code sectioningFeeding} usa el catálogo {@code DisconnectorFunction}, igual que
+     * {@code disconnector.disconnectorFunction}, pero aquí se publica como una LOV más del perfil
+     * —id y código— y no solo con el id: el consumidor necesita el código para interpretarlo sin
+     * tener que resolver la referencia.
+     */
+    private Map<String, Object> toLovPayload(DisconnectorFunction disconnectorFunction) {
+        if (disconnectorFunction == null) {
+            return null;
+        }
+
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("id", disconnectorFunction.getId());
+        values.put("code", disconnectorFunction.getCode());
         return values;
     }
 

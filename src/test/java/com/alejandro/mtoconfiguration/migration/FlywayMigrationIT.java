@@ -19,6 +19,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -90,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20");
     }
 
     /**
@@ -148,6 +149,193 @@ class FlywayMigrationIT {
     void elTipoDeTrabajoAdmiteLaImportacionDeLov() {
         assertThatCode(() -> jdbc().update(insertAsyncJob("LOV_IMPORT", "PENDING")))
                 .doesNotThrowAnyException();
+    }
+
+    /**
+     * V11 anade a profile los cuatro campos tecnicos. La quinta columna que traia,
+     * {@code sectioning_feeding_id}, ya no esta aqui: V16 la convirtio en tabla de union y por eso
+     * este test no la busca (lo hace {@link #elAparatoDeSeccionamientoEsAhoraUnaTablaDeUnion()}).
+     *
+     * <p>El tipo si lo mira {@code ddl-auto: validate}, pero <b>la gemela de auditoria no</b>:
+     * Envers no participa en esa validacion, asi que si {@code profile_aud} se quedara sin estas
+     * columnas la aplicacion arrancaria igual y el fallo saldria al guardar la primera revision de
+     * un perfil, con el dato ya perdido para el historico.
+     */
+    @Test
+    void elPerfilYSuGemelaDeAuditoriaTienenLosCamposTecnicos() {
+        List<String> esperadas = List.of("span", "height_cantilever_support", "pole_gauge_location",
+                "rail_pole_distance");
+
+        for (String tabla : List.of("profile", "profile_aud")) {
+            List<String> columnas = jdbc().queryForList(
+                    "select column_name from information_schema.columns"
+                            + " where table_schema = ? and table_name = ?",
+                    String.class, SCHEMA, tabla);
+
+            assertThat(columnas).as(tabla).containsAll(esperadas);
+        }
+    }
+
+    /**
+     * {@code sectioningFeeding} reutiliza el catalogo DisconnectorFunction en lugar de tener una
+     * LOV propia. Sin la clave ajena, un codigo inexistente se guardaria como un id huerfano y el
+     * evento de datos maestros saldria con una referencia rota.
+     *
+     * <p>Desde V16 la clave ajena vive en la tabla de union, no en {@code profile}: la relacion es
+     * N:M porque el origen trae celdas con dos aparatos (un disconnector <b>mas</b> un aislador de
+     * seccion, por ejemplo). Lo que se protege es lo mismo; solo ha cambiado donde esta.
+     */
+    @Test
+    void laAlimentacionDelPerfilApuntaAlCatalogoDeFuncionesDeSeccionador() {
+        List<String> referenciadas = jdbc().queryForList(
+                """
+                select ccu.table_name
+                from information_schema.table_constraints tc
+                join information_schema.key_column_usage kcu
+                  on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
+                join information_schema.constraint_column_usage ccu
+                  on ccu.constraint_name = tc.constraint_name and ccu.table_schema = tc.table_schema
+                where tc.table_schema = ? and tc.table_name = 'profile_sectioning_feeding'
+                  and tc.constraint_type = 'FOREIGN KEY'
+                  and kcu.column_name = 'sectioning_feeding_id'
+                """, String.class, SCHEMA);
+
+        assertThat(referenciadas).containsExactly("disconnector_function");
+    }
+
+    /**
+     * V12 anade los indices unicos que hacen idempotente la importacion masiva.
+     *
+     * <p>El {@code WHERE deleted = false} no es un detalle: estas cuatro tablas llevan
+     * borrado logico, asi que un indice unico plano chocaria con las filas ya borradas e
+     * impediria volver a dar de alta una via que se borro en su dia.
+     */
+    @Test
+    void lasClavesNaturalesDeInfraestructuraSonUnicasSalvoLoBorrado() {
+        Map<String, String> indices = new java.util.HashMap<>();
+        jdbc().query("select indexname, indexdef from pg_indexes"
+                        + " where schemaname = ? and indexname like 'ux_%'", rs -> {
+            indices.put(rs.getString("indexname"), rs.getString("indexdef"));
+        }, SCHEMA);
+
+        for (String nombre : List.of("ux_execution_package_name", "ux_station_ep_name",
+                "ux_track_ep_name", "ux_profile_track_profile_id_kp")) {
+            assertThat(indices).containsKey(nombre);
+            assertThat(indices.get(nombre))
+                    .as("%s tiene que ser UNIQUE y parcial", nombre)
+                    .contains("UNIQUE")
+                    .contains("deleted = false");
+        }
+    }
+
+    /**
+     * V12 hace opcional la longitud del brazo.
+     *
+     * <p>5.691 de las 14.592 mensulas de los workbooks traen el tipo pero no la longitud.
+     * No es un dato que falte por descuido: no se conoce.
+     */
+    /**
+     * V14: el seccionamiento pasa a N:M porque un perfil puede llevar varios a la vez.
+     *
+     * <p>Lo que se comprueba aqui es que la columna vieja YA NO ESTA. Dejarla seria peor que
+     * no migrar: habria dos sitios donde mirar y ninguna garantia de que digan lo mismo.
+     */
+    @Test
+    void elSeccionamientoEsAhoraUnaTablaDeUnion() {
+        assertThat(existeTabla("profile_sectioning")).isTrue();
+        assertThat(existeColumna("profile", "sectioning_id")).isFalse();
+        assertThat(existeColumna("profile_aud", "sectioning_id")).isFalse();
+
+        assertThat(jdbc().queryForObject(
+                "select count(*) from information_schema.table_constraints"
+                        + " where table_schema = ? and table_name = 'profile_sectioning'"
+                        + " and constraint_type = 'PRIMARY KEY'", Integer.class, SCHEMA))
+                .isEqualTo(1);
+    }
+
+    /**
+     * Envers audita la PERTENENCIA de una N:M, no la entidad del otro lado (Sectioning es un
+     * catalogo, NOT_AUDITED). Sin esta gemela la aplicacion no arranca con ddl-auto: validate.
+     */
+    @Test
+    void laTablaDeUnionTieneGemelaDeAuditoria() {
+        assertThat(existeTabla("profile_sectioning_aud")).isTrue();
+        assertThat(existeColumna("profile_sectioning_aud", "rev")).isTrue();
+        assertThat(existeColumna("profile_sectioning_aud", "revtype")).isTrue();
+        assertThat(existeColumna("profile_sectioning_aud", "profile_id")).isTrue();
+        assertThat(existeColumna("profile_sectioning_aud", "sectioning_id")).isTrue();
+    }
+
+    @Test
+    void laLongitudDelBrazoAdmiteNulo() {
+        String nullable = jdbc().queryForObject(
+                "select is_nullable from information_schema.columns"
+                        + " where table_schema = ? and table_name = 'steady_arm'"
+                        + " and column_name = 'length'",
+                String.class, SCHEMA);
+
+        assertThat(nullable).isEqualTo("YES");
+    }
+
+    /**
+     * V12 siembra profile_status, que estaba VACIO.
+     *
+     * <p>Sin estas tres filas el fallo es silencioso: {@code ProfileValidator} exige
+     * {@code profileStatus}, mandar {@code {"code":"DEFINITIVE"}} pasa la validacion,
+     * {@code MasterDataService} resuelve el codigo a null sin quejarse y el perfil se
+     * guarda con {@code profile_status_id} nulo.
+     */
+    @Test
+    void elCatalogoDeEstadosDePerfilEstaSembrado() {
+        List<String> codigos = jdbc().queryForList(
+                "select code from " + SCHEMA + ".profile_status order by code", String.class);
+
+        assertThat(codigos).containsExactly("DEFINITIVE", "DRAFT", "PROVISIONAL");
+    }
+
+    /**
+     * V19 siembra la empresa que declaran los once paquetes de {@code topology.yml}.
+     *
+     * <p>Sin ella una base recien migrada no puede importar el maestro de perfiles:
+     * {@code InfrastructureUpsertService.resolveCompany} traduce el NIF de cada paquete
+     * contra {@code business_entity} y, si no esta, tumba el paquete y con el sus
+     * estaciones, sus vias y sus perfiles. Habia que meter la fila a mano en cada entorno.
+     *
+     * <p>Se comprueba por el NIF y no por el nombre porque el NIF es lo que busca el
+     * importador, y es la unica columna con restriccion UNIQUE.
+     */
+    @Test
+    void laEmpresaDeLosPaquetesEstaSembrada() {
+        Map<String, Object> empresa = jdbc().queryForMap("""
+                select b.name, b.code, b.deleted, t.code as tipo
+                from %s.business_entity b
+                join %s.comercial_entity_type t on t.id = b.comercial_entity_type_id
+                where b.identification_number = 'B10744258'
+                """.formatted(SCHEMA, SCHEMA));
+
+        assertThat(empresa)
+                .containsEntry("name", "Syneox")
+                .containsEntry("code", "SYNEOX")
+                .containsEntry("deleted", false)
+                .as("es la compania ferroviaria: isRailwayCompany() compara contra ese codigo")
+                .containsEntry("tipo", "RAILWAY_COMPANY");
+    }
+
+    /**
+     * El catalogo de tipos de entidad comercial tambien estaba vacio, y la clave ajena
+     * desde {@code business_entity} es obligatoria: sin sus filas no hay empresa posible.
+     * Los tres codigos son los del enum {@code ComercialEntityTypeValue}, que es contra
+     * lo que comparan {@code isCustoms()}, {@code isConsignee()} e
+     * {@code isRailwayCompany()}.
+     */
+    @Test
+    void elCatalogoDeTiposDeEntidadComercialEstaSembrado() {
+        List<String> codigos = jdbc().queryForList(
+                "select code from " + SCHEMA + ".comercial_entity_type"
+                        + " where code in ('CONSIGNEE', 'CUSTOMS', 'RAILWAY_COMPANY')"
+                        + " order by code", String.class);
+
+        assertThat(codigos).containsExactly("CONSIGNEE", "CUSTOMS", "RAILWAY_COMPANY");
     }
 
     @Test
@@ -356,6 +544,149 @@ class FlywayMigrationIT {
      * INSERT minimo en {@code async_job}. Compuesto por concatenacion a proposito: ver la
      * nota de {@link #elEstadoDeUnTrabajoEstaAcotadoPorLaBaseDeDatos()}.
      */
+    /** V15: el anclaje sigue el mismo camino que el seccionamiento en V14. */
+    @Test
+    void elAnclajeEsAhoraUnaTablaDeUnion() {
+        assertThat(existeTabla("profile_anchorage")).isTrue();
+        assertThat(existeTabla("profile_anchorage_aud")).isTrue();
+        assertThat(existeColumna("profile", "anchorage_id")).isFalse();
+        assertThat(existeColumna("profile_aud", "anchorage_id")).isFalse();
+    }
+
+    /**
+     * V20: el perfil guarda su tipo de soporte.
+     *
+     * <p>El catalogo existia desde V1 y se rellenaba desde los workbooks, pero nadie apuntaba a
+     * el: la columna 'Supports' se quedaba en la hoja NO_MAPEADO del maestro. Es @ManyToOne y no
+     * una N:M porque en las 2.038 celdas medidas no hay ninguna con dos codigos.
+     */
+    @Test
+    void elPerfilGuardaSuTipoDeSoporte() {
+        assertThat(existeColumna("profile", "support_type_id")).isTrue();
+        assertThat(existeColumna("profile_aud", "support_type_id"))
+                .as("la gemela de Envers tiene que llevar la misma columna, o ddl-auto validate no arranca")
+                .isTrue();
+
+        List<String> referenciadas = jdbc().queryForList(
+                """
+                select ccu.table_name
+                from information_schema.table_constraints tc
+                join information_schema.key_column_usage kcu
+                  on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
+                join information_schema.constraint_column_usage ccu
+                  on ccu.constraint_name = tc.constraint_name and ccu.table_schema = tc.table_schema
+                where tc.table_schema = ? and tc.table_name = 'profile'
+                  and tc.constraint_type = 'FOREIGN KEY'
+                  and kcu.column_name = 'support_type_id'
+                """, String.class, SCHEMA);
+        assertThat(referenciadas).containsExactly("support_type");
+
+        // La gemela de auditoria lleva UNA clave ajena, rev -> audit_revision, que es la de
+        // Envers. Lo que no lleva es una hacia el catalogo: apuntaria a filas que pueden
+        // haber cambiado desde la revision que se esta guardando.
+        assertThat(jdbc().queryForList(
+                """
+                select kcu.column_name
+                from information_schema.table_constraints tc
+                join information_schema.key_column_usage kcu
+                  on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
+                where tc.table_schema = ? and tc.table_name = 'profile_aud'
+                  and tc.constraint_type = 'FOREIGN KEY'
+                """, String.class, SCHEMA))
+                .as("profile_aud solo referencia la revision, nunca un catalogo")
+                .containsExactly("rev");
+    }
+
+    /** V16: tercera y ultima N:M del perfil. */
+    @Test
+    void elAparatoDeSeccionamientoEsAhoraUnaTablaDeUnion() {
+        assertThat(existeTabla("profile_sectioning_feeding")).isTrue();
+        assertThat(existeTabla("profile_sectioning_feeding_aud")).isTrue();
+        assertThat(existeColumna("profile", "sectioning_feeding_id")).isFalse();
+        assertThat(existeColumna("profile_aud", "sectioning_feeding_id")).isFalse();
+    }
+
+    /**
+     * V17: la via atraviesa VARIAS estaciones.
+     *
+     * <p>La cuarta N:M del dominio, y la primera que no cuelga del perfil. Se comprueba tambien
+     * que la clave ajena apunte a station: sin ella un id de estacion inexistente se quedaria
+     * como referencia rota, y el evento de datos maestros la publicaria igual.
+     */
+    @Test
+    void laViaAtraviesaVariasEstaciones() {
+        assertThat(existeTabla("track_station")).isTrue();
+        assertThat(existeTabla("track_station_aud")).isTrue();
+        assertThat(existeColumna("track", "station_id")).isFalse();
+        assertThat(existeColumna("track_aud", "station_id")).isFalse();
+
+        List<String> referenciadas = jdbc().queryForList(
+                """
+                select ccu.table_name
+                from information_schema.table_constraints tc
+                join information_schema.key_column_usage kcu
+                  on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
+                join information_schema.constraint_column_usage ccu
+                  on ccu.constraint_name = tc.constraint_name and ccu.table_schema = tc.table_schema
+                where tc.table_schema = ? and tc.table_name = 'track_station'
+                  and tc.constraint_type = 'FOREIGN KEY'
+                  and kcu.column_name = 'station_id'
+                """, String.class, SCHEMA);
+
+        assertThat(referenciadas).containsExactly("station");
+    }
+
+    /**
+     * V18: la clave natural del perfil incluye el KP, y la via tiene orden propio.
+     *
+     * <p>El identificador solo dejo de bastar cuando una via lleva dos tramos concatenados: cada
+     * tramo se numero por su cuenta, asi que '5-1.01' existe dos veces en la misma via. Son dos
+     * mastiles distintos —KP 5421 y KP 5017— y sin el KP en el indice el importador actualizaria
+     * uno con los datos del otro, en silencio y sin violar ninguna restriccion.
+     */
+    @Test
+    void laClaveNaturalDelPerfilIncluyeElPuntoKilometrico() {
+        Map<String, String> indices = new java.util.HashMap<>();
+        jdbc().query("select indexname, indexdef from pg_indexes"
+                        + " where schemaname = ? and indexname like 'ux_profile%'", rs -> {
+            indices.put(rs.getString("indexname"), rs.getString("indexdef"));
+        }, SCHEMA);
+
+        assertThat(indices)
+                .as("el indice que solo miraba el identificador ya no puede seguir ahi: dejaria "
+                        + "fuera el segundo tramo de la via")
+                .doesNotContainKey("ux_profile_track_profile_id");
+        assertThat(indices.get("ux_profile_track_profile_id_kp"))
+                .contains("UNIQUE")
+                .contains("kilometric_point")
+                .contains("deleted = false");
+    }
+
+    /** V18: el orden a lo largo de la via, que el KP ya no puede dar. */
+    @Test
+    void elPerfilYSuGemelaDeAuditoriaTienenElOrdenEnLaVia() {
+        assertThat(existeColumna("profile", "order_in_track")).isTrue();
+        assertThat(existeColumna("profile_aud", "order_in_track"))
+                .as("sin la columna en la gemela, la primera revision de un perfil revienta")
+                .isTrue();
+    }
+
+    private boolean existeTabla(String tabla) {
+        Integer n = jdbc().queryForObject(
+                "select count(*) from information_schema.tables"
+                        + " where table_schema = ? and table_name = ?",
+                Integer.class, SCHEMA, tabla);
+        return n != null && n > 0;
+    }
+
+    private boolean existeColumna(String tabla, String columna) {
+        Integer n = jdbc().queryForObject(
+                "select count(*) from information_schema.columns"
+                        + " where table_schema = ? and table_name = ? and column_name = ?",
+                Integer.class, SCHEMA, tabla, columna);
+        return n != null && n > 0;
+    }
+
     private String insertAsyncJob(String jobType, String status) {
         return "insert into " + SCHEMA + ".async_job"
                 + " (id, job_type, status, created_at, heartbeat_at,"

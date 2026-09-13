@@ -167,7 +167,7 @@ class StationCriteriaSearchIT extends AbstractCriteriaSearchIT {
         Track entity = new Track();
         entity.setName(name);
         entity.setEnabled(true);
-        entity.setStation(station);
+        entity.addStation(station);
         entity.setExecutionPackage(executionPackage);
         em.persist(entity);
         return entity;

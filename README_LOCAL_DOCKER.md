@@ -361,6 +361,32 @@ RabbitMQ: localhost:5672
 Keycloak: http://auth.mto.local:8082/realms/mto
 ```
 
+#### Las credenciales del perfil `local` son las de `mto-platform`
+
+No es un detalle cosmético: quien levanta PostgreSQL, Redis y RabbitMQ es `mto-platform`, así que
+`application-local.yaml` tiene que decir **exactamente** lo que dice su `.env.example`.
+
+| | Valor | Por qué |
+|---|---|---|
+| PostgreSQL | `mto_configuration_user` / `mto_configuration_password` | base `mto_configuration_db`, esquema `mto_configuration` |
+| Redis | *(sin usuario)* / `mto_redis_password` | el contenedor arranca con `--requirepass`; sin contraseña, `NOAUTH` |
+| RabbitMQ | `mto` / `mto` | `RABBITMQ_DEFAULT_USER`; el `guest` de la imagen **no existe** aquí |
+
+Esto estuvo mal un tiempo. Cuando la infraestructura se mudó a `mto-platform`, este perfil se quedó
+con las credenciales del `compose.yaml` antiguo —RabbitMQ `guest/guest` y Redis sin contraseña— y
+ninguna de las dos seguía existiendo: arrancar con el perfil `local` fallaba al conectar, siguiendo
+al pie de la letra lo que decía este mismo documento.
+
+Si tu `.env` de `mto-platform` lleva otros valores, **no hace falta tocar el YAML**: una variable de
+entorno gana a un fichero de configuración.
+
+```powershell
+$env:SPRING_RABBITMQ_USERNAME='otro'
+$env:SPRING_RABBITMQ_PASSWORD='otra'
+$env:SPRING_DATA_REDIS_PASSWORD='otra'
+.\mvnw.cmd spring-boot:run '-Dspring-boot.run.profiles=local'
+```
+
 ### Paso 4: arrancar la aplicación desde IntelliJ
 
 En la configuración de ejecución de IntelliJ:
@@ -385,6 +411,10 @@ Al arrancar correctamente debe ocurrir:
 5. RabbitMQ queda disponible para mensajería.
 6. Spring Security queda preparado para validar tokens de Keycloak.
 ```
+
+Los pasos 4 y 5 son los que delatan unas credenciales que no cuadran: un `NOAUTH` de Redis o un
+`ACCESS_REFUSED` de RabbitMQ en el arranque significan que `application-local.yaml` y el `.env` de
+`mto-platform` dicen cosas distintas. Ver la tabla del paso 3.
 
 La aplicación local normalmente escuchará en el puerto que tenga configurado Spring Boot. Si no hay un `server.port` específico, por defecto será:
 

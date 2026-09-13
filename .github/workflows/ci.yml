@@ -29,6 +29,15 @@ jobs:
           java-version: '25'
           cache: maven
 
+      # El generador del catalogo maestro de LOVs (data/tools) es Python y queda fuera
+      # de Maven, asi que sus reglas de mapeo necesitan su propio paso o no las corre
+      # nadie. Van con unittest de la biblioteca estandar: openpyxl solo hace falta
+      # para el contraste contra data/lov-master.xlsx, y sin el esa clase se salta sola.
+      - name: Run the LOV master generator tests
+        run: |
+          python3 -m pip install --quiet openpyxl pyyaml
+          python3 -m unittest discover -s data/tools/tests -v
+
       # GitHub-hosted Ubuntu runners ship with a running Docker daemon, which is
       # what the Testcontainers-backed tests need: KeycloakAuthorizationIT starts
       # quay.io/keycloak/keycloak:26.1 and imports its realm with --import-realm.

@@ -15,10 +15,10 @@ Java 25, Spring Boot 4.0.1, Maven **single-module** (sin `<modules>` en `pom.xml
 |---|---|
 | `business` | `commons`, `infrastructure` |
 | `controller` | `synchronous`, `asynchronous`, `commons` |
-| `service` | `commons`, `infraestructure` (+ `asynchronous`, `jobs`), `lov`, `audit` |
+| `service` | `commons`, `infraestructure` (+ `asynchronous`, `jobs`, `imports`), `lov` (+ `imports`), `audit` |
 | `repository` | `jpa` (+ `jobs`), `feign` |
 | `entity` | `commons`, `infrastructure`, `configuration`, `lov`, `jobs` |
-| `model` | `commons`, `synchronous` (+ `infrastructure/jobs`), `audit` |
+| `model` | `commons`, `synchronous` (+ `infrastructure/jobs`, `infrastructure/imports`, `lov/imports`), `audit` |
 | `mapper` | `commons`, `infraestructure`, `lov` |
 | `validator` | `commons`, `infrastructure`, `lov` |
 | `enums` | `infrastructure`, `lov`, `jobs` |
@@ -37,6 +37,7 @@ Tests en `src/test/java`, misma raíz de paquete.
 - `README_MESSAGING.md` — RabbitMQ / eventos
 - `keycloak/README.md` — qué aporta este repo al realm (`mto-configuration-partial-import.json` y `mto-configuration-dev.json`); el realm base y el orden de ensamblado son de `mto-platform`
 - `README_ASYNC_JOBS.md` — trabajos en segundo plano (202 Accepted + jobId), capa paralela a `/async`
+- `data/README.md` — los dos maestros generados desde los workbooks (`lov-master.xlsx` y `profile-master.xlsx`), sus generadores en Python y `topology.yml`, que es donde se declara lo que no está en los ficheros
 
 ## Reglas específicas
 Reglas por capa (controllers, repositories, tests, etc.) viven en `.claude/rules/`, no aquí.

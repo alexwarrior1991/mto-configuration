@@ -75,6 +75,25 @@ class ProfileJobFilesTest {
     }
 
     @Test
+    @DisplayName("el informe de una importacion se borra de SU directorio, no del de exportacion")
+    void borraCadaFicheroDeSuDirectorio() throws Exception {
+        // Antes se borraba todo contra el directorio de exportacion, asi que los informes de las
+        // importaciones no se borraban NUNCA y el disco crecia en silencio.
+        java.nio.file.Path reports = java.nio.file.Files.createDirectories(tempDir.resolve("informes"));
+        AsyncJobProperties properties = new AsyncJobProperties();
+        properties.getProfile().setExportDirectory(tempDir);
+        properties.getProfile().setImportReportDirectory(reports);
+        ProfileJobFiles filesWithReports = new ProfileJobFiles(properties);
+
+        String report = "profile-import-" + JOB_ID + ".json";
+        java.nio.file.Path path = java.nio.file.Files.writeString(reports.resolve(report), "{}");
+
+        filesWithReports.delete(com.alejandro.mtoconfiguration.enums.jobs.JobType.PROFILE_IMPORT, report);
+
+        assertThat(path).doesNotExist();
+    }
+
+    @Test
     @DisplayName("un nombre que se sale del directorio no se sirve nunca")
     void nombreQueSeEscapa() {
         // Hoy el nombre lo genera la aplicacion, asi que esto no puede pasar. La comprobacion esta

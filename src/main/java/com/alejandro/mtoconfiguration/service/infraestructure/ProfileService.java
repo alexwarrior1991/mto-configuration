@@ -109,17 +109,21 @@ public class ProfileService extends CRUDService<ProfileDTO, Profile>
         // Filtros de navegación (Track y Station)
         applyCondition(builder, filter.trackId(), qEntity.track.id::eq);
         applyCondition(builder, filter.trackName(), qEntity.track.name::containsIgnoreCase);
-        applyCondition(builder, filter.stationName(), qEntity.track.station.name::containsIgnoreCase);
+        applyCondition(builder, filter.stationName(),
+                name -> qEntity.track.stations.any().name.containsIgnoreCase(name));
 
         // Filtros por CÓDIGO de las LOVs
-        applyCondition(builder, filter.anchorageCode(), qEntity.anchorage.code::eq);
+        applyCondition(builder, filter.anchorageCode(),
+                code -> qEntity.anchorages.any().code.eq(code));
         applyCondition(builder, filter.anchorageFoundationCode(), qEntity.anchorageFoundation.code::eq);
         applyCondition(builder, filter.foundationCode(), qEntity.foundation.code::eq);
         applyCondition(builder, filter.poleTypeCode(), qEntity.poleType.code::eq);
         applyCondition(builder, filter.portalCode(), qEntity.portal.code::eq);
         applyCondition(builder, filter.profileStatusCode(), qEntity.profileStatus.code::eq);
         applyCondition(builder, filter.returnSupportCode(), qEntity.returnSupport.code::eq);
-        applyCondition(builder, filter.sectioningCode(), qEntity.sectioning.code::eq);
+        // Con varios seccionamientos por perfil, filtrar por codigo pasa de "es" a "tiene".
+        applyCondition(builder, filter.sectioningCode(),
+                code -> qEntity.sectionings.any().code.eq(code));
 
         // Búsqueda general (SearchText)
         Optional.ofNullable(filter.searchText())
@@ -128,7 +132,7 @@ public class ProfileService extends CRUDService<ProfileDTO, Profile>
                     BooleanBuilder searchBuilder = new BooleanBuilder();
                     searchBuilder.or(qEntity.profileId.containsIgnoreCase(text));
                     searchBuilder.or(qEntity.track.name.containsIgnoreCase(text));
-                    searchBuilder.or(qEntity.track.station.name.containsIgnoreCase(text));
+                    searchBuilder.or(qEntity.track.stations.any().name.containsIgnoreCase(text));
                     builder.and(searchBuilder);
                 });
 

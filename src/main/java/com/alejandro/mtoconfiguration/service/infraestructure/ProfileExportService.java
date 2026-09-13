@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.service.infraestructure;
 
 import com.alejandro.mtoconfiguration.configuration.AsyncConfiguration;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
+import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -17,6 +18,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.StringJoiner;
+import java.util.stream.Collectors;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -200,7 +202,7 @@ public class ProfileExportService {
                     "profileId", "kp", "foundation", "poleType");
             case MAPPER_DEFAULT -> String.join(CSV_SEPARATOR,
                     "id", "profileId", "kp", "track", "profileStatus", "foundation",
-                    "poleType", "portal", "sectioning");
+                    "poleType", "portal", "sectionings");
             default -> String.join(CSV_SEPARATOR, "profileId", "kp", "track");
         };
     }
@@ -249,7 +251,11 @@ public class ProfileExportService {
             sj.add(p.getFoundation() != null ? p.getFoundation().getDescription() : "N/A");
             sj.add(p.getPoleType() != null ? p.getPoleType().getCode() : "N/A");
             sj.add(p.getPortal() != null ? p.getPortal().getCode() : "N/A");
-            sj.add(p.getSectioning() != null ? p.getSectioning().getCode() : "N/A");
+            // Una sola columna con todos los codigos: anadir columnas la haria depender del
+            // perfil con mas seccionamientos, y el CSV dejaria de tener ancho fijo.
+            sj.add(p.getSectionings() == null || p.getSectionings().isEmpty() ? "N/A"
+                    : p.getSectionings().stream().map(each -> each.getCode())
+                            .collect(Collectors.joining(" ")));
             return sj.toString();
         };
     }

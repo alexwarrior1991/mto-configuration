@@ -1,7 +1,16 @@
 # Perfil de desarrollo. Las credenciales de este fichero son desechables y solo valen contra
-# el stack local que levanta docker-compose. Ningun valor de un entorno desplegado debe
-# escribirse aqui: la configuracion base (application.yaml) no lleva valores por defecto para
-# los secretos justamente para que un despliegue sin gestor de secretos no arranque.
+# la infraestructura local. Ningun valor de un entorno desplegado debe escribirse aqui: la
+# configuracion base (application.yaml) no lleva valores por defecto para los secretos
+# justamente para que un despliegue sin gestor de secretos no arranque.
+#
+# ESTOS VALORES TIENEN QUE CUADRAR CON mto-platform/.env.example, que es quien levanta
+# PostgreSQL, Redis, RabbitMQ y Keycloak desde que la infraestructura dejo de estar en este
+# repositorio. Cuando se mudo, este fichero se quedo con las credenciales del compose
+# antiguo —RabbitMQ 'guest/guest' y Redis sin contrasena— y ninguna de las dos existe ya:
+# arrancar con el perfil 'local' fallaba al conectar, y el README mandaba hacer justo eso.
+#
+# Una variable de entorno gana a este fichero, asi que quien tenga su .env con otros valores
+# no necesita tocarlo: SPRING_RABBITMQ_USERNAME y compania siguen mandando.
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/mto_configuration_db
@@ -25,12 +34,20 @@ spring:
     redis:
       host: localhost
       port: 6379
+      # Redis arranca con --requirepass, asi que un cliente sin contrasena recibe NOAUTH
+      # en el primer comando. La clave no esta en application.yaml porque alli no hay
+      # ningun valor por defecto para un secreto: en docker la pone la variable de
+      # entorno y aqui, que es el unico sitio con credenciales desechables, este fichero.
+      password: mto_redis_password
 
   rabbitmq:
     host: localhost
     port: 5672
-    username: guest
-    password: guest
+    # 'mto', no 'guest'. El usuario por defecto de la imagen de RabbitMQ no existe aqui:
+    # mto-platform la arranca con RABBITMQ_DEFAULT_USER, y con 'guest' la conexion se
+    # rechaza con ACCESS_REFUSED.
+    username: mto
+    password: mto
 
   security:
     oauth2:

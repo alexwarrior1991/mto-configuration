@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import glob
 import os
 import re
 import sys
@@ -41,18 +40,30 @@ import yaml
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from workbook_common import (  # noqa: E402  (necesita el sys.path de arriba)
+    MAX_CODE_LEN,
+    MAX_COLS,
+    MAX_ROWS_TRACK,
+    code_tokens,
+    discover,
+    is_noise,
+    norm_category,
+    norm_header,
+    normalize_code,
+    split_steady_arm,
+    squash,
+)
+
 # La hoja BOQ buena se llama exactamente asi. EP15 trae ademas "Recuento Conjuntos-OLD"
 # y ocho ficheros traen "Recuento Especiales": ninguna de las dos debe leerse.
 BOQ_SHEET = "Recuento Conjuntos"
 LEGEND_SHEET = "Legend"
 TRACK_PREFIX = "HR TRACK"
 
-# Tope de filas por hoja. Protege de las hojas con formato aplicado a toda la
-# cuadricula (EP9A/sheet3 declara 1.048.576 filas). La hoja Track mas larga que
-# hemos medido tiene ~5.200 filas reales.
-MAX_ROWS_TRACK = 20_000
+# Tope de filas de la hoja BOQ. Los de las hojas Track viven en workbook_common,
+# que es donde los comparte con el generador de perfiles.
 MAX_ROWS_BOQ = 5_000
-MAX_COLS = 140
 
 # Primera fila con datos en cada tipo de hoja (1-based).
 BOQ_HEADER_ROW = 2
@@ -60,53 +71,12 @@ BOQ_FIRST_DATA_ROW = 3
 TRACK_HEADER_ROW = 2
 TRACK_FIRST_DATA_ROW = 4
 
-# Valores que aparecen en las celdas de las hojas Track y que no son codigos:
-# marcas de columna vacia, subcabeceras de la fila 3 y errores de formula.
-TRACK_NOISE = {
-    "0", "-", "TRUE", "FALSE", "P", "Ü",
-    "M1", "M2", "M3", "D1", "D2", "D3", "H1", "H2", "H3",
-    "E1", "E2", "E3", "B1", "B2", "B3", "W1", "W2", "W3", "A1", "A2", "A3",
-}
-
-MAX_CODE_LEN = 40
 MAX_DESC_LEN = 200
 
 
 # --------------------------------------------------------------------------------
 # Utilidades de normalizacion
 # --------------------------------------------------------------------------------
-
-def squash(value) -> str:
-    """Colapsa espacios y saltos de linea. Devuelve '' para None."""
-    if value is None:
-        return ""
-    return re.sub(r"\s+", " ", str(value)).strip()
-
-
-def norm_header(value) -> str:
-    return squash(value).lower()
-
-
-def norm_category(value) -> str:
-    return squash(value).upper()
-
-
-def is_noise(code: str) -> bool:
-    """True si la celda no puede ser un codigo de LOV."""
-    if not code:
-        return True
-    if code.upper() in TRACK_NOISE:
-        return True
-    if code.startswith("#"):                       # #REF!, #NAME?, #N/A
-        return True
-    if re.fullmatch(r"[-+]?\d+([.,]\d+)?", code):  # numeros sueltos
-        return True
-    if re.search(r"\d{2}:\d{2}:\d{2}", code):      # fechas serializadas
-        return True
-    if re.fullmatch(r"\d{1,2}/\d{1,2}/\d{2,4}", code):  # fechas tecleadas a mano
-        return True
-    return False
-
 
 def is_pseudo_code(code: str) -> str | None:
     """Motivo por el que un texto del BOQ no es un codigo, o None si si lo es.
@@ -203,6 +173,54 @@ class Catalogue:
         if entity is None:
             self.discard(motivo=reason, entidad="", codigo=code, ep=ep,
                          detalle=boq_category)
+            return
+
+        # Despues del enrutado, no antes: la forma canonica depende de la entidad
+        # de destino, que es la que route_code acaba de decidir.
+        code = canonical_code(entity, code, self.cfg)
+
+        # La longitud del brazo NO es parte de su tipo.
+        #
+        # El origen escribe 'PHQ-1150' en la columna del brazo: el tipo y su longitud
+        # juntos. El maestro de perfiles ya los separa —la longitud va a
+        # steady_arm.length— pero el catalogo se cosecha leyendo la celda entera, asi
+        # que se quedaba con 60 filas que no son tipos de brazo. Ninguna se usaba, pero
+        # estaban marcadas "pendiente de decidir": habilitar una habria guardado la misma
+        # medida dos veces, en la columna y dentro del nombre.
+        #
+        # Se usa la MISMA funcion que el maestro de perfiles, por lo mismo que code_tokens.
+        # Un tipo que no esta en la lista ('BS-1400') no se toca: sale nombrado, que es lo
+        # que hace falta para decidir si es un tipo nuevo o una errata.
+        if entity == "SteadyArmType":
+            arm_type, length, _ = split_steady_arm(
+                code, self.cfg.get("steady_arm_types", []),
+                self.cfg.get("steady_arm_type_aliases"))
+            if arm_type and arm_type.upper() != code.upper():
+                self.discard(motivo="tipo de brazo con su longitud dentro, no un codigo",
+                             entidad=entity, codigo=code, ep=ep,
+                             detalle=f"{arm_type} + {length}" if length else arm_type)
+                self.add(entity, arm_type, source=source, ep=ep, desc_es=desc_es,
+                         desc_en=desc_en, drawing=drawing, boq_category=boq_category,
+                         track_uses=track_uses)
+                return
+
+        # Una celda con VARIOS codigos se registra como varios, no como uno.
+        #
+        # El catalogo se cosecha leyendo cada celda de las hojas Track como si fuera un
+        # codigo, y asi entraron 45 celdas de seccionamiento —'P30(CS) A/S Diag'— como si
+        # lo fueran. Partirlas aqui, y no despues, es lo que hace existir a los atomos que
+        # el origen solo escribe acompanados: 'P59(CS)' no aparece suelto en ningun sitio.
+        # canonical_code TAMBIEN por trozo: 'P30(CS) SA' lleva la errata de 'S/A' dentro,
+        # y la tabla de grafias se aplica a la celda entera, que no casa con nada.
+        noise = self.cfg.get("code_noise_tokens", {}).get(entity)
+        parts = [canonical_code(entity, part, self.cfg) for part in code_tokens(code, noise)]
+        if len(parts) > 1 and all(is_code_atom(entity, part, self.cfg) for part in parts):
+            self.discard(motivo="celda con varios valores, no un codigo",
+                         entidad=entity, codigo=code, ep=ep, detalle=" + ".join(parts))
+            for part in dict.fromkeys(parts):        # 'S/A S/A' es uno, no dos
+                self.add(entity, part, source=source, ep=ep, desc_es=desc_es,
+                         desc_en=desc_en, drawing=drawing, boq_category=boq_category,
+                         track_uses=track_uses)
             return
 
         key = self._key(entity, code)
@@ -474,6 +492,149 @@ def route_code(entity, code, cfg):
     return entity, None
 
 
+def canonical_code(entity, code, cfg):
+    """Forma canonica de un codigo que el origen escribe de varias maneras.
+
+    Las diferencias de solo mayusculas no llegan aqui: la clave del catalogo ya es
+    (entidad, CODIGO en mayusculas), asi que 'DISC/IO' y 'Disc/IO' colapsan solos.
+    Esto resuelve lo que ademas cambia de caracteres —'FW25' frente a 'FW-25', o
+    'LoadB/NZ' frente a 'LoadB/NS'— y que si no repartiria los usos de un mismo
+    equipo entre varias filas, cada una por debajo del umbral de atencion.
+    """
+    # Antes que nada, la errata mecanica: 'P50 (CS)' y 'P50(CS)' son el mismo codigo.
+    code = normalize_code(code)
+
+    table = cfg.get("code_canonical", {}).get(entity, {})
+    if not table:
+        return code
+
+    upper = code.upper()
+    for source, target in table.items():
+        if squash(source).upper() == upper:
+            return squash(target)
+    return code
+
+
+def is_track_accepted(entity, code, cfg):
+    """True si una persona ya ha revisado y aceptado este codigo de hoja Track.
+
+    Un codigo que solo aparece en las hojas de trazado sale con ENABLED=NO por
+    defecto: esta en uso pero ningun catalogo curado lo recoge, y aceptarlo es una
+    decision humana. Esa decision vive en aliases.yml y no en el Excel generado,
+    que se regenera y se llevaria por delante cualquier ENABLED=SI puesto a mano.
+    """
+    accepted = cfg.get("track_accepted", {}).get(entity, [])
+    upper = code.upper()
+    return any(squash(value).upper() == upper for value in accepted)
+
+
+def is_code_atom(entity, code, cfg) -> bool:
+    """True si el codigo es uno de los atomos declarados para su entidad."""
+    atoms = cfg.get("code_atoms", {}).get(entity)
+    if not atoms:
+        return False
+    upper = squash(code).upper()
+    if any(squash(value).upper() == upper for value in atoms.get("exact", [])):
+        return True
+    pattern = atoms.get("regex")
+    return bool(pattern) and re.fullmatch(pattern, squash(code)) is not None
+
+
+def drop_concatenations(cat):
+    """Saca del catalogo las celdas con VARIOS codigos que se colaron como si fueran uno.
+
+    'S/A S/A', 'A/S Diag' o 'S/A A/S-Diag' no son codigos de seccionamiento: son celdas en
+    las que el perfil lleva mas de un valor. Entraron porque el catalogo se cosecha de las
+    hojas Track leyendo cada celda como un codigo, y una vez dentro nada las distinguia de
+    las de verdad.
+
+    La regla no puede ser "tiene un espacio": 'T-SIGN FOUND.', 'UNIQUE SOLUTION' y 'M3 Ø36'
+    son codigos legitimos con espacio. Lo que las delata es que TODAS sus partes son, a su
+    vez, codigos de la misma entidad. 'UNIQUE' y 'SOLUTION' no lo son; 'S/A' y 'A/S-Diag'
+    si.
+
+    La particion la hace code_tokens, que es la MISMA que usa el maestro de perfiles para
+    repartir la celda entre varios codigos. Tenerla en un solo sitio es lo que impide que
+    el catalogo y las referencias discrepen: mientras aqui se partia por espacios a secas,
+    'A/S Diag' no se reconocia como 'A/S-Diag' —la grafia con espacio de 'Diagonal
+    Anchorage'— y 45 celdas se quedaron en el catalogo como si fueran codigos.
+    """
+    by_entity = collections.defaultdict(set)
+    for row in cat.rows.values():
+        by_entity[row["entity"]].add(row["code"].upper())
+
+    for key, row in list(cat.rows.items()):
+        code = row["code"]
+        entity = row["entity"]
+        # canonical_code TAMBIEN por trozo, igual que en Catalog.add: la tabla de grafias
+        # se aplica a la celda entera, que no casa con nada cuando lleva dos codigos
+        # dentro. Sin esto, 'AnRW1' se arreglaba suelto pero no dentro de '2AnRW Portal'.
+        parts = [canonical_code(entity, part, cat.cfg)
+                 for part in code_tokens(code, cat.cfg.get("code_noise_tokens", {}).get(entity))]
+        if not parts:
+            # No queda NADA: la celda era solo una anotacion ('TRACK 5', '(Track 02)').
+            # No es lo mismo que "no hay nada que partir", y tratarlo igual las dejaba
+            # dentro del catalogo como si fueran codigos.
+            cat.discard(motivo="anotacion, no un codigo", entidad=entity, codigo=code,
+                        ep=row.get("ep", ""), detalle="")
+            del cat.rows[key]
+            continue
+        if parts == [code.strip()]:
+            continue   # el codigo tal cual: nada que repartir
+        # Tambien cuando se reduce a UNO: 'A/S Diag1' y 'A/S(T1)' son 'A/S-Diag' y 'A/S'
+        # escritos de otra manera, no codigos nuevos. Lo que decide no es cuantos trozos
+        # salen, sino que todos sean codigos de la misma entidad.
+        codes = by_entity[row["entity"]]
+        if all(part.upper() in codes for part in parts):
+            cat.discard(motivo="celda con varios valores, no un codigo",
+                        entidad=row["entity"], codigo=code, ep=row.get("ep", ""),
+                        detalle=" + ".join(parts))
+            del cat.rows[key]
+
+
+def add_synthetic_codes(cat, cfg):
+    """Codigos que no estan en ningun workbook y pone este proyecto.
+
+    Van despues de leer los ficheros para que un codigo que SI aparezca en el origen
+    gane: Catalogue.add funde por (entidad, CODIGO), asi que lo unico que se aporta
+    entonces es la descripcion y el ORIGEN, no una fila duplicada.
+
+    Salen con ORIGEN=MTO, que los distingue a simple vista de BOQ, LEGEND y TRACK. Es
+    deliberado que se vea: un codigo que el origen no nombra tiene que poder auditarse.
+    """
+    for entity, codes in (cfg.get("synthetic_codes") or {}).items():
+        for declared in codes:
+            cat.add(entity, declared["code"], source="MTO", ep="",
+                    desc_en=declared.get("desc_en", ""),
+                    desc_es=declared.get("desc_es", ""))
+
+
+def decide_enabled(row, cfg) -> bool:
+    """Fija 'type', 'revisar' y 'enabled' de una fila. Devuelve False si falta el tipo.
+
+    Dos motivos independientes piden revision humana:
+
+    1. El codigo solo aparece en hojas Track (ORIGEN=TRACK): esta en uso real pero
+       ningun catalogo curado lo recoge. Deja de pedirla en cuanto alguien lo acepta
+       en 'track_accepted' de aliases.yml.
+    2. La entidad exige un *Type obligatorio y no se ha podido deducir del codigo.
+       Aqui no hay atajo: cargarlo dejaria una relacion obligatoria sin resolver.
+    """
+    entity = row["entity"]
+    only_track = row["sources"] == {"TRACK"}
+    pending_track = only_track and not is_track_accepted(entity, row["code"], cfg)
+
+    needs_type = entity in TYPED_ENTITIES
+    type_code = resolve_type(entity, row["code"], cfg) if needs_type else None
+    if needs_type:
+        row["type"] = type_code or ""
+
+    missing_type = needs_type and type_code is None
+    row["revisar"] = bool(pending_track or missing_type)
+    row["enabled"] = not row["revisar"]
+    return not missing_type
+
+
 def resolve_type(entity, code, cfg):
     overrides = cfg.get("type_overrides", {}).get(entity, {})
     upper = code.upper()
@@ -625,17 +786,6 @@ def write_master(path, cat: Catalogue, cfg, entity_order):
 # Orquestacion
 # --------------------------------------------------------------------------------
 
-def discover(folder):
-    """Todos los workbooks de la carpeta, sin depender de mayusculas.
-
-    EP14A.XLSM y EP14B.XLSM traen la extension en mayusculas.
-    """
-    found = set()
-    for pattern in ("*.xlsm", "*.xlsx", "*.XLSM", "*.XLSX"):
-        found.update(glob.glob(os.path.join(folder, pattern)))
-    return sorted(found)
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -677,19 +827,14 @@ def main():
             wb.close()
         print(f"  {ep:8} BOQ={boq_sheets}  Legend={legend_sheets}  Track={track_sheets}")
 
+    add_synthetic_codes(cat, cfg)
+    drop_concatenations(cat)
+
     # Derivacion de tipos y decision de ENABLED / REVISAR.
     unresolved_types = 0
     for row in cat.rows.values():
-        entity = row["entity"]
-        only_track = row["sources"] == {"TRACK"}
-        needs_type = entity in TYPED_ENTITIES
-        type_code = resolve_type(entity, row["code"], cfg) if needs_type else None
-        if needs_type:
-            row["type"] = type_code or ""
-            if type_code is None:
-                unresolved_types += 1
-        row["revisar"] = bool(only_track or (needs_type and type_code is None))
-        row["enabled"] = not row["revisar"]
+        if not decide_enabled(row, cfg):
+            unresolved_types += 1
 
     ordered, unknown = write_master(args.output, cat, cfg, cfg["entities"])
 

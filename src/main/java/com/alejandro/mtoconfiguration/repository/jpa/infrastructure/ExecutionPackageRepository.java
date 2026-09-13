@@ -15,6 +15,28 @@ public interface ExecutionPackageRepository extends
         CRUDRepository<ExecutionPackage>, MessagingEntityGraphRepository<ExecutionPackage> {
 
     /**
+     * Busqueda por la clave natural, para el find-or-create del importador.
+     *
+     * <p>Ignora mayusculas porque el origen no es consistente ({@code HR TRACK 3 HAD} y
+     * {@code HR Track 3 BIN} conviven en el mismo workbook) y porque es lo que indexa
+     * {@code ux_execution_package_name} (V12). El borrado logico lo filtra la
+     * {@code @SQLRestriction} de {@code CRUDEntity}, igual que ese indice parcial.
+     */
+    Optional<ExecutionPackage> findByNameIgnoreCase(String name);
+
+    /**
+     * El identificador de la empresa del paquete, sin tocar la asociacion.
+     *
+     * <p>{@code ExecutionPackage.company} es {@code LAZY}, y quien compara el paquete con lo que
+     * trae el maestro —{@code InfrastructureUpsertService}— NO abre transaccion: la entidad le
+     * llega detached y un {@code getCompany()} alli revienta con {@code LazyInitializationException}.
+     * En JPQL, {@code e.company.id} se resuelve contra la columna {@code COMPANY_ID} y no hace
+     * ninguna union.
+     */
+    @Query("select e.company.id from ExecutionPackage e where e.id = :id")
+    Optional<Long> findCompanyIdById(@Param("id") Long id);
+
+    /**
      * Mismo motivo que en StationRepository: ExecutionPackageMasterDataPayloadMapper
      * lee dos colecciones (tracks y stations) y en un unico {@code @EntityGraph}
      * Hibernate las une en la misma sentencia, multiplicando las filas entre si. Un
@@ -36,13 +58,15 @@ public interface ExecutionPackageRepository extends
     }
 
     /**
-     * {@code tracks.station} no entra: el mapper solo publica su id y Track es el lado
-     * propietario (la FK STATION_ID vive en TRACK), asi que sale del proxy sin
-     * inicializarlo.
+     * {@code tracks.stations} entra desde V17. Antes no hacia falta: la estacion de la via era
+     * un {@code @ManyToOne} y el mapper solo leia su id, que se saca del proxy sin
+     * inicializarlo. Ahora son varias, y recorrer una coleccion perezosa con la entidad ya
+     * desatachada revienta al publicar el evento.
      */
     @EntityGraph(attributePaths = {
             "company",
-            "tracks"
+            "tracks",
+            "tracks.stations"
     })
     @Query("select e from ExecutionPackage e where e.id = :id")
     Optional<ExecutionPackage> findByIdWithTracksForMessaging(@Param("id") Long id);

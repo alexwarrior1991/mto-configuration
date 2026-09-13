@@ -164,6 +164,12 @@ id=57    INSERT  cw_height=7.777    <- venía sin id: fila nueva
 Si sólo quieres cambiar el `kp` del perfil, **devuelve las ménsulas tal como las leíste**, con sus
 `id`.
 
+> `"cantilevers": null` —el valor JSON `null`, no una lista vacía ni el campo omitido— es lo único
+> que significa *«de esta colección no digo nada»* y deja los hijos intactos. **Omitir el campo no
+> vale**: el DTO lo inicializa a lista vacía, así que el servidor lee `[]` y borra. Es una salida
+> para quien construye la petición desde código y sabe que no está tocando esa rama; para un
+> cliente normal la regla práctica de abajo sigue siendo la buena.
+
 **Perder los `id` al reenviar.** Si mandas los mismos hijos pero sin su `id`, el servidor entiende
 que los existentes se han quitado y que llegan otros nuevos: borra tres filas e inserta tres. Los
 datos acaban pareciendo correctos pero cambian de `id`, pierden su histórico de auditoría y
@@ -177,9 +183,15 @@ cuerpo desde cero ni le quites campos.
 | Padre | Colecciones |
 |---|---|
 | `execution-packages` | `tracks`, `stations` |
-| `stations` | `tracks`, `disconnectors`, `sectionInsulators` |
+| `stations` | `tracks`&nbsp;⚠️, `disconnectors`, `sectionInsulators` |
 | `tracks` | `profiles` |
 | `profiles` | `cantilevers` |
+
+⚠️ **`stations` → `tracks` es la única excepción, y desde `V17`.** Ahí la vía que no mandas se
+**desliga** de esa estación; no se borra. La regla general vale para un hijo que no existe sin su
+padre, y una vía sí existe: `TRACK 1` de EP4 atraviesa ZIC, BIN y HAD a la vez. Si un `PUT` sobre
+ZIC que no la menciona la borrara, se la llevaría por delante también a BIN y a HAD, con sus
+perfiles. Para dar de baja una vía de verdad está `DELETE $BASE/tracks/{id}`.
 
 Y **anida**: en un `PUT $BASE/execution-packages/{id}` puedes traer vías, y dentro de cada vía sus
 perfiles, y dentro de cada perfil sus ménsulas. Cada nivel se reconcilia con la misma regla.
@@ -188,8 +200,15 @@ perfiles, y dentro de cada perfil sus ménsulas. Cada nivel se reconcilia con la
 
 El orden lo decide el servidor, no la posición en la que los mandaste:
 
-- **Perfiles de una vía** → por punto kilométrico (`kp`), y el `id` desempata. Es el orden físico a
-  lo largo de la vía, y el mismo que devuelven `/profiles/track/{id}/keyset` y `/range`.
+- **Perfiles de una vía** → por `orderInTrack`, con el `kp` y el `id` de desempate. Es el orden
+  físico a lo largo de la vía. Hasta `V18` ordenaba el `kp` solo, y dejó de valer: una vía puede
+  llevar **dos tramos concatenados** con la kilometración reiniciada —el segundo tramo de
+  `EP9A / TRACK 1` empieza en el KP 270 cuando el primero acaba en el 8947—, así que ordenar por
+  `kp` no pone un tramo detrás del otro, los **mezcla**. Los perfiles sin `orderInTrack` (los dados
+  de alta por la API, que no tienen posición conocida) van al final.
+  ⚠️ `/profiles/track/{id}/keyset` y `/range` **siguen paginando por `kp`**: son ventanas
+  kilométricas, no el recorrido de la vía, y en una vía con dos tramos ya no coinciden con el
+  orden físico.
 - **Resto de colecciones** → por `id`, que es simplemente un orden estable.
 
 Mandar los hijos en otro orden no cambia nada: no hay forma de reordenarlos desde la API. Si
@@ -199,6 +218,106 @@ La relación 1:1 (`profiles.disconnector`, `cantilevers.steadyArm`) va aparte: m
 crea o actualiza, mandar `null` lo desvincula.
 
 ---
+
+## 4 bis. Campos técnicos del perfil
+
+Además de `profileId`, `kp` y sus listas de valores, un perfil admite cuatro medidas, **todas
+opcionales**:
+
+| Campo | Unidad | Columna | Nota |
+|---|---|---|---|
+| `span` | metros | `NUMERIC(6,3)`, ≥ 0 | Vano **hasta el perfil siguiente**, no del perfil en sí |
+| `heightCantileverSupport` | milímetros | `NUMERIC(6,0)`, ≥ 0 | Sin decimales |
+| `poleGaugeLocation` | milímetros | `NUMERIC(6,0)`, ≥ 0 | Sin decimales |
+| `railPoleDistance` | milímetros | `NUMERIC(6,0)` | **Con signo**: indica a qué lado de la vía queda el poste |
+
+```jsonc
+{
+  "profileId": "P-001",
+  "kp": "10.500",
+  "trackId": 3,
+  "span": "47.970",
+  "heightCantileverSupport": "200",
+  "poleGaugeLocation": "1475",
+  "railPoleDistance": "-4960",
+  "sectioningFeeding": { "code": "Disc/IO" }
+}
+```
+
+Los cinco llegan también por la importación masiva del maestro
+(`POST /profiles/jobs/import`, ver `README_ASYNC_JOBS.md`), que es como se cargan los 11.715
+perfiles de los workbooks de ingeniería.
+
+`span` es el único con una sutileza de modelado: en los workbooks de origen el vano no está en la
+fila del perfil sino en la intermedia, entre ese perfil y el siguiente, así que pertenece al tramo
+que arranca en el perfil. Si necesitas el vano *anterior* a un perfil, es el `span` del perfil que
+lo precede por `kp`.
+
+---
+
+## 4 ter. `sectionings`, `anchorages` y `sectioningFeedings`: el perfil lleva VARIOS
+
+Un perfil puede tener más de un seccionamiento a la vez —es corriente en estaciones: un
+perfil puede ser `A/S` y `P50(CS)`—, así que desde `V14` la relación es N:M. Lo mismo pasa con los **anclajes** (`V15`): un perfil puede llevar uno de catenaria **con**
+regulación de tensión y otro **sin** ella (`FP+AnMC CP+AnMC`), o uno de catenaria más uno de
+retorno (`CP+AnMC AnRW`). Que el origen escriba el mismo par en los dos órdenes confirma que
+el orden no significa nada.
+
+Y con los **aparatos de seccionamiento y alimentación** (`V16`): `Disc SECT-I` es un
+disconnector **más** un aislador de sección. Ese campo usa el catálogo
+`DisconnectorFunction`, y su nombre viene del papel que juega, no del catálogo.
+
+Son las **tres únicas** relaciones N:M del perfil: las demás listas de valores llevan una
+sola, y ahí una celda con dos códigos sigue siendo una anomalía que se reporta.
+
+**La clave natural del perfil incluye el `kp`** desde `V18`. El identificador solo dejó de bastar
+al dejar de partir las vías con dos tramos: cada tramo se numeró por su cuenta, así que `5-1.01`
+existe **dos veces** en `EP9A / TRACK 1` — uno en el KP 5421 y otro en el 5017, dos mástiles
+distintos. Un `PUT` que quiera modificar un perfil concreto tiene que mandar su `kp`; mandarlo
+cambiado crea uno nuevo en vez de modificar el que había.
+
+**La vía tiene la suya propia** (`V17`): `stationId` pasa a `stationIds`, porque una vía larga
+atraviesa varias estaciones sin dejar de ser una vía —`TRACK 1` de EP4 pasa por ZIC, por BIN y
+por HAD— mientras que `TRACK 5 BIN` solo está en BIN. La lista vacía es una respuesta válida y
+frecuente: un tramo entre estaciones cuelga directamente del paquete de ejecución.
+
+```jsonc
+// antes
+"stationId": 12
+// ahora
+"stationIds": [12, 13, 14]
+```
+
+Lo que este modelo **no** dice es dónde empieza cada estación dentro de la vía: dice que pasa por
+las tres, no por qué mástil entra en cada una. El origen no marca ese límite de forma fiable —de
+las 176 vías medidas, 31 traen el punto kilométrico no monótono y una llega a un KP de 1.110.546
+por un dedazo—, así que declararlo sería inventarse una precisión que el dato no tiene.
+
+```jsonc
+// antes
+"sectioning":  { "code": "A/S" }
+"anchorage":   { "code": "CP+AnMC" }
+// ahora
+"sectionings": [ { "code": "A/S" }, { "code": "P50(CS)" } ]
+"anchorages":  [ { "code": "CP+AnMC" }, { "code": "FP+AnMC" } ]
+"sectioningFeedings": [ { "code": "Disc" }, { "code": "SECT-I" } ]
+```
+
+Como el resto de colecciones de esta API (§4), **mandar la lista reemplaza el conjunto
+entero**: el seccionamiento que no mandas se quita. Mandar `[]` los deja todos fuera; omitir
+el campo no toca nada.
+
+Un código que el catálogo no tenga **no se inventa ni rompe la petición**: se ignora, y el
+resto se guarda. Quien quiera que un código desconocido sea un error, lo tiene en la
+importación (`InfrastructureUpsertService`), que sí rechaza la fila y nombra el código.
+
+Dos efectos secundarios que conviene tener presentes:
+
+- `GET /profiles?sectioningCode=X` y `?anchorageCode=X` pasan de significar «el suyo es X»
+  a **«tiene X entre los suyos»**.
+- En la exportación CSV la columna se llama `sectionings` y trae los códigos separados por
+  espacio. Una columna por seccionamiento haría que el ancho del fichero dependiera del
+  perfil con más, y dejaría de ser fijo.
 
 ## 5. Listas de valores
 
@@ -210,6 +329,26 @@ Las LOV van por código, no por id. Al referenciarlas desde otra entidad basta e
 
 El servidor resuelve el código contra el catálogo. Lo que mandes en `description` u otros campos de
 la LOV **se ignora**: manda el catálogo, no la petición.
+
+Un caso a tener presente: **`profile.sectioningFeeding` usa el catálogo `DisconnectorFunction`**, el
+mismo que `disconnector.disconnectorFunction`. No es un catálogo propio, y no lo necesita: el bloque
+`FEEDING` de la leyenda de los workbooks define 22 códigos (`Disc`, `Disc/NS`, `Disc/IO`, `Disc/SI`,
+`Disc/t`, `LoadB` y sus variantes, `ED`, `ED/T`, `SurgeA`, `VoltageD`, `SECT-I`, `CurrentT`, `FS-1`,
+`FS-1D`, `FS/PP-2`, `FS/PP-3`, `PP-2`, `PP-3`, `PP-4`) y los 22 ya están ahí. El campo se llama por
+su papel; el catálogo no se duplica.
+
+```jsonc
+{ "profileId": "P-001", "sectioningFeeding": { "code": "Disc/IO" } }
+```
+
+**`profile.supportType`** (desde `V20`) es la pieza que sujeta la catenaria en el poste —la columna
+`Supports` de los workbooks: `S1`, `S2`, `S1/B7`, `OCR SUPPORT`—. Opcional, y **uno solo**, no una
+lista: en las 2.038 celdas medidas no hay ninguna con dos códigos, al revés que `sectionings`,
+`anchorages` y `sectioningFeedings`.
+
+```jsonc
+{ "profileId": "P-001", "supportType": { "code": "S1" } }
+```
 
 Endpoints propios de cada LOV (`anchorages`, `pole-types`, `profile-statuses`, `sectionings`,
 `portals`, `foundations`, `cantilever-types`, `steady-arm-types`, …):
@@ -272,6 +411,11 @@ curl -X POST "$BASE/profiles/search" \
 
 `sortBy` va contra una **lista blanca** por recurso. Una columna no permitida no da error: se
 ignora y se aplica el orden por defecto.
+
+En `tracks`, `station.name` **sale de esa lista** con `V17`: una vía puede estar en varias
+estaciones, y no hay forma de ordenar una fila por un valor del que tiene tres. Filtrar por
+`stationName` sí sigue funcionando —devuelve las vías que pasan por esa estación—, y como el
+filtro salta a una colección, ahí una vía puede aparecer una vez por estación suya.
 
 Cuidado con los filtros booleanos, que no se comportan igual en todos los recursos:
 

@@ -212,6 +212,60 @@ class BaseMapperTest {
     }
 
     @Nested
+    @DisplayName("Fusion por id")
+    class Fusion {
+
+        @Test
+        @DisplayName("el hijo que vuelve con su id se actualiza, no se duplica")
+        void fusionaPorId() {
+            Parent parent = new Parent();
+            Child existente = new Child(1L);
+            List<Child> entities = new ArrayList<>(List.of(existente));
+            List<Long> actualizados = new ArrayList<>();
+
+            mapper.mergeCollection(List.of(new TestDTO(1L)), entities, parent,
+                    dto -> new Child(null), (dto, child) -> actualizados.add(child.getId()),
+                    Child::setParent);
+
+            assertThat(entities).containsExactly(existente);
+            assertThat(actualizados).containsExactly(1L);
+            assertThat(existente.getParent()).isSameAs(parent);
+        }
+
+        @Test
+        @DisplayName("una lista vacia borra los hijos que ya estaban")
+        void listaVaciaBorra() {
+            // Es el contrato de la API: mandar la coleccion es declarar cuales son TODOS los
+            // hijos, asi que mandarla vacia es decir que ya no hay ninguno.
+            Parent parent = new Parent();
+            List<Child> entities = new ArrayList<>(List.of(new Child(1L), new Child(2L)));
+
+            mapper.mergeCollection(List.<TestDTO>of(), entities, parent,
+                    dto -> new Child(null), (dto, child) -> { }, Child::setParent);
+
+            assertThat(entities).isEmpty();
+        }
+
+        @Test
+        @DisplayName("una lista nula no toca la coleccion")
+        void listaNulaNoToca() {
+            // null NO es lo mismo que vacia: es "de esta coleccion no se ha dicho nada". El
+            // importador del maestro actualiza el paquete de ejecucion sin mandar sus vias, y
+            // mientras null equivalio a vacia, reimportar borraba las 174 vias y, en cascada,
+            // los 11.714 perfiles, para volver a crearlo todo a continuacion.
+            Parent parent = new Parent();
+            Child uno = new Child(1L);
+            Child otro = new Child(2L);
+            List<Child> entities = new ArrayList<>(List.of(uno, otro));
+
+            mapper.mergeCollection(null, entities, parent,
+                    dto -> new Child(null), (dto, child) -> { }, Child::setParent);
+
+            assertThat(entities).containsExactly(uno, otro);
+        }
+    }
+
+    @Nested
     @DisplayName("Vinculacion muchos a muchos")
     class MuchosAMuchos {
 

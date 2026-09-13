@@ -24,10 +24,18 @@ public class SteadyArmValidator extends NormalEntityValidator<SteadyArmDTO> {
         return ENTITY_NAME;
     }
 
+    /**
+     * El tipo de brazo es obligatorio; la longitud no.
+     *
+     * <p>El origen trae 5.691 mensulas con el tipo y sin la longitud: no se conoce.
+     * Exigirla obligaba a elegir entre tirar el tipo o inventarse un numero, asi que la
+     * columna pasa a admitir nulo (V12) y aqui solo se comprueba el rango cuando el
+     * valor viene. Lo que no se relaja es ese rango: 0 o 2001 siguen siendo un 400 con
+     * el campo señalado, no un 500 del driver.
+     */
     @Override
     protected void validateRequiredFields(SteadyArmDTO dto, List<Alert> alerts) {
         check(alerts)
-                .validateRequiredField(dto.getLength(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_LENGTH)
                 .validateRequiredLovDTO(dto.getSteadyArmType(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_STEADY_ARM_TYPE)
                 .validateRange(dto.getLength(), STEADY_ARM_LENGTH_MIN, STEADY_ARM_LENGTH_MAX,
                         ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_LENGTH);

@@ -130,7 +130,8 @@ class ProfileServiceTest {
             String predicate = capturedPredicate().toString();
             assertThat(predicate).contains("profileId");
             assertThat(predicate).contains("track.name");
-            assertThat(predicate).contains("track.station.name");
+            // Desde V17 la estacion cuelga de una coleccion: el predicado salta por any().
+            assertThat(predicate).contains("track.stations");
             assertThat(predicate).contains("||");
         }
 

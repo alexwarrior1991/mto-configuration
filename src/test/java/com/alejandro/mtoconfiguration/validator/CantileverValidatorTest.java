@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static com.alejandro.mtoconfiguration.validator.AlertAssert.assertError;
+import static com.alejandro.mtoconfiguration.validator.AlertAssert.assertNoError;
 import static com.alejandro.mtoconfiguration.validator.AlertAssert.assertNoErrors;
 
 class CantileverValidatorTest {
@@ -28,18 +29,36 @@ class CantileverValidatorTest {
     }
 
     @Test
-    void exigeTodasLasMagnitudes() {
+    @DisplayName("solo el tipo de mensula es obligatorio")
+    void exigeElTipoDeMensula() {
         List<Alert> alerts = validator.validateBeforeSave(new CantileverDTO());
 
-        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "cwHeight");
-        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "stagger");
-        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "catenaryHeight");
-        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "cwElevation");
-        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "windDeflection");
-        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "armAngle");
         assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "cantileverType");
-        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "steadyArm");
         assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "profileId");
+    }
+
+    @Test
+    @DisplayName("las seis magnitudes son opcionales: en el origen casi nunca vienen todas")
+    void noExigeLasMagnitudes() {
+        // De las 14.592 mensulas de los workbooks, cwElevation viene en el 17 % y
+        // windDeflection practicamente en ninguna. Exigirlas dejaba fuera el catalogo
+        // entero, y rellenarlas con ceros mete medidas inventadas.
+        List<Alert> alerts = validator.validateBeforeSave(new CantileverDTO());
+
+        for (String campo : List.of("cwHeight", "stagger", "catenaryHeight",
+                                    "cwElevation", "windDeflection", "armAngle")) {
+            assertNoError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, campo);
+        }
+    }
+
+    @Test
+    @DisplayName("una mensula con solo el tipo es valida")
+    void aceptaUnaMensulaSinMagnitudes() {
+        CantileverDTO dto = new CantileverDTO();
+        dto.setCantileverType(ValidDtos.cantileverType());
+        dto.setProfileId(1L);
+
+        assertNoErrors(validator.validateBeforeSave(dto));
     }
 
     @ParameterizedTest
@@ -97,12 +116,13 @@ class CantileverValidatorTest {
     @DisplayName("los errores de la ménsula llegan con la ruta anidada")
     void propagaLosErroresDeLaMensulaConSuRuta() {
         SteadyArmDTO steadyArm = ValidDtos.existingSteadyArm();
-        steadyArm.setLength(null);
+        steadyArm.setSteadyArmType(null);
 
         CantileverDTO dto = ValidDtos.rootCantilever();
         dto.setSteadyArm(steadyArm);
 
-        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD, "steadyArm.length");
+        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD,
+                "steadyArm.steadyArmType");
     }
 
     @Test
@@ -115,12 +135,12 @@ class CantileverValidatorTest {
     }
 
     @Test
-    @DisplayName("la ménsula sigue siendo obligatoria")
-    void exigeLaMensula() {
+    @DisplayName("la ménsula sin brazo es válida: 4.816 del origen no traen ninguno")
+    void aceptaMensulaSinBrazo() {
         CantileverDTO dto = ValidDtos.rootCantilever();
         dto.setSteadyArm(null);
 
-        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD, "steadyArm");
+        assertNoErrors(validator.validateBeforeSave(dto));
     }
 
     @Test

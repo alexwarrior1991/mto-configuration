@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static com.alejandro.mtoconfiguration.validator.AlertAssert.assertError;
@@ -72,6 +73,74 @@ class ProfileValidatorTest {
     }
 
     @Test
+    @DisplayName("los cuatro campos tecnicos son opcionales: un perfil sin ellos sigue siendo valido")
+    void aceptaUnPerfilSinCamposTecnicos() {
+        ProfileDTO dto = ValidDtos.rootProfile();
+
+        assertNoError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD, "span");
+        assertNoError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD, "heightCantileverSupport");
+        assertNoError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD, "poleGaugeLocation");
+        assertNoError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD, "railPoleDistance");
+    }
+
+    @Test
+    @DisplayName("los campos tecnicos aceptan los valores que trae el origen")
+    void aceptaLosCamposTecnicosDelOrigen() {
+        ProfileDTO dto = ValidDtos.rootProfile();
+        dto.setSpan(new BigDecimal("77.200"));
+        dto.setHeightCantileverSupport(new BigDecimal("7400"));
+        dto.setPoleGaugeLocation(new BigDecimal("5343"));
+        dto.setRailPoleDistance(new BigDecimal("-6290"));
+
+        assertNoErrors(validator.validateBeforeSave(dto));
+    }
+
+    @Test
+    @DisplayName("el vano no puede ser negativo: en el origen hay algun caso y es un dato erroneo")
+    void rechazaVanoNegativo() {
+        ProfileDTO dto = ValidDtos.rootProfile();
+        dto.setSpan(new BigDecimal("-15.000"));
+
+        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_OUT_OF_RANGE, "span");
+    }
+
+    @Test
+    @DisplayName("el vano respeta NUMERIC(6,3): 3 enteros y 3 decimales")
+    void rechazaVanoConPrecisionExcesiva() {
+        ProfileDTO dto = ValidDtos.rootProfile();
+        dto.setSpan(new BigDecimal("1000.000"));
+
+        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_OUT_OF_RANGE, "span");
+    }
+
+    @Test
+    @DisplayName("los tres campos en milimetros no admiten decimales: la columna es NUMERIC(6,0)")
+    void rechazaMilimetrosConDecimales() {
+        ProfileDTO dto = ValidDtos.rootProfile();
+        dto.setPoleGaugeLocation(new BigDecimal("1475.5"));
+
+        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_OUT_OF_RANGE, "poleGaugeLocation");
+    }
+
+    @Test
+    @DisplayName("la distancia carril-poste es la unica con signo: marca el lado de la via")
+    void aceptaDistanciaCarrilPosteNegativa() {
+        ProfileDTO dto = ValidDtos.rootProfile();
+        dto.setRailPoleDistance(new BigDecimal("-4960"));
+
+        assertNoError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_OUT_OF_RANGE, "railPoleDistance");
+    }
+
+    @Test
+    @DisplayName("la altura del soporte de mensula si exige signo positivo")
+    void rechazaAlturaSoporteNegativa() {
+        ProfileDTO dto = ValidDtos.rootProfile();
+        dto.setHeightCantileverSupport(new BigDecimal("-200"));
+
+        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_OUT_OF_RANGE, "heightCantileverSupport");
+    }
+
+    @Test
     @DisplayName("un perfil admite como mucho 3 cantilevers, igual que la entidad")
     void rechazaMasDeTresCantilevers() {
         ProfileDTO dto = ValidDtos.rootProfile();
@@ -95,12 +164,13 @@ class ProfileValidatorTest {
     @DisplayName("los errores de los hijos llegan con su índice y su ruta completa")
     void propagaLosErroresDeLosCantileversConSuRuta() {
         CantileverDTO malo = ValidDtos.newCantilever();
-        malo.setArmAngle(null);
+        malo.setCantileverType(null);   // armAngle ya no vale: es opcional desde V12
 
         ProfileDTO dto = ValidDtos.rootProfile();
         dto.setCantilevers(ValidDtos.listOf(ValidDtos.newCantilever(), malo));
 
-        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD, "cantilevers[1].armAngle");
+        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_REQUIRED_FIELD,
+                "cantilevers[1].cantileverType");
     }
 
     @Test

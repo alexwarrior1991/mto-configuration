@@ -27,6 +27,34 @@ public final class InfrastructureConstraints {
     /** Máximo de vanos por perfil; réplica del {@code @Size} de la entidad. */
     public static final int PROFILE_MAX_CANTILEVERS = 3;
 
+    /**
+     * Vano hasta el perfil siguiente, en metros.
+     *
+     * <p>Es el sentido que le da el origen: en los workbooks el valor no está en la fila del
+     * perfil sino en la intermedia, entre ese perfil y el siguiente.
+     */
+    public static final int SPAN_INTEGER_DIGITS = 3;
+    public static final int SPAN_FRACTION_DIGITS = 3;
+
+    /**
+     * Altura del soporte de ménsula, separación del poste al gálibo y distancia carril-poste,
+     * las tres en milímetros y sin decimales.
+     *
+     * <p>Seis dígitos son holgados para los rangos reales (25..7.400, 843..5.343 y
+     * -6.290..9.125): se prefiere margen a tener que migrar la columna más adelante.
+     *
+     * <p>{@code RAIL_POLE_DISTANCE} es la única con signo, porque el signo indica a qué lado de
+     * la vía queda el poste.
+     */
+    public static final int HEIGHT_CANTILEVER_SUPPORT_INTEGER_DIGITS = 6;
+    public static final int HEIGHT_CANTILEVER_SUPPORT_FRACTION_DIGITS = 0;
+
+    public static final int POLE_GAUGE_LOCATION_INTEGER_DIGITS = 6;
+    public static final int POLE_GAUGE_LOCATION_FRACTION_DIGITS = 0;
+
+    public static final int RAIL_POLE_DISTANCE_INTEGER_DIGITS = 6;
+    public static final int RAIL_POLE_DISTANCE_FRACTION_DIGITS = 0;
+
     // --- SteadyArm ---
     /**
      * El mínimo del validador (1) es más estricto que el de la entidad ({@code @Min(0)}) a
