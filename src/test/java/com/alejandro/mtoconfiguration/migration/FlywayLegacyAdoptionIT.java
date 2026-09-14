@@ -5,6 +5,10 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -22,6 +26,16 @@ import static org.assertj.core.api.Assertions.assertThatCode;
  * trabajo (payload como large object y un CHECK de estado sin IN_PROGRESS), se
  * marca V1 como ya aplicada con baseline y se comprueba que V2 y V3 lo ponen al dia
  * SIN perder el contenido de los mensajes que estuvieran a medio publicar.
+ * <p>
+ * El esquema "que ya existia" tiene que estar ENTERO en {@code flyway_legacy_it}: todo lo que
+ * describe V1, creado aqui a mano, y no solo el outbox. Mientras solo estaba el outbox, las
+ * migraciones posteriores resolvian {@code profile} y compañia por el {@code search_path} en
+ * {@code public} —donde las deja el contexto de Spring de los demas tests— y las alteraban
+ * ALLI. Nadie lo notaba porque todas eran idempotentes, hasta V21: crea
+ * {@code assembly_configuration} en este esquema y luego cuelga de ella la clave ajena de
+ * {@code profile}, que se resolvia en {@code public.profile} y se quedaba apuntando a una
+ * tabla vacia de otro esquema. {@code ProfileMasterImportIT} fallaba despues por esa clave,
+ * en 290 perfiles, sin que este test dijera nada.
  */
 class FlywayLegacyAdoptionIT {
 
@@ -38,7 +52,14 @@ class FlywayLegacyAdoptionIT {
             statement.execute("create schema " + SCHEMA);
             statement.execute("set search_path to " + SCHEMA);
 
-            // outbox_message como lo dejaba Hibernate antes de este trabajo
+            // Todo lo que V1 describe, creado a mano en ESTE esquema: es la base que Hibernate
+            // dejaba antes de Flyway. V1 no lleva prefijo de esquema a proposito, asi que
+            // entra entero donde apunta el search_path.
+            statement.execute(migration("V1__init_schema.sql"));
+
+            // ...salvo outbox_message, que se recrea como lo dejaba Hibernate antes de este
+            // trabajo (payload como large object y un CHECK de estado sin IN_PROGRESS).
+            statement.execute("drop table outbox_message");
             statement.execute("""
                     create table outbox_message (
                         id uuid not null primary key,
@@ -153,6 +174,17 @@ class FlywayLegacyAdoptionIT {
                     .contains("idx_outbox_message_claim")
                     .contains("idx_outbox_message_purge")
                     .contains("idx_outbox_message_failed");
+        }
+    }
+
+    private static String migration(String name) {
+        try (InputStream in = FlywayLegacyAdoptionIT.class.getResourceAsStream("/db/migration/" + name)) {
+            if (in == null) {
+                throw new IllegalStateException("no esta en el classpath: db/migration/" + name);
+            }
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 
