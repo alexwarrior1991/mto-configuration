@@ -17,9 +17,11 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.junit.jupiter.api.BeforeEach;
 import com.alejandro.mtoconfiguration.entity.lov.SupportType;
+import com.alejandro.mtoconfiguration.entity.lov.AssemblyConfiguration;
 import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SupportTypeDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.AssemblyConfigurationDTO;
 import java.util.LinkedHashSet;
 import com.alejandro.mtoconfiguration.entity.lov.Anchorage;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
@@ -228,6 +230,42 @@ class ProfileMapperTest {
             dto.setSupportType(null);
 
             assertThat(mapper.toEntity(dto).getSupportType()).isNull();
+        }
+
+        /**
+         * V21: la configuracion de montaje ('C.F.21', 'C.C.2') se resuelve por codigo igual que
+         * el tipo de soporte. Solo la trae el sinoptico de RUBI; en el resto va a null.
+         */
+        @Test
+        @DisplayName("la configuracion de montaje se resuelve por codigo en los dos sentidos")
+        void configuracionDeMontaje() {
+            AssemblyConfiguration cf21 = new AssemblyConfiguration();
+            cf21.setId(9L);
+            cf21.setCode("C.F.21");
+            when(masterDataService.getAssemblyConfigurationByCode("C.F.21")).thenReturn(cf21);
+
+            ProfileDTO dto = dto();
+            AssemblyConfigurationDTO codigo = new AssemblyConfigurationDTO();
+            codigo.setCode("C.F.21");
+            dto.setAssemblyConfiguration(codigo);
+
+            Profile entity = mapper.toEntity(dto);
+            assertThat(entity.getAssemblyConfiguration()).isSameAs(cf21);
+
+            AssemblyConfigurationDTO enriquecido = new AssemblyConfigurationDTO();
+            enriquecido.setId(9L);
+            enriquecido.setCode("C.F.21");
+            when(masterDataService.getAssemblyConfigurationByIdAndMapToDTO(9L)).thenReturn(enriquecido);
+            assertThat(mapper.toDTO(entity).getAssemblyConfiguration()).isSameAs(enriquecido);
+        }
+
+        @Test
+        @DisplayName("sin configuracion de montaje el perfil entra igual: la columna es opcional")
+        void configuracionDeMontajeAusente() {
+            ProfileDTO dto = dto();
+            dto.setAssemblyConfiguration(null);
+
+            assertThat(mapper.toEntity(dto).getAssemblyConfiguration()).isNull();
         }
 
         /**

@@ -714,3 +714,36 @@ execution_packages:
       - sheet: "HR Track 8BIS LOD_D"
         name: "TRACK 8BIS LOD_D"          # REVISAR: derivado de A1
         station: LOD_D     # REVISAR: derivado del titulo A1
+
+  # Linha Rubi de Metro do Porto (Casa da Musica - Santo Ovidio). NO es un workbook de
+  # hojas 'HR Track': es un SINOPTICO, una sola hoja con las dos vias en espejo, y lo
+  # lee data/tools/synoptic.py con las tablas de la seccion 'synoptic' de aliases.yml.
+  # Cada via se declara con el 'block' que la identifica en la fila de cabecera.
+  # Las dos vias recorren la linea entera, asi que pasan por las ocho estaciones.
+  RUBI:
+    file: RUBI.xlsx
+    format: synoptic
+    name: "EP RUBI Casa da Musica - Santo Ovidio"
+    initial_package: false
+    length: 6442                            # REVISAR: ultimo KP de la via 1, en metros
+    start_date: 2024-01-01                  # REVISAR
+    end_date: 2026-12-31                    # REVISAR
+    company_identification_number: "B10744258"
+    stations:
+      - Casa da Música
+      - Campo Alegre
+      - Arrábida
+      - Candal
+      - Rotunda
+      - Devesas
+      - Soares dos Reis
+      - Santo Ovídio
+    tracks:
+      - sheet: "Sinóptico"
+        block: "VIA 1"                      # bloque de la derecha de la hoja
+        name: "TRACK 1"
+        stations: [Casa da Música, Campo Alegre, Arrábida, Candal, Rotunda, Devesas, Soares dos Reis, Santo Ovídio]
+      - sheet: "Sinóptico"
+        block: "VIA 2"                      # bloque de la izquierda de la hoja
+        name: "TRACK 2"
+        stations: [Casa da Música, Campo Alegre, Arrábida, Candal, Rotunda, Devesas, Soares dos Reis, Santo Ovídio]

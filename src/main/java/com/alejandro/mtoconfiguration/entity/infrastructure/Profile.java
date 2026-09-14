@@ -99,6 +99,7 @@ public class Profile extends CRUDEntity {
     private ReturnSupport returnSupport;
     private Set<Sectioning> sectionings = new LinkedHashSet<>();
     private SupportType supportType;
+    private AssemblyConfiguration assemblyConfiguration;
     private Set<DisconnectorFunction> sectioningFeedings = new LinkedHashSet<>();
 
     @Id
@@ -279,6 +280,21 @@ public class Profile extends CRUDEntity {
     @Audited(targetAuditMode = NOT_AUDITED)
     public SupportType getSupportType() {
         return supportType;
+    }
+
+    /**
+     * Configuracion de montaje de la catenaria en este apoyo: {@code C.F.21}, {@code C.C.2}.
+     *
+     * <p>Llega con el sinoptico de la Linha Rubi (EP RUBI), que la escribe en cada apoyo de
+     * catenaria flexible o de mensula; los workbooks ferroviarios no traen esa columna y sus
+     * perfiles la dejan a {@code null}. Opcional y <b>una</b> por apoyo. Catalogo desde
+     * {@code V21}, con la misma forma que el tipo de soporte.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ASSEMBLY_CONFIGURATION_ID")
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public AssemblyConfiguration getAssemblyConfiguration() {
+        return assemblyConfiguration;
     }
 
     /**

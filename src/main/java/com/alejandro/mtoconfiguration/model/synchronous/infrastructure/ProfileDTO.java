@@ -60,4 +60,9 @@ public class ProfileDTO extends BaseDTO {
      * Uno solo, no una lista — el origen no escribe dos en la misma celda.
      */
     private SupportTypeDTO supportType;
+    /**
+     * Configuracion de montaje de la catenaria en el apoyo ({@code C.F.21}, {@code C.C.2}).
+     * Opcional y una sola; hoy solo la trae el sinoptico de RUBI.
+     */
+    private AssemblyConfigurationDTO assemblyConfiguration;
 }

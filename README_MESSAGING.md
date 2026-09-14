@@ -137,6 +137,7 @@ tratarlo (no tiene `MasterDataEntityHandler` para esa entidad).
 | `railPoleDistance` | número o `null` | Distancia carril-poste, en milímetros, **con signo** |
 | `sectioningFeeding` | `{ "id", "code" }` o `null` | Elemento de seccionamiento y alimentación |
 | `supportType` | `{ "id", "code" }` o `null` | Pieza que sujeta la catenaria en el poste (columna `Supports`) |
+| `assemblyConfiguration` | `{ "id", "code" }` o `null` | Configuración de montaje de la catenaria en el apoyo (`C.F.21`, `C.C.2`; desde `V21`, solo la trae el sinóptico de RUBI) |
 
 `sectioningFeeding` sale con `id` **y** `code`, como el resto de LOV del perfil y a diferencia de
 `disconnector.disconnectorFunction`, que viaja sólo como `disconnectorFunctionId`: el consumidor

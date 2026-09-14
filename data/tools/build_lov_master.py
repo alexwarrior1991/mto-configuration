@@ -54,6 +54,18 @@ from workbook_common import (  # noqa: E402  (necesita el sys.path de arriba)
     split_steady_arm,
     squash,
 )
+from synoptic import (  # noqa: E402
+    FIELD_ENTITY,
+    MULTI_FIELDS,
+    SINGLE_LOV_FIELDS,
+    describe,
+    is_synoptic,
+    lov_columns,
+    synoptic_layout,
+    synoptic_records,
+    translate_codes,
+    translate_single,
+)
 
 # La hoja BOQ buena se llama exactamente asi. EP15 trae ademas "Recuento Conjuntos-OLD"
 # y ocho ficheros traen "Recuento Especiales": ninguna de las dos debe leerse.
@@ -465,6 +477,51 @@ def read_track(ws, ep, cfg, cat: Catalogue):
             cat.add(entity, code, source="TRACK", ep=ep, track_uses=uses)
 
 
+def read_synoptic_catalog(ws, ep, declared, cfg, cat: Catalogue):
+    """Cosecha los codigos de una hoja sinoptico (RUBI), ya traducidos al catalogo.
+
+    El sinoptico no trae BOQ ni leyenda: todo lo que aporta llega como ORIGEN=TRACK y
+    sale con ENABLED=NO hasta que alguien lo acepte en 'track_accepted', igual que un
+    codigo que solo aparece en las hojas HR Track. La descripcion inglesa de los codigos
+    nuevos se declara en 'synoptic.descriptions', que hace aqui de leyenda.
+    """
+    layout = synoptic_layout(ws, ep, cfg, cat)
+    if layout is None:
+        return 0
+
+    counts: dict[tuple[str, str], int] = collections.Counter()
+    blocks = {squash(t.get("block")).upper() for t in declared.get("tracks") or []
+              if not t.get("skip") and t.get("block")}
+    for marker in blocks:
+        if marker not in layout.blocks:
+            cat.unrecognised("bloque de via sin marcador en la cabecera", marker, ep,
+                             ws.title, layout.header_index + 1)
+            continue
+        for item in synoptic_records(layout, marker, cfg):
+            if item["kind"] != "profile":
+                continue
+            for field in SINGLE_LOV_FIELDS:
+                code = translate_single(field, item["single"][field], cfg)
+                if code:
+                    counts[(FIELD_ENTITY[field], code)] += 1
+            for field in MULTI_FIELDS:
+                translated = translate_codes(field, item["multi"][field], cfg)
+                for target, code in translated.codes:
+                    counts[(FIELD_ENTITY[target], code)] += 1
+                for piece, number in translated.unrouted:
+                    cat.unrecognised(f"codigo sin destino en {field}", piece, ep,
+                                     ws.title, number)
+            for slot in item["cantilever"]:
+                code = translate_single("CANTILEVER_TYPE", slot["CANTILEVER_TYPE"], cfg)
+                if code:
+                    counts[(FIELD_ENTITY["CANTILEVER_TYPE"], code)] += 1
+
+    for (entity, code), uses in counts.items():
+        cat.add(entity, code, source="TRACK", ep=ep, track_uses=uses,
+                desc_en=describe(entity, code, cfg))
+    return len(blocks)
+
+
 # --------------------------------------------------------------------------------
 # Derivacion de tipos
 # --------------------------------------------------------------------------------
@@ -757,7 +814,10 @@ def write_master(path, cat: Catalogue, cfg, entity_order):
     # --- USO_TRACKS
     ws = wb.create_sheet("USO_TRACKS")
     style_sheet(ws, ["COLUMNA_TRACK", "ENTIDAD_LOV"], [30, 26])
-    for row_index, (header, entity) in enumerate(sorted(cfg["track_headers"].items()), start=2):
+    usage = sorted(cfg["track_headers"].items())
+    if cfg.get("synoptic"):
+        usage += lov_columns(cfg)
+    for row_index, (header, entity) in enumerate(usage, start=2):
         ws.cell(row=row_index, column=1, value=header)
         ws.cell(row=row_index, column=2, value=entity)
 
@@ -793,10 +853,18 @@ def main():
                         help="carpeta con los workbooks (por defecto data/workbook)")
     parser.add_argument("-o", "--output", default="data/lov-master.xlsx")
     parser.add_argument("--aliases", default=os.path.join(os.path.dirname(__file__), "aliases.yml"))
+    parser.add_argument("--topology", default=os.path.join(os.path.dirname(__file__), "topology.yml"),
+                        help="solo para saber que workbooks son sinopticos (format: synoptic)")
     args = parser.parse_args()
 
     with open(args.aliases, encoding="utf-8") as handle:
         cfg = yaml.safe_load(handle)
+    # El catalogo no necesita la topologia... salvo para los workbooks SINOPTICOS, que no
+    # tienen hojas 'HR Track' y solo se reconocen porque topology.yml los declara asi.
+    topology = {}
+    if os.path.exists(args.topology):
+        with open(args.topology, encoding="utf-8") as handle:
+            topology = yaml.safe_load(handle) or {}
 
     files = discover(args.folder)
     if not files:
@@ -811,9 +879,14 @@ def main():
         ep = os.path.splitext(os.path.basename(path))[0]
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
         boq_sheets = legend_sheets = track_sheets = 0
+        declared = topology.get("execution_packages", {}).get(ep) or {}
         try:
             for ws in wb.worksheets:
                 name = ws.title
+                if is_synoptic(declared):
+                    if squash(name) in {squash(t.get("sheet")) for t in declared.get("tracks") or []}:
+                        track_sheets += read_synoptic_catalog(ws, ep, declared, cfg, cat)
+                    continue
                 if name == BOQ_SHEET:
                     read_boq(ws, ep, cfg, cat)
                     boq_sheets += 1

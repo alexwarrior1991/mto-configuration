@@ -48,6 +48,7 @@ public class MasterDataService {
     private final SectioningRepository sectioningRepository;
     private final SteadyArmTypeRepository steadyArmTypeRepository;
     private final SupportTypeRepository supportTypeRepository;
+    private final AssemblyConfigurationRepository assemblyConfigurationRepository;
 
     // Mappers
     private final AnchorageFoundationMapper anchorageFoundationMapper;
@@ -66,6 +67,7 @@ public class MasterDataService {
     private final SectioningMapper sectioningMapper;
     private final SteadyArmTypeMapper steadyArmTypeMapper;
     private final SupportTypeMapper supportTypeMapper;
+    private final AssemblyConfigurationMapper assemblyConfigurationMapper;
 
     // Resolver en bean aparte: la llamada cruza el proxy de Spring y sí aplica @Cacheable
     private final LovReferenceResolver lovReferenceResolver;
@@ -672,6 +674,39 @@ public class MasterDataService {
     )
     public List<SupportTypeDTO> getSupportTypeList() {
         return getListAndMap(supportTypeRepository, supportTypeMapper);
+    }
+
+    // --- Assembly Configuration ---
+
+    public AssemblyConfiguration getAssemblyConfigurationByCode(String code) {
+        return getEntityRefByCode("AssemblyConfiguration", code, assemblyConfigurationRepository);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public AssemblyConfigurationDTO getAssemblyConfigurationByIdAndMapToDTO(Long id) {
+        return getEntityByIdAndMap(id, assemblyConfigurationRepository, assemblyConfigurationMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_ITEM,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null"
+    )
+    public AssemblyConfigurationDTO getAssemblyConfigurationByCodeAndMapToDTO(String code) {
+        return getEntityByCodeAndMap(code, assemblyConfigurationRepository, assemblyConfigurationMapper);
+    }
+
+    @Cacheable(
+            cacheNames = CACHE_LIST,
+            keyGenerator = "redisCacheKeyGenerator",
+            unless = "#result == null || #result.isEmpty()"
+    )
+    public List<AssemblyConfigurationDTO> getAssemblyConfigurationList() {
+        return getListAndMap(assemblyConfigurationRepository, assemblyConfigurationMapper);
     }
 
     public <E extends BaseEntity, T extends LovDTO> E getByIdOrByCode(

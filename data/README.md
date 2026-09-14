@@ -9,6 +9,7 @@ data/
 ├── workbook/                   # Workbooks de Execution Package (fuente, tal cual los entrega ingeniería)
 ├── tools/
 │   ├── workbook_common.py      # Primitivas compartidas por los dos generadores
+│   ├── synoptic.py             # Lector del formato sinóptico (RUBI), también compartido
 │   ├── build_lov_master.py     # Generador del catálogo de LOVs
 │   ├── build_profile_master.py # Generador de los datos de infraestructura
 │   ├── aliases.yml             # Tablas de mapeo — se amplía aquí, no en los scripts
@@ -46,7 +47,8 @@ python3 data/tools/build_lov_master.py                 # lee data/workbook/
 python3 data/tools/build_lov_master.py otra/carpeta -o salida.xlsx
 ```
 
-Tarda alrededor de un minuto con los 11 workbooks actuales.
+Tarda alrededor de un minuto con los 12 workbooks actuales (11 ferroviarios de hojas `HR Track`
+y el sinóptico de RUBI, que tiene su propia sección al final de este documento).
 
 **El script termina con código de salida distinto de cero si encuentra algo que no
 sabe mapear.** No es un fallo del script: significa que el catálogo saldría
@@ -586,7 +588,7 @@ mapear**: una hoja sin declarar o una cabecera desconocida van a `NO_RECONOCIDO`
 |---|---|
 | `LEEME` | La explicación de las columnas, dentro del propio Excel |
 | `EPS` / `STATIONS` / `TRACKS` | Lo declarado en `topology.yml`, ya resuelto |
-| `PROFILES` | Una fila por perfil: identificador, KP, las 8 LOV y los 4 campos técnicos |
+| `PROFILES` | Una fila por perfil: identificador, KP, las 9 LOV (con `ASSEMBLY_CONFIGURATION` desde `V21`, que solo trae RUBI) y los 4 campos técnicos |
 | `CANTILEVERS` | Una fila por ménsula, con su `SLOT` (1..3) y el brazo ya partido en tipo y longitud |
 | `DISCONNECTORS` / `SECTION_INSULATORS` | Cabeceras y **ninguna fila**: la costura para cuando lleguen esos datos |
 | `NO_MAPEADO` | Columnas reales del origen que hoy no tienen campo en el dominio |
@@ -664,6 +666,104 @@ python3 -m unittest discover -s data/tools/tests -v
 Las pruebas de mecanismo construyen las hojas en memoria, sin abrir ningún workbook.
 Las dos últimas clases contrastan los maestros ya generados y se saltan solas si no
 están.
+
+---
+
+# El formato sinóptico (RUBI)
+
+`RUBI.xlsx` es el **Caderno de Montagem** de la Linha Rubi de Metro do Porto (Casa da Música –
+Santo Ovídio): catenaria **rígida** en túnel, **flexible** en viaducto y **de ménsula** (tranviaria)
+en los extremos. No se parece a los workbooks ferroviarios: es **una sola hoja** (`Sinóptico`) con
+las dos vías **en espejo** —la vía 2 a la izquierda (columnas B–AA, leyendo hacia fuera) y la vía 1
+a la derecha (AP–BM)— separadas por una banda central sin cabecera, con las cabeceras en portugués
+y en español y con conceptos propios (`Tipologia`, `Consolas`, `Maciços`, `Configuraciones`).
+
+Lo lee `tools/synoptic.py`, que usan **los dos generadores** —el catálogo se cosecha con él y los
+perfiles se generan con él—, igual que `workbook_common.py`: si el catálogo y las referencias de
+los perfiles leyeran la hoja de dos maneras, discreparían sin que nadie lo notase. Se activa con
+`format: synoptic` en `topology.yml`; un EP sin `format` sigue exactamente el camino de las hojas
+`HR Track`.
+
+```yaml
+  RUBI:
+    file: RUBI.xlsx
+    format: synoptic
+    name: "EP RUBI Casa da Musica - Santo Ovidio"
+    stations: [Casa da Música, Campo Alegre, Arrábida, Candal, Rotunda, Devesas, Soares dos Reis, Santo Ovídio]
+    tracks:
+      - sheet: "Sinóptico"
+        block: "VIA 1"           # el bloque de columnas, no la hoja: hay una sola
+        name: "TRACK 1"
+        stations: [Casa da Música, ..., Santo Ovídio]   # las dos vías recorren la línea entera
+```
+
+Todo lo específico del formato vive en la sección `synoptic` de `aliases.yml`. Las reglas de la
+casa se conservan: columnas por nombre y no por índice, nada se descarta en silencio, y el maestro
+escribe la grafía del catálogo.
+
+## Cómo se lee la hoja
+
+- **La cabecera se localiza por contenido** (la fila que trae `SUPORTE`) y **los marcadores
+  `VIA 2` / `VIA 1` de esa misma fila parten la hoja** en los dos bloques. Cada bloque resuelve
+  sus columnas por nombre con la tabla `synoptic.columns`; una cabecera desconocida va a
+  `NO_RECONOCIDO`. La banda central no tiene cabecera: sus textos (`CAT D`, `CAT R`) se conservan
+  en `NO_MAPEADO` con la letra de su columna.
+- **Las columnas gemelas.** La segunda ménsula del apoyo va en columnas **sin cabecera** pegadas
+  por fuera a `Desalinhamentos`, `Alt. FC` y `Consolas`, y `Equipamentos associados` se escribe
+  dos veces. Es la única lectura por posición, y está acotada: la gemela es la columna con la
+  misma cabecera o, si no la hay, la columna sin cabecera adyacente **por el lado exterior**
+  (alejándose de la banda central). Los campos que la tienen se declaran en `synoptic.twins`.
+- **Las filas alternan apoyo / fila intermedia**, como en las hojas `HR Track`, y lo que trae la
+  fila intermedia es del apoyo **anterior**: el vano (hasta el apoyo siguiente), el
+  `Seccionamento` escrito entre los dos apoyos de un solape y el `Disp. Transic.` de una
+  transición.
+- **Un texto sin KP en la columna del apoyo es un hito** (`Inic. Est. Campo Alegre (00+966)`,
+  `Fin. Ponte`, `Cruce Vial`, `Existente`): va a `DESCARTADOS` como `hito de trazado, no es un
+  apoyo`. Las estaciones no se deducen de ahí: se declaran en `topology.yml`, como siempre.
+- **Los datos acaban en la primera fila en blanco.** Debajo hay notas al pie que escriben un
+  código y un KP donde iría un apoyo (`3703CCA36` en la fila 942); salen en `DESCARTADOS` como
+  `fila fuera del bloque de datos`, con su fila.
+- **El KP es el P.K. de línea de cada vía** (`P.K. (vía 1)` / `P.K. (vía 2)`), en metros, y
+  admite la kilometración con signo más (`1+118,8` son 1118,8 m). El P.K. absoluto de la red
+  (`P.K. Abs.vía 1`, decreciente y solo de la vía 1) se conserva en `NO_MAPEADO`. Los dos primeros
+  apoyos de Casa da Música tienen KP negativo (−2,84) y se quedan `ENABLED=NO` con el motivo
+  `KP: negativo`, la misma regla que los demás EPs.
+- `Implantação (m)` es la distancia carril-poste, en metros: el campo `RAIL_POLE_DISTANCE` va en
+  milímetros (`1,77` → `1770`).
+
+## Todo llega en inglés
+
+El origen escribe en portugués y en español; **a la base de datos llega inglés**. La tabla
+`synoptic.translations` es el único sitio que conoce las grafías del origen y las convierte, por
+campo, en códigos del catálogo; `synoptic.descriptions` es la leyenda que el sinóptico no trae.
+Los códigos nuevos son 81 y todos llegan como `ORIGEN=TRACK` —el sinóptico no tiene BOQ ni
+`Legend`—, así que están aceptados en `track_accepted`, que es donde se versiona esa decisión.
+
+| Columna del origen | Campo | Códigos |
+|---|---|---|
+| `Tipologia` (sistema de catenaria) | `SUPPORT_TYPE` | `Rígida` → `OCR SUPPORT` (el que ya usa EP6); `Funicular` → `FLEXIBLE`; `Consola` y `Cons. Simp.` → `SINGLE CANTILEVER`; `Cons. Dob.` → `DOUBLE CANTILEVER` |
+| `Tipología` (función del apoyo) | `SECTIONING` | Sin códigos nuevos salvo `P80`: `S` → vacío (suspensión simple); `SE`/`S/E` → `S/A`; `A/S`; `PF` → `MP`; `E` → `A`; `Elev.` → `S/A`; `PA30`/`PA50`/`PA80` → `P30`/`P50`/`P80`. Multivalor: `S/E A/S` → `S/A\|A/S`. `Aislad.` es el aislador de sección y va a `SECTIONING_FEEDING` como `SECT-I`. `Anc` es una errata: vacío y anotado |
+| `Seccionamento` | `SECTIONING` | `Seccionamento` → `OVERLAP`; `Transição Catenaria` → `TRANSITION`; `Cantón 396,4 m` es la longitud del cantón, sin campo → `NO_MAPEADO` |
+| `Equipamentos associados` | `ANCHORAGE` / `SECTIONING_FEEDING` | Se reparte por código (`synoptic.routing`): `Ancoraem 1HC/2HC/coneção Sto Ov.` → `An1CW`, `An2CW`, `AnCONN`; `Caix. Secc. e Con.` → `SectConnBox`; `Caix. Imped.` → `ImpBox`; `Disp. Transic.` → `TransDev`; `Aislador 1HC/2HC` → `SECT-I-1CW`, `SECT-I-2CW` |
+| `Consolas` (+ gemela) | `CANTILEVER_TYPE` | `Delta` → `DELTA`; `B. Fun.` → `FLEXIBLE ARM`; `C3- C.L.` → `C3-LONG` (long cantilever); `C3- C.C.` → `C3-SHORT` (short cantilever). Con `Desalinhamentos` → `STAGGER` (cm) y `Alt. FC` → `CW_HEIGHT` (m). Un apoyo `Rígida` con desalineamiento y sin consola recibe la ménsula `OCR` por el fallback existente (`cantilever_type_fallback.by_support`), igual que EP6, y sale `REVISAR=SI` |
+| `Tipo de Suporte` | `POLE_TYPE` | 17 nuevos: los planos `C859-A/B`, `C860-A/B`, `C863-A/B`, los perfiles `HEA 220/240/280/280 G./300`, `HEM 320`, `IPE 120`, el tubo `Ø300/Ø180/e16`, `Parafil` y `Pendulo 140` tal cual, `Marquise` → `CANOPY` |
+| `Maciços` | `FOUNDATION` (tipo `MTX`) | `M1`, `M2`, `M4`–`M7`; `Anc. Corrente` → `STANDARD ANCHOR`; `Anc. Ancoragem` → `ANCHORAGE ANCHOR`; `Anc. Ponte` → `BRIDGE ANCHOR`; `Anc. Sot.` → `UNDERGROUND ANCHOR`; `Anc. Suelo` → `GROUND ANCHOR`; `Anc. Pavi.` → `PAVEMENT ANCHOR`; `Poste parede` → `WALL POLE`; `Fixação Muro` → `WALL FIXING`. `MTX` es un `FoundationType` nuevo ("Metro pole foundation / fixing"): ninguna familia estructural describe estas fijaciones |
+| `Configuraciones` | `ASSEMBLY_CONFIGURATION` | Catálogo **nuevo** (`V21`, `AssemblyConfiguration`, `profile.assembly_configuration_id`): 32 referencias de plano tal cual, `C.F.1`…`C.F.27` (catenaria flexible) y `C.C.1`…`C.C.6` (catenaria de ménsula), con la errata `C.C,2` → `C.C.2`. Los once EPs ferroviarios no traen la columna y la dejan vacía |
+| `Comentarios`, `SUBIDA FEEDER`, `L tubos consola`, `Curve Radius`, `Coord. X/Y`, `P.K. Abs.` | — | `NO_MAPEADO`, con EP, vía, apoyo y fila |
+
+Dos cosas que conviene no confundir con el catálogo ferroviario: `M1`, `M2` y `M3` son
+subcabeceras de las hojas `HR Track` (y por eso `is_noise` las tira allí), pero aquí son maciços
+de verdad, así que el sinóptico usa su propio marcador de hueco (`is_hole`: vacío, `0`, `-` y
+errores de fórmula). Y los identificadores de apoyo se importan **literales** (`3711CCA121_`,
+`3709CCA181.Bis`, el `1-00.10` repetido en la vía 1): son identificadores, no códigos de catálogo,
+y corregirlos es cosa del workbook.
+
+## Probar
+
+`tools/tests/test_synoptic.py` construye la hoja en memoria y prueba la partición en bloques, las
+gemelas, la fila intermedia, los hitos y las notas al pie, el KP con signo más, cada tabla de
+traducción y que **ningún código emitido lleva una grafía del origen**. Los guardianes de recuento
+de `test_build_profile_master.py` incluyen ya las dos vías y las ménsulas de RUBI.
 
 ---
 

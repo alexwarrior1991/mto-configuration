@@ -14,6 +14,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.ReturnSupportDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SteadyArmTypeDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SupportTypeDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.AssemblyConfigurationDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.AnchorageFoundationRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.AnchorageFoundationTypeRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.AnchorageRepository;
@@ -28,6 +29,7 @@ import com.alejandro.mtoconfiguration.repository.jpa.lov.ReturnSupportRepository
 import com.alejandro.mtoconfiguration.repository.jpa.lov.SectioningRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.SteadyArmTypeRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.SupportTypeRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.lov.AssemblyConfigurationRepository;
 import com.alejandro.mtoconfiguration.service.lov.AnchorageFoundationService;
 import com.alejandro.mtoconfiguration.service.lov.AnchorageFoundationTypeService;
 import com.alejandro.mtoconfiguration.service.lov.AnchorageService;
@@ -42,6 +44,7 @@ import com.alejandro.mtoconfiguration.service.lov.ReturnSupportService;
 import com.alejandro.mtoconfiguration.service.lov.SectioningService;
 import com.alejandro.mtoconfiguration.service.lov.SteadyArmTypeService;
 import com.alejandro.mtoconfiguration.service.lov.SupportTypeService;
+import com.alejandro.mtoconfiguration.service.lov.AssemblyConfigurationService;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -84,7 +87,9 @@ public class LovImportRegistry {
             SteadyArmTypeService steadyArmTypeService, SteadyArmTypeRepository steadyArmTypeRepository,
             ReturnSupportService returnSupportService, ReturnSupportRepository returnSupportRepository,
             DisconnectorFunctionService disconnectorFunctionService,
-            DisconnectorFunctionRepository disconnectorFunctionRepository
+            DisconnectorFunctionRepository disconnectorFunctionRepository,
+            AssemblyConfigurationService assemblyConfigurationService,
+            AssemblyConfigurationRepository assemblyConfigurationRepository
     ) {
         // --- Catalogos de tipo. Primero, por la relacion obligatoria.
         register(new LovImportTarget<>("FoundationType", foundationTypeService,
@@ -121,6 +126,10 @@ public class LovImportRegistry {
                 returnSupportRepository, ReturnSupportDTO::new, ReturnSupportDTO::setDrawingNumber, null));
         register(new LovImportTarget<>("DisconnectorFunction", disconnectorFunctionService,
                 disconnectorFunctionRepository, DisconnectorFunctionDTO::new, null, null));
+        // V21: la configuracion de montaje del apoyo, que solo trae el sinoptico de RUBI.
+        register(new LovImportTarget<>("AssemblyConfiguration", assemblyConfigurationService,
+                assemblyConfigurationRepository, AssemblyConfigurationDTO::new,
+                AssemblyConfigurationDTO::setDrawingNumber, null));
     }
 
     /**

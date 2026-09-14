@@ -63,7 +63,8 @@ class LovMasterImportIT {
             "foundation", "foundation_type", "portal", "portal_type",
             "anchorage", "anchorage_foundation", "anchorage_foundation_type",
             "pole_type", "support_type", "cantilever_type", "steady_arm_type",
-            "return_support", "disconnector_function", "sectioning");
+            "return_support", "disconnector_function", "sectioning",
+            "assembly_configuration");
 
     @Autowired
     private JdbcTemplate jdbcTemplate;

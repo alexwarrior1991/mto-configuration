@@ -123,6 +123,7 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
             "sectionings",
             "sectioningFeedings",
             "supportType",
+            "assemblyConfiguration",
             "cantilevers",
             "cantilevers.steadyArm",
             "disconnector"

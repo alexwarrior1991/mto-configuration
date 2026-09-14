@@ -57,6 +57,15 @@ from workbook_common import (  # noqa: E402  (necesita el sys.path de arriba)
     split_steady_arm,
     squash,
 )
+from synoptic import (  # noqa: E402
+    MULTI_FIELDS,
+    SINGLE_LOV_FIELDS,
+    is_synoptic,
+    synoptic_layout,
+    synoptic_records,
+    translate_codes,
+    translate_single,
+)
 
 CANTILEVER_SLOTS = 3
 
@@ -80,7 +89,7 @@ ARM_ANGLE_MIN, ARM_ANGLE_MAX = Decimal("-90"), Decimal("90")
 
 PROFILE_LOV_FIELDS = ("SECTIONING", "ANCHORAGE", "ANCHORAGE_FOUNDATION", "FOUNDATION",
                       "POLE_TYPE", "PORTAL", "RETURN_SUPPORT", "SECTIONING_FEEDING",
-                      "SUPPORT_TYPE")
+                      "SUPPORT_TYPE", "ASSEMBLY_CONFIGURATION")
 
 # A que catalogo pertenece cada columna de codigo. Es lo que permite canonicalizar y,
 # sobre todo, comprobar que el codigo EXISTE habilitado antes de escribir el maestro:
@@ -111,6 +120,9 @@ LOV_ENTITY = {
     "RETURN_SUPPORT": "ReturnSupport",
     "SECTIONING_FEEDING": "DisconnectorFunction",
     "SUPPORT_TYPE": "SupportType",
+    # Configuracion de montaje del apoyo (V21). Solo la trae el sinoptico de RUBI; en las
+    # hojas HR Track no hay columna y la celda sale vacia.
+    "ASSEMBLY_CONFIGURATION": "AssemblyConfiguration",
     "CANTILEVER_TYPE": "CantileverType",
     "STEADY_ARM_TYPE": "SteadyArmType",
 }
@@ -553,22 +565,10 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
                                                       number, master)
             review = review or sin_resolver
 
-        key = (code.upper(), None if kp is None else str(kp))
-        duplicated = key in seen_keys
-        if duplicated:
-            master.discard(motivo="PROFILE_ID y KP repetidos dentro de la via", ep=ep,
-                           hoja=sheet, fila=number, detalle=f"{track_name} / {code} / kp {kp}")
-            review = True
-        seen_keys.add(key)
-
         position += 1
-        record["ORDEN"] = position
-
-        record["PROFILE_STATUS"] = cfg_default_status(cfg, ep)
-        record["ENABLED"] = ("SI" if (record["PROFILE_ID"] and kp is not None
-                                      and not duplicated) else "NO")
-        record["REVISAR"] = "SI" if review or record["ENABLED"] == "NO" else "NO"
-        master.profiles.append(record)
+        emit_profile(record, code=code, kp=kp, review=review, seen_keys=seen_keys,
+                     position=position, cfg=cfg, ep=ep, sheet=sheet, number=number,
+                     master=master)
         profiles += 1
 
         cantilevers += read_cantilevers(row, multi, cfg, record, ep, sheet,
@@ -577,6 +577,30 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
         collect_unmapped(rows, offset, end, unmapped_cols, record, master)
 
     return profiles, cantilevers
+
+
+def emit_profile(record, *, code, kp, review, seen_keys, position, cfg, ep, sheet, number,
+                 master: Master):
+    """Cierra un perfil y lo escribe en el maestro. Lo comparten los dos lectores.
+
+    Aqui esta lo que no depende del formato del origen: la clave natural
+    (via, profileId, kp), el orden dentro de la via, el estado por defecto y la decision
+    de ENABLED / REVISAR.
+    """
+    key = (code.upper(), None if kp is None else str(kp))
+    duplicated = key in seen_keys
+    if duplicated:
+        master.discard(motivo="PROFILE_ID y KP repetidos dentro de la via", ep=ep,
+                       hoja=sheet, fila=number, detalle=f"{record['VIA']} / {code} / kp {kp}")
+        review = True
+    seen_keys.add(key)
+
+    record["ORDEN"] = position
+    record["PROFILE_STATUS"] = cfg_default_status(cfg, ep)
+    record["ENABLED"] = ("SI" if (record["PROFILE_ID"] and kp is not None
+                                  and not duplicated) else "NO")
+    record["REVISAR"] = "SI" if review or record["ENABLED"] == "NO" else "NO"
+    master.profiles.append(record)
 
 
 def lookahead(rows, offset, end, single, field):
@@ -736,6 +760,139 @@ def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master
     return written
 
 
+def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
+    """Vuelca UN bloque de via de una hoja sinoptico al maestro.
+
+    El plano de la hoja y la clasificacion de sus filas los hace synoptic.py; aqui se
+    aplica lo mismo que a una hoja HR Track: cada codigo se traduce al catalogo, se
+    comprueba que exista habilitado, los numeros se ajustan a su columna y el perfil se
+    cierra con emit_profile. Devuelve (perfiles, mensulas), como read_track.
+    """
+    if layout is None:
+        layout = synoptic_layout(ws, ep, cfg, master)
+        if layout is None:
+            return 0, 0
+
+    block_name = squash(decl["block"]).upper()
+    sheet = f"{layout.sheet} / {block_name}"
+    track_name = decl["name"]
+    seen_keys, position = set(), 0
+    profiles = cantilevers = 0
+    block = layout.blocks[block_name]
+
+    for item in synoptic_records(layout, block_name, cfg):
+        number = item["number"]
+        if item["kind"] == "landmark":
+            master.discard(motivo="hito de trazado, no es un apoyo", ep=ep, hoja=sheet,
+                           fila=number, detalle=item["code"])
+            continue
+        if item["kind"] == "footnote":
+            master.discard(motivo="fila fuera del bloque de datos", ep=ep, hoja=sheet,
+                           fila=number, detalle=item["detail"])
+            continue
+
+        code = item["code"]
+        review = False
+        record = {"EP": ep, "VIA": track_name, "PROFILE_ID": code[:50],
+                  "HOJA_ORIGEN": sheet, "FILA_ORIGEN": number}
+        if len(code) > 50:
+            master.discard(motivo="PROFILE_ID mas largo de 50", ep=ep, hoja=sheet,
+                           fila=number, detalle=code)
+            review = True
+
+        # El KP ya viene interpretado ('1+118,8' son 1118,8 m); si no se pudo, se pasa
+        # la celda tal cual para que fit_numeric diga que no es un numero.
+        kp_value = item["kp"] if item["kp"] is not None else item["kp_raw"]
+        kp, bad = fit_numeric("KP", kp_value, ep=ep, sheet=sheet, row=number, master=master)
+        record["KP"] = kp
+        review = review or bad
+
+        span, bad = fit_numeric("SPAN", item["span"], ep=ep, sheet=sheet, row=number,
+                                master=master)
+        record["SPAN"] = span
+        review = review or bad
+
+        # 'Implantação' viene en metros y el campo es en milimetros.
+        distance = item["rail_pole_distance"]
+        metres = to_decimal(distance) if not is_blank(distance) else None
+        record["RAIL_POLE_DISTANCE"], bad = fit_numeric(
+            "RAIL_POLE_DISTANCE", metres * 1000 if metres is not None else distance,
+            ep=ep, sheet=sheet, row=number, master=master)
+        review = review or bad
+        for field in ("HEIGHT_CANTILEVER_SUPPORT", "POLE_GAUGE_LOCATION"):
+            record[field] = None
+
+        for field in PROFILE_LOV_FIELDS:
+            record[field] = ""
+        for field in SINGLE_LOV_FIELDS:
+            translated = translate_single(field, item["single"][field], cfg)
+            record[field], sin_resolver = resolve_lov_single(field, translated, cfg, ep,
+                                                             sheet, number, master)
+            review = review or sin_resolver
+
+        # Los campos multivalor se reparten por codigo: la funcion del apoyo y el
+        # seccionamiento van a SECTIONING (salvo lo que la tabla reasigna), y
+        # 'Equipamentos associados' se reparte entre ANCHORAGE y SECTIONING_FEEDING.
+        by_field = collections.defaultdict(list)
+        for field in MULTI_FIELDS:
+            translated = translate_codes(field, item["multi"][field], cfg)
+            for target, code_ in translated.codes:
+                by_field[target].append(code_)
+            for piece, row_number in translated.rejected:
+                master.discard(motivo=f"errata del origen: {piece!r} no es un codigo",
+                               ep=ep, hoja=sheet, fila=row_number, detalle=field)
+                review = True
+            for value, row_number, label in translated.noise:
+                master.unmapped.append({
+                    "EP": ep, "VIA": track_name, "PROFILE_ID": record["PROFILE_ID"],
+                    "COLUMNA": label, "VALOR": value, "FILA_ORIGEN": row_number})
+            for piece, row_number in translated.unrouted:
+                master.unrecognised(f"codigo sin destino en {field}", piece, ep, sheet,
+                                    row_number)
+                review = True
+        for target, codes in by_field.items():
+            resolved = []
+            for code_ in codes:
+                exact, sin_resolver = resolve_lov_single(target, code_, cfg, ep, sheet,
+                                                         number, master)
+                review = review or sin_resolver
+                if exact and exact.upper() not in {v.upper() for v in resolved}:
+                    resolved.append(exact)
+            record[target] = LOV_SEPARATOR.join(resolved)
+
+        position += 1
+        emit_profile(record, code=code, kp=kp, review=review, seen_keys=seen_keys,
+                     position=position, cfg=cfg, ep=ep, sheet=sheet, number=number,
+                     master=master)
+        profiles += 1
+
+        # Las dos mensulas del apoyo, con el tipo ya traducido, por el mismo camino que
+        # las hojas HR Track: sin tipo pero con medidas, el fallback decide (OCR cuando
+        # el soporte es de catenaria rigida).
+        slots = []
+        for values in item["cantilever"]:
+            slot = dict(values)
+            slot["CANTILEVER_TYPE"] = translate_single("CANTILEVER_TYPE", values["CANTILEVER_TYPE"], cfg)
+            slots.append(slot)
+        row = []
+        multi = {}
+        for field in ("CANTILEVER_TYPE", "STAGGER", "CW_HEIGHT"):
+            multi[field] = []
+            for slot in slots:
+                multi[field].append(len(row))
+                row.append(slot[field])
+            multi[field].append(None)
+        cantilevers += read_cantilevers(row, multi, cfg, record, ep, sheet, number, master,
+                                        support=record["SUPPORT_TYPE"])
+
+        for label, value, row_number in item["unmapped"]:
+            master.unmapped.append({
+                "EP": ep, "VIA": track_name, "PROFILE_ID": record["PROFILE_ID"],
+                "COLUMNA": label, "VALOR": value, "FILA_ORIGEN": row_number})
+
+    return profiles, cantilevers
+
+
 def collect_unmapped(rows, offset, end, unmapped_cols, profile, master: Master):
     """Guarda las columnas reales que hoy no tienen campo en el dominio.
 
@@ -862,8 +1019,9 @@ SHEETS = {
     "PROFILES": ["EP", "VIA", "PROFILE_ID", "KP", "ORDEN", "PROFILE_STATUS",
                  "SECTIONING", "ANCHORAGE", "ANCHORAGE_FOUNDATION", "FOUNDATION",
                  "POLE_TYPE", "PORTAL", "RETURN_SUPPORT", "SECTIONING_FEEDING",
-                 "SUPPORT_TYPE", "SPAN", "HEIGHT_CANTILEVER_SUPPORT", "POLE_GAUGE_LOCATION",
-                 "RAIL_POLE_DISTANCE", "ENABLED", "REVISAR", "HOJA_ORIGEN", "FILA_ORIGEN"],
+                 "SUPPORT_TYPE", "ASSEMBLY_CONFIGURATION", "SPAN", "HEIGHT_CANTILEVER_SUPPORT",
+                 "POLE_GAUGE_LOCATION", "RAIL_POLE_DISTANCE", "ENABLED", "REVISAR",
+                 "HOJA_ORIGEN", "FILA_ORIGEN"],
     "CANTILEVERS": ["EP", "VIA", "PROFILE_ID", "ORDEN", "SLOT", "CANTILEVER_TYPE", "STAGGER",
                     "CATENARY_HEIGHT", "CW_ELEVATION", "CW_HEIGHT", "WIND_DEFLECTION",
                     "ARM_ANGLE", "STEADY_ARM_TYPE", "STEADY_ARM_LENGTH",
@@ -1004,6 +1162,42 @@ def check_declared_stations(ep, declared, master: Master):
                                     squash(track.get("sheet")))
 
 
+def read_synoptic_workbook(wb, ep, declared, by_sheet, cfg, master: Master):
+    """Las vias de un workbook sinoptico: una hoja, un plano, un bloque por via."""
+    sheets = profiles = cantilevers = 0
+    for ws in wb.worksheets:
+        declarations = by_sheet.get(squash(ws.title))
+        if not declarations:
+            continue
+        layout = synoptic_layout(ws, ep, cfg, master)
+        if layout is None:
+            continue
+        for decl in declarations:
+            if decl.get("skip"):
+                master.discard(motivo=f"hoja omitida: {decl['skip']}", ep=ep,
+                               hoja=ws.title, fila=1)
+                continue
+            block = squash(decl.get("block")).upper()
+            if block not in layout.blocks:
+                master.unrecognised("bloque de via sin marcador en la cabecera", block, ep,
+                                    ws.title, layout.header_index + 1)
+                continue
+            master.tracks.append({
+                "EP": ep, "NOMBRE": decl["name"],
+                "ESTACIONES": " | ".join(track_stations(decl)),
+                "ENABLED": "SI", "HOJA_ORIGEN": f"{ws.title} / {block}",
+                "FILA_INICIO": None, "FILA_FIN": None,
+            })
+            written, arms = read_synoptic_track(ws, ep, decl, cfg, master, layout)
+            profiles += written
+            cantilevers += arms
+        sheets += 1
+    declared_sheets = {squash(t.get("sheet")) for t in declared.get("tracks") or []}
+    for name in declared_sheets - {squash(ws.title) for ws in wb.worksheets}:
+        master.unrecognised("hoja declarada que no existe en el workbook", name, ep, name)
+    return sheets, profiles, cantilevers
+
+
 def load_declared(topology, ep):
     return topology.get("execution_packages", {}).get(ep)
 
@@ -1081,7 +1275,10 @@ def main():
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
         sheets = profiles = cantilevers = 0
         try:
-            for ws in wb.worksheets:
+            if is_synoptic(declared):
+                sheets, profiles, cantilevers = read_synoptic_workbook(
+                    wb, ep, declared, by_sheet, cfg, master)
+            for ws in ([] if is_synoptic(declared) else wb.worksheets):
                 if not is_track_sheet(ws.title):
                     continue
                 declarations = by_sheet.get(squash(ws.title))
