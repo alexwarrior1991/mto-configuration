@@ -725,9 +725,9 @@ execution_packages:
     format: synoptic
     name: "EP RUBI Casa da Musica - Santo Ovidio"
     initial_package: false
-    length: 12884                            # REVISAR: ultimo KP de la via 1, en metros
-    start_date: 2026-01-01                  # REVISAR
-    end_date: 2027-12-31                    # REVISAR
+    length: 12884                           # metros, las dos vias
+    start_date: 2026-01-01
+    end_date: 2027-12-31
     company_identification_number: "B10744258"
     stations:
       - Casa da Música
