@@ -572,10 +572,11 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         aparecidos = {(r["TIPO"], r["VALOR"]) for r in self.unknown}
         self.assertEqual(self.HUECOS_CONOCIDOS - aparecidos, set())
 
-    def test_estan_las_174_vias_declaradas(self):
+    def test_estan_las_176_vias_declaradas(self):
         # 177 hojas menos las 3 vacias, que se declaran con 'skip'. Las dos de EP9A que
-        # llevan dos tramos concatenados cuentan como UNA via cada una desde V18.
-        self.assertEqual(len(self.tracks), 174)
+        # llevan dos tramos concatenados cuentan como UNA via cada una desde V18. Mas las
+        # dos vias del sinoptico de RUBI, que salen de una sola hoja.
+        self.assertEqual(len(self.tracks), 176)
 
     def test_la_hoja_con_dos_tramos_sale_como_UNA_via(self):
         # Era al reves hasta V18: se partia en dos porque el identificador de perfil se
@@ -669,8 +670,32 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         fallara ni un test. Si estas cifras cambian, cambialas A PROPOSITO y explica por
         que en el commit: son las que se cargan en base de datos.
         """
-        self.assertEqual(len(self.cantilevers), 14461)
-        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 14451)
+        # 14.461 / 14.451 de los once workbooks ferroviarios, mas las 969 del sinoptico de
+        # RUBI (566 de catenaria rigida deducidas del soporte, como en EP6).
+        self.assertEqual(len(self.cantilevers), 15430)
+        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15420)
+
+    def test_el_sinoptico_de_rubi_entra_con_sus_dos_vias(self):
+        """Una hoja, dos vias, ocho estaciones y codigos solo en ingles."""
+        vias = [t for t in self.tracks if t["EP"] == "RUBI"]
+        self.assertEqual([t["NOMBRE"] for t in vias], ["TRACK 1", "TRACK 2"])
+        self.assertTrue(all(t["ESTACIONES"].count("|") == 7 for t in vias))
+        perfiles = [p for p in self.profiles if p["EP"] == "RUBI"]
+        self.assertGreater(len(perfiles), 900)
+        self.assertGreater(sum(1 for p in perfiles if p["ENABLED"] == "SI"), 900)
+        soportes = {p["SUPPORT_TYPE"] for p in perfiles if p["SUPPORT_TYPE"]}
+        self.assertEqual(soportes, {"OCR SUPPORT", "FLEXIBLE", "SINGLE CANTILEVER", "DOUBLE CANTILEVER"})
+        self.assertGreater(sum(1 for p in perfiles if p["ASSEMBLY_CONFIGURATION"]), 250)
+        # Ni una grafia portuguesa: la unica tabla que las conoce es la de traduccion.
+        for p in perfiles:
+            for field in ("SECTIONING", "ANCHORAGE", "FOUNDATION", "POLE_TYPE", "SUPPORT_TYPE",
+                          "SECTIONING_FEEDING", "ASSEMBLY_CONFIGURATION"):
+                self.assertNotRegex(str(p[field] or ""), r"[ãçõ]|Anc\.|Caix|Ancoraem|Rígida|Funicular")
+
+    def test_la_configuracion_de_montaje_solo_la_trae_el_sinoptico(self):
+        """Las hojas HR Track no tienen esa columna: en los once EPs sale vacia."""
+        con_configuracion = {p["EP"] for p in self.profiles if p["ASSEMBLY_CONFIGURATION"]}
+        self.assertEqual(con_configuracion, {"RUBI"})
 
     def test_el_perfil_lleva_su_tipo_de_soporte(self):
         """La columna 'Supports' es un campo del perfil, no una columna sin mapear.

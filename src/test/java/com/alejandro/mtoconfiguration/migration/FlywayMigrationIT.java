@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21");
     }
 
     /**
@@ -132,7 +132,7 @@ class FlywayMigrationIT {
                 String.class, SCHEMA);
 
         assertThat(conIndiceUnico)
-                .hasSize(16)
+                .hasSize(17)
                 .contains("foundation", "pole_type", "sectioning", "anchorage")
                 .as("las tablas _aud guardan una fila por revision: alli el codigo se repite")
                 .noneMatch(tabla -> tabla.endsWith("_aud"));
@@ -595,6 +595,41 @@ class FlywayMigrationIT {
                 """, String.class, SCHEMA))
                 .as("profile_aud solo referencia la revision, nunca un catalogo")
                 .containsExactly("rev");
+    }
+
+    /**
+     * V21: el perfil guarda su configuracion de montaje, en un catalogo nuevo.
+     *
+     * <p>Llega con el sinoptico de RUBI ('C.F.21', 'C.C.2'). Misma forma que support_type:
+     * tabla base con codigo unico, gemela _aud con la columna y sin clave ajena al catalogo.
+     */
+    @Test
+    void elPerfilGuardaSuConfiguracionDeMontaje() {
+        assertThat(existeTabla("assembly_configuration")).isTrue();
+        assertThat(existeTabla("assembly_configuration_aud")).isTrue();
+        assertThat(existeColumna("profile", "assembly_configuration_id")).isTrue();
+        assertThat(existeColumna("profile_aud", "assembly_configuration_id"))
+                .as("la gemela de Envers tiene que llevar la misma columna, o ddl-auto validate no arranca")
+                .isTrue();
+
+        List<String> referenciadas = jdbc().queryForList(
+                """
+                select ccu.table_name
+                from information_schema.table_constraints tc
+                join information_schema.key_column_usage kcu
+                  on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
+                join information_schema.constraint_column_usage ccu
+                  on ccu.constraint_name = tc.constraint_name and ccu.table_schema = tc.table_schema
+                where tc.table_schema = ? and tc.table_name = 'profile'
+                  and tc.constraint_type = 'FOREIGN KEY'
+                  and kcu.column_name = 'assembly_configuration_id'
+                """, String.class, SCHEMA);
+        assertThat(referenciadas).containsExactly("assembly_configuration");
+
+        assertThat(jdbc().queryForList(
+                "select indexname from pg_indexes where schemaname = ? and tablename = 'assembly_configuration'",
+                String.class, SCHEMA))
+                .contains("ux_assembly_configuration_code");
     }
 
     /** V16: tercera y ultima N:M del perfil. */

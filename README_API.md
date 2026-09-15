@@ -350,8 +350,17 @@ lista: en las 2.038 celdas medidas no hay ninguna con dos códigos, al revés qu
 { "profileId": "P-001", "supportType": { "code": "S1" } }
 ```
 
+**`profile.assemblyConfiguration`** (desde `V21`) es la configuración de montaje de la catenaria en
+el apoyo: `C.F.21` (catenaria flexible), `C.C.2` (catenaria de ménsula). Catálogo propio,
+`AssemblyConfiguration` (`/assembly-configurations`), que hoy solo rellena el sinóptico de la
+Linha Rubi; los perfiles de los EPs ferroviarios la llevan a `null`. Opcional y **una sola**.
+
+```jsonc
+{ "profileId": "3703CCA13", "assemblyConfiguration": { "code": "C.F.7.B" } }
+```
+
 Endpoints propios de cada LOV (`anchorages`, `pole-types`, `profile-statuses`, `sectionings`,
-`portals`, `foundations`, `cantilever-types`, `steady-arm-types`, …):
+`portals`, `foundations`, `cantilever-types`, `steady-arm-types`, `assembly-configurations`, …):
 
 ```bash
 GET    $BASE/pole-types            # 200, catálogo completo

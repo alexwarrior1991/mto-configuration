@@ -464,7 +464,8 @@ cantilever_type_fallback:
 # --------------------------------------------------------------------------------
 code_atoms:
   Sectioning:
-    exact: ['A/S', 'A/S-Diag', 'S/A', 'A', 'MP', 'MP/Tunnel', 'AnMP', 'AnMP/Tunnel', 'P50', 'P90']
+    exact: ['A/S', 'A/S-Diag', 'S/A', 'A', 'MP', 'MP/Tunnel', 'AnMP', 'AnMP/Tunnel', 'P50', 'P90',
+            'OVERLAP', 'TRANSITION']       # los dos del sinoptico (RUBI)
     regex: '^P\d+(\([A-Za-z]+\))?$'          # agujas: P50, P90, P30(CS), P120(Tg)...
   Anchorage:
     # Los doce de la leyenda ANCHORAGE, mas AnRW1 / AnRW2 / AnRW2/Tunnel, que son
@@ -627,6 +628,11 @@ track_accepted:
     # SupportType. Aparece una sola vez, en EP4, escrito en la columna equivocada. El
     # soporte sobre ese semiportico ya tiene codigo propio y es 'S1/B7', con 119 usos.
     # Por lo mismo se quedan fuera 'SECT-I', 'FS1' y 'FS/PP2': son de alimentacion.
+    # --- Sinoptico (RUBI): traducciones inglesas de la seccion 'synoptic'. El sinoptico
+    # no trae BOQ ni leyenda, asi que todos sus codigos llegan como ORIGEN=TRACK.
+    - FLEXIBLE
+    - 'SINGLE CANTILEVER'
+    - 'DOUBLE CANTILEVER'
   SteadyArmType:
     # Solo aparece en una hoja de trazado y en ningun BOQ, pero es un tipo de brazo
     # real, no una errata: 'BS-1400' de EP9B / HR Track 2 LOD_S.
@@ -640,6 +646,11 @@ track_accepted:
     - AnRW2
     - AnRW2/Tunnel
     - CP
+    # --- Sinoptico (RUBI): traducciones inglesas de la seccion 'synoptic'. El sinoptico
+    # no trae BOQ ni leyenda, asi que todos sus codigos llegan como ORIGEN=TRACK.
+    - An1CW
+    - An2CW
+    - AnCONN
   AnchorageFoundation:
     - AnFW-RT
     - AnFW-RTL
@@ -669,6 +680,12 @@ track_accepted:
     - H-ARM
     - ISOL.SUSP.
     - OCR
+    # --- Sinoptico (RUBI): traducciones inglesas de la seccion 'synoptic'. El sinoptico
+    # no trae BOQ ni leyenda, asi que todos sus codigos llegan como ORIGEN=TRACK.
+    - DELTA
+    - 'FLEXIBLE ARM'
+    - C3-LONG
+    - C3-SHORT
   DisconnectorFunction:
     - 2xFW-25
     - Disc/PP
@@ -684,6 +701,13 @@ track_accepted:
     - 'Disc/PP-pr'
     - 'Disc/SI-pr'
     - 'LoadB-pr'
+    # --- Sinoptico (RUBI): traducciones inglesas de la seccion 'synoptic'. El sinoptico
+    # no trae BOQ ni leyenda, asi que todos sus codigos llegan como ORIGEN=TRACK.
+    - SectConnBox
+    - ImpBox
+    - TransDev
+    - SECT-I-1CW
+    - SECT-I-2CW
   Foundation:
     - 2C3R-S
     - 2C3RT-S
@@ -727,6 +751,22 @@ track_accepted:
     - 'M6 Ø42'
     - 'M7 Ø36'
     - 'M8 Ø36'
+    # --- Sinoptico (RUBI): traducciones inglesas de la seccion 'synoptic'. El sinoptico
+    # no trae BOQ ni leyenda, asi que todos sus codigos llegan como ORIGEN=TRACK.
+    - M1
+    - M2
+    - M4
+    - M5
+    - M6
+    - M7
+    - 'STANDARD ANCHOR'
+    - 'ANCHORAGE ANCHOR'
+    - 'BRIDGE ANCHOR'
+    - 'UNDERGROUND ANCHOR'
+    - 'GROUND ANCHOR'
+    - 'PAVEMENT ANCHOR'
+    - 'WALL POLE'
+    - 'WALL FIXING'
   PoleType:
     - 2HBE-240
     - 2HEB-240LL
@@ -790,6 +830,25 @@ track_accepted:
     - 'SUPL-5 + S-1T-W'
     - T-SING
     - 'UNIQUE SOLUTION'
+    # --- Sinoptico (RUBI): traducciones inglesas de la seccion 'synoptic'. El sinoptico
+    # no trae BOQ ni leyenda, asi que todos sus codigos llegan como ORIGEN=TRACK.
+    - C859-A
+    - C859-B
+    - C860-A
+    - C860-B
+    - C863-A
+    - C863-B
+    - Ø300/Ø180/e16
+    - 'HEA 220'
+    - 'HEA 240'
+    - 'HEA 280'
+    - 'HEA 280 G.'
+    - 'HEA 300'
+    - 'HEM 320'
+    - 'IPE 120'
+    - Parafil
+    - CANOPY
+    - 'Pendulo 140'
   Portal:
     - 2PR1E
     - SPR1
@@ -876,6 +935,46 @@ track_accepted:
     - POLE TRACK 14S
     - S/A A/S AnRW1 AnRW2
     - SA
+    # --- Sinoptico (RUBI): traducciones inglesas de la seccion 'synoptic'. El sinoptico
+    # no trae BOQ ni leyenda, asi que todos sus codigos llegan como ORIGEN=TRACK.
+    - P80
+    - OVERLAP
+    - TRANSITION
+  AssemblyConfiguration:
+    # Sinoptico (RUBI): referencias de plano de las configuraciones de montaje.
+    # C.F.<n> es catenaria flexible, C.C.<n> catenaria de mensula.
+    - C.F.1
+    - C.F.2
+    - C.F.4.A
+    - C.F.4.B
+    - C.F.5.A
+    - C.F.5.B
+    - C.F.6
+    - C.F.7.A
+    - C.F.7.B
+    - C.F.8.A
+    - C.F.8.B
+    - C.F.9
+    - C.F.10
+    - C.F.12
+    - C.F.13
+    - C.F.16.B
+    - C.F.17
+    - C.F.18.A
+    - C.F.18.B
+    - C.F.19.A
+    - C.F.19.B
+    - C.F.20.B
+    - C.F.21
+    - C.F.22
+    - C.F.23
+    - C.F.24
+    - C.F.26
+    - C.F.27
+    - C.C.1
+    - C.C.2
+    - C.C.3.A
+    - C.C.6
 
 # --------------------------------------------------------------------------------
 # Textos que ocupan la celda del codigo pero no son codigos: marcadores de "esto
@@ -983,6 +1082,22 @@ type_overrides:
     P8RT: CX
     P9R: CX
     P9RT: CX
+    # Sinoptico (RUBI): maciços y fijaciones de poste del metro, sin familia
+    # estructural propia. Tipo MTX, ver type_catalog.
+    M1: MTX
+    M2: MTX
+    M4: MTX
+    M5: MTX
+    M6: MTX
+    M7: MTX
+    STANDARD ANCHOR: MTX
+    ANCHORAGE ANCHOR: MTX
+    BRIDGE ANCHOR: MTX
+    UNDERGROUND ANCHOR: MTX
+    GROUND ANCHOR: MTX
+    PAVEMENT ANCHOR: MTX
+    WALL POLE: MTX
+    WALL FIXING: MTX
   AnchorageFoundation:
     UNIQUE SOLUTION: AnUS
     PL*: AnM
@@ -1000,6 +1115,7 @@ type_catalog:
     WX: Base for pole in Lateral wall
     WDX: Base for pole with drainage
     WTX: Base for pole in Top wall
+    MTX: Metro pole foundation / fixing (rigid and tramway catenary)
   PortalType:
     PR1X: Portal type X
     SP1R: Semi Portal
@@ -1015,6 +1131,7 @@ type_catalog:
 entities_with_drawing_number:
   - Anchorage
   - AnchorageFoundation
+  - AssemblyConfiguration
   - CantileverType
   - Foundation
   - PoleType
@@ -1035,3 +1152,213 @@ entities:
   - SteadyArmType
   - ReturnSupport
   - DisconnectorFunction
+  - AssemblyConfiguration
+
+# ================================================================================
+# FORMATO SINOPTICO (RUBI, Linha Rubi de Metro do Porto).
+#
+# Una sola hoja con las dos vias en ESPEJO: la via 2 a la izquierda, leyendo hacia
+# fuera, y la via 1 a la derecha, separadas por una banda central sin cabecera. Lo lee
+# data/tools/synoptic.py para LOS DOS generadores, y se activa con 'format: synoptic'
+# en topology.yml. Todo lo que hay aqui es especifico de ese formato: las tablas
+# globales de arriba no se tocan por el.
+#
+# El origen escribe en portugues y en espanol; a la base de datos llega INGLES. Esta
+# seccion es el unico sitio que conoce las grafias del origen: 'translations' las
+# convierte en codigos del catalogo y 'descriptions' explica los codigos nuevos, que
+# aqui no vienen de ninguna leyenda.
+# ================================================================================
+synoptic:
+  # La fila de cabecera es la que trae esta celda; los dos marcadores, en esa misma
+  # fila, parten la hoja en los dos bloques de via.
+  header_marker: SUPORTE
+  block_markers: ['VIA 2', 'VIA 1']
+
+  # Cabecera del origen (minusculas, espacios colapsados) -> campo. La cabecera se
+  # escribe IGUAL en los dos bloques, asi que la tabla es una. 'Tipologia' y 'Tipología'
+  # solo se distinguen por la tilde y son dos cosas: el sistema de catenaria del apoyo
+  # (rigida, flexible, mensula) y la funcion del apoyo en el seccionamiento.
+  columns:
+    suporte: PROFILE_ID
+    p.k. (vía 1): KP
+    p.k. (vía 2): KP
+    vão (m): SPAN
+    implantação (m): RAIL_POLE_DISTANCE     # metros en el origen; el campo va en mm
+    tipologia: SUPPORT_TYPE                 # sin tilde: sistema de catenaria
+    tipología: SECTIONING                   # con tilde: funcion del apoyo
+    seccionamento: SECTIONING
+    equipamentos associados: EQUIPMENT      # anclajes y aparatos mezclados: ver 'routing'
+    tipo de suporte: POLE_TYPE
+    maciços: FOUNDATION
+    configuraciones: ASSEMBLY_CONFIGURATION
+    consolas: CANTILEVER_TYPE
+    desalinhamentos (cm): STAGGER
+    alt. fc (m): CW_HEIGHT
+
+  # Campos con columna GEMELA: la segunda mensula del apoyo va en columnas sin
+  # cabecera pegadas por fuera a las de la primera, y 'Equipamentos associados' se
+  # escribe dos veces. La gemela es la columna con la misma cabecera o, si no la hay,
+  # la columna sin cabecera adyacente por el lado exterior.
+  twins: [CANTILEVER_TYPE, STAGGER, CW_HEIGHT, EQUIPMENT]
+
+  # Columnas reales sin campo en el dominio: se conservan en NO_MAPEADO.
+  unmapped:
+    - comentarios
+    - subida feeder v1
+    - subida feeder v2
+    - l tubos consola (m)
+    - l tubos consola
+    - curve radius (m)
+    - coord. x
+    - coord. y
+    - p.k. abs.vía 1                        # kilometracion absoluta de la red, solo via 1
+
+  # Cabeceras que no son datos: la columna A lleva un 1 en cada fila.
+  ignored: ['1']
+
+  # Grafia del origen -> codigo INGLES del catalogo, por campo. Un valor vacio dice
+  # que esa grafia NO es un codigo: 'S' es la suspension simple, sin seccionamiento.
+  # Lo que no esta aqui se deja tal cual (los codigos de plano, los perfiles de acero).
+  translations:
+    SUPPORT_TYPE:
+      Rígida: OCR SUPPORT                   # catenaria rigida: el codigo que ya usa EP6
+      Funicular: FLEXIBLE
+      Consola: SINGLE CANTILEVER
+      Cons. Simp.: SINGLE CANTILEVER
+      Cons. Dob.: DOUBLE CANTILEVER
+    SECTIONING:
+      # La funcion del apoyo con los codigos que ya tiene el catalogo: SE es el solape
+      # (S/A), PF el punto fijo (MP), E el anclaje (A), Elev. la elevacion en el solape
+      # (S/A) y PA<n> las agujas P<n>. Solo P80 es nuevo.
+      S: ''
+      SE: S/A
+      S/E: S/A
+      A/S: A/S
+      PF: MP
+      E: A
+      Elev.: S/A
+      Elev: S/A
+      PA30: P30
+      PA50: P50
+      PA80: P80
+      A/S-A/S: A/S                          # el mismo codigo dos veces en una celda
+      Seccionamento: OVERLAP
+      Transição Catenaria: TRANSITION
+    CANTILEVER_TYPE:
+      Delta: DELTA
+      B. Fun.: FLEXIBLE ARM
+      B.Fun.: FLEXIBLE ARM
+      B. Fun: FLEXIBLE ARM
+      C3- C.L.: C3-LONG                     # C3 long cantilever
+      C3- C.C.: C3-SHORT                    # C3 short cantilever
+    POLE_TYPE:
+      Marquise: CANOPY                      # apoyo fijado a la marquesina del anden
+      C860-B_: C860-B
+    FOUNDATION:
+      Anc. Corrente: STANDARD ANCHOR
+      Anc. Ancoragem: ANCHORAGE ANCHOR
+      Anc. Ancoragem.: ANCHORAGE ANCHOR
+      Anc. Ponte: BRIDGE ANCHOR
+      Anc. Sot.: UNDERGROUND ANCHOR
+      Anc. Suelo: GROUND ANCHOR
+      Anc. Pavi.: PAVEMENT ANCHOR
+      Poste parede: WALL POLE
+      Fixação Muro: WALL FIXING
+    ASSEMBLY_CONFIGURATION:
+      C.C,2: C.C.2                          # errata de tecleo
+    EQUIPMENT:
+      Ancoraem 1HC: An1CW
+      Ancoraem 2HC: An2CW
+      Ancoraem coneção Sto Ov.: AnCONN
+      Caix. Secc. e Con.: SectConnBox
+      Caix. Imped.: ImpBox
+      Disp. Transic.: TransDev
+      Aislador 1HC: SECT-I-1CW
+      Aislador 2HC: SECT-I-2CW
+
+  # 'Equipamentos associados' -> campo del perfil, segun el codigo ya traducido.
+  routing:
+    ANCHORAGE: [An1CW, An2CW, AnCONN]
+    SECTIONING_FEEDING: [SectConnBox, ImpBox, TransDev, SECT-I-1CW, SECT-I-2CW]
+
+  # Un valor escrito en la columna de otro catalogo: 'Aislad.' en la funcion del apoyo
+  # es el aislador de seccion, que es un aparato de alimentacion (SECT-I).
+  reassignment:
+    SECTIONING:
+      Aislad.: {to: SECTIONING_FEEDING, code: SECT-I}
+
+  # Erratas del origen: salen vacias y anotadas en DESCARTADOS con su fila.
+  rejections:
+    SECTIONING: [Anc]
+
+  # Anotaciones que no son codigo: se conservan en NO_MAPEADO. 'Cantón 396,4 m' es la
+  # longitud del canton, que el dominio no guarda (como 'SEMI TENSION LENGTH' en los
+  # workbooks ferroviarios).
+  noise:
+    SECTIONING:
+      regex: '^Cant\w*\s*[\d.,]+\s*m$'
+
+  # DESCRIPCION_EN de los codigos que solo existen en el sinoptico.
+  descriptions:
+    SupportType:
+      FLEXIBLE: Flexible catenary (messenger and contact wire)
+      SINGLE CANTILEVER: Tramway catenary on single cantilever
+      DOUBLE CANTILEVER: Tramway catenary on double cantilever
+    CantileverType:
+      DELTA: Delta cantilever
+      FLEXIBLE ARM: Flexible catenary arm
+      C3-LONG: C3 long cantilever
+      C3-SHORT: C3 short cantilever
+    Sectioning:
+      P80: Switch P80
+      OVERLAP: Overlap section
+      TRANSITION: Rigid/flexible catenary transition
+    Anchorage:
+      An1CW: Single contact wire anchorage
+      An2CW: Double contact wire anchorage
+      AnCONN: Connection anchorage (Santo Ovidio)
+    DisconnectorFunction:
+      SectConnBox: Sectioning and connection box
+      ImpBox: Impedance bond box
+      TransDev: Rigid/flexible transition device
+      SECT-I-1CW: Section insulator on single contact wire
+      SECT-I-2CW: Section insulator on double contact wire
+    Foundation:
+      M1: Foundation block M1
+      M2: Foundation block M2
+      M4: Foundation block M4
+      M5: Foundation block M5
+      M6: Foundation block M6
+      M7: Foundation block M7
+      STANDARD ANCHOR: Standard pole anchor
+      ANCHORAGE ANCHOR: Anchorage pole anchor
+      BRIDGE ANCHOR: Pole anchor on bridge
+      UNDERGROUND ANCHOR: Pole anchor in underground section
+      GROUND ANCHOR: Pole anchor on ground
+      PAVEMENT ANCHOR: Pole anchor on pavement
+      WALL POLE: Wall-mounted pole
+      WALL FIXING: Wall fixing
+    PoleType:
+      C859-A: Pole as per drawing C859-A
+      C859-B: Pole as per drawing C859-B
+      C860-A: Pole as per drawing C860-A
+      C860-B: Pole as per drawing C860-B
+      C863-A: Pole as per drawing C863-A
+      C863-B: Pole as per drawing C863-B
+      Ø300/Ø180/e16: Tubular pole 300/180 mm, 16 mm wall
+      HEA 220: Steel profile HEA 220
+      HEA 240: Steel profile HEA 240
+      HEA 280: Steel profile HEA 280
+      HEA 280 G.: Steel profile HEA 280 G.
+      HEA 300: Steel profile HEA 300
+      HEM 320: Steel profile HEM 320
+      IPE 120: Steel profile IPE 120
+      Parafil: Parafil rope suspension
+      CANOPY: Support fixed to platform canopy
+      Pendulo 140: Pendulum support 140
+    AssemblyConfiguration:
+      # Generadas por patron: C.F.<n> son las configuraciones de montaje de la catenaria
+      # flexible y C.C.<n> las de la catenaria de mensula.
+      pattern:
+        '^C\.F\.(.+)$': 'Flexible catenary assembly configuration \1'
+        '^C\.C\.(.+)$': 'Cantilever assembly configuration \1'

@@ -280,6 +280,11 @@ class MaestroGenerado(unittest.TestCase):
             cls.unknown_rows = sum(
                 1 for r in wb["NO_RECONOCIDO"].iter_rows(min_row=2, values_only=True)
                 if r and any(v is not None for v in r))
+            cls.rubi = {
+                (r[0], str(r[1])): (r[index["ENABLED"]], r[index["DESCRIPCION_EN"]], r[index["ORIGEN"]])
+                for r in sheet.iter_rows(min_row=2, values_only=True)
+                if r and r[index["EPS"]] and "RUBI" in str(r[index["EPS"]])
+            }
         finally:
             wb.close()
 
@@ -528,6 +533,20 @@ class MaestroGenerado(unittest.TestCase):
         for errata in ("T-SING FOUND.", "T-SIGN FOUND,"):
             self.assertNotIn(errata, self.foundation, errata)
         self.assertEqual(self.foundation.get("T-SIGN FOUND."), "SI")
+
+    def test_los_codigos_del_sinoptico_de_rubi_estan_habilitados_y_en_ingles(self):
+        """El sinoptico no trae leyenda: sus codigos llegan como TRACK y se aceptan a mano."""
+        self.assertGreater(len(self.rubi), 80)
+        nuevos = {k for k in self.rubi if k[1] not in {"OCR SUPPORT", "S/A", "A/S", "MP", "A",
+                                                        "P30", "P50", "SECT-I"}}
+        for key in nuevos:
+            enabled, description, origin = self.rubi[key]
+            self.assertEqual(enabled, "SI", key)
+            self.assertTrue(description, key)              # descripcion inglesa declarada
+            self.assertEqual(origin, "TRACK", key)
+        self.assertEqual(sum(1 for e, _ in self.rubi if e == "AssemblyConfiguration"), 32)
+        for entity, code in self.rubi:
+            self.assertNotRegex(code, r"[ãçõí]|Anc\.|Caix|Ancoraem|Marquise", (entity, code))
 
     def test_no_queda_nada_sin_reconocer(self):
         # Si esta hoja trae filas, el catalogo sale incompleto y el generador

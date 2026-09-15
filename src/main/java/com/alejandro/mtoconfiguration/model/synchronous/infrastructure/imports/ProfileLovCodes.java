@@ -1,9 +1,9 @@
 package com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports;
 
 /**
- * Los ocho codigos de lista de valores de un perfil, tal como vienen en el maestro.
+ * Los diez codigos de lista de valores de un perfil, tal como vienen en el maestro.
  *
- * <p>Van agrupados y no sueltos en {@link ProfileMasterRow} porque son ocho campos con
+ * <p>Van agrupados y no sueltos en {@link ProfileMasterRow} porque son diez campos con
  * el mismo tratamiento —texto que se resuelve contra el catalogo— y desplegarlos alli
  * dejaba un record de veinte componentes en el que nadie acierta el orden.
  *
@@ -19,9 +19,10 @@ public record ProfileLovCodes(
         String portal,
         String returnSupport,
         String sectioningFeeding,
-        String supportType
+        String supportType,
+        String assemblyConfiguration
 ) {
     public static ProfileLovCodes empty() {
-        return new ProfileLovCodes("", "", "", "", "", "", "", "", "");
+        return new ProfileLovCodes("", "", "", "", "", "", "", "", "", "");
     }
 }

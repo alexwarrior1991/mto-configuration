@@ -25,6 +25,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.ReturnSupportDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SupportTypeDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.AssemblyConfigurationDTO;
 import com.alejandro.mtoconfiguration.model.commons.SLovDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SteadyArmTypeDTO;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
@@ -299,6 +300,7 @@ public class InfrastructureUpsertService {
         dto.setReturnSupport(lov(lov.returnSupport(), ReturnSupportDTO::new));
         dto.setSectioningFeedings(lovList(lov.sectioningFeeding(), DisconnectorFunctionDTO::new));
         dto.setSupportType(lov(lov.supportType(), SupportTypeDTO::new));
+        dto.setAssemblyConfiguration(lov(lov.assemblyConfiguration(), AssemblyConfigurationDTO::new));
     }
 
     /**
@@ -372,6 +374,8 @@ public class InfrastructureUpsertService {
         check(unresolved, "portal", lov.portal(), masterDataService::getPortalByCode);
         check(unresolved, "returnSupport", lov.returnSupport(), masterDataService::getReturnSupportByCode);
         check(unresolved, "supportType", lov.supportType(), masterDataService::getSupportTypeByCode);
+        check(unresolved, "assemblyConfiguration", lov.assemblyConfiguration(),
+                masterDataService::getAssemblyConfigurationByCode);
         if (!StringUtils.isBlank(lov.sectioningFeeding())) {
             for (String code : lov.sectioningFeeding().trim().split(LOV_SEPARATOR)) {
                 check(unresolved, "sectioningFeeding", code,

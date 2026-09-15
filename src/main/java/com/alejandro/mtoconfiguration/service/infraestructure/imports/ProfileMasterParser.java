@@ -151,7 +151,9 @@ public class ProfileMasterParser {
                             text(row, columns.get("PORTAL")),
                             text(row, columns.get("RETURN_SUPPORT")),
                             text(row, columns.get("SECTIONING_FEEDING")),
-                            text(row, columns.get("SUPPORT_TYPE")));
+                            text(row, columns.get("SUPPORT_TYPE")),
+                            // V21: opcional; los maestros anteriores no traen la columna.
+                            text(row, columns.get("ASSEMBLY_CONFIGURATION")));
                     return new ProfileMasterRow(ep, track, profileId,
                             text(row, columns.get("KP")),
                             whole(row, columns.get("ORDEN")),

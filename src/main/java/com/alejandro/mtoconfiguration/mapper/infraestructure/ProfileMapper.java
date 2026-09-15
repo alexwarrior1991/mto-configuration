@@ -61,6 +61,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
     @Mapping(target = "supportType", ignore = true)
+    @Mapping(target = "assemblyConfiguration", ignore = true)
     @Mapping(target = "sectionings", ignore = true)
     @Mapping(target = "sectioningFeedings", ignore = true)
     public abstract ProfileDTO toDTO(Profile entity);
@@ -76,6 +77,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
     @Mapping(target = "supportType", ignore = true)
+    @Mapping(target = "assemblyConfiguration", ignore = true)
     @Mapping(target = "sectionings", ignore = true)
     @Mapping(target = "sectioningFeedings", ignore = true)
     @ToEntityIgnoreAudit
@@ -92,6 +94,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "profileStatus", ignore = true)
     @Mapping(target = "returnSupport", ignore = true)
     @Mapping(target = "supportType", ignore = true)
+    @Mapping(target = "assemblyConfiguration", ignore = true)
     @Mapping(target = "sectionings", ignore = true)
     @Mapping(target = "sectioningFeedings", ignore = true)
     @ToEntityIgnoreAudit
@@ -132,6 +135,10 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         }
         if (dto.getSupportType() != null) {
             entity.setSupportType(masterDataService.getSupportTypeByCode(dto.getSupportType().getCode()));
+        }
+        if (dto.getAssemblyConfiguration() != null) {
+            entity.setAssemblyConfiguration(masterDataService.getAssemblyConfigurationByCode(
+                    dto.getAssemblyConfiguration().getCode()));
         }
         if (dto.getReturnSupport() != null) {
             entity.setReturnSupport(masterDataService.getReturnSupportByCode(dto.getReturnSupport().getCode()));
@@ -215,6 +222,10 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         }
         if (entity.getSupportType() != null) {
             dto.setSupportType(masterDataService.getSupportTypeByIdAndMapToDTO(entity.getSupportType().getId()));
+        }
+        if (entity.getAssemblyConfiguration() != null) {
+            dto.setAssemblyConfiguration(masterDataService.getAssemblyConfigurationByIdAndMapToDTO(
+                    entity.getAssemblyConfiguration().getId()));
         }
         if (entity.getReturnSupport() != null) {
             dto.setReturnSupport(masterDataService.getReturnSupportByIdAndMapToDTO(entity.getReturnSupport().getId()));
