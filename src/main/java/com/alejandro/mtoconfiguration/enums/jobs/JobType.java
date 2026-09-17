@@ -39,7 +39,21 @@ public enum JobType {
      * escrituras que compite por las mismas conexiones. Ademas escribe sobre las tablas
      * que exporta {@code PROFILE_EXPORT}, asi que solaparlas no interesa.
      */
-    PROFILE_IMPORT(JobSlotGroup.BULK);
+    PROFILE_IMPORT(JobSlotGroup.BULK),
+
+    /**
+     * Republicado de datos maestros: recorre perfiles, seccionadores y aisladores de seccion ya
+     * existentes y escribe por cada uno el mismo evento de outbox que habria escrito una edicion.
+     *
+     * <p>Existe porque los eventos solo nacen al pasar por la capa de servicio, de modo que lo que
+     * ya estaba en la base cuando se conecto un consumidor nuevo no publico nunca nada. Se publica
+     * como {@code UPDATED} y el consumidor lo absorbe por su upsert idempotente.</p>
+     *
+     * <p>Cupo propio ({@link JobSlotGroup#REPUBLISH}), a diferencia de las importaciones: no es una
+     * rafaga de escrituras sobre las tablas de negocio, es un recorrido de lectura que solo escribe
+     * en el outbox.</p>
+     */
+    MASTER_DATA_REPUBLISH(JobSlotGroup.REPUBLISH);
 
     private final JobSlotGroup slotGroup;
 

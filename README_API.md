@@ -483,6 +483,20 @@ curl "$BASE/profiles/jobs/{jobId}"        # 200: PENDING | RUNNING | COMPLETED |
 curl "$BASE/profiles/jobs/{jobId}/file"   # 200 con el CSV adjunto
 ```
 
+Y el republicado de datos maestros, que vuelve a emitir los eventos de lo que **ya existe** para un
+consumidor que se conecta a un dominio poblado (ver `README_ASYNC_JOBS.md`):
+
+```bash
+curl -X POST "$BASE/master-data/republish?entity=profile&trackId=2"
+# 202 + Location: $BASE/master-data/republish/{jobId}
+
+curl "$BASE/master-data/republish/{jobId}"   # 200: estado y contadores
+```
+
+`entity` es `profile`, `disconnector`, `section-insulator` o `all`; `trackId` acota solo perfiles,
+`stationId` solo seccionadores y aisladores, y `all` no admite filtros. No produce fichero, así que
+aquí no hay `/file`. Repetirlo es inocuo: el consumidor lo absorbe por su upsert idempotente.
+
 Códigos de la descarga, que distinguen casos que un 404 mezclaría:
 
 | Código | Significado |

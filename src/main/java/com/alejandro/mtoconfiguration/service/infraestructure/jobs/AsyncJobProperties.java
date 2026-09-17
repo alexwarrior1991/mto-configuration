@@ -29,6 +29,7 @@ public class AsyncJobProperties {
     private final Purge purge = new Purge();
     private final ProfileJobs profile = new ProfileJobs();
     private final LovJobs lov = new LovJobs();
+    private final Republish republish = new Republish();
 
     /** Cada cuanto se refresca la foto que publican las metricas. */
     private Duration metricsRefreshDelay = Duration.ofSeconds(30);
@@ -216,6 +217,52 @@ public class AsyncJobProperties {
         // trabajo reutiliza ProfileJobProgress, que lee app.jobs.profile.progress-flush-interval
         // y app.jobs.profile.max-item-errors. Duplicarlos aqui daria dos perillas para lo mismo
         // y solo una de ellas tendria efecto.
+    }
+
+    /**
+     * Ajustes del republicado de datos maestros ({@code app.jobs.republish.*}).
+     *
+     * <p>Es una operacion de explotacion que se lanza una vez, cuando un consumidor nuevo se
+     * conecta a un dominio que ya tenia datos: los eventos solo nacen al pasar por la capa de
+     * servicio, asi que lo que estaba en la base de antes no publico nunca nada.</p>
+     */
+    @Getter
+    @Setter
+    public static class Republish {
+
+        /**
+         * Republicados simultaneos <b>en todo el despliegue</b>.
+         *
+         * <p>Uno. No por coste de escritura —el republicado solo escribe outbox— sino porque dos a
+         * la vez sobre la misma seleccion duplicarian cada evento sin adelantar nada, y porque el
+         * consumidor tendria que descartar la mitad por marca de agua.</p>
+         *
+         * <p>A diferencia de {@code lov}, este tope SI se configura aqui: MASTER_DATA_REPUBLISH
+         * tiene grupo de cupo propio ({@code JobSlotGroup.REPUBLISH}) y es esta perilla la que
+         * consulta {@code AsyncJobStore.maxConcurrencyOf}.</p>
+         */
+        private int maxConcurrency = 1;
+
+        /**
+         * Elementos por lote, y por tanto por transaccion.
+         *
+         * <p>Cada lote lee las entidades y escribe sus filas de outbox <b>en la misma
+         * transaccion</b>: si se leyera la entidad, alguien la editara y el trabajo escribiera
+         * despues, el republicado llevaria un numero de secuencia mas alto con datos mas viejos y
+         * pisaria la edicion en el consumidor. Lotes grandes alargan esa transaccion y retienen la
+         * conexion; lotes diminutos multiplican los commits sin ganar nada.</p>
+         */
+        private int batchSize = 500;
+
+        /**
+         * Elementos como maximo en un republicado.
+         *
+         * <p>Se comprueba con un recuento <b>antes</b> de crear la fila del trabajo, asi que aqui
+         * el tope si llega a tiempo —a diferencia del de las cargas masivas, donde el cuerpo ya
+         * esta en memoria cuando se mira—. Convierte en un 400 explicito lo que si no seria un
+         * trabajo de horas que nadie pidio conscientemente.</p>
+         */
+        private int maxItems = 200_000;
     }
 
 }

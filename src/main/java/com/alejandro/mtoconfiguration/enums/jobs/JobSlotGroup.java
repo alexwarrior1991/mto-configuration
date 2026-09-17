@@ -24,7 +24,18 @@ public enum JobSlotGroup {
     EXPORT(8_474_001L),
 
     /** Cargas masivas: rafagas de escritura sobre las mismas tablas. */
-    BULK(8_474_002L);
+    BULK(8_474_002L),
+
+    /**
+     * Republicado de datos maestros: recorrido largo de lectura que ademas escribe outbox.
+     *
+     * <p>Cupo propio y no {@link #BULK} porque no compiten por lo mismo y porque comparten mal:
+     * un republicado recorre decenas de miles de filas, asi que meterlo en el cupo de las cargas
+     * —que es de uno— dejaria bloqueada cualquier importacion durante todo el recorrido, y al
+     * reves. Que sea una operacion de explotacion puntual es justo el motivo para que no tenga
+     * que esperar detras de la carga nocturna.</p>
+     */
+    REPUBLISH(8_474_003L);
 
     /**
      * Clave del cerrojo consultivo de PostgreSQL que serializa el «mira si hay hueco y coge uno».

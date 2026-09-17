@@ -67,7 +67,14 @@ public class SecurityConfiguration {
             // vez, asi que lleva el mismo permiso que el resto de cargas masivas. Sin esta
             // entrada caeria en la regla general de POST y bastaria config-write, que es
             // justo la distincion que BULK existe para mantener.
-            API + "/*/jobs/import"
+            API + "/*/jobs/import",
+            // El republicado de datos maestros no escribe en las tablas de negocio, pero deja una
+            // fila de outbox por entidad y le cambia el dato maestro a TODOS los consumidores del
+            // dominio de una vez: mismo alcance que una carga masiva, mismo permiso. Se escribe
+            // entera y no con comodin porque /* no cruza el segundo segmento y PathPattern solo
+            // admite /** al final. Sin esta entrada caeria en la regla general de POST y bastaria
+            // config-write, que es justo la distincion que BULK existe para mantener.
+            API + "/master-data/republish"
     };
 
     private static final String[] API_DOCS = {

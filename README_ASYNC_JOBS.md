@@ -115,6 +115,64 @@ El catálogo también puede sembrarse al arrancar con `app.lov.seed-on-startup=t
 (desactivado por defecto: escribir en base de datos al levantar el proceso es algo que hay que
 pedir explícitamente). Ambas vías pasan por el mismo `LovMasterImporter`.
 
+### Republicado de datos maestros
+
+Prefijo propio: `ConfigurationApiPaths.BASE_PATH + "/master-data/republish"` →
+`/api/v1/configuration/master-data/republish`
+
+| Método | Ruta | Permiso | Respuesta |
+|---|---|---|---|
+| POST | `/?entity=profile&trackId=2` | `CONFIG_IMPORT` | 202 · 400 · 429 |
+| GET | `/{jobId}` | `CONFIG_READ` | 200 · 404 |
+
+`entity`: `profile`, `disconnector`, `section-insulator` o `all`. `trackId` acota **solo** perfiles;
+`stationId` **solo** seccionadores y aisladores; `all` no admite filtros. Cualquier otra combinación
+es un 400, igual que una selección vacía o una que supere `app.jobs.republish.max-items`.
+
+**El problema que resuelve.** Los eventos de datos maestros solo nacen al pasar por la capa de
+servicio: `BaseService.create/update/bulkCreate` y `CRUDService.delete` publican un
+`EntityChangeApplicationEvent` que `MasterDataEntityChangedEventListener` convierte en una fila de
+outbox. Lo que ya estaba en la base cuando se conectó un consumidor nuevo **no publicó nunca nada**,
+así que ese consumidor nace vacío y nadie va a volver a editar los once mil perfiles que ya estaban.
+Esto los recorre y escribe por cada uno el mismo evento que habría escrito una edición.
+
+Cuatro decisiones que lo sostienen:
+
+- **Se publica como `UPDATED`.** No hay un valor nuevo en `MasterDataOperation`, y no por pereza: el
+  valor viaja en el contrato del mensaje, así que uno desconocido rompería a `mto-stock` —ya
+  desplegado— al deserializar.
+- **Cada lote lee y publica en la MISMA transacción.** El `sequence_number` lo asigna la base al
+  insertar la fila de outbox, y el consumidor descarta por marca de agua lo que llega con un número
+  menor del que ya aplicó. Si el trabajo leyera la entidad, alguien la editase y el trabajo
+  escribiera después, el republicado viajaría con un número **más alto** y datos **más viejos**:
+  pisaría la edición en destino, en silencio. Compartir transacción estrecha la ventana de todo el
+  trabajo a un lote; **no la cierra** —sin bloqueo pesimista una edición confirmada entre la lectura
+  y el `INSERT` todavía puede quedar por debajo—, así que conviene lanzarlo en una ventana sin
+  ediciones.
+- **Se recorren ids por páginas y cada uno se relee con `findByIdForMessaging`**, el método con
+  `@EntityGraph` que usa el listener de un cambio real. Así el payload republicado es idéntico al de
+  una edición y el mapeador no dispara un select por relación. Las consultas son un keyset **solo de
+  ids** (`findIdsForRepublish`), no el `findNextPage` de la exportación: aquél exige `trackId` y
+  arrastra `join fetch` de colecciones, y una colección con `Pageable` hace que Hibernate pagine **en
+  memoria** (HHH000104), de modo que cada página cargaría todas las filas restantes de la vía.
+- **Cupo propio** (`JobSlotGroup.REPUBLISH`, `app.jobs.republish.max-concurrency`), a diferencia de
+  las importaciones, que van en `BULK`. Un republicado no es una ráfaga de escrituras sobre las
+  tablas de negocio, es un recorrido de lectura que solo escribe outbox; meterlo en `BULK` —que es
+  de uno— dejaría bloqueada cualquier importación durante todo el recorrido, y al revés.
+
+**Es reejecutable.** Al otro lado el upsert es idempotente por `(source_service, source_entity_id)` y
+la marca de agua acepta los números nuevos por ser mayores, así que relanzarlo no duplica nada.
+
+Lo que **no** viaja en la respuesta: la entidad republicada y el `stationId`. `async_job` no tiene
+columnas para ellos y añadirlas para un trabajo puntual no lo justifica; quedan en el log de
+arranque, igual que el `dryRun` de la importación de perfiles. El `trackId` sí, porque su columna ya
+existe y significa exactamente eso.
+
+Este trabajo **no produce fichero**: `GET /{jobId}/file` no existe en esta ruta.
+
+Un republicado de miles de perfiles deja miles de filas en `outbox_message`; la purga del outbox
+(`app.outbox.purge.retention`, 7 días) se las lleva después.
+
 ### Arranque de un trabajo
 
 ```
@@ -192,7 +250,8 @@ PENDING ──▶ RUNNING ──┬──▶ COMPLETED               (nada fall�
 REJECTED  (estado terminal de entrada: nunca llegó a encolarse)
 ```
 
-Tipos: `PROFILE_EXPORT`, `PROFILE_BULK_CREATE`, `PROFILE_BULK_UPDATE`, `LOV_IMPORT`.
+Tipos: `PROFILE_EXPORT`, `PROFILE_BULK_CREATE`, `PROFILE_BULK_UPDATE`, `LOV_IMPORT`,
+`PROFILE_IMPORT`, `MASTER_DATA_REPUBLISH`.
 
 > Añadir un valor a `JobStatus` o `JobType` exige **una migración de Flyway** que amplíe el `CHECK`
 > de `async_job`. `ddl-auto: validate` no comprueba los `CHECK`, así que el fallo no saldría al
@@ -209,6 +268,9 @@ Cuando no hay hueco se hacen las dos cosas:
 - el trabajo **se persiste** como `REJECTED`, con su `Location`. Eso es lo que hace el rechazo
   observable: queda un identificador que consultar y la métrica
   `mto.jobs.submitted.total{outcome="rejected"}` para contarlos.
+
+Hay **tres** grupos de cupo —`EXPORT`, `BULK` y `REPUBLISH`—, cada uno con su clave de cerrojo, de
+modo que pedir hueco para uno no espera por los otros.
 
 Que la ejecución sea en hilos virtuales no elimina la necesidad de un tope, más bien al contrario:
 crear diez mil hilos virtuales es trivial, y justamente por eso nada frena por sí solo a diez mil
@@ -339,6 +401,10 @@ app:
       progress-flush-interval: 2s
       max-item-errors: 50
       max-item-error-message-length: 500
+    republish:
+      max-concurrency: 1         # APP_JOBS_REPUBLISH_MAX_CONCURRENCY — de TODO el despliegue
+      batch-size: 500            # elementos por lote, y por tanto por transaccion
+      max-items: 200000          # tope, comprobado con un recuento ANTES de crear la fila
 ```
 
 - `heartbeat.timeout` debe quedar **holgado** respecto a `heartbeat.interval`. Con varios latidos de
@@ -402,6 +468,11 @@ tocó. En `bulk-create` no se exige.
 | `service.infraestructure.jobs.AsyncJobMetrics` / `…Scheduler` | Micrometer |
 | `service.infraestructure.jobs.ProfileJobProgress` | contadores + volcado periódico |
 | `service.infraestructure.jobs.ProfileExportJobRunner` / `ProfileBulkJobRunner` | el trabajo en sí |
+| `controller.synchronous.infraestructure.MasterDataRepublishJobController` | contrato HTTP del republicado |
+| `service.infraestructure.jobs.MasterDataRepublishJobService` | arranque y cierre del republicado |
+| `service.infraestructure.jobs.MasterDataRepublishJobRunner` | recorrido por páginas de ids |
+| `service.infraestructure.jobs.MasterDataRepublishBatchPublisher` | la transacción del lote: lee y publica dentro de ella |
+| `enums.jobs.MasterDataRepublishTarget` | qué se republica (`profile`/`disconnector`/`section-insulator`/`all`) |
 | `service.infraestructure.jobs.ProfileJobFiles` | dueño del directorio de exportación: nombra, localiza, borra |
 | `enums.jobs.JobSlotGroup` | grupos de cupo y claves de cerrojo |
 | `entity.jobs.AsyncJob` + `repository.jpa.jobs.AsyncJobRepository` | persistencia |
@@ -432,6 +503,9 @@ Cuatro decisiones que sostienen el resto:
   fichero no.
 - **No hay cancelación** de un trabajo en curso.
 - **`max-bulk-items` no protege de la memoria**, solo del trabajo inútil (ver §7).
+- **El republicado estrecha la ventana de desorden, no la cierra** (ver más arriba): una edición
+  confirmada entre la lectura y el `INSERT` del outbox todavía puede quedar con un
+  `sequence_number` menor. Lo correcto es lanzarlo cuando no haya ediciones en curso.
 - **Un trabajo cuya réplica muere se pierde, no se reanuda.** Se cierra como `FAILED` y hay que
   volver a lanzarlo; el progreso parcial de una carga masiva ya está confirmado, así que relanzarla
   reintenta también lo que ya se hizo.

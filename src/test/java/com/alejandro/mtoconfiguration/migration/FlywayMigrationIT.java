@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22");
     }
 
     /**
@@ -149,6 +149,26 @@ class FlywayMigrationIT {
     void elTipoDeTrabajoAdmiteLaImportacionDeLov() {
         assertThatCode(() -> jdbc().update(insertAsyncJob("LOV_IMPORT", "PENDING")))
                 .doesNotThrowAnyException();
+    }
+
+    /**
+     * V22 amplia el CHECK de {@code async_job.job_type} con {@code MASTER_DATA_REPUBLISH}.
+     *
+     * <p>Y comprueba ademas que el CHECK sigue <b>acotando</b>: una migracion que lo recreara mal
+     * —o que lo dejara caido tras el DROP— pasaria la mitad de arriba sin que nadie lo notase, y el
+     * dia que alguien renombrase una constante del enumerado la tabla se lo tragaria.
+     */
+    @Test
+    void elTipoDeTrabajoAdmiteElRepublicadoDeDatosMaestros() {
+        assertThatCode(() -> jdbc().update(insertAsyncJob("MASTER_DATA_REPUBLISH", "PENDING")))
+                .doesNotThrowAnyException();
+
+        // Se exige el nombre de la restriccion, no «que lance algo»: un DROP sin su ADD, o una
+        // sentencia que muriera antes de llegar al CHECK, pasarian igual una comprobacion laxa.
+        assertThatCode(() -> jdbc().update(insertAsyncJob("REPUBLICADO", "PENDING")))
+                .as("el CHECK sigue acotando el tipo despues de recrearlo")
+                .isInstanceOf(Exception.class)
+                .hasMessageContaining("async_job_type_check");
     }
 
     /**

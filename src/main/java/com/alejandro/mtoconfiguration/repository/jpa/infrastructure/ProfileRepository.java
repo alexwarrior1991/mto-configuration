@@ -88,6 +88,42 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
 
 
 
+
+    /**
+     * Pagina de identificadores para el republicado de datos maestros, por clave.
+     *
+     * <p>Solo ids y no entidades a proposito: el trabajo relee cada uno con
+     * {@code findByIdForMessaging} para que el payload republicado sea identico al de un cambio
+     * real. Traerse aqui la entidad cargaria un grafo distinto del de mensajeria, que habria que
+     * descartar.</p>
+     *
+     * <p>Keyset sobre {@code id} y no sobre {@code (kp, id)} como {@code findNextPage}: aqui no
+     * hace falta un orden funcional, solo cubrir cada fila una vez, y el id ya es unico. Y
+     * {@code findNextPage} no vale ademas por dos motivos propios: exige {@code trackId}, de modo
+     * que no sirve para republicar la tabla entera, y arrastra {@code join fetch} de colecciones
+     * —una coleccion con {@code Pageable} hace que Hibernate pagine EN MEMORIA (HHH000104), asi
+     * que cada pagina cargaria todas las filas restantes de la via.</p>
+     *
+     * <p>El {@code @SQLRestriction} de {@code CRUDEntity} sigue aplicando, asi que los borrados
+     * logicos quedan fuera solos: no se republica como UPDATED algo que esta borrado.</p>
+     */
+    @Query("select p.id from Profile p "
+            + "where (:trackId is null or p.track.id = :trackId) and p.id > :lastId "
+            + "order by p.id asc")
+    List<Long> findIdsForRepublish(@Param("trackId") Long trackId,
+                                   @Param("lastId") Long lastId,
+                                   Pageable pageable);
+
+    /**
+     * Recuento de la misma seleccion que recorre {@code findIdsForRepublish}.
+     *
+     * <p>Se usa antes de crear la fila del trabajo, para rechazar con 400 una seleccion vacia o una
+     * que supere {@code app.jobs.republish.max-items}, y para que el 202 lleve ya su
+     * {@code totalItems} en lugar de descubrirlo al terminar.</p>
+     */
+    @Query("select count(p.id) from Profile p where (:trackId is null or p.track.id = :trackId)")
+    long countForRepublish(@Param("trackId") Long trackId);
+
     /**
      * {@code cantilevers.steadyArm} y {@code disconnector} son obligatorios: son el
      * lado INVERSO de un {@code @OneToOne}, que Hibernate no puede proxear, asi que

@@ -410,6 +410,24 @@ app:
       # la que genero el informe.
       report-directory: ${APP_JOBS_LOV_REPORT_DIRECTORY:lov-imports}
 
+    # Republicado de datos maestros hacia los consumidores. Se lanza una vez, cuando
+    # un servicio nuevo se conecta a un dominio que ya tenia datos: los eventos solo
+    # nacen al pasar por la capa de servicio, asi que lo que estaba en la base de
+    # antes no publico nunca nada.
+    republish:
+      # Republicados simultaneos. Uno: dos a la vez sobre la misma seleccion duplican
+      # cada evento sin adelantar nada. Grupo de cupo propio, asi que esta perilla SI
+      # la consulta AsyncJobStore (a diferencia de la importacion de LOVs).
+      max-concurrency: ${APP_JOBS_REPUBLISH_MAX_CONCURRENCY:1}
+      # Elementos por lote, y por tanto por transaccion. Cada lote LEE y PUBLICA
+      # dentro de la misma: leer, que alguien edite y escribir despues dejaria el
+      # evento del republicado con un numero de secuencia mas alto y datos mas
+      # viejos, pisando la edicion en el consumidor.
+      batch-size: ${APP_JOBS_REPUBLISH_BATCH_SIZE:500}
+      # Tope de elementos. Aqui si llega a tiempo: se comprueba con un recuento antes
+      # de crear la fila del trabajo, no con el cuerpo ya en memoria.
+      max-items: ${APP_JOBS_REPUBLISH_MAX_ITEMS:200000}
+
   # Catalogo maestro de LOVs (datos maestros de infraestructura).
   lov:
     # Sembrar el catalogo al arrancar. DESACTIVADO por defecto a proposito: escribir en

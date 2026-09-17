@@ -148,6 +148,30 @@ Que salga con código obliga a que la relación venga inicializada, así que `se
 en el `@EntityGraph` de `ProfileRepository.findByIdForMessaging`. Es un join a-uno, no multiplica
 filas, y `MasterDataPayloadContractIT` sigue exigiendo **una** sentencia por evento.
 
+### 2.5. Republicado de lo que ya existe
+
+Los eventos de esta sección solo nacen cuando algo pasa por la capa de servicio. Un consumidor que se
+conecta a un dominio **ya poblado** no recibe nada: las filas que ya estaban nunca publicaron, y
+nadie va a volver a editarlas para provocarlo. Es lo que le pasó a `mto-maintenance`, que materializa
+perfiles, seccionadores y aisladores de sección como `catenary_asset` y nacía con la tabla vacía.
+
+El republicado (`POST /api/v1/configuration/master-data/republish`, ver `README_ASYNC_JOBS.md`)
+recorre lo que hay y escribe por cada elemento el mismo evento que habría escrito una edición: misma
+relectura con `findByIdForMessaging`, mismo `MasterDataEventPayloadExtractor`, mismo
+`MasterDataEventPublisher`, misma fila de `outbox_message`. **El contrato no cambia en nada**, y esa
+es la propiedad que importa: un consumidor no puede distinguir un evento republicado de uno real, ni
+tiene por qué.
+
+Se publica como `UPDATED`. No hay un valor nuevo en `MasterDataOperation` a propósito: viaja dentro
+del payload, así que un valor desconocido rompería a los consumidores ya desplegados al
+deserializar.
+
+Lo que el republicado **no** puede garantizar por sí solo es el orden frente a una edición
+simultánea. Cada lote lee y escribe dentro de la misma transacción, lo que estrecha la ventana de
+todo el trabajo a un lote, pero sin bloqueo pesimista una edición confirmada entre la lectura y el
+`INSERT` todavía puede acabar con un `sequence_number` menor que el del republicado y perder frente
+a él en la marca de agua del consumidor (§11.4). Conviene lanzarlo en una ventana sin ediciones.
+
 ---
 
 ## 3. Infraestructura de RabbitMQ (Exchanges, Colas y Dead Letter)
