@@ -72,6 +72,9 @@ class AsyncJobWiringTest {
 
             assertThat(properties.getProfile().getExportMaxConcurrency()).isEqualTo(2);
             assertThat(properties.getProfile().getBulkMaxConcurrency()).isEqualTo(1);
+            assertThat(properties.getRepublish().getMaxConcurrency()).isEqualTo(1);
+            assertThat(properties.getRepublish().getBatchSize()).isEqualTo(500);
+            assertThat(properties.getRepublish().getMaxItems()).isEqualTo(200_000);
             assertThat(properties.getHeartbeat().getInterval()).isEqualTo(Duration.ofSeconds(15));
             assertThat(properties.getHeartbeat().getTimeout()).isEqualTo(Duration.ofMinutes(2));
             assertThat(properties.getPurge().getRetention()).isEqualTo(Duration.ofDays(7));

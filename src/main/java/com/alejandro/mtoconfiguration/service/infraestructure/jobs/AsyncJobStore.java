@@ -124,6 +124,7 @@ public class AsyncJobStore {
         int configured = switch (group) {
             case EXPORT -> profileJobs.getExportMaxConcurrency();
             case BULK -> profileJobs.getBulkMaxConcurrency();
+            case REPUBLISH -> properties.getRepublish().getMaxConcurrency();
         };
 
         // Un tope de cero dejaria la funcionalidad muerta sin que el arranque dijera nada.

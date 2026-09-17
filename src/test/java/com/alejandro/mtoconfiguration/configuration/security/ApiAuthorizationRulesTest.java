@@ -48,7 +48,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         ProblemDetailFactory.class, ErrorCatalog.class, ApiErrorConfiguration.class,
         ApiAuthorizationRulesTest.ProbeController.class,
         ApiAuthorizationRulesTest.ProbeAsyncController.class,
-        ApiAuthorizationRulesTest.ProbeLovController.class})
+        ApiAuthorizationRulesTest.ProbeLovController.class,
+        ApiAuthorizationRulesTest.ProbeRepublishController.class})
 @TestPropertySource(properties = {
         "app.security.client-id=mto-configuration-api",
         "app.security.principal-claim=preferred_username",
@@ -66,6 +67,10 @@ class ApiAuthorizationRulesTest {
     private static final String PROBES = ConfigurationApiPaths.BASE_PATH + "/probes";
     private static final String ASYNC_PROBES = ConfigurationApiPaths.ASYNC_BASE_PATH + "/probes";
     private static final String LOVS = ConfigurationApiPaths.BASE_PATH + "/probe-lovs";
+
+    // Ruta literal y no una sonda con la forma de la real: /* no cruza el segundo segmento, asi
+    // que el patron de seguridad esta escrito entero y solo se puede comprobar sobre el mismo.
+    private static final String REPUBLISH = ConfigurationApiPaths.BASE_PATH + "/master-data/republish";
 
     /**
      * Se deja el {@code JwtDecoder} real, sin sustituir por un doble: así el contexto ejercita el
@@ -248,6 +253,32 @@ class ApiAuthorizationRulesTest {
             mockMvc.perform(json(put(PROBES + "/bulk")).with(con(SecurityRoles.CONFIG_WRITE)))
                     .andExpect(status().isForbidden());
         }
+
+        @Test
+        @DisplayName("el republicado de datos maestros exige config-import")
+        void elRepublicadoExigeConfigImport() throws Exception {
+            mockMvc.perform(post(REPUBLISH).param("entity", "profile")
+                            .with(con(SecurityRoles.CONFIG_IMPORT)))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("escribir no habilita el republicado: le cambia el dato maestro a todo el dominio")
+        void escribirNoHabilitaElRepublicado() throws Exception {
+            // Sin su entrada en BULK caeria en la regla general de POST y bastaria config-write,
+            // que es justo la distincion que BULK existe para mantener.
+            mockMvc.perform(post(REPUBLISH).param("entity", "profile")
+                            .with(con(SecurityRoles.CONFIG_WRITE)))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("consultar el estado de un republicado es una lectura")
+        void elEstadoDelRepublicadoEsUnaLectura() throws Exception {
+            mockMvc.perform(get(REPUBLISH + "/11111111-2222-3333-4444-555555555555")
+                            .with(con(SecurityRoles.CONFIG_READ)))
+                    .andExpect(status().isOk());
+        }
     }
 
     @Nested
@@ -421,6 +452,28 @@ class ApiAuthorizationRulesTest {
 
         @DeleteMapping("/{id}")
         String delete(@PathVariable Long id) {
+            return "ok";
+        }
+    }
+
+    /**
+     * Sonda del republicado de datos maestros.
+     *
+     * <p>Montada en la ruta REAL y no en una con su forma, porque el patron de seguridad se escribe
+     * entero: {@code /*} solo cubre un segmento y {@code PathPattern} unicamente admite {@code /**}
+     * al final, de modo que una sonda en otra ruta no probaria el patron que se aplica.</p>
+     */
+    @RestController
+    @RequestMapping(ConfigurationApiPaths.BASE_PATH + "/master-data/republish")
+    static class ProbeRepublishController {
+
+        @PostMapping
+        String republish(@RequestParam(required = false) String entity) {
+            return "ok";
+        }
+
+        @GetMapping("/{jobId}")
+        String status(@PathVariable String jobId) {
             return "ok";
         }
     }
