@@ -27,7 +27,8 @@ librería vive en su doc, que además se mantiene al día sola.
 | [4](#4-crear-el-proyecto) | Crear el proyecto | Asistente, anatomía, `libs.versions.toml`, Gradle |
 | [5](#5-arquitectura-de-la-app) | Arquitectura | Capas, flujo de datos, qué va dónde |
 | [6](#6-jetpack-compose-de-cero) | Jetpack Compose | Estado, recomposición, Material 3, listas, navegación |
-| [7](#7-la-capa-de-red-retrofit--kotlinxserialization) | La capa de red | Retrofit, DTOs, paginación de Spring, errores RFC 9457 |
+| [6 bis](#6-bis-corrutinas-el-modelo-de-concurrencia-de-la-app) | Corrutinas y `Flow` | `suspend`, ámbitos, paralelo, cancelación, reintentos, tests |
+| [7](#7-la-capa-de-red-retrofit--kotlinxserialization) | La capa de red | Retrofit, DTOs, paginación, errores, consumo en la práctica |
 | [8](#8-autenticación-con-keycloak) | Autenticación | AppAuth + PKCE, cliente `mto-mobile`, tokens, roles |
 | [9](#9-llegar-al-backend-local-desde-el-móvil) | Backend local | Emulador, `10.0.2.2`, `auth.mto.local`, tráfico en claro |
 | [10](#10-primera-pantalla-completa-vías-y-perfiles) | Primera pantalla | Listado paginado + detalle, de punta a punta |
@@ -665,9 +666,14 @@ class TracksViewModel @Inject constructor(
     fun refresh() {
         viewModelScope.launch {                       // se cancela solo al morir el ViewModel
             _uiState.update { it.copy(isLoading = true, error = null) }
-            runCatching { repository.tracks() }
-                .onSuccess { tracks -> _uiState.update { it.copy(isLoading = false, tracks = tracks) } }
-                .onFailure { e -> _uiState.update { it.copy(isLoading = false, error = e.userMessage()) } }
+            try {
+                val tracks = repository.tracks()
+                _uiState.update { it.copy(isLoading = false, tracks = tracks) }
+            } catch (e: CancellationException) {
+                throw e                               // la cancelación NO es un error: se propaga (§6 bis.7)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = e.userMessage()) }
+            }
         }
     }
 }
@@ -780,6 +786,372 @@ private fun TrackRowPreview() {
 El panel de *Preview* renderiza sin desplegar; con *Live Edit* los cambios se ven mientras
 escribes ([previews](https://developer.android.com/develop/ui/compose/tooling/previews)). Es la
 razón principal por la que conviene que los composables reciban datos y no ViewModels.
+
+---
+
+## 6 bis. Corrutinas: el modelo de concurrencia de la app
+
+Todo lo que la app hace contra la API es asíncrono, y en Kotlin eso se escribe con corrutinas. No
+es una librería más: es el modelo de concurrencia sobre el que están construidos Retrofit, Room,
+DataStore, Paging y WorkManager. Merece un capítulo entero porque **los errores de concurrencia no
+se ven en el emulador y sí en campo**: peticiones que siguen vivas cuando el usuario ya cambió de
+pantalla, cargas que se duplican al girar el móvil, excepciones que desaparecen sin rastro.
+
+Documentación de referencia: [corrutinas en Android](https://developer.android.com/kotlin/coroutines),
+la [guía de Kotlin](https://kotlinlang.org/docs/coroutines-guide.html) y, muy recomendable,
+[buenas prácticas](https://developer.android.com/kotlin/coroutines/coroutines-best-practices).
+
+### 6 bis.1 `suspend`: esperar sin bloquear
+
+Un hilo bloqueado en una llamada de red es un hilo que no hace nada y ocupa memoria. Una función
+`suspend` se **suspende**: libera el hilo mientras espera y lo retoma —quizá en otro hilo— cuando
+llega la respuesta.
+
+```kotlin
+suspend fun byId(id: Long): ProfileDto        // puede tardar; no bloquea a quien la llama
+```
+
+Tres consecuencias prácticas:
+
+- Una función `suspend` **solo se puede llamar desde otra `suspend` o desde una corrutina**. El
+  compilador lo impone, y eso es lo que impide accidentalmente llamar a la red desde el hilo
+  principal.
+- **No hay callbacks.** El resultado es el valor de retorno y el fallo es una excepción normal, así
+  que `try/catch`, `return` y los bucles funcionan como siempre.
+- **No crea hilos.** `suspend` no dice "esto va en segundo plano": dice "esto puede pausarse". Quién
+  ejecuta qué lo decide el *dispatcher* (§6 bis.4).
+
+### 6 bis.2 Concurrencia estructurada: el árbol
+
+Toda corrutina nace dentro de un `CoroutineScope` y queda colgada de él como hija. De ahí salen
+tres garantías que son justo lo que falta en un `Thread` suelto o en un `Future`:
+
+| Garantía | Qué significa aquí |
+|---|---|
+| El padre no termina hasta que terminan sus hijas | una función que lanza tres llamadas en paralelo no devuelve hasta tenerlas |
+| Cancelar el padre cancela a todas sus hijas | cerrar la pantalla corta las peticiones en vuelo |
+| El fallo de una hija cancela a sus hermanas y sube al padre | si el perfil falla, no se espera a los catálogos que ya no sirven |
+
+```
+viewModelScope                       <- muere con el ViewModel
+└── launch { cargarDetalle() }       <- se cancela con él
+    └── coroutineScope              <- no vuelve hasta que las tres acaben
+        ├── async { perfil }
+        ├── async { ménsulas }
+        └── async { catálogo }      <- si esta falla, las otras dos se cancelan
+```
+
+Esto no es un detalle académico: es lo que hace que salir de una pantalla **no** deje trabajo
+zombi consumiendo batería y datos móviles dentro de un túnel.
+
+### 6 bis.3 Los ámbitos que vas a usar
+
+| Ámbito | Vive mientras | Para qué |
+|---|---|---|
+| `viewModelScope` | vive el `ViewModel` | **el 95% de la app**: cargar, guardar, refrescar |
+| `lifecycleScope` | vive la `Activity`/`Fragment` | cosas atadas a la pantalla, no al estado |
+| `CoroutineWorker` | dura el trabajo de WorkManager | sincronización y sondeos largos (§12, §13) |
+| `rememberCoroutineScope()` | vive el composable | lanzar desde un gesto: abrir un `BottomSheet`, un `Snackbar` |
+| `GlobalScope` | para siempre | **nunca**. Nada lo cancela, y sobrevive a la pantalla que lo lanzó |
+
+```kotlin
+// ✅ el caso normal
+viewModelScope.launch { repository.refresh() }
+
+// ✅ desde un gesto, para algo que pertenece a la UI
+val scope = rememberCoroutineScope()
+Button(onClick = { scope.launch { snackbarHostState.showSnackbar("Guardado") } }) { Text("Guardar") }
+
+// ❌ la fuga clásica: nadie lo cancela nunca
+GlobalScope.launch { repository.refresh() }
+```
+
+> Un `suspend fun` **nunca** debería crear su propio ámbito por dentro para "lanzar y olvidar": eso
+> rompe el árbol y hace que quien la llama no pueda ni esperarla ni cancelarla. Si algo tiene que
+> sobrevivir a la pantalla —subir un cambio hecho sin cobertura— su sitio es WorkManager, que
+> sobrevive incluso a que se cierre la app.
+
+### 6 bis.4 Dispatchers: quién ejecuta qué
+
+| Dispatcher | Hilos | Para |
+|---|---|---|
+| `Dispatchers.Main` | el de la UI | tocar estado de Compose; es el que usan `viewModelScope` y `lifecycleScope` por defecto |
+| `Dispatchers.IO` | pool grande | ficheros, base de datos, red "a mano" |
+| `Dispatchers.Default` | tantos como núcleos | cálculo: ordenar 11.715 perfiles, parsear un CSV |
+
+La regla que evita casi todos los problemas: **cada función es responsable de poder llamarse desde
+el hilo principal** (*main safety*), y para eso cambia de dispatcher **por dentro**, no obligando a
+quien la llama.
+
+```kotlin
+// ✅ el que sabe que esto es cálculo pesado es el repositorio, no el ViewModel
+suspend fun ordenarPorVano(perfiles: List<Profile>): List<Profile> =
+    withContext(Dispatchers.Default) { perfiles.sortedBy { it.span } }
+
+// ❌ obligar a la UI a saber en qué hilo va cada cosa
+viewModelScope.launch(Dispatchers.IO) { repository.tracks() }
+```
+
+Y algo que sorprende: **con Retrofit y Room no hace falta `withContext(Dispatchers.IO)`**. Las
+funciones `suspend` de Retrofit ya hacen la llamada fuera del hilo principal, y Room también. Ese
+`withContext` de más no rompe nada, pero es ruido que hace pensar que sí hacía falta.
+
+### 6 bis.5 En paralelo: `async` y `coroutineScope`
+
+La pantalla de detalle de un perfil necesita el perfil, sus ménsulas y un par de catálogos. En
+serie son cuatro viajes de red encadenados; en paralelo, uno.
+
+```kotlin
+suspend fun profileDetail(id: Long): ProfileDetail = safeApiCall {
+    coroutineScope {                                     // no vuelve hasta que las cuatro acaben
+        val perfil = async { profileApi.byId(id) }
+        val mensulas = async { cantileverApi.byProfile(id) }
+        val estados = async { lovApi.profileStatuses() }
+        val tiposPoste = async { lovApi.poleTypes() }
+
+        ProfileDetail(
+            profile = perfil.await().toDomain(),
+            cantilevers = mensulas.await().map { it.toDomain() },
+            statuses = estados.await(),
+            poleTypes = tiposPoste.await(),
+        )
+    }
+}
+```
+
+Detalles que importan:
+
+- **`async` solo dentro de un `coroutineScope`** (o de otra corrutina), nunca colgando de un ámbito
+  global. Así, si una falla, las otras tres se cancelan solas en vez de seguir gastando red para
+  nada.
+- **Lanza primero, espera después.** `async { }.await()` seguido de otro `async { }.await()` es
+  código en serie disfrazado de paralelo.
+- Si una parte es opcional —un catálogo que ya tienes cacheado— envuélvela para que su fallo no
+  tumbe la pantalla entera:
+
+```kotlin
+val estados = async { runCatching { lovApi.profileStatuses() }.getOrDefault(emptyList()) }
+```
+
+  Y ojo con esa misma línea: `runCatching` tiene una trampa, que es lo siguiente.
+
+### 6 bis.6 Cancelación: cooperativa y silenciosa
+
+Cancelar no mata nada por la fuerza: marca la corrutina y espera a que **ella** lo note. Las
+funciones `suspend` de la biblioteca estándar lo comprueban solas, así que una llamada de red
+cancelada aborta en el siguiente punto de suspensión. Un bucle de cálculo, en cambio, hay que
+hacerlo cooperativo:
+
+```kotlin
+suspend fun procesar(perfiles: List<Profile>) = withContext(Dispatchers.Default) {
+    perfiles.forEach { perfil ->
+        ensureActive()          // lanza CancellationException si ya nadie espera el resultado
+        calcular(perfil)
+    }
+}
+```
+
+Y con timeouts, cuando una espera deja de tener sentido:
+
+```kotlin
+val perfil = withTimeoutOrNull(10_000) { api.byId(id) }   // null si tarda más de 10 s
+```
+
+> El timeout de corrutina y el de OkHttp son cosas distintas y **hacen falta los dos**:
+> `withTimeout` acota la operación completa (que puede incluir reintentos y varias llamadas);
+> `connectTimeout`/`readTimeout` acotan un socket concreto. Sin el de OkHttp, una conexión
+> muerta puede quedarse colgada mucho más de lo que crees.
+
+### 6 bis.7 Errores: `CancellationException` no es un error
+
+Esta es **la** trampa del capítulo. La cancelación viaja como una excepción
+(`CancellationException`), así que cualquier `catch` demasiado ancho se la traga y rompe la
+concurrencia estructurada: la corrutina sigue como si nada, el padre cree que sigue viva, y en la
+UI aparece un error absurdo al cerrar una pantalla.
+
+```kotlin
+// ❌ runCatching captura TODO, incluida la cancelación
+runCatching { repository.tracks() }
+    .onFailure { mostrarError(it) }        // se dispara al salir de la pantalla
+
+// ❌ lo mismo con un catch genérico
+try { repository.tracks() } catch (e: Exception) { mostrarError(e) }
+
+// ✅ la cancelación se deja pasar y se captura lo demás
+try {
+    repository.tracks()
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    mostrarError(e)
+}
+```
+
+Y para el caso de "que el fallo de una hija no tumbe a las hermanas", `supervisorScope`:
+
+| Constructor | Si una hija falla |
+|---|---|
+| `coroutineScope` | cancela a las hermanas y propaga el fallo — lo normal |
+| `supervisorScope` | las hermanas siguen; cada una gestiona su error — para trabajos independientes |
+
+```kotlin
+// Descargar tres catálogos para trabajar offline: que falle uno no debe impedir cachear los otros
+supervisorScope {
+    launch { cacheLov { lovApi.poleTypes() } }
+    launch { cacheLov { lovApi.sectionings() } }
+    launch { cacheLov { lovApi.profileStatuses() } }
+}
+```
+
+### 6 bis.8 Reintentos con espera creciente
+
+Sin cobertura, el primer intento falla y el segundo, medio segundo después, también. Reintentar
+tiene sentido **solo** para errores transitorios, y el servidor ya dice cuáles lo son con el campo
+`retryable` (§1.3) y con la cabecera `Retry-After` de un `429`.
+
+```kotlin
+suspend fun <T> retryOnTransient(
+    intentos: Int = 3,
+    esperaInicial: Long = 500,
+    block: suspend () -> T,
+): T {
+    var espera = esperaInicial
+    repeat(intentos - 1) {
+        try {
+            return block()
+        } catch (e: MtoException) {
+            val error = e.error
+            val transitorio = error is MtoError.Network ||
+                error is MtoError.Throttled ||
+                (error as? MtoError.Unexpected)?.problem?.retryable == true
+
+            if (!transitorio) throw e                       // validación, 403, 404: reintentar no arregla nada
+
+            // Si el servidor dice cuánto esperar, se le hace caso
+            val retryAfter = (error as? MtoError.Throttled)?.retryAfterSeconds?.times(1_000)
+            delay(retryAfter ?: espera)
+            espera = (espera * 2).coerceAtMost(8_000)       // 0,5 s · 1 s · 2 s · 4 s · 8 s
+        }
+    }
+    return block()                                          // el último intento propaga lo que salga
+}
+```
+
+En un `Flow` el equivalente es
+[`retryWhen`](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.flow/retry-when.html):
+
+```kotlin
+flow { emit(api.paged(page = 0)) }
+    .retryWhen { causa, intento ->
+        val transitorio = (causa as? MtoException)?.error is MtoError.Network
+        if (transitorio && intento < 3) { delay(500 * (intento + 1)); true } else false
+    }
+```
+
+### 6 bis.9 `Flow`: valores que llegan con el tiempo
+
+Una función `suspend` devuelve **un** resultado; un `Flow<T>` devuelve una secuencia que puede no
+acabar nunca. Es lo que devuelven Room y DataStore, y por eso una pantalla puede refrescarse sola
+cuando cambia la base local.
+
+```kotlin
+// Frío: no se ejecuta hasta que alguien lo recolecta, y se ejecuta una vez por recolector
+fun observeProfiles(trackId: Long): Flow<List<Profile>> =
+    dao.observeByTrack(trackId).map { filas -> filas.map { it.toDomain() } }
+```
+
+Los operadores que de verdad se usan en esta app:
+
+| Operador | Para qué |
+|---|---|
+| `map` / `filter` | transformar lo que sale de Room antes de que llegue a la UI |
+| `combine` | juntar varias fuentes: el filtro elegido + el texto buscado + los permisos |
+| `flatMapLatest` | al cambiar la búsqueda, **cancelar** la anterior y quedarse con la nueva |
+| `debounce` | no lanzar una petición por tecla |
+| `distinctUntilChanged` | no repetir trabajo si el valor no cambió de verdad |
+| `flowOn` | mover hacia arriba la ejecución a otro dispatcher |
+| `stateIn` / `shareIn` | convertir un flujo frío en estado observable compartido |
+| `catch` | capturar fallos del flujo sin romper al recolector |
+
+El buscador de perfiles usa cuatro de ellos y es el ejemplo canónico:
+
+```kotlin
+val resultados: StateFlow<List<Profile>> = combine(texto, estadoSeleccionado) { t, e -> t to e }
+    .debounce(300)                     // el usuario teclea "torre": una petición, no seis
+    .distinctUntilChanged()
+    .flatMapLatest { (t, e) ->         // llega "torr" y luego "torre": la primera se CANCELA
+        flow { emit(repository.buscar(t, e)) }
+    }
+    .catch { emit(emptyList()) }
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+```
+
+Sobre `WhileSubscribed(5_000)`: el flujo deja de recolectarse 5 segundos después de que la pantalla
+desaparezca. Ese margen es deliberado — cubre un giro de pantalla sin volver a pedir nada, pero no
+mantiene la red viva mientras el móvil está en el bolsillo.
+
+| Tipo | Qué es | Cuándo |
+|---|---|---|
+| `Flow` | frío, sin valor actual | la capa de datos |
+| `StateFlow` | caliente, siempre tiene un valor | **el estado de una pantalla** |
+| `SharedFlow` | caliente, sin valor inicial | eventos que pueden tener varios oyentes |
+| `Channel` | cada elemento lo recibe **un** consumidor | avisos de una sola vez: "guardado", "vuelve a entrar" |
+
+Un aviso que no debe repetirse al girar la pantalla no va en el `StateFlow` de estado: va por un
+`Channel` expuesto como `Flow`, porque el estado se vuelve a leer y el evento no.
+
+```kotlin
+private val _eventos = Channel<UiEvent>()
+val eventos = _eventos.receiveAsFlow()
+```
+
+### 6 bis.10 Probar corrutinas
+
+Con [`kotlinx-coroutines-test`](https://developer.android.com/kotlin/coroutines/test) el tiempo es
+virtual: un `delay(30_000)` de un reintento no hace esperar medio minuto al test.
+
+```kotlin
+// Regla que sustituye Dispatchers.Main, que no existe fuera de Android
+class MainDispatcherRule(
+    private val dispatcher: TestDispatcher = UnconfinedTestDispatcher(),
+) : TestWatcher() {
+    override fun starting(description: Description) = Dispatchers.setMain(dispatcher)
+    override fun finished(description: Description) = Dispatchers.resetMain()
+}
+
+class TracksViewModelTest {
+
+    @get:Rule val mainDispatcherRule = MainDispatcherRule()
+
+    @Test fun `reintenta dos veces antes de rendirse cuando no hay red`() = runTest {
+        val api = FakeProfileApi(fallosSeguidos = 2)
+
+        val perfil = retryOnTransient { api.byId(1) }      // los delay() no gastan tiempo real
+
+        assertEquals(3, api.llamadas)
+        assertNotNull(perfil)
+    }
+
+    @Test fun `el estado pasa por cargando antes del contenido`() = runTest {
+        val viewModel = TracksViewModel(FakeTrackRepository())
+        viewModel.uiState.test {                           // Turbine
+            assertTrue(awaitItem().isLoading)
+            assertEquals(2, awaitItem().tracks.size)
+        }
+    }
+}
+```
+
+### 6 bis.11 Los seis errores que se repiten
+
+| Error | Qué pasa | Qué hacer |
+|---|---|---|
+| `GlobalScope.launch` | nadie lo cancela; sobrevive a la pantalla | `viewModelScope`, o WorkManager si debe sobrevivir |
+| `runCatching` o `catch (Exception)` sin más | se traga la `CancellationException` | recapturarla y relanzarla |
+| `async` seguido de `await` inmediato | parece paralelo y es serie | lanzar todos los `async` y esperar después |
+| `withContext(IO)` sobre Retrofit o Room | ruido: ya son *main-safe* | quitarlo |
+| `runBlocking` en el hilo principal | congela la UI | solo en tests y en interceptores de OkHttp (§8.6) |
+| Un `Flow` sin `stateIn`, recolectado en varios sitios | el trabajo se hace una vez por recolector | `stateIn(...)` o `shareIn(...)` |
 
 ---
 
@@ -1187,6 +1559,131 @@ fun ApiProblem.fieldErrors(): Map<String, String> =
     errors.mapNotNull { fe -> fe.field?.let { it to (fe.message ?: "Valor no válido") } }.toMap()
 // "cantilevers[1].cwHeight" -> "Debe ser mayor que cero"
 ```
+
+
+### 7.8 El recorrido completo de una petición
+
+Vale la pena ver de una vez quién hace qué, porque cada preocupación tiene **un solo** sitio y
+repetirla en dos capas es de donde salen los errores difíciles:
+
+```
+ Composable            tap en "Perfiles de VIA 1"
+     │  evento
+ ViewModel             viewModelScope.launch { ... }          <- ámbito y cancelación (§6 bis.3)
+     │  suspend
+ Repository            retryOnTransient { safeApiCall { ... } } <- reintentos (§6 bis.8) y errores (§7.7)
+     │  suspend
+ Retrofit              @GET("profiles/filter")                <- ruta, query, cuerpo
+     │
+ OkHttp   ├─ AuthInterceptor        Authorization: Bearer …   <- token fresco (§8.6)
+          ├─ HttpLoggingInterceptor solo en debug
+          └─ socket                 timeouts propios
+     │
+ kotlinx.serialization  JSON → SpringPage<ProfileDto>         <- encodeDefaults, BigDecimal (§7.1-7.2)
+     │
+ Mapper                 ProfileDto → Profile                  <- el DTO no sale de la capa de datos
+     │
+ StateFlow → Compose    se pinta
+```
+
+Lo que **nunca** se duplica:
+
+| Preocupación | Su único sitio |
+|---|---|
+| Poner el `Authorization` | `AuthInterceptor` — ninguna llamada lo pone a mano |
+| Traducir el `problem+json` | `safeApiCall` — el ViewModel ya recibe un `MtoError` |
+| Decidir si se reintenta | el repositorio, mirando `retryable` |
+| Cancelar al salir | el ámbito, no un `if` en mitad del código |
+| Convertir DTO a dominio | el mapper, una vez |
+
+Una comprobación rápida de que la app respeta el reparto: **busca `Bearer` en el proyecto**. Si
+aparece en más de un sitio, algo se está pasando de listo.
+
+### 7.9 Caché: por qué Room y no la caché HTTP
+
+OkHttp trae una caché HTTP en disco que funciona sola... si el servidor manda `Cache-Control` o
+`ETag`. Esta API **no publica cabeceras de caché**: tiene caché de servidor (Redis, detrás de
+`@Cacheable`), que acelera su propia respuesta pero es invisible desde fuera. Así que enchufar
+`Cache(...)` al `OkHttpClient` no cachearía nada.
+
+Forzarlo con un interceptor que invente un `Cache-Control` es una idea cara: acabarías sirviendo
+datos maestros viejos sin forma de saber cuánto, y en esta API un dato maestro viejo se traduce en
+un `PUT` que pisa lo que otro cambió. La caché de esta app es **Room** (§12), que es explícita:
+sabes qué guardaste, cuándo, y se lo puedes decir al usuario.
+
+Con una excepción cómoda: los **catálogos LOV**. Son pequeños, cambian poquísimo y hacen falta para
+cualquier formulario. Bájalos enteros al entrar, guárdalos en Room con su fecha y refréscalos de
+vez en cuando — no en cada pantalla.
+
+```kotlin
+suspend fun poleTypes(maxEdad: Duration = 24.hours): List<Lov> {
+    val cache = dao.lovsOf("pole-types")
+    val fresco = cache.isNotEmpty() && (now() - cache.first().syncedAt) < maxEdad
+    if (fresco) return cache.map { it.toDomain() }
+
+    return safeApiCall { lovApi.poleTypes() }
+        .also { dao.replaceLovs("pole-types", it.map { lov -> lov.toEntity() }) }
+        .map { it.toDomain() }
+}
+```
+
+### 7.10 Ficheros: subir el maestro y descargar el CSV
+
+**Subir** (necesita `config-import`, así que en el móvil casi nunca; está aquí porque es la única
+llamada que no es JSON):
+
+```kotlin
+@Multipart
+@POST("profiles/jobs/import")
+suspend fun importMaster(
+    @Part file: MultipartBody.Part,              // el servidor espera la parte llamada "file"
+    @Query("dryRun") dryRun: Boolean = false,    // true: calcula el informe y no escribe nada
+): ProfileJobResponse
+```
+
+```kotlin
+// De un Uri del selector de ficheros de Android a una parte multipart, sin cargarlo entero en RAM
+fun MultipartBody.Part.Companion.from(context: Context, uri: Uri, nombre: String): MultipartBody.Part {
+    val body = object : RequestBody() {
+        override fun contentType() = "application/octet-stream".toMediaType()
+        override fun writeTo(sink: BufferedSink) {
+            context.contentResolver.openInputStream(uri)!!.source().use { sink.writeAll(it) }
+        }
+    }
+    return createFormData("file", nombre, body)
+}
+```
+
+**Descargar** el CSV de una exportación, en streaming y a un fichero:
+
+```kotlin
+suspend fun descargarExport(jobId: String, destino: File): File = withContext(Dispatchers.IO) {
+    safeApiCall { jobApi.download(jobId) }.use { cuerpo ->
+        destino.sink().buffer().use { it.writeAll(cuerpo.source()) }   // no pasa por memoria
+    }
+    destino
+}
+```
+
+`@Streaming` en la interfaz (§13) es lo que evita que Retrofit se lea el CSV entero en memoria
+antes de dártelo: sin él, una vía grande puede tumbar la app en un móvil modesto.
+
+> El visor de ficheros y el selector se piden al sistema con los contratos de
+> [`ActivityResultContracts`](https://developer.android.com/training/basics/intents/result)
+> (`OpenDocument`, `CreateDocument`). No hace falta pedir permisos de almacenamiento para eso, y
+> pedirlos es una mala señal en la revisión de Play.
+
+### 7.11 Receta por tipo de pantalla
+
+| Pantalla | Qué usar | Por qué |
+|---|---|---|
+| Catálogo LOV (desplegables) | `GET /{lov}` una vez + Room | pequeño, estable, imprescindible offline |
+| Listado largo (perfiles, vías) | `POST /filter` + Paging 3 | miles de filas; solo se pide lo que se ve |
+| Recorrer una vía entera | `track/{id}/keyset` | el offset degrada; el cursor no |
+| Tramo kilométrico | `track/{id}/range` | una ventana concreta, sin paginar |
+| Detalle | varias llamadas con `async` | un viaje en vez de cuatro (§6 bis.5) |
+| Formulario | `GET` + `copy()` + `PUT` | la regla de §11.1, sin excepciones |
+| Exportación | `jobs/export` + WorkManager | `202` y a otra cosa; el sondeo no vive en la pantalla |
 
 ---
 
@@ -2108,6 +2605,17 @@ broker.
 Exportaciones y cargas grandes responden **`202 Accepted`** al instante con un `jobId`, y el
 resultado se recoge después. Detalle completo en [`README_ASYNC_JOBS.md`](README_ASYNC_JOBS.md).
 
+Los estados son seis, y conviene tenerlos todos delante antes de escribir el sondeo:
+
+| Estado | Terminal | Qué significa |
+|---|---|---|
+| `PENDING` | no | aceptado y en cola |
+| `RUNNING` | no | ejecutándose; `processedItems` avanza |
+| `COMPLETED` | **sí** | terminó sin fallos |
+| `COMPLETED_WITH_ERRORS` | **sí** | terminó, pero hay elementos fallidos en `itemErrors` |
+| `FAILED` | **sí** | error global; el motivo va en `error` |
+| `REJECTED` | **sí** | no había hueco de concurrencia; nunca llegó a encolarse |
+
 ```kotlin
 interface ProfileJobApi {
     @POST("profiles/jobs/export")
@@ -2128,7 +2636,7 @@ interface ProfileJobApi {
 data class ProfileJobResponse(
     val id: String,
     val type: String? = null,
-    val status: String,                  // PENDING | RUNNING | COMPLETED | FAILED
+    val status: String,                  // PENDING · RUNNING · COMPLETED · COMPLETED_WITH_ERRORS · FAILED · REJECTED
     val createdAt: String? = null,
     val finishedAt: String? = null,
     val totalItems: Int? = null,
@@ -2143,11 +2651,15 @@ data class ProfileJobResponse(
 El sondeo, con espera creciente para no freír la batería:
 
 ```kotlin
+// Los seis estados, y CUATRO son terminales. Sondear solo COMPLETED y FAILED deja el bucle
+// girando para siempre cuando el trabajo acaba con elementos fallidos o lo rechazan por capacidad.
+private val TERMINALES = setOf("COMPLETED", "COMPLETED_WITH_ERRORS", "FAILED", "REJECTED")
+
 suspend fun waitForJob(jobId: String): ProfileJobResponse {
     var delayMs = 1_000L
     repeat(60) {
         val job = safeApiCall { api.status(jobId) }
-        if (job.status == "COMPLETED" || job.status == "FAILED") return job
+        if (job.status in TERMINALES) return job
         delay(delayMs)
         delayMs = (delayMs * 2).coerceAtMost(15_000)         // 1s, 2s, 4s... hasta 15s
     }
@@ -2434,6 +2946,14 @@ completa con la arquitectura recomendada) y [compose-samples](https://github.com
 - [ ] `versionNumber` se reenvía y el `409` se le muestra al usuario
 - [ ] Los errores se reaccionan por `code`, no por el texto del `message`
 - [ ] El `traceId` de un `500` es visible y copiable
+
+**Concurrencia**
+- [ ] Ningún `GlobalScope` en el proyecto
+- [ ] Ningún `catch` ancho se traga la `CancellationException`
+- [ ] Las llamadas independientes de una pantalla van en paralelo con `async`
+- [ ] Los reintentos miran `retryable` y respetan `Retry-After`
+- [ ] `Bearer` aparece en un único sitio del código
+- [ ] El sondeo de un trabajo cubre los cuatro estados terminales
 
 **Seguridad**
 - [ ] Authorization Code + PKCE, nunca usuario y contraseña en la app
