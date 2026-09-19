@@ -8,6 +8,8 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.E
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileImportReport;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileLovCodes;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorSwitchMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.StationMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.TrackMasterRow;
 import com.alejandro.mtoconfiguration.service.infraestructure.imports.InfrastructureUpsertService.UpsertResult;
@@ -345,9 +347,18 @@ class ProfileMasterImporterTest {
     private void givenMaster(List<ExecutionPackageMasterRow> eps, List<StationMasterRow> stations,
                              List<TrackMasterRow> tracks, List<ProfileMasterRow> profiles,
                              List<CantileverMasterRow> cantilevers) {
+        givenMaster(eps, stations, tracks, profiles, cantilevers, List.of(), List.of());
+    }
+
+    private void givenMaster(List<ExecutionPackageMasterRow> eps, List<StationMasterRow> stations,
+                             List<TrackMasterRow> tracks, List<ProfileMasterRow> profiles,
+                             List<CantileverMasterRow> cantilevers,
+                             List<SectionInsulatorMasterRow> sectionInsulators,
+                             List<SectionInsulatorSwitchMasterRow> switches) {
         when(parser.parseAll(any())).thenReturn(new ProfileMasterParser.ProfileMasterContent(
                 new ArrayList<>(eps), new ArrayList<>(stations), new ArrayList<>(tracks),
-                new ArrayList<>(profiles), new ArrayList<>(cantilevers)));
+                new ArrayList<>(profiles), new ArrayList<>(cantilevers),
+                new ArrayList<>(sectionInsulators), new ArrayList<>(switches)));
     }
 
     private static ExecutionPackageMasterRow ep(String code) {

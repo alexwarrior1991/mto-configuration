@@ -7,6 +7,8 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.C
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileImportReport;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorSwitchMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.StationMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.TrackMasterRow;
 import lombok.RequiredArgsConstructor;
@@ -68,11 +70,12 @@ public class ProfileMasterImporter {
         Map<TrackKey, Long> tracksByKey = importTracks(content, packagesByCode, stationsByKey, dryRun,
                 report, progress);
         importProfiles(content, tracksByKey, dryRun, report, progress);
+        importSectionInsulators(content, stationsByKey, tracksByKey, dryRun, report, progress);
 
         log.info("Importacion del maestro de perfiles terminada dryRun={} altas={} modificaciones={} "
-                        + "mensulas={} errores={} omitidos={}",
+                        + "mensulas={} agujas={} errores={} omitidos={}",
                 dryRun, report.getCreated(), report.getUpdated(), report.getCantileversWritten(),
-                report.getFailed(), report.getSkippedDisabled());
+                report.getSwitchesWritten(), report.getFailed(), report.getSkippedDisabled());
         return report;
     }
 
@@ -213,6 +216,70 @@ public class ProfileMasterImporter {
         }
     }
 
+    /**
+     * Los aisladores de seccion van al final, y no por capricho: uno puede nombrar hasta dos vias,
+     * y la via solo tiene identificador despues de escribirla.
+     *
+     * <p>La vía que un aislador nombra y no existe se deja a null en lugar de tumbar la fila: la
+     * columna es anulable, un aislador sin vía sigue siendo un aislador de su estacion, y tirar la
+     * fila entera perderia tambien sus agujas. La estacion si es obligatoria, y sin ella no hay
+     * donde colgarlo.
+     */
+    private void importSectionInsulators(ProfileMasterParser.ProfileMasterContent content,
+                                         Map<StationKey, Long> stationsByKey,
+                                         Map<TrackKey, Long> tracksByKey, boolean dryRun,
+                                         ProfileImportReport report, Consumer<Boolean> progress) {
+
+        if (content.sectionInsulators().isEmpty()) {
+            return;
+        }
+
+        // Las agujas se agrupan de una vez, por lo mismo que las mensulas: buscarlas dentro del
+        // bucle seria recorrer la hoja entera por cada aislador.
+        Map<SectionInsulatorKey, List<SectionInsulatorSwitchMasterRow>> switchesByInsulator =
+                content.sectionInsulatorSwitches().stream()
+                        .filter(SectionInsulatorSwitchMasterRow::enabled)
+                        .collect(Collectors.groupingBy(row -> new SectionInsulatorKey(
+                                key(row.executionPackage()), key(row.station()), key(row.sectionInsulator()))));
+
+        // Las vias del paquete, por nombre, para resolver las que nombran el aislador y sus agujas.
+        Map<String, Map<String, Long>> tracksByPackage = new HashMap<>();
+        tracksByKey.forEach((trackKey, trackId) -> tracksByPackage
+                .computeIfAbsent(trackKey.executionPackage(), ignored -> new HashMap<>())
+                .put(trackKey.name(), trackId));
+
+        for (SectionInsulatorMasterRow row : content.sectionInsulators()) {
+            if (!row.enabled()) {
+                report.skipDisabled();
+                continue;
+            }
+
+            String code = key(row.executionPackage());
+            StationKey stationKey = new StationKey(code, key(row.station()));
+            if (!stationsByKey.containsKey(stationKey)) {
+                fail(report, row.sourceRow(), ProfileImportReport.SECTION_INSULATOR, reference(row),
+                        "su estacion '" + row.station() + "' no se ha podido cargar", progress);
+                continue;
+            }
+
+            Map<String, Long> tracksOfPackage = tracksByPackage.getOrDefault(code, Map.of());
+            List<SectionInsulatorSwitchMasterRow> switches = switchesByInsulator.getOrDefault(
+                    new SectionInsulatorKey(code, key(row.station()), key(row.name())), List.of());
+
+            try {
+                var result = upsertService.upsertSectionInsulator(row, stationsByKey.get(stationKey),
+                        tracksOfPackage.get(key(row.track())),
+                        tracksOfPackage.get(key(row.connectedTrack())),
+                        switches, tracksOfPackage, dryRun);
+                count(report, ProfileImportReport.SECTION_INSULATOR, result.outcome());
+                report.addSwitches(switches.size());
+                progress.accept(true);
+            } catch (Exception e) {
+                fail(report, row.sourceRow(), ProfileImportReport.SECTION_INSULATOR, reference(row), e, progress);
+            }
+        }
+    }
+
     private void count(ProfileImportReport report, String entity,
                        InfrastructureUpsertService.UpsertResult.Outcome outcome) {
         switch (outcome) {
@@ -269,6 +336,10 @@ public class ProfileMasterImporter {
         return row.executionPackage() + " / " + row.track() + " / " + row.profileId();
     }
 
+    private String reference(SectionInsulatorMasterRow row) {
+        return row.executionPackage() + " / " + row.station() + " / " + row.name();
+    }
+
     /**
      * Las claves se comparan en mayusculas, igual que los indices unicos de V12: el
      * origen no es consistente y {@code HR TRACK 3 HAD} convive con {@code HR Track 3 BIN}.
@@ -284,5 +355,8 @@ public class ProfileMasterImporter {
     }
 
     private record ProfileKey(String executionPackage, String track, Integer orderInTrack) {
+    }
+
+    private record SectionInsulatorKey(String executionPackage, String station, String name) {
     }
 }

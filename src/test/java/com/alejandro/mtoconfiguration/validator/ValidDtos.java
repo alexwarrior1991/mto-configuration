@@ -4,7 +4,9 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.Cantileve
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
+import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorSwitchDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SteadyArmDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
@@ -114,6 +116,32 @@ public final class ValidDtos {
     public static SectionInsulatorDTO rootSectionInsulator() {
         SectionInsulatorDTO dto = newSectionInsulator();
         dto.setStationId(40L);
+        return dto;
+    }
+
+    /** Aguja nueva, colgando de un aislador que aún no existe. */
+    public static SectionInsulatorSwitchDTO newSectionInsulatorSwitch() {
+        SectionInsulatorSwitchDTO dto = new SectionInsulatorSwitchDTO();
+        dto.setCode("W31");
+        dto.setKp(new BigDecimal("110176.000"));
+        dto.setTurnoutDenominator(9);
+        dto.setEnabled(Boolean.TRUE);
+        return dto;
+    }
+
+    /** Aislador sobre una conexión entre dos vías, con sus dos agujas. */
+    public static SectionInsulatorDTO rootSectionInsulatorWithSwitches() {
+        SectionInsulatorDTO dto = rootSectionInsulator();
+        dto.setInstallationType(SectionInsulatorInstallationType.TRACK_CONNECTION);
+        dto.setKp(new BigDecimal("110176.000"));
+        dto.setTrackId(1L);
+        dto.setConnectedTrackId(2L);
+
+        SectionInsulatorSwitchDTO segunda = newSectionInsulatorSwitch();
+        segunda.setCode("W41");
+        segunda.setTurnoutDenominator(12);
+
+        dto.setSwitches(new ArrayList<>(List.of(newSectionInsulatorSwitch(), segunda)));
         return dto;
     }
 

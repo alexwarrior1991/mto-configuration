@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.masterdata.messaging;
 import com.alejandro.mtoconfiguration.entity.commons.IEntity;
 import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
 import com.alejandro.mtoconfiguration.entity.infrastructure.*;
+import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
 import com.alejandro.mtoconfiguration.entity.lov.*;
 import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
 import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.*;
@@ -34,6 +35,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 /**
@@ -156,7 +158,12 @@ class MasterDataPayloadContractIT {
     void sectionInsulator() {
         Map<String, Object> payload = payloadOfDetached(sectionInsulatorRepository, ids.sectionInsulator());
 
-        assertThat(payload).containsKey("station");
+        assertThat(payload).containsKeys("station", "track", "connectedTrack", "kp", "installationType");
+        assertThat(payload.get("installationType")).isEqualTo("TRACK_CONNECTION");
+        assertThat(asList(payload, "switches"))
+                .hasSize(2)
+                .extracting(each -> each.get("code"), each -> each.get("turnoutRate"))
+                .containsExactly(tuple("W31", "1:9"), tuple("W41", "1:12"));
     }
 
     @Test
@@ -311,8 +318,8 @@ class MasterDataPayloadContractIT {
             profile.addDisconnector(disconnector);
             disconnector("Seccionador 2", station);
 
-            SectionInsulator sectionInsulator = sectionInsulator("Aislador 1", station);
-            sectionInsulator("Aislador 2", station);
+            SectionInsulator sectionInsulator = sectionInsulator("Aislador 1", station, track);
+            sectionInsulator("Aislador 2", station, track);
 
             em.persist(executionPackage);
             em.flush();
@@ -399,12 +406,32 @@ class MasterDataPayloadContractIT {
             return disconnector;
         }
 
-        private SectionInsulator sectionInsulator(String name, Station station) {
+        /**
+         * Dos agujas por aislador, a proposito: con una sola, un producto cartesiano en el grafo de
+         * mensajeria pasaria desapercibido, que es justo lo que este IT existe para ver.
+         */
+        private SectionInsulator sectionInsulator(String name, Station station, Track track) {
             SectionInsulator sectionInsulator = new SectionInsulator();
             sectionInsulator.setName(name);
             sectionInsulator.setEnabled(Boolean.TRUE);
+            sectionInsulator.setKp(new BigDecimal("110176.000"));
+            sectionInsulator.setInstallationType(SectionInsulatorInstallationType.TRACK_CONNECTION);
+            sectionInsulator.setTrack(track);
+            sectionInsulator.setConnectedTrack(track);
             station.addSectionInsulator(sectionInsulator);
+            sectionInsulator.addSwitch(sectionInsulatorSwitch("W31", 9, track));
+            sectionInsulator.addSwitch(sectionInsulatorSwitch("W41", 12, track));
             return sectionInsulator;
+        }
+
+        private SectionInsulatorSwitch sectionInsulatorSwitch(String code, int denominator, Track track) {
+            SectionInsulatorSwitch sectionInsulatorSwitch = new SectionInsulatorSwitch();
+            sectionInsulatorSwitch.setCode(code);
+            sectionInsulatorSwitch.setKp(new BigDecimal("110176.000"));
+            sectionInsulatorSwitch.setTurnoutDenominator(denominator);
+            sectionInsulatorSwitch.setTrack(track);
+            sectionInsulatorSwitch.setEnabled(Boolean.TRUE);
+            return sectionInsulatorSwitch;
         }
 
         private <L extends Lov> L lov(L lov, String code) {

@@ -9,6 +9,7 @@ import com.alejandro.mtoconfiguration.validator.infrastructure.CantileverValidat
 import com.alejandro.mtoconfiguration.validator.infrastructure.DisconnectorValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.ExecutionPackageValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.ProfileValidator;
+import com.alejandro.mtoconfiguration.validator.infrastructure.SectionInsulatorSwitchValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.SectionInsulatorValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.StationValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.SteadyArmValidator;
@@ -36,7 +37,7 @@ class ChildIdentityTest {
             new CantileverValidator(new SteadyArmValidator()), new DisconnectorValidator()));
 
     private final StationValidator stationValidator = new StationValidator(
-            trackValidator, new DisconnectorValidator(), new SectionInsulatorValidator());
+            trackValidator, new DisconnectorValidator(), new SectionInsulatorValidator(new SectionInsulatorSwitchValidator()));
 
     private final ExecutionPackageValidator validator =
             new ExecutionPackageValidator(trackValidator, stationValidator);

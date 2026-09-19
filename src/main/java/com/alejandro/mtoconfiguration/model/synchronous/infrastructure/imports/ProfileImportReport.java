@@ -23,12 +23,14 @@ public class ProfileImportReport {
     public static final String STATION = "Station";
     public static final String TRACK = "Track";
     public static final String PROFILE = "Profile";
+    public static final String SECTION_INSULATOR = "SectionInsulator";
 
     private final boolean dryRun;
     private final Map<String, EntityOutcome> byEntity = new LinkedHashMap<>();
     private final List<ItemError> errors = new ArrayList<>();
     private int skippedDisabled;
     private int cantileversWritten;
+    private int switchesWritten;
 
     public ProfileImportReport(boolean dryRun) {
         this.dryRun = dryRun;
@@ -59,12 +61,25 @@ public class ProfileImportReport {
         return cantileversWritten;
     }
 
+    /**
+     * Las agujas, por lo mismo que las ménsulas: no se importan sueltas, viajan dentro de su
+     * aislador y comparten su transacción. Contarlas como entidad propia sugeriría que se pueden
+     * crear o modificar por su cuenta, que no es el caso.
+     */
+    public int getSwitchesWritten() {
+        return switchesWritten;
+    }
+
     public void skipDisabled() {
         skippedDisabled++;
     }
 
     public void addCantilevers(int count) {
         cantileversWritten += count;
+    }
+
+    public void addSwitches(int count) {
+        switchesWritten += count;
     }
 
     public EntityOutcome outcomeOf(String entity) {

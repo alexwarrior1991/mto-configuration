@@ -186,6 +186,7 @@ cuerpo desde cero ni le quites campos.
 | `stations` | `tracks`&nbsp;⚠️, `disconnectors`, `sectionInsulators` |
 | `tracks` | `profiles` |
 | `profiles` | `cantilevers` |
+| `section-insulators` | `switches` |
 
 ⚠️ **`stations` → `tracks` es la única excepción, y desde `V17`.** Ahí la vía que no mandas se
 **desliga** de esa estación; no se borra. La regla general vale para un hijo que no existe sin su
@@ -318,6 +319,63 @@ Dos efectos secundarios que conviene tener presentes:
 - En la exportación CSV la columna se llama `sectionings` y trae los códigos separados por
   espacio. Una columna por seccionamiento haría que el ancho del fichero dependiera del
   perfil con más, y dejaría de ser fijo.
+
+---
+
+## 4 quater. El aislador de sección y sus agujas
+
+Un aislador de sección separa eléctricamente dos secciones de alimentación de la catenaria.
+**Normalmente se coloca donde conectan dos vías**, es decir sobre una aguja; a veces se coloca en
+medio de una sola vía. Eso es lo que declara `installationType`:
+
+| Valor | Qué significa |
+|---|---|
+| `TRACK_CONNECTION` | Separa las catenarias de **dos** vías que conectan por una aguja. Lleva `trackId` y `connectedTrackId`, y son obligatorias y distintas |
+| `IN_TRACK` | Está en medio de **una** vía. `connectedTrackId` tiene que venir vacío |
+
+`installationType` es **opcional**: los aisladores que ya estaban en base no lo traen, así que
+exigirlo habría convertido el despliegue en una migración de datos. Las dos reglas de arriba solo
+se aplican cuando el campo viene.
+
+Cada conexión con la vía se identifica por una **aguja**, que en el plano se rotula `W` y un
+número, en un punto kilométrico, con la tangente de su desvío al lado: `W31 1:9`, `W35 1:12`,
+`W57 1:8`. Van en la colección `switches`:
+
+```jsonc
+{
+  "name": "B7",
+  "enabled": true,
+  "stationId": 12,
+  "kp": 110176.000,                       // en METROS: el plano escribe 110+176
+  "installationType": "TRACK_CONNECTION",
+  "trackId": 3,
+  "connectedTrackId": 4,
+  "switches": [
+    { "code": "W31", "kp": 110176.000, "turnoutDenominator": 9,  "trackId": 3, "enabled": true },
+    { "code": "W41", "kp": 110249.000, "turnoutDenominator": 12, "trackId": 4, "enabled": true }
+  ]
+}
+```
+
+**La tangente viaja como denominador, no como texto.** `turnoutDenominator: 9` es el `1:9` del
+plano: el numerador siempre es 1, así que no se escribe, y guardando el número se puede ordenar y
+comparar —un `1:12` es más tendido que un `1:9`, cosa que con el texto no se ve—. La respuesta
+añade `turnoutRate` (`"1:9"`), que es de **solo lectura** y no hace falta mandar.
+
+Reglas propias de la colección:
+
+- `code` tiene que ser `W` seguido de hasta cuatro cifras, y **no puede repetirse** dentro del
+  mismo aislador: es por donde se reconoce la aguja al reimportar el maestro, y hay un índice
+  único parcial detrás.
+- `kp` y `turnoutDenominator` son **opcionales**. El plano rotula el KP una vez para un grupo de
+  agujas y no lo repite en cada una.
+- `trackId` de una aguja es opcional y **no** se comprueba contra las dos vías del aislador: el
+  plano trae puntos donde coinciden agujas de más de dos vías (`W47,W61` en el mismo KP).
+- Se leen en orden de `kp`, que es el orden físico a lo largo de la vía; el `id` desempata y las
+  que no traen KP salen al final.
+
+Por lo demás `switches` se comporta como el resto de colecciones de hijos (§4): **la aguja que no
+mandas se borra**, y `[]` las deja al aislador sin ninguna.
 
 ## 5. Listas de valores
 

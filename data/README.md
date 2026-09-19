@@ -590,13 +590,39 @@ mapear**: una hoja sin declarar o una cabecera desconocida van a `NO_RECONOCIDO`
 | `EPS` / `STATIONS` / `TRACKS` | Lo declarado en `topology.yml`, ya resuelto |
 | `PROFILES` | Una fila por perfil: identificador, KP, las 9 LOV (con `ASSEMBLY_CONFIGURATION` desde `V21`, que solo trae RUBI) y los 4 campos técnicos |
 | `CANTILEVERS` | Una fila por ménsula, con su `SLOT` (1..3) y el brazo ya partido en tipo y longitud |
-| `DISCONNECTORS` / `SECTION_INSULATORS` | Cabeceras y **ninguna fila**: la costura para cuando lleguen esos datos |
+| `DISCONNECTORS` / `SECTION_INSULATORS` / `SECTION_INSULATOR_SWITCHES` | Cabeceras y **ninguna fila**: la costura para cuando lleguen esos datos |
 | `NO_MAPEADO` | Columnas reales del origen que hoy no tienen campo en el dominio |
 | `DESCARTADOS` | Todo lo rechazado, con motivo y celda de origen |
 | `NO_RECONOCIDO` | Lo que no se supo mapear. **Si tiene filas, el maestro está incompleto** |
 
 `ENABLED` (`SI`/`NO`) decide si la fila se carga; `REVISAR` resalta lo que necesita ojo
 humano.
+
+### Las dos hojas del aislador de sección
+
+Salen vacías, pero el camino de importación está entero: el día que el origen traiga el dato
+basta con rellenarlas.
+
+`SECTION_INSULATORS` identifica cada aislador por `EP + ESTACION + NOMBRE`, que es su clave
+natural. `TIPO_INSTALACION` es `TRACK_CONNECTION` (el aislador separa las catenarias de **dos**
+vías que conectan por una aguja, lo normal) o `IN_TRACK` (está en medio de una sola vía, y
+entonces `VIA_CONECTADA` va vacía). Vacío también vale: el dominio no lo exige.
+
+`SECTION_INSULATOR_SWITCHES` lleva una fila por aguja, colgada de su aislador repitiendo esos
+tres valores en `AISLADOR`. El `CODIGO` es el del plano —`W` y un número: `W31`, `W110`— y no
+puede repetirse dentro del mismo aislador, que es por donde se reconoce la aguja al reimportar:
+así conserva su id y su histórico de auditoría aunque cambie de orden o aparezca una nueva en
+medio.
+
+Dos columnas tienen una convención que conviene no equivocar:
+
+- **`KP` va en metros**, como el del perfil. El plano escribe `110+176` y eso son `110176`.
+- **`TANGENTE` es sólo el denominador**: `9` para una aguja `1:9`, `12` para `1:12`. El numerador
+  siempre es 1, así que no se escribe. Se guarda el número y no el texto para poder ordenar y
+  comparar: un `1:12` es más tendido que un `1:9`, cosa que con el texto no se ve.
+
+Las dos hojas son **opcionales al leer**: un maestro generado antes de `V23` no las trae y se
+importa igual.
 
 ## Las tres trampas del origen
 

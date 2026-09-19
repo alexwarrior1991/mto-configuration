@@ -697,7 +697,8 @@ src/main/resources/db/migration
 ├── V19__seed_syneox_business_entity.sql       Siembra Syneox (B10744258) y los tipos de entidad comercial
 ├── V20__profile_support_type.sql              support_type_id en profile: la columna Supports deja de perderse
 ├── V21__assembly_configuration.sql            Catalogo assembly_configuration (+ _aud) y assembly_configuration_id en profile
-└── V22__async_job_type_master_data_republish.sql  CHECK de async_job.job_type con MASTER_DATA_REPUBLISH
+├── V22__async_job_type_master_data_republish.sql  CHECK de async_job.job_type con MASTER_DATA_REPUBLISH
+└── V23__section_insulator_switches.sql        section_insulator_switch (+ _aud) y el KP, el tipo de instalacion y las dos vias del aislador
 ```
 
 `V1` va **sin prefijo de schema** a proposito: el nombre real es configurable

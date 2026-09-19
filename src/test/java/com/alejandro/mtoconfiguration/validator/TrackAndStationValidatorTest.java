@@ -8,6 +8,7 @@ import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import com.alejandro.mtoconfiguration.validator.infrastructure.CantileverValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.DisconnectorValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.ProfileValidator;
+import com.alejandro.mtoconfiguration.validator.infrastructure.SectionInsulatorSwitchValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.SectionInsulatorValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.StationValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.SteadyArmValidator;
@@ -28,7 +29,7 @@ class TrackAndStationValidatorTest {
             new CantileverValidator(new SteadyArmValidator()), new DisconnectorValidator()));
 
     private final StationValidator stationValidator = new StationValidator(
-            trackValidator, new DisconnectorValidator(), new SectionInsulatorValidator());
+            trackValidator, new DisconnectorValidator(), new SectionInsulatorValidator(new SectionInsulatorSwitchValidator()));
 
     @Nested
     class Vias {

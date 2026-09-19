@@ -25,6 +25,7 @@ final class MapperGraph {
     final SteadyArmMapperImpl steadyArm = new SteadyArmMapperImpl();
     final CantileverMapperImpl cantilever = new CantileverMapperImpl();
     final DisconnectorMapperImpl disconnector = new DisconnectorMapperImpl();
+    final SectionInsulatorSwitchMapperImpl sectionInsulatorSwitch = new SectionInsulatorSwitchMapperImpl();
     final SectionInsulatorMapperImpl sectionInsulator = new SectionInsulatorMapperImpl();
     final ProfileMapperImpl profile = new ProfileMapperImpl();
     final TrackMapperImpl track = new TrackMapperImpl();
@@ -38,6 +39,7 @@ final class MapperGraph {
         base(steadyArm);
         base(cantilever);
         base(disconnector);
+        base(sectionInsulatorSwitch);
         base(sectionInsulator);
         base(profile);
         base(track);
@@ -45,6 +47,8 @@ final class MapperGraph {
         base(executionPackage);
 
         child(cantilever, "steadyArmMapper", steadyArm);
+
+        child(sectionInsulator, "sectionInsulatorSwitchMapper", sectionInsulatorSwitch);
 
         child(profile, "cantileverMapper", cantilever);
         child(profile, "disconnectorMapper", disconnector);

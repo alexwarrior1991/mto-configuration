@@ -6,6 +6,7 @@ import com.alejandro.mtoconfiguration.mapper.infraestructure.DisconnectorMapperI
 import com.alejandro.mtoconfiguration.mapper.infraestructure.ExecutionPackageMapperImpl;
 import com.alejandro.mtoconfiguration.mapper.infraestructure.ProfileMapperImpl;
 import com.alejandro.mtoconfiguration.mapper.infraestructure.SectionInsulatorMapperImpl;
+import com.alejandro.mtoconfiguration.mapper.infraestructure.SectionInsulatorSwitchMapperImpl;
 import com.alejandro.mtoconfiguration.mapper.infraestructure.StationMapperImpl;
 import com.alejandro.mtoconfiguration.mapper.infraestructure.SteadyArmMapperImpl;
 import com.alejandro.mtoconfiguration.mapper.infraestructure.TrackMapperImpl;
@@ -55,6 +56,7 @@ import java.util.Optional;
         SteadyArmMapperImpl.class,
         DisconnectorMapperImpl.class,
         SectionInsulatorMapperImpl.class,
+        SectionInsulatorSwitchMapperImpl.class,
         TrackMapperImpl.class,
         StationMapperImpl.class,
         ExecutionPackageMapperImpl.class

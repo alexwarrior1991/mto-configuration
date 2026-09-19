@@ -49,7 +49,7 @@ class BulkValidationTest {
     }
 
     private static StationValidator station() {
-        return new StationValidator(track(), new DisconnectorValidator(), new SectionInsulatorValidator());
+        return new StationValidator(track(), new DisconnectorValidator(), new SectionInsulatorValidator(new SectionInsulatorSwitchValidator()));
     }
 
     private static ExecutionPackageValidator executionPackage() {
@@ -68,7 +68,7 @@ class BulkValidationTest {
                 Arguments.of("steadyArm", steadyArm(), (Supplier<SteadyArmDTO>) ValidDtos::existingSteadyArm, "steadyArmType"),
                 Arguments.of("executionPackage", executionPackage(), (Supplier<ExecutionPackageDTO>) ValidDtos::rootExecutionPackage, "name"),
                 Arguments.of("disconnector", new DisconnectorValidator(), (Supplier<DisconnectorDTO>) ValidDtos::rootDisconnector, "name"),
-                Arguments.of("sectionInsulator", new SectionInsulatorValidator(), (Supplier<SectionInsulatorDTO>) ValidDtos::rootSectionInsulator, "name"),
+                Arguments.of("sectionInsulator", new SectionInsulatorValidator(new SectionInsulatorSwitchValidator()), (Supplier<SectionInsulatorDTO>) ValidDtos::rootSectionInsulator, "name"),
                 Arguments.of("profile", profile(), (Supplier<ProfileDTO>) ValidDtos::rootProfile, "profileId"));
     }
 

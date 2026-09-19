@@ -9,6 +9,7 @@ import com.alejandro.mtoconfiguration.validator.infrastructure.CantileverValidat
 import com.alejandro.mtoconfiguration.validator.infrastructure.DisconnectorValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.ExecutionPackageValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.ProfileValidator;
+import com.alejandro.mtoconfiguration.validator.infrastructure.SectionInsulatorSwitchValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.SectionInsulatorValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.StationValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.SteadyArmValidator;
@@ -32,7 +33,7 @@ class ExecutionPackageValidatorTest {
 
     private final ExecutionPackageValidator validator = new ExecutionPackageValidator(
             trackValidator,
-            new StationValidator(trackValidator, new DisconnectorValidator(), new SectionInsulatorValidator()));
+            new StationValidator(trackValidator, new DisconnectorValidator(), new SectionInsulatorValidator(new SectionInsulatorSwitchValidator())));
 
     @Test
     void aceptaUnPaqueteValido() {
