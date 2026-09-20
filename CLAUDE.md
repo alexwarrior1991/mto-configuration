@@ -22,7 +22,7 @@ Java 25, Spring Boot 4.0.1, Maven **single-module** (sin `<modules>` en `pom.xml
 | `mapper` | `commons`, `infraestructure`, `lov` |
 | `validator` | `commons`, `infrastructure`, `lov` |
 | `enums` | `infrastructure`, `lov`, `jobs` |
-| `configuration` | `cache`, `security` |
+| `configuration` | `cache`, `security`, `web` |
 | `core` | `audit`, `exception`, `messaging`, `outbox`, `rabbitmq`, `model` |
 | `masterdata` | `messaging` |
 | `constant`, `utils` | transversales, sin subpaquetes |
