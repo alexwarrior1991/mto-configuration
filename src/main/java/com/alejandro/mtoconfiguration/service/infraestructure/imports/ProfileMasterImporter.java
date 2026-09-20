@@ -236,9 +236,16 @@ public class ProfileMasterImporter {
 
         // Las agujas se agrupan de una vez, por lo mismo que las mensulas: buscarlas dentro del
         // bucle seria recorrer la hoja entera por cada aislador.
+        //
+        // Y SIN filtrar por ENABLED, al contrario que las mensulas. No es un descuido: en un hijo
+        // que se reconcilia con mergeCollection, dejar la fila fuera de la lista no significa "no
+        // la cargues", significa BORRARLA, con su id y su historico de auditoria. Una aguja fuera
+        // de servicio sigue estando en el plano, y el equipo que va de noche necesita verla marcada
+        // y no que desaparezca; por eso entra deshabilitada y viaja asi hasta el parte de turno de
+        // mto-maintenance, que la escribe 'W31 1:9 (out of service)'. Lo que borra una aguja es
+        // quitar su fila de la hoja.
         Map<SectionInsulatorKey, List<SectionInsulatorSwitchMasterRow>> switchesByInsulator =
                 content.sectionInsulatorSwitches().stream()
-                        .filter(SectionInsulatorSwitchMasterRow::enabled)
                         .collect(Collectors.groupingBy(row -> new SectionInsulatorKey(
                                 key(row.executionPackage()), key(row.station()), key(row.sectionInsulator()))));
 

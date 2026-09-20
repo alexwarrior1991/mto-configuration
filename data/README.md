@@ -620,6 +620,12 @@ Dos columnas tienen una convención que conviene no equivocar:
 - **`TANGENTE` es sólo el denominador**: `9` para una aguja `1:9`, `12` para `1:12`. El numerador
   siempre es 1, así que no se escribe. Se guarda el número y no el texto para poder ordenar y
   comparar: un `1:12` es más tendido que un `1:9`, cosa que con el texto no se ve.
+- **`ENABLED` en una aguja NO decide si la fila se carga**, al revés que en el resto de hojas. Una
+  aguja con `NO` se importa **deshabilitada**: conserva su id y su histórico, viaja en el evento
+  como `"enabled": false` y el parte de turno de `mto-maintenance` la escribe
+  `W31 1:9 (out of service)`. Una aguja fuera de servicio sigue estando en el plano y el equipo
+  necesita verla marcada, no que desaparezca. **Lo que borra una aguja es quitar su fila de la
+  hoja**, no ponerle `NO`.
 
 Las dos hojas son **opcionales al leer**: un maestro generado antes de `V23` no las trae y se
 importa igual.

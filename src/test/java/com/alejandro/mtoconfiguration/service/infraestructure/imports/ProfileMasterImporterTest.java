@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -73,6 +74,8 @@ class ProfileMasterImporterTest {
                 .thenReturn(UpsertResult.created(3L));
         when(upsertService.upsertProfile(any(), anyLong(), any(), anyBoolean()))
                 .thenReturn(UpsertResult.created(4L));
+        when(upsertService.upsertSectionInsulator(any(), anyLong(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(UpsertResult.created(5L));
     }
 
     @Test
@@ -90,6 +93,39 @@ class ProfileMasterImporterTest {
         assertThat(report.outcomeOf(ProfileImportReport.TRACK).getCreated()).isEqualTo(1);
         assertThat(report.outcomeOf(ProfileImportReport.PROFILE).getCreated()).isEqualTo(1);
         assertThat(report.getCantileversWritten()).isEqualTo(1);
+        assertThat(report.getFailed()).isZero();
+    }
+
+    /**
+     * Una aguja fuera de servicio se importa DESHABILITADA, no se descarta.
+     *
+     * <p>Es la diferencia con la mensula, y no es un descuido: la aguja es un hijo que se
+     * reconcilia con {@code mergeCollection}, asi que dejarla fuera de la lista no seria "no la
+     * cargues" sino BORRARLA, con su id y su historico. Una aguja fuera de servicio sigue estando
+     * en el plano y el equipo necesita verla marcada; lo que la borra es quitar su fila de la hoja.
+     */
+    @Test
+    @DisplayName("una aguja deshabilitada llega al upsert, no se queda por el camino")
+    void laAgujaDeshabilitadaSeImportaMarcada() {
+        givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                List.of(track("EP6", "TRACK 1", "HERZLIYA")), List.of(), List.of(),
+                List.of(sectionInsulator("EP6", "HERZLIYA", "B7")),
+                List.of(sectionInsulatorSwitch("EP6", "HERZLIYA", "B7", "W31", true),
+                        sectionInsulatorSwitch("EP6", "HERZLIYA", "B7", "W41", false)));
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<SectionInsulatorSwitchMasterRow>> captor =
+                ArgumentCaptor.forClass(List.class);
+        verify(upsertService).upsertSectionInsulator(any(), anyLong(), any(), any(),
+                captor.capture(), any(), anyBoolean());
+
+        assertThat(captor.getValue())
+                .extracting(SectionInsulatorSwitchMasterRow::code, SectionInsulatorSwitchMasterRow::enabled)
+                .containsExactlyInAnyOrder(tuple("W31", true), tuple("W41", false));
+        // Las dos cuentan como escritas: la deshabilitada tambien es una fila.
+        assertThat(report.getSwitchesWritten()).isEqualTo(2);
         assertThat(report.getFailed()).isZero();
     }
 
@@ -359,6 +395,18 @@ class ProfileMasterImporterTest {
                 new ArrayList<>(eps), new ArrayList<>(stations), new ArrayList<>(tracks),
                 new ArrayList<>(profiles), new ArrayList<>(cantilevers),
                 new ArrayList<>(sectionInsulators), new ArrayList<>(switches)));
+    }
+
+    private static SectionInsulatorMasterRow sectionInsulator(String ep, String station, String name) {
+        return new SectionInsulatorMasterRow(ep, station, name, new BigDecimal("110176"),
+                "TRACK_CONNECTION", "TRACK 1", null, true, 2);
+    }
+
+    private static SectionInsulatorSwitchMasterRow sectionInsulatorSwitch(String ep, String station,
+                                                                          String insulator, String code,
+                                                                          boolean enabled) {
+        return new SectionInsulatorSwitchMasterRow(ep, station, insulator, code,
+                new BigDecimal("110176"), 9, "TRACK 1", enabled, 3);
     }
 
     private static ExecutionPackageMasterRow ep(String code) {

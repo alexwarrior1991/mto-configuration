@@ -1079,6 +1079,11 @@ READ_ME = [
     ("CODIGO de la aguja",
      "El identificador del plano: 'W' y un numero (W31, W110). No puede repetirse dentro del "
      "mismo aislador, que es por donde se reconoce al reimportar."),
+    ("ENABLED de la aguja",
+     "A diferencia del resto de hojas, aqui NO decide si la fila se carga: una aguja con NO se "
+     "importa DESHABILITADA y llega asi a mantenimiento, que la imprime marcada en el parte de "
+     "turno. Una aguja fuera de servicio sigue estando en el plano. Lo que borra una aguja es "
+     "quitar su fila de la hoja."),
     ("NO_MAPEADO",
      "Columnas reales del origen que hoy no tienen campo en el dominio. No se importan."),
     ("DESCARTADOS", "Todo lo rechazado, con el motivo y la celda de origen."),

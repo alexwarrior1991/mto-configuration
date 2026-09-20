@@ -172,7 +172,13 @@ añade claves, no renombra ni quita ninguna.
 
 La tangente del desvío viaja dos veces a propósito: `turnoutDenominator` es el dato —el `9` de
 `1:9`, comparable y ordenable— y `turnoutRate` es cómo está escrito en el plano (`"1:9"`), para que
-el consumidor no tenga que componer la misma cadena. Es el mismo criterio por el que
+el consumidor no tenga que componer la misma cadena.
+
+Una aguja **deshabilitada viaja igual**, con `"enabled": false`: la colección filtra los borrados
+lógicos, no las bajas. Es deliberado y el consumidor cuenta con ello —`mto-maintenance` la guarda
+marcada y la imprime `W31 1:9 (out of service)` en el parte de turno—, porque para el equipo que va
+de noche no es lo mismo que la aguja no exista a que no pueda contar con ella. Lo que hace
+desaparecer una aguja del evento es borrarla, no darla de baja. Es el mismo criterio por el que
 `sectioningFeeding` del perfil sale con `id` **y** `code`.
 
 Que el payload lleve las agujas obliga a que la colección venga inicializada, así que `switches`,
