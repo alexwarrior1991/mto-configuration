@@ -222,6 +222,30 @@ class ProfileControllerTest {
             assertThat(captor.getValue().getPageNumber()).isZero();
         }
 
+        /**
+         * La forma de la pagina la fija {@code spring.data.web.pageable.serialization-mode: via_dto}
+         * en application.yaml y este es el unico sitio que la pina: sin ella Spring Data serializa
+         * {@code PageImpl} tal cual (forma plana con {@code pageable}, {@code totalElements}...) y
+         * avisa de que no garantiza su estabilidad. Los tres dialectos de consulta (/paged, /search
+         * y /filter) comparten {@code processGenericPageRequest}, asi que comparten la forma.
+         */
+        @Test
+        @DisplayName("la pagina se serializa con la forma DTO {content, page}, no con PageImpl tal cual")
+        void formaDeLaPagina() throws Exception {
+            when(profileService.findAll(any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(profile(1L)), PageRequest.of(0, 20), 1));
+
+            mockMvc.perform(get(PROFILES + "/paged"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.content.length()").value(1))
+                    .andExpect(jsonPath("$.page.size").value(20))
+                    .andExpect(jsonPath("$.page.number").value(0))
+                    .andExpect(jsonPath("$.page.totalElements").value(1))
+                    .andExpect(jsonPath("$.page.totalPages").value(1))
+                    .andExpect(jsonPath("$.pageable").doesNotExist())
+                    .andExpect(jsonPath("$.totalElements").doesNotExist());
+        }
+
         @Test
         @DisplayName("los parametros de paginacion y orden llegan al servicio")
         void paginaExplicita() throws Exception {
@@ -243,7 +267,8 @@ class ProfileControllerTest {
             mockMvc.perform(post(PROFILES + "/filter")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"trackId\":3,\"profileId\":\"  P-1  \"}"))
-                    .andExpect(status().isOk());
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.page.totalElements").value(1));
 
             org.mockito.ArgumentCaptor<ProfileFilter> captor =
                     org.mockito.ArgumentCaptor.forClass(ProfileFilter.class);
@@ -262,7 +287,8 @@ class ProfileControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"filters\":{},\"pageable\":{\"page\":0,\"size\":10}}"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.content.length()").value(1));
+                    .andExpect(jsonPath("$.content.length()").value(1))
+                    .andExpect(jsonPath("$.page.totalElements").value(1));
         }
     }
 

@@ -449,6 +449,17 @@ GET "$BASE/profiles/paged?page=0&size=20&sort=kp,desc"
 
 Sin parámetros: página 0 de **20 elementos**.
 
+La respuesta paginada tiene siempre esta forma, la de `PagedModel` de Spring Data: la fija
+`spring.data.web.pageable.serialization-mode: via_dto` en `application.yaml` y la pina
+`ProfileControllerTest`. `/paged`, `/search` y `/filter` la comparten.
+
+```json
+{
+  "content": [ { "id": 1, "profileId": "P-1", "kp": "12.345", "...": "..." } ],
+  "page": { "size": 20, "number": 0, "totalElements": 11715, "totalPages": 586 }
+}
+```
+
 ### Filtro funcional (QueryDSL)
 
 Campos concretos, combinados con AND. Los vacíos no filtran.
