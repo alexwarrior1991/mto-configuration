@@ -97,6 +97,57 @@ class ProfileMasterImporterTest {
     }
 
     /**
+     * Una errata en AISLADOR no puede perder la aguja en silencio.
+     *
+     * <p>Antes no casaba con ningun aislador, nadie la consumia y el informe salia limpio: el dia
+     * de la carga faltaria una aguja sin nada que dijera por donde buscar. Ahora sale como error
+     * con su fila de origen y con el nombre que no se encontro.
+     */
+    @Test
+    @DisplayName("una aguja cuyo aislador no existe sale en el informe, no se pierde")
+    void laAgujaHuerfanaSaleEnElInforme() {
+        givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                List.of(track("EP6", "TRACK 1", "HERZLIYA")), List.of(), List.of(),
+                List.of(sectionInsulator("EP6", "HERZLIYA", "B7")),
+                List.of(sectionInsulatorSwitch("EP6", "HERZLIYA", "B7", "W31", true),
+                        // 'B8' no esta en la hoja de aisladores: una errata en la celda.
+                        sectionInsulatorSwitch("EP6", "HERZLIYA", "B8", "W41", true)));
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        assertThat(report.getErrors())
+                .singleElement()
+                .satisfies(error -> {
+                    assertThat(error.reference()).contains("B8", "W41");
+                    assertThat(error.message()).contains("B8", "SECTION_INSULATORS");
+                    assertThat(error.row()).isEqualTo(3);
+                });
+        // La que si tiene aislador se importa igual: un error no arrastra a la de al lado.
+        assertThat(report.getSwitchesWritten()).isEqualTo(1);
+    }
+
+    /**
+     * El aislador deshabilitado ya tiene su propia linea en el informe (omitido), asi que repetirla
+     * por cada una de sus agujas seria ruido sobre un problema que ya esta contado.
+     */
+    @Test
+    @DisplayName("las agujas de un aislador deshabilitado no se cuentan como huerfanas")
+    void lasAgujasDeUnAisladorDeshabilitadoNoSonHuerfanas() {
+        SectionInsulatorMasterRow deshabilitado = new SectionInsulatorMasterRow("EP6", "HERZLIYA", "B7",
+                new BigDecimal("110176"), "TRACK_CONNECTION", "TRACK 1", null, false, 2);
+
+        givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                List.of(track("EP6", "TRACK 1", "HERZLIYA")), List.of(), List.of(),
+                List.of(deshabilitado),
+                List.of(sectionInsulatorSwitch("EP6", "HERZLIYA", "B7", "W31", true)));
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        assertThat(report.getErrors()).isEmpty();
+        assertThat(report.getSkippedDisabled()).isEqualTo(1);
+    }
+
+    /**
      * Una aguja fuera de servicio se importa DESHABILITADA, no se descarta.
      *
      * <p>Es la diferencia con la mensula, y no es un descuido: la aguja es un hijo que se

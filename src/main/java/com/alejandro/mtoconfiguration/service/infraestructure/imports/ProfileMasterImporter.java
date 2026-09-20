@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -230,7 +231,7 @@ public class ProfileMasterImporter {
                                          Map<TrackKey, Long> tracksByKey, boolean dryRun,
                                          ProfileImportReport report, Consumer<Boolean> progress) {
 
-        if (content.sectionInsulators().isEmpty()) {
+        if (content.sectionInsulators().isEmpty() && content.sectionInsulatorSwitches().isEmpty()) {
             return;
         }
 
@@ -248,6 +249,12 @@ public class ProfileMasterImporter {
                 content.sectionInsulatorSwitches().stream()
                         .collect(Collectors.groupingBy(row -> new SectionInsulatorKey(
                                 key(row.executionPackage()), key(row.station()), key(row.sectionInsulator()))));
+
+        reportOrphanSwitches(content, switchesByInsulator, report, progress);
+
+        if (content.sectionInsulators().isEmpty()) {
+            return;
+        }
 
         // Las vias del paquete, por nombre, para resolver las que nombran el aislador y sus agujas.
         Map<String, Map<String, Long>> tracksByPackage = new HashMap<>();
@@ -285,6 +292,42 @@ public class ProfileMasterImporter {
                 fail(report, row.sourceRow(), ProfileImportReport.SECTION_INSULATOR, reference(row), e, progress);
             }
         }
+    }
+
+    /**
+     * Las agujas cuyo AISLADOR no esta en la hoja de aisladores.
+     *
+     * <p>Una errata en ese nombre dejaba la aguja fuera de la importacion <b>sin que nada lo
+     * dijera</b>: no casa con ningun aislador, nadie la consume y el informe sale limpio. El dia de
+     * la carga faltaria una aguja y no habria por donde empezar a buscar. Ahora cada una sale como
+     * error con su fila de origen y con el nombre que no se encontro, que es lo que hace falta para
+     * corregir la celda.
+     *
+     * <p>Se mira contra <b>todas</b> las filas de aisladores, no contra las que se llegaron a
+     * escribir: un aislador deshabilitado o que fallo por su estacion ya tiene su propia linea en el
+     * informe, y repetirla por cada una de sus agujas seria ruido sobre un problema ya contado.
+     */
+    private void reportOrphanSwitches(ProfileMasterParser.ProfileMasterContent content,
+                                      Map<SectionInsulatorKey, List<SectionInsulatorSwitchMasterRow>> switchesByInsulator,
+                                      ProfileImportReport report, Consumer<Boolean> progress) {
+
+        Set<SectionInsulatorKey> declarados = content.sectionInsulators().stream()
+                .map(row -> new SectionInsulatorKey(
+                        key(row.executionPackage()), key(row.station()), key(row.name())))
+                .collect(Collectors.toSet());
+
+        switchesByInsulator.forEach((insulatorKey, rows) -> {
+            if (declarados.contains(insulatorKey)) {
+                return;
+            }
+            for (SectionInsulatorSwitchMasterRow row : rows) {
+                fail(report, row.sourceRow(), ProfileImportReport.SECTION_INSULATOR,
+                        row.sectionInsulator() + " / " + row.code(),
+                        "su aislador '" + row.sectionInsulator() + "' no esta en la hoja "
+                                + ProfileMasterParser.SECTION_INSULATORS_SHEET,
+                        progress);
+            }
+        });
     }
 
     private void count(ProfileImportReport report, String entity,

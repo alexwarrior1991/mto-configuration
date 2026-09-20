@@ -4,6 +4,7 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
+import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulatorSwitch;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
@@ -213,6 +214,47 @@ class SoftDeleteIT extends AbstractCriteriaSearchIT {
         flushAndClear();
 
         assertThat(em.find(Station.class, estacion.getId()).getSectionInsulators()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("una aguja borrada desaparece de la coleccion de su aislador")
+    void desapareceDeLaColeccionDeSectionInsulator() {
+        // El @SQLRestriction de la coleccion filtra el BORRADO LOGICO, no la baja: una aguja
+        // deshabilitada tiene que seguir viendose —el evento la lleva marcada a mantenimiento—,
+        // y solo la borrada desaparece. Las dos cosas en el mismo test porque es justo la
+        // distincion que se puede romper sin que nada mas lo note.
+        Station estacion = new Station();
+        estacion.setName("CHAMARTIN");
+        estacion.setExecutionPackage(em.find(ExecutionPackage.class, paqueteId));
+        em.persist(estacion);
+
+        SectionInsulator aislador = new SectionInsulator();
+        aislador.setName("AISL-2");
+        aislador.setEnabled(true);
+        estacion.addSectionInsulator(aislador);
+        em.persist(aislador);
+
+        SectionInsulatorSwitch borrada = aguja(aislador, "W31", true);
+        SectionInsulatorSwitch deBaja = aguja(aislador, "W41", false);
+        flushAndClear();
+
+        SectionInsulatorSwitch persistida = em.find(SectionInsulatorSwitch.class, borrada.getId());
+        persistida.delete();
+        em.merge(persistida);
+        flushAndClear();
+
+        assertThat(em.find(SectionInsulator.class, aislador.getId()).getSwitches())
+                .extracting(aguja -> aguja.getId())
+                .containsExactly(deBaja.getId());
+    }
+
+    private SectionInsulatorSwitch aguja(SectionInsulator aislador, String codigo, boolean enServicio) {
+        SectionInsulatorSwitch aguja = new SectionInsulatorSwitch();
+        aguja.setCode(codigo);
+        aguja.setEnabled(enServicio);
+        aislador.addSwitch(aguja);
+        em.persist(aguja);
+        return aguja;
     }
 
     @Test
