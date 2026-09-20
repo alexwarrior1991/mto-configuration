@@ -93,11 +93,47 @@ class ChildCollectionIdentityTest {
         assertThat(cantilever.hashCode()).isEqualTo(antes);
     }
 
+    @Test
+    @DisplayName("un aislador admite dos agujas nuevas a la vez")
+    void dosAgujasNuevasSobrevivenAlAdder() {
+        SectionInsulator aislador = sectionInsulator("Aislador 1");
+
+        aislador.addSwitch(sectionInsulatorSwitch("W31"));
+        aislador.addSwitch(sectionInsulatorSwitch("W41"));
+
+        assertThat(aislador.getSwitches())
+                .extracting(SectionInsulatorSwitch::getCode)
+                .containsExactly("W31", "W41");
+    }
+
+    @Test
+    @DisplayName("dos agujas nuevas distintas no son iguales entre si")
+    void dosAgujasNuevasNoSonIguales() {
+        assertThat(sectionInsulatorSwitch("W31")).isNotEqualTo(sectionInsulatorSwitch("W41"));
+    }
+
+    @Test
+    @DisplayName("el hashCode de la aguja no cambia al asignarse el id")
+    void elHashCodeDeLaAgujaNoCambiaAlPersistir() {
+        SectionInsulatorSwitch aguja = sectionInsulatorSwitch("W31");
+        int antes = aguja.hashCode();
+        aguja.setId(11L);
+
+        assertThat(aguja.hashCode()).isEqualTo(antes);
+    }
+
     private SectionInsulator sectionInsulator(String name) {
         SectionInsulator sectionInsulator = new SectionInsulator();
         sectionInsulator.setName(name);
         sectionInsulator.setEnabled(Boolean.TRUE);
         return sectionInsulator;
+    }
+
+    private SectionInsulatorSwitch sectionInsulatorSwitch(String code) {
+        SectionInsulatorSwitch sectionInsulatorSwitch = new SectionInsulatorSwitch();
+        sectionInsulatorSwitch.setCode(code);
+        sectionInsulatorSwitch.setEnabled(Boolean.TRUE);
+        return sectionInsulatorSwitch;
     }
 
     private Cantilever cantilever(String cwHeight) {

@@ -4,6 +4,7 @@ import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.validator.commons.ErrorCode;
 import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import com.alejandro.mtoconfiguration.validator.commons.StandardErrorCodes;
+import com.alejandro.mtoconfiguration.validator.infrastructure.SectionInsulatorSwitchValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.SectionInsulatorValidator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ class ErrorCatalogTest {
     @Test
     @DisplayName("las plantillas casan con los argumentos que emiten los validadores")
     void lasPlantillasCasanConLasAlertasReales() {
-        List<Alert> alerts = new SectionInsulatorValidator()
+        List<Alert> alerts = new SectionInsulatorValidator(new SectionInsulatorSwitchValidator())
                 .validateBeforeSave(alertaDeRango());
 
         assertThat(alerts).isNotEmpty();

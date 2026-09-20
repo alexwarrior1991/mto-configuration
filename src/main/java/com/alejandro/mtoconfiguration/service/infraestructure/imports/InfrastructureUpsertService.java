@@ -5,6 +5,8 @@ import com.alejandro.mtoconfiguration.model.commons.LovDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorSwitchDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SteadyArmDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
@@ -12,6 +14,8 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.C
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileLovCodes;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorSwitchMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.StationMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.TrackMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
@@ -29,8 +33,10 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.AssemblyConfiguratio
 import com.alejandro.mtoconfiguration.model.commons.SLovDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SteadyArmTypeDTO;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
+import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
+import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.BusinessEntityRepository;
@@ -38,11 +44,15 @@ import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.CantileverRe
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.CantileverRepository.CantileverIds;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorSwitchRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorSwitchRepository.SwitchSnapshot;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.StationRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackRepository;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ExecutionPackageService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ProfileService;
+import com.alejandro.mtoconfiguration.service.infraestructure.SectionInsulatorService;
 import com.alejandro.mtoconfiguration.service.infraestructure.StationService;
 import com.alejandro.mtoconfiguration.service.infraestructure.TrackService;
 import lombok.RequiredArgsConstructor;
@@ -54,10 +64,13 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.function.Supplier;
 
 /**
@@ -90,12 +103,15 @@ public class InfrastructureUpsertService {
     private final StationService stationService;
     private final TrackService trackService;
     private final ProfileService profileService;
+    private final SectionInsulatorService sectionInsulatorService;
 
     private final ExecutionPackageRepository executionPackageRepository;
     private final StationRepository stationRepository;
     private final TrackRepository trackRepository;
     private final ProfileRepository profileRepository;
     private final CantileverRepository cantileverRepository;
+    private final SectionInsulatorRepository sectionInsulatorRepository;
+    private final SectionInsulatorSwitchRepository sectionInsulatorSwitchRepository;
     private final BusinessEntityRepository businessEntityRepository;
     private final MasterDataService masterDataService;
 
@@ -175,6 +191,85 @@ public class InfrastructureUpsertService {
         return write(existing.map(entity -> entity.getId()), dto,
                 trackService::create, trackService::update,
                 existing.filter(entity -> sinCambios(entity, dto)).isPresent(), dryRun);
+    }
+
+    /**
+     * Alta o modificacion de un aislador de seccion <b>con sus agujas</b>, en una sola transaccion.
+     *
+     * <p>Las agujas viajan anidadas y no sueltas por lo mismo que las mensulas del perfil: no tienen
+     * servicio propio y su lado inverso lo pone el padre. La diferencia es que la aguja SI tiene
+     * clave natural dentro de su aislador —el codigo del plano, {@code W31}—, asi que se emparejan
+     * por codigo y no por posicion: reimportar conserva el id de cada aguja aunque cambie el orden
+     * o aparezca una nueva en medio.
+     *
+     * <p>Las que ya existen y el maestro no manda no se incluyen, y la reconciliacion del mapper las
+     * borra: es lo correcto cuando un aislador pasa de dos agujas a una.
+     */
+    public UpsertResult upsertSectionInsulator(SectionInsulatorMasterRow row, Long stationId,
+                                               Long trackId, Long connectedTrackId,
+                                               List<SectionInsulatorSwitchMasterRow> switches,
+                                               Map<String, Long> trackIdsByName,
+                                               boolean dryRun) {
+
+        Optional<SectionInsulator> existing = sectionInsulatorRepository
+                .findByNameIgnoreCaseAndStationId(row.name(), stationId);
+
+        SectionInsulatorDTO dto = new SectionInsulatorDTO();
+        dto.setName(row.name());
+        dto.setEnabled(row.enabled());
+        dto.setStationId(stationId);
+        dto.setKp(row.kp());
+        dto.setInstallationType(SectionInsulatorInstallationType.fromCode(row.installationType()));
+        dto.setTrackId(trackId);
+        dto.setConnectedTrackId(connectedTrackId);
+        dto.setSwitches(buildSwitches(switches, trackIdsByName,
+                existing.map(entity -> sectionInsulatorSwitchRepository
+                                .findSnapshotsBySectionInsulatorId(entity.getId()))
+                        .orElseGet(List::of)));
+
+        // El aislador SI se compara, al contrario que el perfil: su subarbol es una lista corta de
+        // agujas, asi que la comparacion cuesta una consulta de escalares y evita reescribir en
+        // cada reimportacion filas que no han cambiado, con la revision de Envers que eso arrastra.
+        return write(existing.map(entity -> entity.getId()), dto,
+                sectionInsulatorService::create, sectionInsulatorService::update,
+                existing.filter(entity -> sinCambios(entity, dto)).isPresent(), dryRun);
+    }
+
+    /**
+     * Empareja cada aguja del maestro con la que ya existe con el mismo codigo.
+     *
+     * @param trackIdsByName vias del paquete, indexadas por nombre en mayusculas. Una via que el
+     *                       maestro nombra y no existe deja la aguja sin via, que es un dato
+     *                       valido: la columna es anulable
+     */
+    private List<SectionInsulatorSwitchDTO> buildSwitches(List<SectionInsulatorSwitchMasterRow> rows,
+                                                          Map<String, Long> trackIdsByName,
+                                                          List<SwitchSnapshot> existing) {
+        Map<String, Long> idByCode = existing.stream()
+                .filter(ids -> ids.getCode() != null)
+                .collect(Collectors.toMap(
+                        ids -> normalize(ids.getCode()),
+                        SwitchSnapshot::getSwitchId,
+                        (first, second) -> first));
+
+        List<SectionInsulatorSwitchDTO> result = new ArrayList<>();
+
+        for (SectionInsulatorSwitchMasterRow row : rows == null ? List.<SectionInsulatorSwitchMasterRow>of() : rows) {
+            SectionInsulatorSwitchDTO dto = new SectionInsulatorSwitchDTO();
+            dto.setId(idByCode.get(normalize(row.code())));
+            dto.setCode(row.code().trim());
+            dto.setKp(row.kp());
+            dto.setTurnoutDenominator(row.turnoutDenominator());
+            dto.setTrackId(trackIdsByName == null ? null : trackIdsByName.get(normalize(row.track())));
+            dto.setEnabled(row.enabled());
+            result.add(dto);
+        }
+
+        return result;
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
     }
 
     /** El KP de la fila como numero, o vacio si el origen no trajo uno utilizable. */
@@ -528,6 +623,77 @@ public class InfrastructureUpsertService {
         Set<Long> nuevas = new HashSet<>(
                 dto.getStationIds() == null ? List.of() : dto.getStationIds());
         return actuales.equals(nuevas);
+    }
+
+    /**
+     * Escalares del aislador, sus dos vias y sus agujas.
+     *
+     * <p>Las vias se leen con una proyeccion de ids y NO con {@code entity.getTrack()}: este
+     * servicio no abre transaccion, asi que la entidad que devuelve la busqueda por clave natural
+     * llega <b>detached</b> y tocar ahi un {@code LAZY} revienta con
+     * {@code LazyInitializationException}, tumbando cada fila una por una. Es la misma trampa que
+     * documentan {@code upsertExecutionPackage} y {@code upsertProfile}, y ningun test con dobles
+     * puede verla porque un POJO no es un proxy de Hibernate.
+     *
+     * <p>Las agujas se comparan por lo mismo que son el dato que trae el maestro: (codigo, KP,
+     * tangente, via). Se comparan como <b>conjunto</b> porque el orden lo fija el
+     * {@code @OrderBy} de la entidad, no el maestro, asi que una diferencia de orden no es un
+     * cambio.
+     */
+    private boolean sinCambios(SectionInsulator entity, SectionInsulatorDTO dto) {
+        if (!Objects.equals(entity.getName(), dto.getName())
+                || !Objects.equals(entity.getEnabled(), dto.getEnabled())
+                || !Objects.equals(entity.getInstallationType(), dto.getInstallationType())
+                || !sameKp(entity.getKp(), dto.getKp())) {
+            return false;
+        }
+
+        var trackIds = sectionInsulatorRepository.findTrackIdsById(entity.getId());
+        Long actualTrackId = trackIds.map(SectionInsulatorRepository.TrackIds::getTrackId).orElse(null);
+        Long actualConnectedTrackId = trackIds
+                .map(SectionInsulatorRepository.TrackIds::getConnectedTrackId).orElse(null);
+
+        if (!Objects.equals(actualTrackId, dto.getTrackId())
+                || !Objects.equals(actualConnectedTrackId, dto.getConnectedTrackId())) {
+            return false;
+        }
+
+        return sameSwitches(entity.getId(), dto.getSwitches());
+    }
+
+    private boolean sameSwitches(Long sectionInsulatorId, List<SectionInsulatorSwitchDTO> incoming) {
+        List<SwitchSnapshot> actuales =
+                sectionInsulatorSwitchRepository.findSnapshotsBySectionInsulatorId(sectionInsulatorId);
+
+        if (actuales.size() != (incoming == null ? 0 : incoming.size())) {
+            return false;
+        }
+
+        Set<String> actual = actuales.stream()
+                .map(each -> describeSwitch(each.getCode(), each.getKp(), each.getTurnoutDenominator(),
+                        each.getTrackId(), each.getEnabled()))
+                .collect(Collectors.toSet());
+
+        Set<String> nuevas = (incoming == null ? List.<SectionInsulatorSwitchDTO>of() : incoming).stream()
+                .map(each -> describeSwitch(each.getCode(), each.getKp(), each.getTurnoutDenominator(),
+                        each.getTrackId(), each.getEnabled()))
+                .collect(Collectors.toSet());
+
+        return actual.equals(nuevas);
+    }
+
+    private static String describeSwitch(String code, BigDecimal kp, Integer turnoutDenominator,
+                                         Long trackId, Boolean enabled) {
+        return normalize(code) + "|" + (kp == null ? "" : kp.stripTrailingZeros().toPlainString())
+                + "|" + turnoutDenominator + "|" + trackId + "|" + enabled;
+    }
+
+    /** Dos KP son el mismo aunque vengan con distinta escala: {@code 110176} y {@code 110176.000}. */
+    private static boolean sameKp(BigDecimal actual, BigDecimal incoming) {
+        if (actual == null || incoming == null) {
+            return actual == incoming;
+        }
+        return actual.compareTo(incoming) == 0;
     }
 
     private <T extends BaseDTO> UpsertResult write(

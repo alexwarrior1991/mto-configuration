@@ -7,6 +7,8 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.C
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileImportReport;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorSwitchMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.StationMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.TrackMasterRow;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -68,11 +71,12 @@ public class ProfileMasterImporter {
         Map<TrackKey, Long> tracksByKey = importTracks(content, packagesByCode, stationsByKey, dryRun,
                 report, progress);
         importProfiles(content, tracksByKey, dryRun, report, progress);
+        importSectionInsulators(content, stationsByKey, tracksByKey, dryRun, report, progress);
 
         log.info("Importacion del maestro de perfiles terminada dryRun={} altas={} modificaciones={} "
-                        + "mensulas={} errores={} omitidos={}",
+                        + "mensulas={} agujas={} errores={} omitidos={}",
                 dryRun, report.getCreated(), report.getUpdated(), report.getCantileversWritten(),
-                report.getFailed(), report.getSkippedDisabled());
+                report.getSwitchesWritten(), report.getFailed(), report.getSkippedDisabled());
         return report;
     }
 
@@ -182,6 +186,8 @@ public class ProfileMasterImporter {
                 .collect(Collectors.groupingBy(row -> new ProfileKey(
                         key(row.executionPackage()), key(row.track()), row.orderInTrack())));
 
+        reportOrphanCantilevers(content, cantileversByProfile, report, progress);
+
         for (ProfileMasterRow row : content.profiles()) {
             if (!row.enabled()) {
                 report.skipDisabled();
@@ -211,6 +217,161 @@ public class ProfileMasterImporter {
                 fail(report, row.sourceRow(), ProfileImportReport.PROFILE, reference(row), e, progress);
             }
         }
+    }
+
+    /**
+     * Las mensulas que no casaron con ningun perfil.
+     *
+     * <p>El mismo agujero que tenian las agujas, y se tapa igual: una fila cuyo ORDEN no existe en
+     * esa via se quedaba fuera de la importacion sin que nada lo dijera, y el perfil aparecia con
+     * una mensula de menos que nadie iba a echar en falta hasta mirar el poste.
+     *
+     * <p>Se empareja por ORDEN y no por identificador de perfil —una via con dos tramos
+     * concatenados repite el identificador—, asi que el mensaje dice el orden y la via, que es lo
+     * que hay que buscar en la hoja para corregirlo.
+     *
+     * <p>Contra <b>todas</b> las filas de perfiles, no contra las escritas: un perfil deshabilitado
+     * o que fallo por su via ya tiene su linea en el informe, y repetirla por cada una de sus
+     * mensulas seria ruido sobre un problema ya contado. Las mensulas deshabilitadas no llegan
+     * aqui: el agrupamiento las filtra antes, que en un hijo cuyo ENABLED no viaja a ninguna parte
+     * sigue siendo lo que se hace.
+     */
+    private void reportOrphanCantilevers(ProfileMasterParser.ProfileMasterContent content,
+                                         Map<ProfileKey, List<CantileverMasterRow>> cantileversByProfile,
+                                         ProfileImportReport report, Consumer<Boolean> progress) {
+
+        Set<ProfileKey> declarados = content.profiles().stream()
+                .map(row -> new ProfileKey(
+                        key(row.executionPackage()), key(row.track()), row.orderInTrack()))
+                .collect(Collectors.toSet());
+
+        cantileversByProfile.forEach((profileKey, rows) -> {
+            if (declarados.contains(profileKey)) {
+                return;
+            }
+            for (CantileverMasterRow row : rows) {
+                fail(report, row.sourceRow(), ProfileImportReport.PROFILE,
+                        row.executionPackage() + " / " + row.track() + " / " + row.profileId()
+                                + " / SLOT " + row.slot(),
+                        "su perfil no esta en la hoja " + ProfileMasterParser.PROFILES_SHEET
+                                + ": ninguna fila con ORDEN " + row.orderInTrack()
+                                + " en la via '" + row.track() + "'",
+                        progress);
+            }
+        });
+    }
+
+    /**
+     * Los aisladores de seccion van al final, y no por capricho: uno puede nombrar hasta dos vias,
+     * y la via solo tiene identificador despues de escribirla.
+     *
+     * <p>La vía que un aislador nombra y no existe se deja a null en lugar de tumbar la fila: la
+     * columna es anulable, un aislador sin vía sigue siendo un aislador de su estacion, y tirar la
+     * fila entera perderia tambien sus agujas. La estacion si es obligatoria, y sin ella no hay
+     * donde colgarlo.
+     */
+    private void importSectionInsulators(ProfileMasterParser.ProfileMasterContent content,
+                                         Map<StationKey, Long> stationsByKey,
+                                         Map<TrackKey, Long> tracksByKey, boolean dryRun,
+                                         ProfileImportReport report, Consumer<Boolean> progress) {
+
+        if (content.sectionInsulators().isEmpty() && content.sectionInsulatorSwitches().isEmpty()) {
+            return;
+        }
+
+        // Las agujas se agrupan de una vez, por lo mismo que las mensulas: buscarlas dentro del
+        // bucle seria recorrer la hoja entera por cada aislador.
+        //
+        // Y SIN filtrar por ENABLED, al contrario que las mensulas. No es un descuido: en un hijo
+        // que se reconcilia con mergeCollection, dejar la fila fuera de la lista no significa "no
+        // la cargues", significa BORRARLA, con su id y su historico de auditoria. Una aguja fuera
+        // de servicio sigue estando en el plano, y el equipo que va de noche necesita verla marcada
+        // y no que desaparezca; por eso entra deshabilitada y viaja asi hasta el parte de turno de
+        // mto-maintenance, que la escribe 'W31 1:9 (out of service)'. Lo que borra una aguja es
+        // quitar su fila de la hoja.
+        Map<SectionInsulatorKey, List<SectionInsulatorSwitchMasterRow>> switchesByInsulator =
+                content.sectionInsulatorSwitches().stream()
+                        .collect(Collectors.groupingBy(row -> new SectionInsulatorKey(
+                                key(row.executionPackage()), key(row.station()), key(row.sectionInsulator()))));
+
+        reportOrphanSwitches(content, switchesByInsulator, report, progress);
+
+        if (content.sectionInsulators().isEmpty()) {
+            return;
+        }
+
+        // Las vias del paquete, por nombre, para resolver las que nombran el aislador y sus agujas.
+        Map<String, Map<String, Long>> tracksByPackage = new HashMap<>();
+        tracksByKey.forEach((trackKey, trackId) -> tracksByPackage
+                .computeIfAbsent(trackKey.executionPackage(), ignored -> new HashMap<>())
+                .put(trackKey.name(), trackId));
+
+        for (SectionInsulatorMasterRow row : content.sectionInsulators()) {
+            if (!row.enabled()) {
+                report.skipDisabled();
+                continue;
+            }
+
+            String code = key(row.executionPackage());
+            StationKey stationKey = new StationKey(code, key(row.station()));
+            if (!stationsByKey.containsKey(stationKey)) {
+                fail(report, row.sourceRow(), ProfileImportReport.SECTION_INSULATOR, reference(row),
+                        "su estacion '" + row.station() + "' no se ha podido cargar", progress);
+                continue;
+            }
+
+            Map<String, Long> tracksOfPackage = tracksByPackage.getOrDefault(code, Map.of());
+            List<SectionInsulatorSwitchMasterRow> switches = switchesByInsulator.getOrDefault(
+                    new SectionInsulatorKey(code, key(row.station()), key(row.name())), List.of());
+
+            try {
+                var result = upsertService.upsertSectionInsulator(row, stationsByKey.get(stationKey),
+                        tracksOfPackage.get(key(row.track())),
+                        tracksOfPackage.get(key(row.connectedTrack())),
+                        switches, tracksOfPackage, dryRun);
+                count(report, ProfileImportReport.SECTION_INSULATOR, result.outcome());
+                report.addSwitches(switches.size());
+                progress.accept(true);
+            } catch (Exception e) {
+                fail(report, row.sourceRow(), ProfileImportReport.SECTION_INSULATOR, reference(row), e, progress);
+            }
+        }
+    }
+
+    /**
+     * Las agujas cuyo AISLADOR no esta en la hoja de aisladores.
+     *
+     * <p>Una errata en ese nombre dejaba la aguja fuera de la importacion <b>sin que nada lo
+     * dijera</b>: no casa con ningun aislador, nadie la consume y el informe sale limpio. El dia de
+     * la carga faltaria una aguja y no habria por donde empezar a buscar. Ahora cada una sale como
+     * error con su fila de origen y con el nombre que no se encontro, que es lo que hace falta para
+     * corregir la celda.
+     *
+     * <p>Se mira contra <b>todas</b> las filas de aisladores, no contra las que se llegaron a
+     * escribir: un aislador deshabilitado o que fallo por su estacion ya tiene su propia linea en el
+     * informe, y repetirla por cada una de sus agujas seria ruido sobre un problema ya contado.
+     */
+    private void reportOrphanSwitches(ProfileMasterParser.ProfileMasterContent content,
+                                      Map<SectionInsulatorKey, List<SectionInsulatorSwitchMasterRow>> switchesByInsulator,
+                                      ProfileImportReport report, Consumer<Boolean> progress) {
+
+        Set<SectionInsulatorKey> declarados = content.sectionInsulators().stream()
+                .map(row -> new SectionInsulatorKey(
+                        key(row.executionPackage()), key(row.station()), key(row.name())))
+                .collect(Collectors.toSet());
+
+        switchesByInsulator.forEach((insulatorKey, rows) -> {
+            if (declarados.contains(insulatorKey)) {
+                return;
+            }
+            for (SectionInsulatorSwitchMasterRow row : rows) {
+                fail(report, row.sourceRow(), ProfileImportReport.SECTION_INSULATOR,
+                        row.sectionInsulator() + " / " + row.code(),
+                        "su aislador '" + row.sectionInsulator() + "' no esta en la hoja "
+                                + ProfileMasterParser.SECTION_INSULATORS_SHEET,
+                        progress);
+            }
+        });
     }
 
     private void count(ProfileImportReport report, String entity,
@@ -269,6 +430,10 @@ public class ProfileMasterImporter {
         return row.executionPackage() + " / " + row.track() + " / " + row.profileId();
     }
 
+    private String reference(SectionInsulatorMasterRow row) {
+        return row.executionPackage() + " / " + row.station() + " / " + row.name();
+    }
+
     /**
      * Las claves se comparan en mayusculas, igual que los indices unicos de V12: el
      * origen no es consistente y {@code HR TRACK 3 HAD} convive con {@code HR Track 3 BIN}.
@@ -284,5 +449,8 @@ public class ProfileMasterImporter {
     }
 
     private record ProfileKey(String executionPackage, String track, Integer orderInTrack) {
+    }
+
+    private record SectionInsulatorKey(String executionPackage, String station, String name) {
     }
 }

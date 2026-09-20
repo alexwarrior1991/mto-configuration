@@ -8,6 +8,8 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.E
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileImportReport;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileLovCodes;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorSwitchMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.StationMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.TrackMasterRow;
 import com.alejandro.mtoconfiguration.service.infraestructure.imports.InfrastructureUpsertService.UpsertResult;
@@ -31,6 +33,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -71,6 +74,8 @@ class ProfileMasterImporterTest {
                 .thenReturn(UpsertResult.created(3L));
         when(upsertService.upsertProfile(any(), anyLong(), any(), anyBoolean()))
                 .thenReturn(UpsertResult.created(4L));
+        when(upsertService.upsertSectionInsulator(any(), anyLong(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(UpsertResult.created(5L));
     }
 
     @Test
@@ -88,6 +93,139 @@ class ProfileMasterImporterTest {
         assertThat(report.outcomeOf(ProfileImportReport.TRACK).getCreated()).isEqualTo(1);
         assertThat(report.outcomeOf(ProfileImportReport.PROFILE).getCreated()).isEqualTo(1);
         assertThat(report.getCantileversWritten()).isEqualTo(1);
+        assertThat(report.getFailed()).isZero();
+    }
+
+    /**
+     * Lo mismo que con la aguja huerfana, en la mensula.
+     *
+     * <p>Se empareja por ORDEN y no por identificador de perfil, asi que una fila con el orden
+     * equivocado se quedaba fuera en silencio y el perfil salia con una mensula de menos que nadie
+     * iba a echar en falta hasta mirar el poste.
+     */
+    @Test
+    @DisplayName("una mensula cuyo perfil no existe sale en el informe, no se pierde")
+    void laMensulaHuerfanaSaleEnElInforme() {
+        givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                List.of(track("EP6", "TRACK 1", "HERZLIYA")),
+                List.of(profile("EP6", "TRACK 1", "83-1.02", 1)),
+                List.of(cantilever("EP6", "TRACK 1", "83-1.02", 1, 1),
+                        // Orden 7: en esa via no hay perfil con ese orden.
+                        cantilever("EP6", "TRACK 1", "83-1.02", 7, 2)));
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        assertThat(report.getErrors())
+                .singleElement()
+                .satisfies(error -> {
+                    assertThat(error.entity()).isEqualTo(ProfileImportReport.PROFILE);
+                    assertThat(error.reference()).contains("83-1.02", "SLOT 2");
+                    assertThat(error.message()).contains("PROFILES", "ORDEN 7", "TRACK 1");
+                });
+        // La que si casa se importa igual.
+        assertThat(report.getCantileversWritten()).isEqualTo(1);
+    }
+
+    /** Un perfil deshabilitado ya tiene su linea (omitido): sus mensulas no son huerfanas. */
+    @Test
+    @DisplayName("las mensulas de un perfil deshabilitado no se cuentan como huerfanas")
+    void lasMensulasDeUnPerfilDeshabilitadoNoSonHuerfanas() {
+        ProfileMasterRow deshabilitado = new ProfileMasterRow("EP6", "TRACK 1", "83-1.02",
+                "83063.410", 1, "DEFINITIVE", ProfileLovCodes.empty(), new BigDecimal("52.000"),
+                null, null, null, false, 7);
+
+        givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                List.of(track("EP6", "TRACK 1", "HERZLIYA")),
+                List.of(deshabilitado),
+                List.of(cantilever("EP6", "TRACK 1", "83-1.02", 1, 1)));
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        assertThat(report.getErrors()).isEmpty();
+        assertThat(report.getSkippedDisabled()).isEqualTo(1);
+    }
+
+    /**
+     * Una errata en AISLADOR no puede perder la aguja en silencio.
+     *
+     * <p>Antes no casaba con ningun aislador, nadie la consumia y el informe salia limpio: el dia
+     * de la carga faltaria una aguja sin nada que dijera por donde buscar. Ahora sale como error
+     * con su fila de origen y con el nombre que no se encontro.
+     */
+    @Test
+    @DisplayName("una aguja cuyo aislador no existe sale en el informe, no se pierde")
+    void laAgujaHuerfanaSaleEnElInforme() {
+        givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                List.of(track("EP6", "TRACK 1", "HERZLIYA")), List.of(), List.of(),
+                List.of(sectionInsulator("EP6", "HERZLIYA", "B7")),
+                List.of(sectionInsulatorSwitch("EP6", "HERZLIYA", "B7", "W31", true),
+                        // 'B8' no esta en la hoja de aisladores: una errata en la celda.
+                        sectionInsulatorSwitch("EP6", "HERZLIYA", "B8", "W41", true)));
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        assertThat(report.getErrors())
+                .singleElement()
+                .satisfies(error -> {
+                    assertThat(error.reference()).contains("B8", "W41");
+                    assertThat(error.message()).contains("B8", "SECTION_INSULATORS");
+                    assertThat(error.row()).isEqualTo(3);
+                });
+        // La que si tiene aislador se importa igual: un error no arrastra a la de al lado.
+        assertThat(report.getSwitchesWritten()).isEqualTo(1);
+    }
+
+    /**
+     * El aislador deshabilitado ya tiene su propia linea en el informe (omitido), asi que repetirla
+     * por cada una de sus agujas seria ruido sobre un problema que ya esta contado.
+     */
+    @Test
+    @DisplayName("las agujas de un aislador deshabilitado no se cuentan como huerfanas")
+    void lasAgujasDeUnAisladorDeshabilitadoNoSonHuerfanas() {
+        SectionInsulatorMasterRow deshabilitado = new SectionInsulatorMasterRow("EP6", "HERZLIYA", "B7",
+                new BigDecimal("110176"), "TRACK_CONNECTION", "TRACK 1", null, false, 2);
+
+        givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                List.of(track("EP6", "TRACK 1", "HERZLIYA")), List.of(), List.of(),
+                List.of(deshabilitado),
+                List.of(sectionInsulatorSwitch("EP6", "HERZLIYA", "B7", "W31", true)));
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        assertThat(report.getErrors()).isEmpty();
+        assertThat(report.getSkippedDisabled()).isEqualTo(1);
+    }
+
+    /**
+     * Una aguja fuera de servicio se importa DESHABILITADA, no se descarta.
+     *
+     * <p>Es la diferencia con la mensula, y no es un descuido: la aguja es un hijo que se
+     * reconcilia con {@code mergeCollection}, asi que dejarla fuera de la lista no seria "no la
+     * cargues" sino BORRARLA, con su id y su historico. Una aguja fuera de servicio sigue estando
+     * en el plano y el equipo necesita verla marcada; lo que la borra es quitar su fila de la hoja.
+     */
+    @Test
+    @DisplayName("una aguja deshabilitada llega al upsert, no se queda por el camino")
+    void laAgujaDeshabilitadaSeImportaMarcada() {
+        givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                List.of(track("EP6", "TRACK 1", "HERZLIYA")), List.of(), List.of(),
+                List.of(sectionInsulator("EP6", "HERZLIYA", "B7")),
+                List.of(sectionInsulatorSwitch("EP6", "HERZLIYA", "B7", "W31", true),
+                        sectionInsulatorSwitch("EP6", "HERZLIYA", "B7", "W41", false)));
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<SectionInsulatorSwitchMasterRow>> captor =
+                ArgumentCaptor.forClass(List.class);
+        verify(upsertService).upsertSectionInsulator(any(), anyLong(), any(), any(),
+                captor.capture(), any(), anyBoolean());
+
+        assertThat(captor.getValue())
+                .extracting(SectionInsulatorSwitchMasterRow::code, SectionInsulatorSwitchMasterRow::enabled)
+                .containsExactlyInAnyOrder(tuple("W31", true), tuple("W41", false));
+        // Las dos cuentan como escritas: la deshabilitada tambien es una fila.
+        assertThat(report.getSwitchesWritten()).isEqualTo(2);
         assertThat(report.getFailed()).isZero();
     }
 
@@ -345,9 +483,30 @@ class ProfileMasterImporterTest {
     private void givenMaster(List<ExecutionPackageMasterRow> eps, List<StationMasterRow> stations,
                              List<TrackMasterRow> tracks, List<ProfileMasterRow> profiles,
                              List<CantileverMasterRow> cantilevers) {
+        givenMaster(eps, stations, tracks, profiles, cantilevers, List.of(), List.of());
+    }
+
+    private void givenMaster(List<ExecutionPackageMasterRow> eps, List<StationMasterRow> stations,
+                             List<TrackMasterRow> tracks, List<ProfileMasterRow> profiles,
+                             List<CantileverMasterRow> cantilevers,
+                             List<SectionInsulatorMasterRow> sectionInsulators,
+                             List<SectionInsulatorSwitchMasterRow> switches) {
         when(parser.parseAll(any())).thenReturn(new ProfileMasterParser.ProfileMasterContent(
                 new ArrayList<>(eps), new ArrayList<>(stations), new ArrayList<>(tracks),
-                new ArrayList<>(profiles), new ArrayList<>(cantilevers)));
+                new ArrayList<>(profiles), new ArrayList<>(cantilevers),
+                new ArrayList<>(sectionInsulators), new ArrayList<>(switches)));
+    }
+
+    private static SectionInsulatorMasterRow sectionInsulator(String ep, String station, String name) {
+        return new SectionInsulatorMasterRow(ep, station, name, new BigDecimal("110176"),
+                "TRACK_CONNECTION", "TRACK 1", null, true, 2);
+    }
+
+    private static SectionInsulatorSwitchMasterRow sectionInsulatorSwitch(String ep, String station,
+                                                                          String insulator, String code,
+                                                                          boolean enabled) {
+        return new SectionInsulatorSwitchMasterRow(ep, station, insulator, code,
+                new BigDecimal("110176"), 9, "TRACK 1", enabled, 3);
     }
 
     private static ExecutionPackageMasterRow ep(String code) {

@@ -18,7 +18,33 @@ public interface SectionInsulatorRepository extends CRUDRepository<SectionInsula
     List<SectionInsulator> findByStationId(Long stationId);
     List<SectionInsulator> findByStationNameContainingIgnoreCase(String stationName);
 
+    /**
+     * Clave natural del aislador dentro de su estación, para el importador del maestro.
+     *
+     * <p>El maestro no trae identificadores técnicos, así que la reimportación tiene que
+     * reconocer la fila que ya existe por lo único que sí trae: el nombre dentro de la estación.
+     * Sin esto, cada carga duplicaría todos los aisladores.
+     */
+    Optional<SectionInsulator> findByNameIgnoreCaseAndStationId(String name, Long stationId);
 
+    /**
+     * Las vías del aislador, sin inicializar nada.
+     *
+     * <p>Existe por la misma trampa que documenta {@code InfrastructureUpsertService}: ese servicio
+     * no abre transacción, de modo que la entidad que devuelve la búsqueda por clave natural llega
+     * <b>detached</b> y tocar ahí {@code getTrack()}, que es {@code LAZY}, revienta con
+     * {@code LazyInitializationException}. Una proyección de ids no inicializa el proxy.
+     */
+    @Query("select si.track.id as trackId, si.connectedTrack.id as connectedTrackId "
+            + "from SectionInsulator si where si.id = :id")
+    Optional<TrackIds> findTrackIdsById(@Param("id") Long id);
+
+    /** Proyección de {@link #findTrackIdsById(Long)}. */
+    interface TrackIds {
+        Long getTrackId();
+
+        Long getConnectedTrackId();
+    }
 
     /**
      * Pagina de identificadores para el republicado de datos maestros, por clave.
@@ -52,9 +78,22 @@ public interface SectionInsulatorRepository extends CRUDRepository<SectionInsula
             + "where (:stationId is null or si.station.id = :stationId)")
     long countForRepublish(@Param("stationId") Long stationId);
 
+    /**
+     * Grafo completo del evento: una sola sentencia.
+     *
+     * <p>Las agujas entran aquí porque el payload de {@code section-insulator} las lleva, y una
+     * colección en el {@code @EntityGraph} no rompe la propiedad que exige
+     * {@code MasterDataPayloadContractIT}: sigue siendo un solo {@code select} con joins, como el
+     * de {@code ProfileRepository.findByIdForMessaging}, que ya trae {@code cantilevers} y
+     * {@code cantilevers.steadyArm}.
+     */
     @Override
     @EntityGraph(attributePaths = {
-            "station"
+            "station",
+            "track",
+            "connectedTrack",
+            "switches",
+            "switches.track"
     })
     @Query("select si from SectionInsulator si where si.id = :id")
     Optional<SectionInsulator> findByIdForMessaging(@Param("id") Long id);

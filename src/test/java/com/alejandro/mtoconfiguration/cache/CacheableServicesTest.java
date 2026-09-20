@@ -28,9 +28,15 @@ class CacheableServicesTest {
     private static final String ENTITY_DTO_PACKAGE =
             "com.alejandro.mtoconfiguration.model.synchronous.infrastructure";
 
-    /** Servicios que declaran isCacheable() = true. Debe coincidir con los DTO sin hijos. */
+    /**
+     * Servicios que declaran isCacheable() = true. Debe coincidir con los DTO sin hijos.
+     *
+     * <p>{@code SectionInsulatorDTO} salió de aquí cuando el aislador pasó a llevar sus agujas:
+     * desde entonces embebe hijos, y una entrada cacheada se quedaría mintiendo en cuanto cambiara
+     * una aguja, que la caché no ve.
+     */
     private static final Set<String> DECLARADOS_CACHEABLES =
-            Set.of("SteadyArmDTO", "SectionInsulatorDTO", "DisconnectorDTO");
+            Set.of("SteadyArmDTO", "DisconnectorDTO");
 
     private static final Set<String> DTOS = Set.of(
             "ExecutionPackageDTO", "StationDTO", "TrackDTO", "ProfileDTO",

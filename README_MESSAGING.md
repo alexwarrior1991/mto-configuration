@@ -4,6 +4,15 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ El evento `section-insulator` crece
+
+El aislador de sección gana `kp`, `installationType`, `track`, `connectedTrack` y la lista
+`switches` con sus agujas. **Solo añade claves**, así que es compatible hacia atrás; el detalle
+está en «Cambios en el contrato del evento `section-insulator`», más abajo.
+
+`mto-maintenance` sí los usa —los lleva a `catenary_asset` y a `catenary_asset_switch`—, y
+`mto-stock` sigue registrando el evento sin tratarlo.
+
 ## ⚠️ Cambio de contrato de los eventos `profile` y `track`
 
 En `profile`, las claves `sectioning`, `anchorage` y `sectioningFeeding` (objetos) pasan a
@@ -147,6 +156,42 @@ necesita el código para interpretarlo sin resolver la referencia. Ambos apuntan
 Que salga con código obliga a que la relación venga inicializada, así que `sectioningFeeding` entra
 en el `@EntityGraph` de `ProfileRepository.findByIdForMessaging`. Es un join a-uno, no multiplica
 filas, y `MasterDataPayloadContractIT` sigue exigiendo **una** sentencia por evento.
+
+#### Cambios en el contrato del evento `section-insulator`
+
+El aislador de sección incorpora cinco claves nuevas. **El cambio es compatible hacia atrás**: sólo
+añade claves, no renombra ni quita ninguna.
+
+| Clave nueva | Tipo | Contenido |
+|---|---|---|
+| `kp` | número o `null` | Punto kilométrico del aislador, en **metros** (`110+176` del plano son `110176.000`) |
+| `installationType` | `"TRACK_CONNECTION"` / `"IN_TRACK"` / `null` | Si separa dos vías que conectan por una aguja, o está en medio de una sola |
+| `track` | `{ "id", "name" }` o `null` | Vía principal |
+| `connectedTrack` | `{ "id", "name" }` o `null` | Vía con la que conecta. Nula en un `IN_TRACK` |
+| `switches` | lista de `{ "id", "code", "kp", "turnoutDenominator", "turnoutRate", "trackId", "enabled" }` | Las agujas de la conexión, **en orden de KP** |
+
+La tangente del desvío viaja dos veces a propósito: `turnoutDenominator` es el dato —el `9` de
+`1:9`, comparable y ordenable— y `turnoutRate` es cómo está escrito en el plano (`"1:9"`), para que
+el consumidor no tenga que componer la misma cadena.
+
+Una aguja **deshabilitada viaja igual**, con `"enabled": false`: la colección filtra los borrados
+lógicos, no las bajas. Es deliberado y el consumidor cuenta con ello —`mto-maintenance` la guarda
+marcada y la imprime `W31 1:9 (out of service)` en el parte de turno—, porque para el equipo que va
+de noche no es lo mismo que la aguja no exista a que no pueda contar con ella. Lo que hace
+desaparecer una aguja del evento es borrarla, no darla de baja. Es el mismo criterio por el que
+`sectioningFeeding` del perfil sale con `id` **y** `code`.
+
+Que el payload lleve las agujas obliga a que la colección venga inicializada, así que `switches`,
+`switches.track`, `track` y `connectedTrack` entran en el `@EntityGraph` de
+`SectionInsulatorRepository.findByIdForMessaging`. Una colección en el grafo **no** rompe la
+propiedad de una sentencia por evento: `ProfileRepository.findByIdForMessaging` ya lleva
+`cantilevers` y `cantilevers.steadyArm`, y `MasterDataPayloadContractIT` lo sigue comprobando.
+
+Donde el aislador viaja **anidado** dentro del evento `station`, la copia reducida gana sólo los dos
+escalares (`kp`, `installationType`) y **no** las agujas: llevarlas ahí obligaría a meter la
+colección en el grafo de mensajería de `Station` y multiplicaría las filas de ese evento por cada
+aguja de cada aislador, para un dato que el consumidor ya recibe entero en el evento
+`section-insulator`.
 
 ### 2.5. Republicado de lo que ya existe
 

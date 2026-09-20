@@ -95,6 +95,15 @@ public class SectionInsulatorService extends CRUDService<SectionInsulatorDTO, Se
 
         applyCondition(builder, filter.name(), qEntity.name::containsIgnoreCase);
         applyCondition(builder, filter.stationName(), qEntity.station.name::containsIgnoreCase);
+        applyCondition(builder, filter.trackName(), qEntity.track.name::containsIgnoreCase);
+
+        // any() sobre la colección genera un EXISTS, no un JOIN: la página no se duplica cuando un
+        // aislador tiene varias agujas.
+        applyCondition(builder, filter.switchCode(),
+                code -> qEntity.switches.any().code.containsIgnoreCase(code));
+
+        Optional.ofNullable(filter.installationType())
+                .ifPresent(type -> builder.and(qEntity.installationType.eq(type)));
 
         builder.and(qEntity.enabled.eq(filter.enabled()));
 
@@ -105,6 +114,8 @@ public class SectionInsulatorService extends CRUDService<SectionInsulatorDTO, Se
                     BooleanBuilder searchBuilder = new BooleanBuilder();
                     searchBuilder.or(qEntity.name.containsIgnoreCase(text));
                     searchBuilder.or(qEntity.station.name.containsIgnoreCase(text));
+                    searchBuilder.or(qEntity.track.name.containsIgnoreCase(text));
+                    searchBuilder.or(qEntity.switches.any().code.containsIgnoreCase(text));
                     builder.and(searchBuilder);
                 });
 
@@ -130,12 +141,18 @@ public class SectionInsulatorService extends CRUDService<SectionInsulatorDTO, Se
     }
 
     /**
-     * SectionInsulatorDTO no embebe otros DTO de entidad, solo LOV, que se editan casi nunca.
-     * Sus entradas no se quedan obsoletas al cambiar otra entidad, asi que si
-     * compensa cachearlas. Ver BaseService.isCacheable().
+     * Ya no se cachea: desde que el aislador lleva agujas, su DTO embebe hijos.
+     *
+     * <p>Antes valía true porque {@code SectionInsulatorDTO} sólo tenía escalares y una referencia
+     * a la estación, de modo que ninguna entrada se quedaba obsoleta al cambiar otra entidad. Con
+     * {@code switches} dentro, cualquier alta, modificación o borrado de una aguja deja la entrada
+     * cacheada mintiendo, y la caché no sabe nada de la aguja para invalidarla.
+     *
+     * <p>{@code CacheableServicesTest} comprueba exactamente esta correspondencia: los únicos DTO
+     * que se cachean son los que no embeben otro DTO de entidad. Ver {@code BaseService.isCacheable()}.
      */
     @Override
     public boolean isCacheable() {
-        return true;
+        return false;
     }
 }

@@ -10,6 +10,8 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.C
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileLovCodes;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorSwitchMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.StationMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.TrackMasterRow;
 import org.springframework.stereotype.Component;
@@ -47,6 +49,8 @@ public class ProfileMasterParser {
     public static final String TRACKS_SHEET = "TRACKS";
     public static final String PROFILES_SHEET = "PROFILES";
     public static final String CANTILEVERS_SHEET = "CANTILEVERS";
+    public static final String SECTION_INSULATORS_SHEET = "SECTION_INSULATORS";
+    public static final String SECTION_INSULATOR_SWITCHES_SHEET = "SECTION_INSULATOR_SWITCHES";
 
     private static final String COL_EP = "EP";
     private static final String COL_NAME = "NOMBRE";
@@ -61,13 +65,17 @@ public class ProfileMasterParser {
     private static final String COL_PROFILE_ID = "PROFILE_ID";
     private static final String COL_ENABLED = "ENABLED";
     private static final String COL_SLOT = "SLOT";
+    private static final String COL_STATION = "ESTACION";
+    private static final String COL_KP = "KP";
+    private static final String COL_SECTION_INSULATOR = "AISLADOR";
+    private static final String COL_CODE = "CODIGO";
 
     private static final int HEADER_ROW = 0;
     private static final int FIRST_DATA_ROW = 1;
 
     private final ExcelReader excelReader = new ExcelReader();
 
-    /** Las cinco hojas de datos del maestro. El InputStream se cierra siempre. */
+    /** Las siete hojas de datos del maestro. El InputStream se cierra siempre. */
     public ProfileMasterContent parseAll(InputStream inputStream) {
         ExcelWorkbook workbook = excelReader.read(inputStream);
         return new ProfileMasterContent(
@@ -75,7 +83,9 @@ public class ProfileMasterParser {
                 readStations(workbook),
                 readTracks(workbook),
                 readProfiles(workbook),
-                readCantilevers(workbook));
+                readCantilevers(workbook),
+                readSectionInsulators(workbook),
+                readSectionInsulatorSwitches(workbook));
     }
 
     private List<ExecutionPackageMasterRow> readExecutionPackages(ExcelWorkbook workbook) {
@@ -193,6 +203,65 @@ public class ProfileMasterParser {
                             flag(text(row, columns.get(COL_ENABLED))),
                             index + 1);
                 });
+    }
+
+    private List<SectionInsulatorMasterRow> readSectionInsulators(ExcelWorkbook workbook) {
+        return readOptional(workbook, SECTION_INSULATORS_SHEET,
+                List.of(COL_EP, COL_STATION, COL_NAME, COL_ENABLED),
+                (row, columns, index) -> {
+                    String ep = text(row, columns.get(COL_EP));
+                    String station = text(row, columns.get(COL_STATION));
+                    String name = text(row, columns.get(COL_NAME));
+                    if (ep.isBlank() || station.isBlank() || name.isBlank()) {
+                        return null;
+                    }
+                    return new SectionInsulatorMasterRow(ep, station, name,
+                            decimal(row, columns.get(COL_KP)),
+                            text(row, columns.get("TIPO_INSTALACION")),
+                            text(row, columns.get(COL_TRACK)),
+                            text(row, columns.get("VIA_CONECTADA")),
+                            flag(text(row, columns.get(COL_ENABLED))),
+                            index + 1);
+                });
+    }
+
+    private List<SectionInsulatorSwitchMasterRow> readSectionInsulatorSwitches(ExcelWorkbook workbook) {
+        return readOptional(workbook, SECTION_INSULATOR_SWITCHES_SHEET,
+                List.of(COL_EP, COL_STATION, COL_SECTION_INSULATOR, COL_CODE, COL_ENABLED),
+                (row, columns, index) -> {
+                    String ep = text(row, columns.get(COL_EP));
+                    String station = text(row, columns.get(COL_STATION));
+                    String insulator = text(row, columns.get(COL_SECTION_INSULATOR));
+                    String code = text(row, columns.get(COL_CODE));
+                    if (ep.isBlank() || station.isBlank() || insulator.isBlank() || code.isBlank()) {
+                        return null;
+                    }
+                    Long denominator = longer(row, columns.get("TANGENTE"));
+                    return new SectionInsulatorSwitchMasterRow(ep, station, insulator, code,
+                            decimal(row, columns.get(COL_KP)),
+                            denominator == null ? null : denominator.intValue(),
+                            text(row, columns.get(COL_TRACK)),
+                            flag(text(row, columns.get(COL_ENABLED))),
+                            index + 1);
+                });
+    }
+
+    /**
+     * Como {@link #read}, pero una hoja que no está devuelve lista vacía en lugar de reventar.
+     *
+     * <p>Es para las hojas que llegaron después: un maestro generado antes de {@code V23} no trae
+     * SECTION_INSULATOR_SWITCHES, y exigirla haría ilegible de golpe todo fichero anterior, aunque
+     * ninguna de las dos hojas tenga todavía una sola fila.
+     *
+     * <p>Lo que <b>no</b> se relaja es la cabecera: si la hoja está, sus columnas obligatorias
+     * tienen que estar, por el mismo motivo por el que {@code read} las valida antes de mirar si
+     * hay filas —una columna renombrada importaría cero filas sin decir nada—.
+     */
+    private <T> List<T> readOptional(ExcelWorkbook workbook, String sheetName, List<String> required,
+                                     RowReader<T> reader) {
+        return workbook.sheet(sheetName).isPresent()
+                ? read(workbook, sheetName, required, reader)
+                : List.of();
     }
 
     private <T> List<T> read(ExcelWorkbook workbook, String sheetName, List<String> required,
@@ -325,13 +394,15 @@ public class ProfileMasterParser {
         T read(ExcelRow row, Map<String, Integer> columns, int index);
     }
 
-    /** Las cinco hojas de datos, leidas de una vez. */
+    /** Las siete hojas de datos, leidas de una vez. */
     public record ProfileMasterContent(
             List<ExecutionPackageMasterRow> executionPackages,
             List<StationMasterRow> stations,
             List<TrackMasterRow> tracks,
             List<ProfileMasterRow> profiles,
-            List<CantileverMasterRow> cantilevers
+            List<CantileverMasterRow> cantilevers,
+            List<SectionInsulatorMasterRow> sectionInsulators,
+            List<SectionInsulatorSwitchMasterRow> sectionInsulatorSwitches
     ) {
     }
 }

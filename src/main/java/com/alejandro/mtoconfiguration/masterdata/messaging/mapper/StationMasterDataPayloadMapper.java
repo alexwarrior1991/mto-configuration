@@ -99,11 +99,24 @@ public class StationMasterDataPayloadMapper implements MasterDataEntityPayloadMa
                 .toList();
     }
 
+    /**
+     * Copia reducida del aislador, con sus dos escalares nuevos pero <b>sin</b> las agujas.
+     *
+     * <p>{@code kp} e {@code installationType} son columnas de la propia fila, ya cargada, así que
+     * no cuestan una sentencia más. Las agujas sí: meterlas aquí obligaría a llevar la colección en
+     * el {@code @EntityGraph} de {@code StationRepository.findByIdForMessaging} y multiplicaría las
+     * filas del evento de estación por cada aguja de cada aislador, para un dato que el consumidor
+     * ya recibe completo en el evento {@code section-insulator}.
+     */
     private Map<String, Object> toSectionInsulatorPayload(SectionInsulator sectionInsulator) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", sectionInsulator.getId());
         values.put("name", sectionInsulator.getName());
         values.put("enabled", sectionInsulator.getEnabled());
+        values.put("kp", sectionInsulator.getKp());
+        values.put("installationType", sectionInsulator.getInstallationType() == null
+                ? null
+                : sectionInsulator.getInstallationType().name());
         return values;
     }
 

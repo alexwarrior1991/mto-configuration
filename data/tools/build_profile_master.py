@@ -1026,10 +1026,14 @@ SHEETS = {
                     "CATENARY_HEIGHT", "CW_ELEVATION", "CW_HEIGHT", "WIND_DEFLECTION",
                     "ARM_ANGLE", "STEADY_ARM_TYPE", "STEADY_ARM_LENGTH",
                     "ENABLED", "REVISAR", "FILA_ORIGEN"],
-    # Las dos costuras para lo que falta: se escriben con cabecera y sin filas.
+    # Las costuras para lo que falta: se escriben con cabecera y sin filas.
     "DISCONNECTORS": ["EP", "ESTACION", "VIA", "PROFILE_ID", "NOMBRE", "ON_LOAD",
                       "DISCONNECTOR_FUNCTION", "ENABLED"],
-    "SECTION_INSULATORS": ["EP", "ESTACION", "NOMBRE", "ENABLED"],
+    "SECTION_INSULATORS": ["EP", "ESTACION", "NOMBRE", "KP", "TIPO_INSTALACION",
+                           "VIA", "VIA_CONECTADA", "ENABLED"],
+    # Las agujas del aislador, una fila por aguja. AISLADOR es el NOMBRE de la hoja anterior.
+    "SECTION_INSULATOR_SWITCHES": ["EP", "ESTACION", "AISLADOR", "CODIGO", "KP",
+                                   "TANGENTE", "VIA", "ENABLED"],
     "NO_MAPEADO": ["EP", "VIA", "PROFILE_ID", "COLUMNA", "VALOR", "FILA_ORIGEN"],
     "DESCARTADOS": ["MOTIVO", "EP", "HOJA", "FILA", "DETALLE"],
     "NO_RECONOCIDO": ["TIPO", "VALOR", "EP", "HOJA", "PRIMERA_FILA", "APARICIONES"],
@@ -1058,6 +1062,28 @@ READ_ME = [
      "con su hoja y su fila; el resto del perfil se carga igual."),
     ("STEADY_ARM_TYPE / LENGTH",
      "La columna 'Arm Type' del origen trae los dos juntos ('PH-1150'). Sin longitud es normal."),
+    ("SECTION_INSULATORS / SECTION_INSULATOR_SWITCHES",
+     "El aislador de seccion y sus agujas. Hoy salen con cabecera y sin filas: el origen "
+     "todavia no trae el dato. El aislador se identifica por EP + ESTACION + NOMBRE, y cada "
+     "aguja se cuelga del suyo repitiendo esos tres valores en AISLADOR."),
+    ("TIPO_INSTALACION",
+     "TRACK_CONNECTION si el aislador separa las catenarias de DOS vias que conectan por una "
+     "aguja (lo normal), IN_TRACK si esta en medio de una sola via. Un IN_TRACK no lleva "
+     "VIA_CONECTADA. Vacio es valido: el dominio no lo exige."),
+    ("KP del aislador y de la aguja",
+     "En METROS, como el del perfil: el plano escribe '110+176' y eso son 110176. Vacio es "
+     "valido; el plano rotula el KP una vez para un grupo de agujas y no lo repite en cada una."),
+    ("TANGENTE",
+     "SOLO el denominador: 9 para una aguja 1:9, 12 para 1:12. El numerador siempre es 1, asi "
+     "que no se escribe. Se guarda el numero y no el texto para poder ordenar y comparar."),
+    ("CODIGO de la aguja",
+     "El identificador del plano: 'W' y un numero (W31, W110). No puede repetirse dentro del "
+     "mismo aislador, que es por donde se reconoce al reimportar."),
+    ("ENABLED de la aguja",
+     "A diferencia del resto de hojas, aqui NO decide si la fila se carga: una aguja con NO se "
+     "importa DESHABILITADA y llega asi a mantenimiento, que la imprime marcada en el parte de "
+     "turno. Una aguja fuera de servicio sigue estando en el plano. Lo que borra una aguja es "
+     "quitar su fila de la hoja."),
     ("NO_MAPEADO",
      "Columnas reales del origen que hoy no tienen campo en el dominio. No se importan."),
     ("DESCARTADOS", "Todo lo rechazado, con el motivo y la celda de origen."),
@@ -1105,6 +1131,7 @@ def write_master(path, master: Master):
     write_sheet(wb, "CANTILEVERS", SHEETS["CANTILEVERS"], master.cantilevers, review_key="REVISAR")
     write_sheet(wb, "DISCONNECTORS", SHEETS["DISCONNECTORS"], [])
     write_sheet(wb, "SECTION_INSULATORS", SHEETS["SECTION_INSULATORS"], [])
+    write_sheet(wb, "SECTION_INSULATOR_SWITCHES", SHEETS["SECTION_INSULATOR_SWITCHES"], [])
     write_sheet(wb, "NO_MAPEADO", SHEETS["NO_MAPEADO"], master.unmapped)
     write_sheet(wb, "DESCARTADOS", SHEETS["DESCARTADOS"],
                 [{"MOTIVO": d["motivo"], "EP": d["ep"], "HOJA": d["hoja"],

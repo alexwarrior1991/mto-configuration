@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
+import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
@@ -15,19 +16,28 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.C
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileLovCodes;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.SectionInsulatorSwitchMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.StationMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.TrackMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorSwitchDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.BusinessEntityRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.CantileverRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorSwitchRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorSwitchRepository.SwitchSnapshot;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.StationRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackRepository;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
+import com.alejandro.mtoconfiguration.service.infraestructure.imports.InfrastructureUpsertService.UpsertResult;
 import com.alejandro.mtoconfiguration.service.infraestructure.ExecutionPackageService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ProfileService;
+import com.alejandro.mtoconfiguration.service.infraestructure.SectionInsulatorService;
 import com.alejandro.mtoconfiguration.service.infraestructure.StationService;
 import com.alejandro.mtoconfiguration.service.infraestructure.TrackService;
 import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
@@ -35,6 +45,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDT
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import com.alejandro.mtoconfiguration.entity.lov.Anchorage;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
+import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
 import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
 import org.junit.jupiter.api.DisplayName;
@@ -48,11 +59,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -92,6 +106,12 @@ class InfrastructureUpsertServiceTest {
     private ProfileRepository profileRepository;
     @Mock
     private CantileverRepository cantileverRepository;
+    @Mock
+    private SectionInsulatorService sectionInsulatorService;
+    @Mock
+    private SectionInsulatorRepository sectionInsulatorRepository;
+    @Mock
+    private SectionInsulatorSwitchRepository sectionInsulatorSwitchRepository;
     @Mock
     private BusinessEntityRepository businessEntityRepository;
     @Mock
@@ -941,4 +961,194 @@ class InfrastructureUpsertServiceTest {
         return new ProfileMasterRow("EP6", "TRACK 1", "83-1.01", "83024.210", 1,
                 "DEFINITIVE", ProfileLovCodes.empty(), null, null, null, null, true, 10);
     }
+
+    /**
+     * El aislador de seccion con sus agujas.
+     *
+     * <p>Es el unico upsert cuyo subarbol tiene <b>clave natural propia</b>: la aguja se identifica
+     * por el codigo del plano dentro de su aislador, no por posicion. De ahi salen las tres
+     * propiedades que se comprueban aqui, y que son justo las que no se ven hasta la segunda
+     * importacion: que reimportar conserva el id de cada aguja, que la que el maestro deja de
+     * mandar no entra en el DTO —y la reconciliacion del mapper la borra—, y que un maestro que no
+     * cambia nada no reescribe nada.
+     */
+    @Nested
+    @DisplayName("Aislador de seccion")
+    class AisladorDeSeccion {
+
+        private static final long STATION_ID = 9L;
+        private static final long TRACK_ID = 3L;
+        private static final long CONNECTED_TRACK_ID = 4L;
+
+        @Test
+        @DisplayName("un aislador nuevo se crea con sus agujas, sin id: son filas que aun no existen")
+        void elAisladorNuevoLlevaSusAgujasSinId() {
+            when(sectionInsulatorRepository.findByNameIgnoreCaseAndStationId("B7", STATION_ID))
+                    .thenReturn(Optional.empty());
+            when(sectionInsulatorService.create(any())).thenAnswer(invocation -> {
+                SectionInsulatorDTO created = invocation.getArgument(0);
+                created.setId(77L);
+                return created;
+            });
+
+            UpsertResult result = service.upsertSectionInsulator(
+                    row(), STATION_ID, TRACK_ID, CONNECTED_TRACK_ID,
+                    List.of(switchRow("W31", "110176", 9, "TRACK 1"), switchRow("W41", "110249", 12, "TRACK 2")),
+                    trackIdsByName(), false);
+
+            assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.CREATED);
+            assertThat(result.id()).isEqualTo(77L);
+
+            SectionInsulatorDTO dto = captureCreated();
+            assertThat(dto.getKp()).isEqualByComparingTo("110176");
+            assertThat(dto.getInstallationType()).isEqualTo(SectionInsulatorInstallationType.TRACK_CONNECTION);
+            assertThat(dto.getTrackId()).isEqualTo(TRACK_ID);
+            assertThat(dto.getConnectedTrackId()).isEqualTo(CONNECTED_TRACK_ID);
+            assertThat(dto.getSwitches())
+                    .extracting(SectionInsulatorSwitchDTO::getId, SectionInsulatorSwitchDTO::getCode,
+                            SectionInsulatorSwitchDTO::getTurnoutDenominator, SectionInsulatorSwitchDTO::getTrackId)
+                    .containsExactly(
+                            tuple(null, "W31", 9, TRACK_ID),
+                            tuple(null, "W41", 12, CONNECTED_TRACK_ID));
+        }
+
+        /**
+         * Lo que separa esta importacion de un borrar-y-recrear: la aguja que vuelve con su codigo
+         * conserva su id, asi que la fila se ACTUALIZA y se queda con su historico de auditoria. Y
+         * la que el maestro ya no manda simplemente no viaja: es {@code mergeCollection} quien la
+         * borra, que es lo correcto cuando un aislador pasa de dos agujas a una.
+         */
+        @Test
+        @DisplayName("al reimportar, la aguja que vuelve conserva su id y la que falta no viaja")
+        void alReimportarLasAgujasConservanSuIdentidad() {
+            SectionInsulator existente = existente(50L);
+            when(sectionInsulatorRepository.findByNameIgnoreCaseAndStationId("B7", STATION_ID))
+                    .thenReturn(Optional.of(existente));
+            when(sectionInsulatorSwitchRepository.findSnapshotsBySectionInsulatorId(50L))
+                    .thenReturn(List.of(snapshot(501L, "W31", "110176", 9, TRACK_ID),
+                            snapshot(502L, "W41", "110249", 12, CONNECTED_TRACK_ID)));
+            when(sectionInsulatorService.update(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+            // El maestro ya solo trae W31, y con otra tangente.
+            UpsertResult result = service.upsertSectionInsulator(
+                    row(), STATION_ID, TRACK_ID, CONNECTED_TRACK_ID,
+                    List.of(switchRow("W31", "110176", 8, "TRACK 1")),
+                    trackIdsByName(), false);
+
+            assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UPDATED);
+
+            ArgumentCaptor<SectionInsulatorDTO> captor = ArgumentCaptor.forClass(SectionInsulatorDTO.class);
+            verify(sectionInsulatorService).update(captor.capture());
+            assertThat(captor.getValue().getId()).isEqualTo(50L);
+            assertThat(captor.getValue().getSwitches())
+                    .extracting(SectionInsulatorSwitchDTO::getId, SectionInsulatorSwitchDTO::getCode,
+                            SectionInsulatorSwitchDTO::getTurnoutDenominator)
+                    .containsExactly(tuple(501L, "W31", 8));
+        }
+
+        /**
+         * Sin esto, cada reimportacion del maestro reescribiria el aislador entero y dejaria una
+         * revision de Envers por cada pasada, con el mismo contenido.
+         */
+        @Test
+        @DisplayName("un maestro que no cambia nada no reescribe el aislador")
+        void elMaestroSinCambiosNoReescribeNada() {
+            SectionInsulator existente = existente(50L);
+            when(sectionInsulatorRepository.findByNameIgnoreCaseAndStationId("B7", STATION_ID))
+                    .thenReturn(Optional.of(existente));
+            when(sectionInsulatorRepository.findTrackIdsById(50L)).thenReturn(Optional.of(trackIds()));
+            when(sectionInsulatorSwitchRepository.findSnapshotsBySectionInsulatorId(50L))
+                    .thenReturn(List.of(snapshot(501L, "W31", "110176.000", 9, TRACK_ID)));
+
+            UpsertResult result = service.upsertSectionInsulator(
+                    row(), STATION_ID, TRACK_ID, CONNECTED_TRACK_ID,
+                    // El KP llega sin los decimales que tiene la columna: es el mismo punto.
+                    List.of(switchRow("W31", "110176", 9, "TRACK 1")),
+                    trackIdsByName(), false);
+
+            assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UNCHANGED);
+            verify(sectionInsulatorService, never()).update(any());
+            verify(sectionInsulatorService, never()).create(any());
+        }
+
+        private SectionInsulatorDTO captureCreated() {
+            ArgumentCaptor<SectionInsulatorDTO> captor = ArgumentCaptor.forClass(SectionInsulatorDTO.class);
+            verify(sectionInsulatorService).create(captor.capture());
+            return captor.getValue();
+        }
+
+        private static SectionInsulatorMasterRow row() {
+            return new SectionInsulatorMasterRow("EP1", "ESTACION", "B7", new BigDecimal("110176"),
+                    "TRACK_CONNECTION", "TRACK 1", "TRACK 2", true, 2);
+        }
+
+        private static SectionInsulatorSwitchMasterRow switchRow(String code, String kp, Integer denominator,
+                                                                 String track) {
+            return new SectionInsulatorSwitchMasterRow("EP1", "ESTACION", "B7", code, new BigDecimal(kp),
+                    denominator, track, true, 3);
+        }
+
+        private static Map<String, Long> trackIdsByName() {
+            return Map.of("TRACK 1", TRACK_ID, "TRACK 2", CONNECTED_TRACK_ID);
+        }
+
+        private static SectionInsulator existente(long id) {
+            SectionInsulator entity = new SectionInsulator();
+            entity.setId(id);
+            entity.setName("B7");
+            entity.setEnabled(Boolean.TRUE);
+            entity.setKp(new BigDecimal("110176.000"));
+            entity.setInstallationType(SectionInsulatorInstallationType.TRACK_CONNECTION);
+            return entity;
+        }
+
+        private static SectionInsulatorRepository.TrackIds trackIds() {
+            return new SectionInsulatorRepository.TrackIds() {
+                @Override
+                public Long getTrackId() {
+                    return TRACK_ID;
+                }
+
+                @Override
+                public Long getConnectedTrackId() {
+                    return CONNECTED_TRACK_ID;
+                }
+            };
+        }
+
+        private static SwitchSnapshot snapshot(Long id, String code, String kp, Integer denominator, Long trackId) {
+            return new SwitchSnapshot() {
+                @Override
+                public Long getSwitchId() {
+                    return id;
+                }
+
+                @Override
+                public String getCode() {
+                    return code;
+                }
+
+                @Override
+                public BigDecimal getKp() {
+                    return new BigDecimal(kp);
+                }
+
+                @Override
+                public Integer getTurnoutDenominator() {
+                    return denominator;
+                }
+
+                @Override
+                public Long getTrackId() {
+                    return trackId;
+                }
+
+                @Override
+                public Boolean getEnabled() {
+                    return Boolean.TRUE;
+                }
+            };
+        }
+    }
+
 }

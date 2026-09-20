@@ -2,13 +2,17 @@ package com.alejandro.mtoconfiguration.repository;
 
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
+import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulatorSwitch;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
+import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorCriteriaSearchRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -33,8 +37,22 @@ class SectionInsulatorCriteriaSearchIT extends AbstractCriteriaSearchIT {
         Station atocha = station("ATOCHA", paquete);
         Station chamartin = station("CHAMARTIN", paquete);
 
-        em.persist(sectionInsulator("AISL-1", true, atocha));
-        em.persist(sectionInsulator("AISL-2", false, atocha));
+        Track via1 = track("VIA 1", paquete);
+        Track via2 = track("VIA 2", paquete);
+
+        SectionInsulator conAgujas = sectionInsulator("AISL-1", true, atocha);
+        conAgujas.setInstallationType(SectionInsulatorInstallationType.TRACK_CONNECTION);
+        conAgujas.setTrack(via1);
+        conAgujas.setConnectedTrack(via2);
+        conAgujas.addSwitch(sectionInsulatorSwitch("W31", "110176.000", 9, via1));
+        conAgujas.addSwitch(sectionInsulatorSwitch("W41", "110249.000", 12, via2));
+        em.persist(conAgujas);
+
+        SectionInsulator enVia = sectionInsulator("AISL-2", false, atocha);
+        enVia.setInstallationType(SectionInsulatorInstallationType.IN_TRACK);
+        enVia.setTrack(via2);
+        em.persist(enVia);
+
         em.persist(sectionInsulator("SECC-1", true, chamartin));
         em.persist(sectionInsulator("HUERFANO", true, null));
 
@@ -96,6 +114,41 @@ class SectionInsulatorCriteriaSearchIT extends AbstractCriteriaSearchIT {
     }
 
     @Test
+    void shouldFilterByAssociatedTrackName() {
+        assertThat(names(searchInsulators(Map.of("trackName", "via 1"))))
+                .containsExactly("AISL-1");
+    }
+
+    @Test
+    void shouldFilterByInstallationType() {
+        assertThat(names(searchInsulators(Map.of("installationType", "IN_TRACK"))))
+                .containsExactly("AISL-2");
+    }
+
+    @Test
+    void shouldNotReturnAnythingForAnInstallationTypeThatDoesNotExist() {
+        // Lectura tolerante: un valor desconocido filtra por "ninguno" en vez de reventar la
+        // busqueda con un IllegalArgumentException.
+        assertThat(searchInsulators(Map.of("installationType", "NO_EXISTE")).getTotalElements()).isZero();
+    }
+
+    @Test
+    void shouldFilterBySwitchCodeWithoutDuplicatingTheInsulator() {
+        // El JOIN a la coleccion devuelve una fila POR AGUJA: sin deduplicar, un aislador con dos
+        // agujas saldria dos veces y la pagina traeria menos elementos de los pedidos.
+        assertThat(names(searchInsulators(Map.of("switchCode", "w"))))
+                .containsExactly("AISL-1");
+        assertThat(names(searchInsulators(Map.of("switchCode", "W41"))))
+                .containsExactly("AISL-1");
+    }
+
+    @Test
+    void shouldMatchSearchTextAgainstTheSwitchCode() {
+        assertThat(names(searchInsulators(Map.of("searchText", "W31"))))
+                .containsExactly("AISL-1");
+    }
+
+    @Test
     void shouldReturnEmptyPageWhenNothingMatches() {
         Page<SectionInsulator> result = searchInsulators(Map.of("name", "NO-EXISTE"));
 
@@ -135,6 +188,25 @@ class SectionInsulatorCriteriaSearchIT extends AbstractCriteriaSearchIT {
         entity.setEndDate(LocalDate.of(2026, 12, 31));
         entity.setEnabled(true);
         em.persist(entity);
+        return entity;
+    }
+
+    private Track track(String name, ExecutionPackage executionPackage) {
+        Track entity = new Track();
+        entity.setName(name);
+        entity.setEnabled(true);
+        entity.setExecutionPackage(executionPackage);
+        em.persist(entity);
+        return entity;
+    }
+
+    private static SectionInsulatorSwitch sectionInsulatorSwitch(String code, String kp, Integer tangente, Track via) {
+        SectionInsulatorSwitch entity = new SectionInsulatorSwitch();
+        entity.setCode(code);
+        entity.setKp(new BigDecimal(kp));
+        entity.setTurnoutDenominator(tangente);
+        entity.setTrack(via);
+        entity.setEnabled(true);
         return entity;
     }
 
