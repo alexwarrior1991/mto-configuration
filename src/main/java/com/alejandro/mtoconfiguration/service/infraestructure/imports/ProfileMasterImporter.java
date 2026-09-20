@@ -186,6 +186,8 @@ public class ProfileMasterImporter {
                 .collect(Collectors.groupingBy(row -> new ProfileKey(
                         key(row.executionPackage()), key(row.track()), row.orderInTrack())));
 
+        reportOrphanCantilevers(content, cantileversByProfile, report, progress);
+
         for (ProfileMasterRow row : content.profiles()) {
             if (!row.enabled()) {
                 report.skipDisabled();
@@ -215,6 +217,48 @@ public class ProfileMasterImporter {
                 fail(report, row.sourceRow(), ProfileImportReport.PROFILE, reference(row), e, progress);
             }
         }
+    }
+
+    /**
+     * Las mensulas que no casaron con ningun perfil.
+     *
+     * <p>El mismo agujero que tenian las agujas, y se tapa igual: una fila cuyo ORDEN no existe en
+     * esa via se quedaba fuera de la importacion sin que nada lo dijera, y el perfil aparecia con
+     * una mensula de menos que nadie iba a echar en falta hasta mirar el poste.
+     *
+     * <p>Se empareja por ORDEN y no por identificador de perfil —una via con dos tramos
+     * concatenados repite el identificador—, asi que el mensaje dice el orden y la via, que es lo
+     * que hay que buscar en la hoja para corregirlo.
+     *
+     * <p>Contra <b>todas</b> las filas de perfiles, no contra las escritas: un perfil deshabilitado
+     * o que fallo por su via ya tiene su linea en el informe, y repetirla por cada una de sus
+     * mensulas seria ruido sobre un problema ya contado. Las mensulas deshabilitadas no llegan
+     * aqui: el agrupamiento las filtra antes, que en un hijo cuyo ENABLED no viaja a ninguna parte
+     * sigue siendo lo que se hace.
+     */
+    private void reportOrphanCantilevers(ProfileMasterParser.ProfileMasterContent content,
+                                         Map<ProfileKey, List<CantileverMasterRow>> cantileversByProfile,
+                                         ProfileImportReport report, Consumer<Boolean> progress) {
+
+        Set<ProfileKey> declarados = content.profiles().stream()
+                .map(row -> new ProfileKey(
+                        key(row.executionPackage()), key(row.track()), row.orderInTrack()))
+                .collect(Collectors.toSet());
+
+        cantileversByProfile.forEach((profileKey, rows) -> {
+            if (declarados.contains(profileKey)) {
+                return;
+            }
+            for (CantileverMasterRow row : rows) {
+                fail(report, row.sourceRow(), ProfileImportReport.PROFILE,
+                        row.executionPackage() + " / " + row.track() + " / " + row.profileId()
+                                + " / SLOT " + row.slot(),
+                        "su perfil no esta en la hoja " + ProfileMasterParser.PROFILES_SHEET
+                                + ": ninguna fila con ORDEN " + row.orderInTrack()
+                                + " en la via '" + row.track() + "'",
+                        progress);
+            }
+        });
     }
 
     /**

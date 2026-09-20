@@ -97,6 +97,55 @@ class ProfileMasterImporterTest {
     }
 
     /**
+     * Lo mismo que con la aguja huerfana, en la mensula.
+     *
+     * <p>Se empareja por ORDEN y no por identificador de perfil, asi que una fila con el orden
+     * equivocado se quedaba fuera en silencio y el perfil salia con una mensula de menos que nadie
+     * iba a echar en falta hasta mirar el poste.
+     */
+    @Test
+    @DisplayName("una mensula cuyo perfil no existe sale en el informe, no se pierde")
+    void laMensulaHuerfanaSaleEnElInforme() {
+        givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                List.of(track("EP6", "TRACK 1", "HERZLIYA")),
+                List.of(profile("EP6", "TRACK 1", "83-1.02", 1)),
+                List.of(cantilever("EP6", "TRACK 1", "83-1.02", 1, 1),
+                        // Orden 7: en esa via no hay perfil con ese orden.
+                        cantilever("EP6", "TRACK 1", "83-1.02", 7, 2)));
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        assertThat(report.getErrors())
+                .singleElement()
+                .satisfies(error -> {
+                    assertThat(error.entity()).isEqualTo(ProfileImportReport.PROFILE);
+                    assertThat(error.reference()).contains("83-1.02", "SLOT 2");
+                    assertThat(error.message()).contains("PROFILES", "ORDEN 7", "TRACK 1");
+                });
+        // La que si casa se importa igual.
+        assertThat(report.getCantileversWritten()).isEqualTo(1);
+    }
+
+    /** Un perfil deshabilitado ya tiene su linea (omitido): sus mensulas no son huerfanas. */
+    @Test
+    @DisplayName("las mensulas de un perfil deshabilitado no se cuentan como huerfanas")
+    void lasMensulasDeUnPerfilDeshabilitadoNoSonHuerfanas() {
+        ProfileMasterRow deshabilitado = new ProfileMasterRow("EP6", "TRACK 1", "83-1.02",
+                "83063.410", 1, "DEFINITIVE", ProfileLovCodes.empty(), new BigDecimal("52.000"),
+                null, null, null, false, 7);
+
+        givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                List.of(track("EP6", "TRACK 1", "HERZLIYA")),
+                List.of(deshabilitado),
+                List.of(cantilever("EP6", "TRACK 1", "83-1.02", 1, 1)));
+
+        ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+        assertThat(report.getErrors()).isEmpty();
+        assertThat(report.getSkippedDisabled()).isEqualTo(1);
+    }
+
+    /**
      * Una errata en AISLADOR no puede perder la aguja en silencio.
      *
      * <p>Antes no casaba con ningun aislador, nadie la consumia y el informe salia limpio: el dia
