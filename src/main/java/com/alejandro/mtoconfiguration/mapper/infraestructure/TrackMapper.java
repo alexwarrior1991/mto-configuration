@@ -13,7 +13,9 @@ import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
+import org.mapstruct.Named;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 
 import java.util.LinkedHashSet;
 import java.util.Objects;
@@ -100,6 +102,26 @@ public abstract class TrackMapper implements BaseMapper<TrackDTO, Track> {
             }
             entity.setStations(resolved);
         }
+    }
+
+    /**
+     * La fila de una lista: la via sin sus perfiles. Una pagina de veinte vias con sus miles de
+     * perfiles, mensulas y catalogos no es una lista, es media base de datos; y {@code null} en la
+     * coleccion es ademas lo que la deja intacta si alguien devuelve la fila tal cual en un PUT
+     * (README_API.md §4). Las estaciones si viajan ({@code stationIds}): son ids, no hijos.
+     *
+     * <p>{@code @Named} para que MapStruct no la elija como conversion Track -> TrackDTO al mapear
+     * las vias anidadas de una estacion o de un paquete: ahi manda {@link #toDTO}.</p>
+     */
+    @Named("summary")
+    @Mapping(target = "executionPackageId", source = "executionPackage.id")
+    @Mapping(target = "stationIds", ignore = true)   // se rellenan en mapEntityToDto
+    @Mapping(target = "profiles", expression = "java(null)")
+    public abstract TrackDTO toSummaryDTO(Track entity);
+
+    @Override
+    public Page<TrackDTO> mapToSummaryDTOs(Page<Track> entities) {
+        return entities.map(this::toSummaryDTO);
     }
 
     @AfterMapping

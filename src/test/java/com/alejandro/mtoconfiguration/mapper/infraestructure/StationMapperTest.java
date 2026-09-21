@@ -229,4 +229,21 @@ class StationMapperTest {
                     .allSatisfy(track -> assertThat(track.getStations()).contains(station));
         }
     }
+
+    @Nested
+    @DisplayName("Fila de lista")
+    class FilaDeLista {
+
+        @Test
+        @DisplayName("la fila de una lista lleva la estacion sin vias, seccionadores ni aisladores")
+        void sinHijos() {
+            StationDTO fila = mapper.toSummaryDTO(estacionConDosVias());
+
+            assertThat(fila.getName()).isEqualTo("ATOCHA");
+            assertThat(fila.getTracks()).isNull();
+            assertThat(fila.getDisconnectors()).isNull();
+            assertThat(fila.getSectionInsulators()).isNull();
+            assertThat(mapper.toDTO(estacionConDosVias()).getTracks()).as("el detalle sigue completo").hasSize(2);
+        }
+    }
 }

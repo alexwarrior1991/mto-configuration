@@ -24,7 +24,16 @@ Ruta base: `/api/v1/configuration` — en los ejemplos aparece como `$BASE`.
 | `POST $BASE/{recurso}/filter` | `200` | página de Spring Data |
 
 Recursos de infraestructura: `cantilevers`, `disconnectors`, `execution-packages`, `profiles`,
-`section-insulators`, `stations`, `steady-arms`, `tracks`.
+`section-insulators`, `stations`, `steady-arms`, `tracks`. Aparte, `business-entities` (las
+empresas a las que apunta el `companyId` de un paquete) es de **solo lectura**:
+`GET $BASE/business-entities` y `GET $BASE/business-entities/{id}`. Se cargan con el maestro de
+perfiles, no por la API.
+
+**Las filas de una lista no llevan hijos.** En `/paged`, `/search` y `/filter` de
+`execution-packages`, `stations` y `tracks`, las colecciones (`tracks`, `stations`, `profiles`,
+`disconnectors`, `sectionInsulators`) van a `null`: una página de vías con sus miles de perfiles no
+es una lista, es media base de datos. El detalle (`GET $BASE/{recurso}/{id}`) las trae completas. Y
+`null` es precisamente lo que deja los hijos intactos si devuelves la fila tal cual en un `PUT` (§4).
 
 El borrado es **lógico**: marca la fila (`deleted = true`) y deja de aparecer en las consultas. No
 hay endpoint para restaurarla.
@@ -463,6 +472,9 @@ La respuesta paginada tiene siempre esta forma, la de `PagedModel` de Spring Dat
 }
 ```
 
+En `execution-packages`, `stations` y `tracks` cada elemento de `content` va **sin sus colecciones
+de hijos** (`null`, ver §1); el resto de recursos devuelve la fila completa.
+
 ### Filtro funcional (QueryDSL)
 
 Campos concretos, combinados con AND. Los vacíos no filtran.
@@ -498,10 +510,11 @@ estaciones, y no hay forma de ordenar una fila por un valor del que tiene tres. 
 `stationName` sí sigue funcionando —devuelve las vías que pasan por esa estación—, y como el
 filtro salta a una colección, ahí una vía puede aparecer una vez por estación suya.
 
-Cuidado con los filtros booleanos, que no se comportan igual en todos los recursos:
-
-- `disconnectors` → `onLoad: true` filtra; **`onLoad: false` no filtra nada** (devuelve todo).
-- `section-insulators` → `enabled: false` sí devuelve los deshabilitados.
+Los filtros booleanos de `/filter` (`enabled` en `execution-packages`, `tracks` y
+`section-insulators`; `onLoad` en `disconnectors`) filtran **solo si vienen**: `true` o `false`
+devuelven ese estado y ausente no filtra (activos e inactivos a la vez). Antes eran primitivos, así
+que un cuerpo sin el campo valía `false` y `POST /tracks/filter` con `{}` devolvía solo las vías
+desactivadas.
 
 ### Ventanas de perfiles por vía
 

@@ -32,6 +32,17 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
         return entities.map(this::toDTO);
     }
 
+    /**
+     * La fila de una lista ({@code /paged}, {@code /search} y los {@code /filter} de cada
+     * servicio). Por defecto es el DTO completo; los mappers de los padres con colecciones grandes
+     * —paquete de ejecucion, estacion, via— la sobrescriben para no arrastrar los hijos: una pagina
+     * de veinte vias con sus miles de perfiles, mensulas y catalogos no es una lista, es media base
+     * de datos. El detalle ({@code GET /{id}}) sigue trayendolo todo.
+     */
+    default Page<T> mapToSummaryDTOs(Page<E> entities) {
+        return mapToDTOs(entities);
+    }
+
     @ToEntityIgnoreAudit
     void updateEntityFromDTO(T dto, @MappingTarget E entity);
 

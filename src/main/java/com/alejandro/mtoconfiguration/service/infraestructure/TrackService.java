@@ -103,8 +103,8 @@ public class TrackService extends CRUDService<TrackDTO, Track>
         applyCondition(builder, filter.stationName(),
                 name -> qEntity.stations.any().name.containsIgnoreCase(name));
 
-        // Filtro por estado
-        builder.and(qEntity.enabled.eq(filter.enabled()));
+        // Filtro por estado: solo si viene; ausente no filtra (ver TrackFilter)
+        applyCondition(builder, filter.enabled(), qEntity.enabled::eq);
 
         // Búsqueda general (SearchText)
         Optional.ofNullable(filter.searchText())
@@ -119,7 +119,6 @@ public class TrackService extends CRUDService<TrackDTO, Track>
                     builder.and(searchBuilder);
                 });
 
-        return getRepository().findAll(builder, pageable)
-                .map(getMapper()::toDTO);
+        return getMapper().mapToSummaryDTOs(getRepository().findAll(builder, pageable));
     }
 }

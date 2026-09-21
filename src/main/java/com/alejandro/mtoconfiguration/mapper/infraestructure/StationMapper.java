@@ -15,7 +15,9 @@ import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
+import org.mapstruct.Named;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 
 import java.util.List;
 import java.util.Map;
@@ -164,6 +166,24 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
                 entity.addTrack(trackChildMapper.toEntity(childDto));
             }
         }
+    }
+
+    /**
+     * La fila de una lista: la estacion sin sus vias (que arrastran los perfiles), seccionadores ni
+     * aisladores. {@code null}, no lista vacia: es lo que deja los hijos intactos si alguien
+     * devuelve la fila tal cual en un PUT (README_API.md §4). {@code @Named} para que MapStruct no
+     * la elija al mapear las estaciones anidadas de un paquete.
+     */
+    @Named("summary")
+    @Mapping(target = "executionPackageId", source = "executionPackage.id")
+    @Mapping(target = "tracks", expression = "java(null)")
+    @Mapping(target = "disconnectors", expression = "java(null)")
+    @Mapping(target = "sectionInsulators", expression = "java(null)")
+    public abstract StationDTO toSummaryDTO(Station entity);
+
+    @Override
+    public Page<StationDTO> mapToSummaryDTOs(Page<Station> entities) {
+        return entities.map(this::toSummaryDTO);
     }
 
     @AfterMapping

@@ -288,4 +288,20 @@ class ExecutionPackageMapperTest {
                     .containsExactly("ATOCHA");
         }
     }
+
+    @Nested
+    @DisplayName("Fila de lista")
+    class FilaDeLista {
+
+        @Test
+        @DisplayName("la fila de una lista lleva el paquete sin vias ni estaciones")
+        void sinHijos() {
+            ExecutionPackageDTO fila = mapper.toSummaryDTO(paquete());
+
+            assertThat(fila.getName()).isEqualTo("PAQUETE NORTE");
+            assertThat(fila.getTracks()).isNull();
+            assertThat(fila.getStations()).isNull();
+            assertThat(mapper.toDTO(paquete()).getTracks()).as("el detalle sigue completo").hasSize(2);
+        }
+    }
 }

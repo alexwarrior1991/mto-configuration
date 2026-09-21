@@ -5,7 +5,8 @@ public record DisconnectorFilter(
         String stationName,
         String functionName,
         String searchText,
-        boolean onLoad
+        /** {@code true} o {@code false} filtran por ese estado; ausente ({@code null}) no filtra. */
+        Boolean onLoad
 ) {
     public DisconnectorFilter {
         if (name == null) name = "";

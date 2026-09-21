@@ -133,9 +133,15 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .orElseGet(ArrayList::new);
     }
 
+    /**
+     * Las listas ({@code /paged}, {@code /search} y los {@code /filter} de cada servicio) devuelven
+     * la fila de {@link BaseMapper#mapToSummaryDTOs}: el DTO completo, salvo en los padres con
+     * colecciones grandes (paquete de ejecucion, estacion, via), que van sin hijos. El detalle
+     * ({@code GET /{id}}) sigue trayendolo todo.
+     */
     public Page<T> findAll(Pageable pageable) throws BaseException {
         if (!isCacheable()) {
-            return getMapper().mapToDTOs(getRepository().findAll(pageable));
+            return getMapper().mapToSummaryDTOs(getRepository().findAll(pageable));
         }
 
         // La caché vive en PageCacheService: así la llamada cruza el proxy de Spring
@@ -143,7 +149,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
         String cacheKey = cacheKeyGenerator.buildKey(this, "findAll", pageable);
 
         return pageCacheService.getPage(cacheKey,
-                        () -> getMapper().mapToDTOs(getRepository().findAll(pageable)))
+                        () -> getMapper().mapToSummaryDTOs(getRepository().findAll(pageable)))
                 .toPage();
     }
 
@@ -160,7 +166,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
             throw new BaseException("Search method not implemented (CriteriaSearchRepository is null)");
         }
 
-        Supplier<Page<T>> loader = () -> getMapper().mapToDTOs(
+        Supplier<Page<T>> loader = () -> getMapper().mapToSummaryDTOs(
                 getCriteriaSearchRepository().criteriaSearchWithChildren(
                         (Class<E>) getEntity().getClass(), searchRequestDTO, em, searchParams()));
 
