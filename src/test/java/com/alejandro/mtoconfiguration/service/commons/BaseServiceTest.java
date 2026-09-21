@@ -473,13 +473,14 @@ class BaseServiceTest {
 
         @Test
         @DisplayName("un servicio no cacheable pagina contra el repositorio, sin pasar por la cache")
+        /** Las listas pasan por la fila resumida ({@code mapToSummaryDTOs}), no por {@code mapToDTOs}. */
         void findAllPaginadoNoCacheable() {
             Pageable pageable = PageRequest.of(0, 20);
             Page<TestEntity> page = new PageImpl<>(List.of(new TestEntity(1L)));
             Page<TestDTO> mapped = new PageImpl<>(List.of(new TestDTO(1L)));
 
             when(repository.findAll(pageable)).thenReturn(page);
-            when(mapper.mapToDTOs(page)).thenReturn(mapped);
+            when(mapper.mapToSummaryDTOs(page)).thenReturn(mapped);
 
             assertThat(service.findAll(pageable)).isEqualTo(mapped);
 
@@ -549,7 +550,7 @@ class BaseServiceTest {
 
             when(criteriaSearchRepository.criteriaSearchWithChildren(
                     TestEntity.class, request, entityManager, params)).thenReturn(page);
-            when(mapper.mapToDTOs(page)).thenReturn(mapped);
+            when(mapper.mapToSummaryDTOs(page)).thenReturn(mapped);
 
             assertThat(service.search(request)).isEqualTo(mapped);
 
@@ -578,7 +579,7 @@ class BaseServiceTest {
             Page<TestEntity> page = new PageImpl<>(List.of(new TestEntity(1L)));
 
             when(cacheKeyGenerator.buildKey(service, "search", request)).thenReturn("clave");
-            when(mapper.mapToDTOs(page)).thenReturn(new PageImpl<>(List.of(new TestDTO(1L))));
+            when(mapper.mapToSummaryDTOs(page)).thenReturn(new PageImpl<>(List.of(new TestDTO(1L))));
             when(criteriaSearchRepository.criteriaSearchWithChildren(any(), any(), any(), any()))
                     .thenReturn(page);
             when(pageCacheService.getSearch(anyString(), any())).thenAnswer(invocation ->
