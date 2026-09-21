@@ -27,6 +27,8 @@ public abstract class DisconnectorMapper implements BaseMapper<DisconnectorDTO, 
     @Override
     @Mapping(target = "stationId", source = "station.id")
     @Mapping(target = "profileId", source = "profile.id")
+    @Mapping(target = "profileCode", source = "profile.profileId")
+    @Mapping(target = "profileKp", source = "profile.kp")
     @Mapping(target = "disconnectorFunction", ignore = true)
     public abstract DisconnectorDTO toDTO(Disconnector entity);
 

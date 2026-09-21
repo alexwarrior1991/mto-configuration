@@ -23,8 +23,18 @@ spring:
       # real de la cache es invisible.
       enable-statistics: true
 
-  # Redis configuration for distributed caching
   data:
+    # Forma JSON de las paginas. Con el valor por defecto (direct) Spring Data serializa PageImpl
+    # tal cual, avisa con un WARN de que esa forma no es estable y puede cambiarla en una version.
+    # via_dto la fija: {content: [...], page: {size, number, totalElements, totalPages}}. Es la
+    # forma que consumen los clientes (mto-backoffice) y la de mto-stock y mto-maintenance. La
+    # pina ProfileControllerTest; se observo empiricamente que sin esto salia la forma plana
+    # (content, pageable, totalElements, totalPages, last, first, size, number, sort, ...).
+    web:
+      pageable:
+        serialization-mode: via_dto
+
+    # Redis configuration for distributed caching
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
@@ -172,6 +182,11 @@ spring:
 
 # Custom application-specific configuration
 app:
+  # Identificador de correlacion. El gateway lo genera (o acepta el del backoffice) y lo propaga;
+  # aqui se acepta si es valido y se genera si falta. Lo pone en el MDC CorrelationIdFilter.
+  correlation:
+    header-name: X-Correlation-Id
+    max-length: 64
   # RabbitMQ messaging configuration
   rabbitmq:
     # Enable/disable RabbitMQ functionality
@@ -578,3 +593,10 @@ configuration:
         # Añade la excepción a la respuesta de los 5xx. Solo para depurar en entornos
         # no productivos: revela estructura interna a quien llame.
         include-stack-trace: ${MTO_CONFIGURATION_ERROR_INCLUDE_STACKTRACE:false}
+
+logging:
+  pattern:
+    # [aplicacion,traceId,spanId,correlationId]: los dos del medio los pone el trazado (Micrometer)
+    # y el ultimo es el de la cabecera X-Correlation-Id, que permite seguir una llamada desde el
+    # backoffice y el gateway hasta aqui aunque la traza no se muestree.
+    correlation: "[${spring.application.name:},%X{traceId:-},%X{spanId:-},%X{correlationId:-}] "

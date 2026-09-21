@@ -86,8 +86,8 @@ public class DisconnectorService extends CRUDService<DisconnectorDTO, Disconnect
         applyCondition(builder, filter.stationName(), qEntity.station.name::containsIgnoreCase);
         applyCondition(builder, filter.functionName(), qEntity.disconnectorFunction.description::containsIgnoreCase);
 
-        // Filtro por la propiedad específica onLoad
-        builder.and(qEntity.onLoad.eq(filter.onLoad()));
+        // Filtro por onLoad: solo si viene; ausente no filtra (ver DisconnectorFilter)
+        applyCondition(builder, filter.onLoad(), qEntity.onLoad::eq);
 
         // Búsqueda general (SearchText)
         Optional.ofNullable(filter.searchText())

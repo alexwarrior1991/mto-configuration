@@ -13,7 +13,9 @@ import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
+import org.mapstruct.Named;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 
 @Mapper(
         config = CentralConfigMapper.class,
@@ -79,6 +81,23 @@ public abstract class ExecutionPackageMapper implements BaseMapper<ExecutionPack
                 (childDto, child) -> stationChildMapper.updateEntityFromDTO(childDto, child),
                 Station::setExecutionPackage
         );
+    }
+
+    /**
+     * La fila de una lista: el paquete sin sus vias ni sus estaciones. Con ellas, una pagina de
+     * paquetes es la base de datos entera (cada via trae sus perfiles). {@code null}, no lista
+     * vacia: es lo que deja los hijos intactos si alguien devuelve la fila tal cual en un PUT
+     * (README_API.md §4).
+     */
+    @Named("summary")
+    @Mapping(target = "companyId", source = "company.id")
+    @Mapping(target = "tracks", expression = "java(null)")
+    @Mapping(target = "stations", expression = "java(null)")
+    public abstract ExecutionPackageDTO toSummaryDTO(ExecutionPackage entity);
+
+    @Override
+    public Page<ExecutionPackageDTO> mapToSummaryDTOs(Page<ExecutionPackage> entities) {
+        return entities.map(this::toSummaryDTO);
     }
 
     @AfterMapping

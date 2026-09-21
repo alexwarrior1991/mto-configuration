@@ -9,7 +9,8 @@ public record SectionInsulatorFilter(
         String switchCode,
         SectionInsulatorInstallationType installationType,
         String searchText,
-        boolean enabled
+        /** {@code true} o {@code false} filtran por ese estado; ausente ({@code null}) no filtra. */
+        Boolean enabled
 ) {
     public SectionInsulatorFilter {
         if (name == null) name = "";

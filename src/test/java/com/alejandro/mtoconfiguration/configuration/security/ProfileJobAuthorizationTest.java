@@ -139,6 +139,12 @@ class ProfileJobAuthorizationTest {
         mockMvc.perform(get(JOBS + "/11111111-2222-3333-4444-555555555555")
                         .with(withRoles(SecurityRoles.CONFIG_WRITE)))
                 .andExpect(status().isForbidden());
+
+        // El listado de todas las familias (GET /jobs) es una lectura mas.
+        mockMvc.perform(get(JOBS).with(withRoles(SecurityRoles.CONFIG_READ)))
+                .andExpect(status().isOk());
+        mockMvc.perform(get(JOBS).with(withRoles(SecurityRoles.CONFIG_WRITE)))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -170,6 +176,11 @@ class ProfileJobAuthorizationTest {
 
         @PostMapping("/import")
         String startImport() {
+            return "ok";
+        }
+
+        @GetMapping
+        String listJobs() {
             return "ok";
         }
 

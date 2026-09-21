@@ -7,6 +7,7 @@ import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.querydsl.QuerydslPredicateExecutor;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
@@ -21,7 +22,7 @@ import java.util.UUID;
  * late</b>. El estado por si solo no sirve para repartir cupo, porque una fila en RUNNING de una
  * replica que murio seguiria ocupando sitio para siempre.</p>
  */
-public interface AsyncJobRepository extends JpaRepository<AsyncJob, UUID> {
+public interface AsyncJobRepository extends JpaRepository<AsyncJob, UUID>, QuerydslPredicateExecutor<AsyncJob> {
 
     /** Estados en los que un trabajo sigue vivo y, por tanto, puede ocupar cupo. */
     Collection<JobStatus> ACTIVE_STATUSES = List.of(JobStatus.PENDING, JobStatus.RUNNING);

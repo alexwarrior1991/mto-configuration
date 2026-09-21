@@ -19,6 +19,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Page;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -361,6 +363,37 @@ class TrackMapperTest {
             Station station = new Station();
             station.setId(id);
             return station;
+        }
+    }
+
+    @Nested
+    @DisplayName("Fila de lista")
+    class FilaDeLista {
+
+        @Test
+        @DisplayName("la fila de una lista lleva la via y sus estaciones, pero no sus perfiles")
+        void sinPerfilesPeroConEstaciones() {
+            Track track = viaConTresPerfiles();
+            Station station = new Station();
+            station.setId(7L);
+            track.setStations(new LinkedHashSet<>(List.of(station)));
+
+            TrackDTO fila = mapper.toSummaryDTO(track);
+
+            assertThat(fila.getName()).isEqualTo("VIA 1");
+            assertThat(fila.getStationIds()).containsExactly(7L);
+            assertThat(fila.getProfiles())
+                    .as("null, no vacia: es 'de esta coleccion no digo nada' si la fila vuelve en un PUT")
+                    .isNull();
+            assertThat(mapper.toDTO(track).getProfiles()).as("el detalle sigue completo").hasSize(3);
+        }
+
+        @Test
+        @DisplayName("la pagina resumida usa esa fila")
+        void laPaginaResumidaUsaLaFila() {
+            Page<TrackDTO> page = mapper.mapToSummaryDTOs(new PageImpl<>(List.of(viaConTresPerfiles())));
+
+            assertThat(page.getContent()).singleElement().satisfies(fila -> assertThat(fila.getProfiles()).isNull());
         }
     }
 }

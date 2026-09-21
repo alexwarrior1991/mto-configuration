@@ -115,7 +115,6 @@ public class StationService extends CRUDService<StationDTO, Station>
                     builder.and(searchBuilder);
                 });
 
-        return getRepository().findAll(builder, pageable)
-                .map(getMapper()::toDTO);
+        return getMapper().mapToSummaryDTOs(getRepository().findAll(builder, pageable));
     }
 }

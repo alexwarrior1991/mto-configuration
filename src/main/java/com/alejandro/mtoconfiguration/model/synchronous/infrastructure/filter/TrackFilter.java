@@ -5,7 +5,8 @@ public record TrackFilter(
         String executionPackageName,
         String stationName,
         String searchText,
-        boolean enabled
+        /** {@code true} o {@code false} filtran por ese estado; ausente ({@code null}) no filtra. */
+        Boolean enabled
 ) {
     public TrackFilter {
         if (name == null) name = "";

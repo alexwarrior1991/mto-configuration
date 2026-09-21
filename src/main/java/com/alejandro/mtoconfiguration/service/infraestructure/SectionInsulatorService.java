@@ -105,7 +105,8 @@ public class SectionInsulatorService extends CRUDService<SectionInsulatorDTO, Se
         Optional.ofNullable(filter.installationType())
                 .ifPresent(type -> builder.and(qEntity.installationType.eq(type)));
 
-        builder.and(qEntity.enabled.eq(filter.enabled()));
+        // Solo si viene; ausente no filtra (ver SectionInsulatorFilter)
+        applyCondition(builder, filter.enabled(), qEntity.enabled::eq);
 
         // Búsqueda general (SearchText)
         Optional.ofNullable(filter.searchText())

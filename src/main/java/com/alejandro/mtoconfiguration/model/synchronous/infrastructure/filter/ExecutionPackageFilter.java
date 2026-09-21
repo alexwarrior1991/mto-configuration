@@ -8,7 +8,8 @@ public record ExecutionPackageFilter(
         LocalDate startDate,
         LocalDate endDate,
         String searchText,
-        boolean enabled
+        /** {@code true} o {@code false} filtran por ese estado; ausente ({@code null}) no filtra. */
+        Boolean enabled
 ) {
     public ExecutionPackageFilter {
         if (name == null) name = "";

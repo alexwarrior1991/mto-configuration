@@ -102,7 +102,8 @@ public class ExecutionPackageService extends CRUDService<ExecutionPackageDTO, Ex
         applyCondition(builder, filter.startDate(), qEntity.startDate::goe);
         applyCondition(builder, filter.endDate(), qEntity.endDate::loe);
 
-        builder.and(qEntity.enabled.eq(filter.enabled()));
+        // Solo si viene; ausente no filtra (ver ExecutionPackageFilter)
+        applyCondition(builder, filter.enabled(), qEntity.enabled::eq);
 
         Optional.ofNullable(filter.searchText())
                 .filter(text -> !text.isBlank())
@@ -113,7 +114,6 @@ public class ExecutionPackageService extends CRUDService<ExecutionPackageDTO, Ex
                     builder.and(searchBuilder);
                 });
 
-        return getRepository().findAll(builder, pageable)
-                .map(getMapper()::toDTO);
+        return getMapper().mapToSummaryDTOs(getRepository().findAll(builder, pageable));
     }
 }
