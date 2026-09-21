@@ -42,6 +42,9 @@ Prefijo: `ConfigurationApiPaths.BASE_PATH + "/profiles/jobs"` → `/api/v1/confi
 | GET | `/{jobId}` | `CONFIG_READ` | 200 · 404 |
 | GET | `/{jobId}/file` | `CONFIG_READ` | 200 · 404 · 409 · 410 |
 
+Fuera del prefijo de cada familia, `GET /api/v1/configuration/jobs` lista los trabajos de **todas**
+(ver *Listado*, más abajo).
+
 `mapperType`: `basic` (por defecto), `default`, `technical`. Un valor desconocido cae en `basic`,
 igual que hacía el endpoint antiguo.
 
@@ -224,6 +227,38 @@ En una exportación terminada aparece además:
 nunca de la aplicación. Tampoco se persiste, se deriva del tipo y del estado — persistirla habría
 significado descubrir, el día que cambie el prefijo de la API, que hay miles de filas apuntando a
 una ruta que ya no existe.
+
+### Listado
+
+`GET /api/v1/configuration/jobs` lista los trabajos de **todas** las familias, del más reciente al
+más antiguo, con `CONFIG_READ`. Hasta aquí un trabajo solo se podía consultar por id: quien lo
+lanzaba era el único que podía volver a verlo, y solo mientras recordase el identificador (el
+backoffice guardaba la lista en la sesión de la persona, y un reinicio la perdía). La tabla ya
+tenía todos los trabajos hasta la purga (§5); esto solo la lee.
+
+| Parámetro | Valores |
+|---|---|
+| `type` | `PROFILE_EXPORT`, `PROFILE_BULK_CREATE`, `PROFILE_BULK_UPDATE`, `PROFILE_IMPORT`, `LOV_IMPORT`, `MASTER_DATA_REPUBLISH`; ausente, todos |
+| `status` | los seis estados de §3; ausente, todos |
+| `page`, `size`, `sort` | los de Spring Data (20 por página). `sort` admite `createdAt`, `startedAt`, `finishedAt`, `status` y `type`; cualquier otro campo cae a `createdAt,desc` sin dar error, para que un cliente no pueda pedir un orden por una columna sin índice |
+
+Cada fila lleva lo que las tres respuestas de detalle tienen en común (`id`, `type`, `status`, las
+tres fechas, `trackId`, `mapperType`, los contadores y `error`), con la misma regla de omitir lo que
+no aplica. **No lleva `itemErrors` ni `downloadUrl`**: los errores por elemento pueden ser miles de
+líneas por trabajo y se piden al detalle de la familia, y la descarga también
+(`GET /{familia}/{jobId}/file`). La página tiene la forma `{content, page:{size, number,
+totalElements, totalPages}}` de `README_API.md` §6.
+
+```json
+{
+  "content": [
+    { "id": "6f1c...", "type": "PROFILE_EXPORT", "status": "COMPLETED", "createdAt": "2026-08-27T09:12:03Z",
+      "startedAt": "2026-08-27T09:12:03Z", "finishedAt": "2026-08-27T09:12:09Z", "trackId": 123,
+      "mapperType": "basic", "totalItems": 4200, "processedItems": 4200, "successfulItems": 4200, "failedItems": 0 }
+  ],
+  "page": { "size": 20, "number": 0, "totalElements": 1, "totalPages": 1 }
+}
+```
 
 ### Descarga
 
@@ -475,6 +510,7 @@ tocó. En `bulk-create` no se exige.
 | `enums.jobs.MasterDataRepublishTarget` | qué se republica (`profile`/`disconnector`/`section-insulator`/`all`) |
 | `service.infraestructure.jobs.ProfileJobFiles` | dueño del directorio de exportación: nombra, localiza, borra |
 | `enums.jobs.JobSlotGroup` | grupos de cupo y claves de cerrojo |
+| `controller.synchronous.infraestructure.AsyncJobController` + `service.infraestructure.jobs.AsyncJobQueryService` | el listado de todas las familias (`GET /jobs`), solo lectura |
 | `entity.jobs.AsyncJob` + `repository.jpa.jobs.AsyncJobRepository` | persistencia |
 | `db/migration/V6…`, `V7__async_job_heartbeat.sql` | tabla `async_job` y latido |
 

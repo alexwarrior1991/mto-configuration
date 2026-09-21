@@ -35,6 +35,11 @@ perfiles, no por la API.
 es una lista, es media base de datos. El detalle (`GET $BASE/{recurso}/{id}`) las trae completas. Y
 `null` es precisamente lo que deja los hijos intactos si devuelves la fila tal cual en un `PUT` (§4).
 
+**`disconnectors` lleva el perfil legible.** Además de `profileId`, cada seccionador sale con
+`profileCode` (el identificador del perfil del que cuelga) y `profileKp`, los dos **solo de
+salida**: una lista de seccionadores se lee sin ir perfil por perfil, y son miles. Al escribir se
+ignoran; el perfil se elige por `profileId`.
+
 El borrado es **lógico**: marca la fila (`deleted = true`) y deja de aparecer en las consultas. No
 hay endpoint para restaurarla.
 
