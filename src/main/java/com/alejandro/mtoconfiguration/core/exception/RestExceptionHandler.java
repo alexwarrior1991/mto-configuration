@@ -10,6 +10,7 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -100,6 +101,29 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ConcurrencyException.class)
     public ResponseEntity<ProblemDetail> handleConcurrency(ConcurrencyException e, HttpServletRequest request) {
         return respond(problems.fromCode(ErrorCodes.CONCURRENCY_CONFLICT, uriOf(request)));
+    }
+
+    /**
+     * Restricción de la base de datos que ninguna validación previa detectó: en la práctica, un
+     * código repetido en un catálogo (índice único por {@code code} desde {@code V9}). Es un 409
+     * con {@code DUPLICATED_RESOURCE}, lo que el contrato de {@code AbstractLovController} promete,
+     * y no un 500: quien llama puede corregirlo. El detalle técnico va al log, no a la respuesta.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ProblemDetail> handleDataIntegrity(DataIntegrityViolationException e, HttpServletRequest request) {
+        log.warn("Restricción de integridad en {}: {}", uriOf(request), e.getMostSpecificCause().getMessage());
+        return respond(problems.fromCode(ErrorCodes.DUPLICATED_RESOURCE,
+                "La operación entra en conflicto con un registro existente: valor único repetido o referencia en uso",
+                uriOf(request)));
+    }
+
+    /**
+     * Argumento inválido detectado por un servicio ({@code code is required}, {@code Id is
+     * required}): es un error de la petición y sale como 400 con el mensaje, no como fallo interno.
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ProblemDetail> handleIllegalArgument(IllegalArgumentException e, HttpServletRequest request) {
+        return respond(problems.fromCode(ErrorCodes.VALIDATION_FAILED, e.getMessage(), uriOf(request)));
     }
 
     /**

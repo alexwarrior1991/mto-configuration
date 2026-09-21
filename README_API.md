@@ -433,6 +433,9 @@ DELETE $BASE/pole-types/{id}       # 204
 
 Un id o código inexistente responde **404**.
 
+Un `code` repetido dentro del mismo catálogo responde **409** `BUS-002` (`DUPLICATED_RESOURCE`): hay un
+índice único por `code` en cada tabla LOV desde `V9`. Un cuerpo sin `code` responde **400** `VAL-000`.
+
 Escribir en una LOV exige el rol **`LOV_MANAGE`** además del permiso de escritura habitual. Es
 deliberado: un perfil de edición diaria (`mto-editor`) mantiene infraestructura sin poder tocar el
 catálogo del que depende todo lo demás.

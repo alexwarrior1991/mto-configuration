@@ -20,6 +20,7 @@ import org.springframework.boot.security.oauth2.server.resource.autoconfigure.se
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -98,6 +99,27 @@ class RestExceptionHandlerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors", hasSize(2)))
                 .andExpect(jsonPath("$.errors[*].field", containsInAnyOrder("name", "enabled")));
+    }
+
+    @Test
+    @DisplayName("un codigo repetido (restriccion de integridad) es un 409, no un 500")
+    void integridadDevuelve409() throws Exception {
+        mockMvc.perform(get("/probe/duplicate"))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value(ErrorCodes.DUPLICATED_RESOURCE))
+                .andExpect(jsonPath("$.detail").value(containsString("conflicto")))
+                .andExpect(jsonPath("$.detail").value(not(containsString("ux_pole_type_code"))))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("un argumento invalido de un servicio es un 400 con su mensaje")
+    void argumentoInvalidoDevuelve400() throws Exception {
+        mockMvc.perform(get("/probe/illegal-argument"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCodes.VALIDATION_FAILED))
+                .andExpect(jsonPath("$.detail").value("PoleType code is required"));
     }
 
     @Test
@@ -230,6 +252,17 @@ class RestExceptionHandlerTest {
         @GetMapping("/probe/not-found")
         String notFound() {
             throw new NotFoundException("No existe la vía 42");
+        }
+
+        @GetMapping("/probe/duplicate")
+        void duplicate() {
+            throw new DataIntegrityViolationException("could not execute statement",
+                    new RuntimeException("duplicate key value violates unique constraint \"ux_pole_type_code\""));
+        }
+
+        @GetMapping("/probe/illegal-argument")
+        void illegalArgument() {
+            throw new IllegalArgumentException("PoleType code is required");
         }
 
         @GetMapping("/probe/concurrency")
