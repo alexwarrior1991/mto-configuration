@@ -9,6 +9,7 @@ import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
+import org.mapstruct.InheritConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
@@ -31,6 +32,14 @@ public abstract class CantileverMapper implements BaseMapper<CantileverDTO, Cant
     @Mapping(target = "profileId", source = "profile.id")
     @Mapping(target = "cantileverType", ignore = true) // Gestionado en AfterMapping
     public abstract CantileverDTO toDTO(Cantilever entity);
+
+    /**
+     * Hereda las reglas de {@code toDTO}: el detalle y el final de un alta o una modificacion
+     * vuelcan la entidad con este metodo, no con {@code toDTO} (ver {@code BaseMapper}).
+     */
+    @Override
+    @InheritConfiguration(name = "toDTO")
+    public abstract void updateDTOFromEntity(Cantilever entity, @MappingTarget CantileverDTO dto);
 
     @Override
     @Mapping(target = "profile", source = "profileId")

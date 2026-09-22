@@ -102,4 +102,17 @@ class DisconnectorMapperTest {
         assertThat(existente.getProfile()).isNull();
         assertThat(existente.getName()).isEqualTo("SEC-1");
     }
+
+    @Test
+    @DisplayName("el detalle de un seccionador lleva su estacion y su perfil legible, como las listas")
+    void estacionYPerfilEnElDetalle() {
+        DisconnectorDTO dto = new DisconnectorDTO();
+        mapper.updateDTOFromEntity(seccionador(), dto);
+
+        assertThat(dto.getId()).isEqualTo(1L);
+        assertThat(dto.getStationId()).isEqualTo(3L);
+        assertThat(dto.getProfileId()).isEqualTo(7L);
+        assertThat(dto.getProfileCode()).isEqualTo("P-007");
+        assertThat(dto.getProfileKp()).isEqualTo("12.345");
+    }
 }

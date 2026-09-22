@@ -45,6 +45,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 
 /**
  * Mapeo real de perfiles, contra la implementacion que genera MapStruct.
@@ -765,6 +766,58 @@ class ProfileMapperTest {
         void listaNula() {
             assertThat(mapper.toListDTO(null)).isNull();
             assertThat(mapper.toListEntity(null)).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("Detalle: updateDTOFromEntity hereda las reglas de toDTO")
+    class Detalle {
+
+        @Test
+        @DisplayName("el detalle de un perfil lleva el id de su via, como las listas")
+        void viaComoIdEnElDetalle() {
+            Track track = new Track();
+            track.setId(3L);
+            Profile entity = new Profile();
+            entity.setId(7L);
+            entity.setProfileId("P-007");
+            entity.setTrack(track);
+
+            ProfileDTO dto = new ProfileDTO();
+            mapper.updateDTOFromEntity(entity, dto);
+
+            assertThat(dto.getId()).isEqualTo(7L);
+            assertThat(dto.getProfileId()).isEqualTo("P-007");
+            assertThat(dto.getTrackId()).isEqualTo(3L);
+        }
+
+        @Test
+        @DisplayName("el seccionador anidado de un DTO ya construido sale con su estacion y su perfil legible")
+        void seccionadorAnidadoEnElDetalle() {
+            // Como llega en un PUT: el DTO ya trae un seccionador, y MapStruct lo vuelca con
+            // updateDTOFromEntity del mapper hijo, no con toDTO.
+            Station station = new Station();
+            station.setId(12L);
+            Profile entity = new Profile();
+            entity.setId(7L);
+            entity.setProfileId("P-007");
+            entity.setKp(new BigDecimal("12.345"));
+            Disconnector disconnector = new Disconnector();
+            disconnector.setId(40L);
+            disconnector.setName("SEC-40");
+            disconnector.setStation(station);
+            disconnector.setProfile(entity);
+            entity.setDisconnector(disconnector);
+
+            ProfileDTO dto = new ProfileDTO();
+            dto.setDisconnector(new DisconnectorDTO());
+            mapper.updateDTOFromEntity(entity, dto);
+
+            assertThat(dto.getDisconnector().getId()).isEqualTo(40L);
+            assertThat(dto.getDisconnector().getStationId()).isEqualTo(12L);
+            assertThat(dto.getDisconnector().getProfileId()).isEqualTo(7L);
+            assertThat(dto.getDisconnector().getProfileCode()).isEqualTo("P-007");
+            assertThat(dto.getDisconnector().getProfileKp()).isEqualTo("12.345");
         }
     }
 }

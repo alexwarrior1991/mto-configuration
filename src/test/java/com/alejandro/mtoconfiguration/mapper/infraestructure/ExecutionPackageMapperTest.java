@@ -26,6 +26,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
 
 /**
  * Reconciliacion de las dos colecciones de un paquete de ejecucion.
@@ -302,6 +303,28 @@ class ExecutionPackageMapperTest {
             assertThat(fila.getTracks()).isNull();
             assertThat(fila.getStations()).isNull();
             assertThat(mapper.toDTO(paquete()).getTracks()).as("el detalle sigue completo").hasSize(2);
+        }
+    }
+
+    @Nested
+    @DisplayName("Detalle: updateDTOFromEntity hereda las reglas de toDTO")
+    class Detalle {
+
+        @Test
+        @DisplayName("el detalle de un paquete lleva el id de su empresa, como las listas")
+        void empresaComoIdEnElDetalle() {
+            BusinessEntity empresa = new BusinessEntity();
+            empresa.setId(9L);
+            ExecutionPackage entity = new ExecutionPackage();
+            entity.setId(100L);
+            entity.setName("PAQUETE NORTE");
+            entity.setCompany(empresa);
+
+            ExecutionPackageDTO dto = new ExecutionPackageDTO();
+            mapper.updateDTOFromEntity(entity, dto);
+
+            assertThat(dto.getId()).isEqualTo(100L);
+            assertThat(dto.getCompanyId()).isEqualTo(9L);
         }
     }
 }

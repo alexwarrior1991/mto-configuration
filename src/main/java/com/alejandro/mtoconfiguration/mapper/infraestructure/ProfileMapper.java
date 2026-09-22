@@ -20,6 +20,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import org.mapstruct.AfterMapping;
+import org.mapstruct.InheritConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
@@ -65,6 +66,14 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "sectionings", ignore = true)
     @Mapping(target = "sectioningFeedings", ignore = true)
     public abstract ProfileDTO toDTO(Profile entity);
+
+    /**
+     * Hereda las reglas de {@code toDTO}: el detalle y el final de un alta o una modificacion
+     * vuelcan la entidad con este metodo, no con {@code toDTO} (ver {@code BaseMapper}).
+     */
+    @Override
+    @InheritConfiguration(name = "toDTO")
+    public abstract void updateDTOFromEntity(Profile entity, @MappingTarget ProfileDTO dto);
 
     @Override
     @Mapping(target = "track", source = "trackId")

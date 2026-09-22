@@ -9,6 +9,7 @@ import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SteadyArmDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
+import org.mapstruct.InheritConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
@@ -29,6 +30,14 @@ public abstract class SteadyArmMapper implements BaseMapper<SteadyArmDTO, Steady
     @Mapping(target = "cantileverId", source = "cantilever.id")
     @Mapping(target = "steadyArmType", ignore = true) // Gestionado en AfterMapping
     public abstract SteadyArmDTO toDTO(SteadyArm entity);
+
+    /**
+     * Hereda las reglas de {@code toDTO}: el detalle y el final de un alta o una modificacion
+     * vuelcan la entidad con este metodo, no con {@code toDTO} (ver {@code BaseMapper}).
+     */
+    @Override
+    @InheritConfiguration(name = "toDTO")
+    public abstract void updateDTOFromEntity(SteadyArm entity, @MappingTarget SteadyArmDTO dto);
 
     @Override
     @Mapping(target = "cantilever", source = "cantileverId")

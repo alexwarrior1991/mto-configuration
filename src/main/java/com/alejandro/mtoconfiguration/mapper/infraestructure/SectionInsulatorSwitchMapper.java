@@ -6,6 +6,7 @@ import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorSwitchDTO;
+import org.mapstruct.InheritConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
@@ -22,6 +23,14 @@ public abstract class SectionInsulatorSwitchMapper
     @Override
     @Mapping(target = "trackId", source = "track.id")
     public abstract SectionInsulatorSwitchDTO toDTO(SectionInsulatorSwitch entity);
+
+    /**
+     * Hereda las reglas de {@code toDTO}: el detalle y el final de un alta o una modificacion
+     * vuelcan la entidad con este metodo, no con {@code toDTO} (ver {@code BaseMapper}).
+     */
+    @Override
+    @InheritConfiguration(name = "toDTO")
+    public abstract void updateDTOFromEntity(SectionInsulatorSwitch entity, @MappingTarget SectionInsulatorSwitchDTO dto);
 
     /**
      * {@code sectionInsulator} se ignora a propósito: el lado inverso lo pone el padre, en el
