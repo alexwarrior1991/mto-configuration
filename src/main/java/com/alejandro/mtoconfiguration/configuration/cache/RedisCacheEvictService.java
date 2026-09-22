@@ -18,6 +18,13 @@ public class RedisCacheEvictService {
 
     private static final Logger log = LoggerFactory.getLogger(RedisCacheEvictService.class);
 
+    /**
+     * Prefijo de las claves del esquema de via ({@code TrackSchematicService:getSchematic:<id>}),
+     * el nombre que {@code RedisCacheKeyGenerator} saca de la clase del servicio.
+     * {@code TrackSchematicServiceTest} lo pina contra el generador real.
+     */
+    public static final String TRACK_SCHEMATIC_KEY_PREFIX = "TrackSchematicService:";
+
     private final RedisConnectionFactory redisConnectionFactory;
     private final String applicationName;
 
@@ -33,6 +40,19 @@ public class RedisCacheEvictService {
         evictByPattern(applicationName + "::" + CacheNames.NORMAL_LIST + "::" + serviceName + ":*");
         evictByPattern(applicationName + "::" + CacheNames.NORMAL_PAGE + "::" + serviceName + ":*");
         evictByPattern(applicationName + "::" + CacheNames.NORMAL_SEARCH + "::" + serviceName + ":*");
+    }
+
+    /**
+     * Vacia el esquema de <b>todas</b> las vias ({@code TrackSchematicService}).
+     *
+     * <p>Se llama tras cualquier escritura de infraestructura o de catalogo: el esquema de una via
+     * depende de ocho maestros (paquete, estacion, via, perfil, ménsula, brazo, seccionador y
+     * aislador) y de sus LOV, y el evento de invalidacion solo trae el nombre del servicio que
+     * escribio, no la via. Barrer las claves de todas las vias (como mucho una por via) es un
+     * {@code SCAN} mas; discriminar cual no seria posible sin cambiar lo que publica cada servicio.
+     */
+    public void evictTrackSchematics() {
+        evictByPattern(applicationName + "::" + CacheNames.NORMAL_ITEM + "::" + TRACK_SCHEMATIC_KEY_PREFIX + "*");
     }
 
     public void evictLovCaches() {

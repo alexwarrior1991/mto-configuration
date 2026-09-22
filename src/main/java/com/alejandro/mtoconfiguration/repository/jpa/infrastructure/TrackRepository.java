@@ -63,4 +63,12 @@ public interface TrackRepository extends CRUDRepository<Track>,
     })
     @Query("select t from Track t where t.id = :id")
     Optional<Track> findByIdForMessaging(@Param("id") Long id);
+
+    /**
+     * La cabecera del esquema de la via ({@code TrackSchematicService}): la via con su paquete y sus
+     * estaciones en una sola consulta. Los perfiles no entran aqui: los trae
+     * {@code ProfileRepository.findForSchematic} con lo que el dibujo necesita de cada uno.
+     */
+    @Query("select t from Track t left join fetch t.executionPackage left join fetch t.stations where t.id = :id")
+    Optional<Track> findForSchematic(@Param("id") Long id);
 }

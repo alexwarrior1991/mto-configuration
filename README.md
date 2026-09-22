@@ -180,6 +180,15 @@ spring:
 
 También existe una configuración propia bajo `cache.redis` con tiempos de vida diferenciados para elementos normales, listas, páginas, búsquedas y catálogos.
 
+Los maestros de infraestructura no se cachean con sus hijos (`BaseService.isCacheable()`: la
+invalidación es por servicio y un DTO con hijos quedaría obsoleto con cualquier escritura). La
+única excepción es el esquema de una vía (`GET /tracks/{id}/schematic`, `README_API.md` §6): va en
+`normal:item` con la clave `TrackSchematicService:getSchematic:<id>` y
+`RedisCacheEvictService.evictTrackSchematics()` lo vacía entero, para todas las vías, tras
+cualquier escritura de infraestructura o de catálogo (`CacheEvictionListener` y
+`LovCacheEvictionListener`, siempre después del commit), porque el evento solo trae el nombre del
+servicio que escribió.
+
 ### RabbitMQ
 
 RabbitMQ está habilitado mediante `app.rabbitmq.enabled=true`. La configuración define:

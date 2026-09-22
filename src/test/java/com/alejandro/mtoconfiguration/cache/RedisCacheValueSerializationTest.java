@@ -14,6 +14,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO;
 
 /**
  * Fija que valores se pueden guardar y volver a leer de la cache.
@@ -62,6 +63,28 @@ class RedisCacheValueSerializationTest {
 
         assertThatThrownBy(() -> roundTrip(Stream.of(new TestValue("A", "uno")).toList()))
                 .isInstanceOf(SerializationException.class);
+    }
+
+    /**
+     * El esquema de via es el unico DTO con hijos que se cachea: records anidados, listas
+     * mutables, Long, Integer, Boolean y texto en vez de BigDecimal. Si alguien le mete un
+     * BigDecimal o un List.of(), es aqui donde se ve, no en el primer acierto en produccion.
+     */
+    @Test
+    void shouldRoundTripATrackSchematicWithItsNestedRecords() {
+        var arm = new TrackSchematicDTO.CantileverArm(21L, "PT1", "-200", "5300", "1400", "SA1", 1200L);
+        var disconnector = new TrackSchematicDTO.DisconnectorMark(40L, "SEC-40", true, "FEED", "ATOCHA");
+        var profile = new TrackSchematicDTO.ProfileNode(7L, "P-007", "12.345", 1, "55.000", "HEB", null, "OK",
+                "-2.500", new ArrayList<>(List.of("S1")), new ArrayList<>(List.of(arm)), disconnector);
+        var bare = new TrackSchematicDTO.ProfileNode(8L, "P-008", "70.000", 2, null, null, null, null,
+                null, new ArrayList<>(), new ArrayList<>(), null);
+        var turnout = new TrackSchematicDTO.SwitchMark(60L, "W31", "15.500", 9, "VIA 1");
+        var insulator = new TrackSchematicDTO.InsulatorMark(50L, "AIS-50", "15.000", "TRACK_CONNECTION", true,
+                "ATOCHA", "VIA 1", "VIA 2", new ArrayList<>(List.of(turnout)));
+        var original = new TrackSchematicDTO(3L, "VIA 1", true, "EP4", new ArrayList<>(List.of("ATOCHA")),
+                new ArrayList<>(List.of(profile, bare)), new ArrayList<>(List.of(insulator)));
+
+        assertThat(roundTrip(original)).isEqualTo(original);
     }
 
     private Object roundTrip(Object value) {

@@ -15,5 +15,7 @@ public class LovCacheEvictionListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onLovCacheEviction(LovCacheEvictionEvent event) {
         redisCacheEvictService.evictLovCaches(event.lovName());
+        // El esquema de via lleva codigos de catalogo (tipo de poste, de ménsula, seccionamiento...).
+        redisCacheEvictService.evictTrackSchematics();
     }
 }

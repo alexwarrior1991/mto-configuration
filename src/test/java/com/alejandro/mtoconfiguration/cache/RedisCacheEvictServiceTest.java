@@ -27,6 +27,9 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import java.util.Arrays;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Patrones de invalidacion que se mandan a Redis.
@@ -249,6 +252,37 @@ class RedisCacheEvictServiceTest {
 
             assertThatCode(() -> service.evictNormalServiceCaches("ProfileService"))
                     .doesNotThrowAnyException();
+        }
+    }
+
+    @Nested
+    @DisplayName("Esquema de via")
+    class Esquema {
+
+        private static final String CLAVE_DE_UNA_VIA = APP + "::normal:item::TrackSchematicService:getSchematic:3";
+
+        /** Un patron glob de SCAN como expresion regular: lo que hace Redis con el {@code *}. */
+        private static boolean casa(String patron, String clave) {
+            String regex = Arrays.stream(patron.split("\\*", -1)).map(Pattern::quote).collect(Collectors.joining(".*"));
+            return clave.matches(regex);
+        }
+
+        @Test
+        @DisplayName("se barre el esquema de todas las vias, y solo en normal:item")
+        void todasLasVias() {
+            service.evictTrackSchematics();
+
+            assertThat(patronesUsados()).containsExactly(APP + "::normal:item::TrackSchematicService:*");
+            assertThat(casa(patronesUsados().getFirst(), CLAVE_DE_UNA_VIA)).isTrue();
+        }
+
+        @Test
+        @DisplayName("invalidar TrackService no arrastra el esquema: el ':' ancla el patron")
+        void trackServiceNoArrastraElEsquema() {
+            // Por eso el esquema vive en su propio servicio y los listeners lo vacian aparte.
+            service.evictNormalServiceCaches("TrackService");
+
+            assertThat(patronesUsados()).allSatisfy(patron -> assertThat(casa(patron, CLAVE_DE_UNA_VIA)).isFalse());
         }
     }
 }
