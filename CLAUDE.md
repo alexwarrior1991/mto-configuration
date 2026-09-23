@@ -20,10 +20,10 @@ Java 25, Spring Boot 4.0.1, Maven **single-module** (sin `<modules>` en `pom.xml
 | `entity` | `commons`, `infrastructure`, `configuration`, `lov`, `jobs` |
 | `model` | `commons`, `synchronous` (+ `infrastructure/jobs`, `infrastructure/imports`, `lov/imports`), `audit` |
 | `mapper` | `commons`, `infraestructure`, `lov` |
-| `validator` | `commons`, `infrastructure`, `lov` |
+| `validator` | `commons`, `infrastructure` |
 | `enums` | `infrastructure`, `lov`, `jobs` |
 | `configuration` | `cache`, `security`, `web` |
-| `core` | `audit`, `exception`, `messaging`, `outbox`, `rabbitmq`, `model` |
+| `core` | `audit`, `constraints`, `excel`, `exception`, `messaging`, `outbox`, `rabbitmq`, `model` |
 | `masterdata` | `messaging` |
 | `constant`, `utils` | transversales, sin subpaquetes |
 
@@ -40,4 +40,14 @@ Tests en `src/test/java`, misma raíz de paquete.
 - `data/README.md` — los dos maestros generados desde los workbooks (`lov-master.xlsx` y `profile-master.xlsx`), sus generadores en Python y `topology.yml`, que es donde se declara lo que no está en los ficheros
 
 ## Reglas específicas
-Reglas por capa (controllers, repositories, tests, etc.) viven en `.claude/rules/`, no aquí.
+Las reglas por capa viven en `.claude/rules/`, una capa por fichero, y no aquí. Claude Code carga cada una al tocar los ficheros de su capa (campo `paths:` de su cabecera), y cada regla dice qué test o qué mecanismo la hace cumplir.
+
+| Fichero | Capa |
+|---|---|
+| `controllers.md` | rutas, códigos de respuesta, errores (`ProblemDetail`) y permisos por ruta |
+| `services.md` | servicios, validadores y los eventos de cada escritura |
+| `mappers.md` | MapStruct: ids de padre, catálogos y colecciones de hijos |
+| `persistence.md` | entidades, repositorios, Flyway, auditoría y los `*IT` con PostgreSQL |
+| `cache.md` | Redis: claves, qué se puede cachear y la invalidación |
+| `messaging.md` | el outbox y el contrato de los eventos de datos maestros |
+| `tests.md` | fases, estilo y tests guardianes |
