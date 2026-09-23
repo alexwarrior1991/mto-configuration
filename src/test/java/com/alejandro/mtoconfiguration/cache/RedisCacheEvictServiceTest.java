@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.cache;
 
+import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheAvailability;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheEvictService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -11,6 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisKeyCommands;
@@ -23,8 +25,10 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import java.util.Arrays;
@@ -61,6 +65,8 @@ class RedisCacheEvictServiceTest {
     private RedisKeyCommands keyCommands;
     @Mock
     private Cursor<byte[]> cursor;
+    @Mock
+    private RedisCacheAvailability availability;
 
     private RedisCacheEvictService service;
 
@@ -70,8 +76,9 @@ class RedisCacheEvictServiceTest {
         when(connection.keyCommands()).thenReturn(keyCommands);
         doReturn(cursor).when(keyCommands).scan(any(ScanOptions.class));
         when(cursor.hasNext()).thenReturn(false);
+        when(availability.isAvailable()).thenReturn(true);
 
-        service = new RedisCacheEvictService(connectionFactory, APP);
+        service = new RedisCacheEvictService(connectionFactory, APP, availability);
     }
 
     /** Los patrones enviados a SCAN, en orden. */
@@ -283,6 +290,122 @@ class RedisCacheEvictServiceTest {
             service.evictNormalServiceCaches("TrackService");
 
             assertThat(patronesUsados()).allSatisfy(patron -> assertThat(casa(patron, CLAVE_DE_UNA_VIA)).isFalse());
+        }
+    }
+
+    @Nested
+    @DisplayName("Una conexion por escritura, el cortocircuito y lo pendiente")
+    class UnaConexionPorEscritura {
+
+        @Test
+        @DisplayName("una escritura de infraestructura barre los suyos, los dependientes y el esquema en UNA conexion")
+        void unaEscrituraDeInfraestructura() {
+            service.evictAfterInfrastructureWrite(List.of("ProfileService", "DisconnectorService"));
+
+            assertThat(patronesUsados()).containsExactly(
+                    APP + "::normal:item::ProfileService:*",
+                    APP + "::normal:list::ProfileService:*",
+                    APP + "::normal:page::ProfileService:*",
+                    APP + "::normal:search::ProfileService:*",
+                    APP + "::normal:item::DisconnectorService:*",
+                    APP + "::normal:list::DisconnectorService:*",
+                    APP + "::normal:page::DisconnectorService:*",
+                    APP + "::normal:search::DisconnectorService:*",
+                    APP + "::normal:item::TrackSchematicService:*");
+            // Nueve patrones, una conexion: con una por patron y Redis caido, cada escritura
+            // pagaba nueve intentos fallidos y nueve trazas, y la importacion del CI no acababa.
+            verify(connectionFactory, times(1)).getConnection();
+        }
+
+        @Test
+        @DisplayName("una escritura de catalogo barre sus cinco familias y el esquema en UNA conexion")
+        void unaEscrituraDeCatalogo() {
+            service.evictAfterLovWrite("PoleType");
+
+            assertThat(patronesUsados()).hasSize(6)
+                    .last().isEqualTo(APP + "::normal:item::TrackSchematicService:*");
+            verify(connectionFactory, times(1)).getConnection();
+        }
+
+        @Test
+        @DisplayName("con el cortocircuito abierto no se abre ninguna conexion")
+        void conElCortocircuitoAbiertoNoSeIntenta() {
+            when(availability.isAvailable()).thenReturn(false);
+
+            service.evictAfterInfrastructureWrite(List.of("ProfileService"));
+
+            verify(connectionFactory, never()).getConnection();
+        }
+
+        @Test
+        @DisplayName("un fallo de conexion degrada la cache una vez y no se propaga")
+        void unFalloDeConexionDegradaYNoRevienta() {
+            when(connectionFactory.getConnection())
+                    .thenThrow(new RedisConnectionFailureException("Unable to connect to Redis"));
+
+            assertThatCode(() -> service.evictAfterInfrastructureWrite(List.of("ProfileService")))
+                    .doesNotThrowAnyException();
+
+            verify(availability, times(1)).markDegraded(eq("eviction"), any());
+            verify(connectionFactory, times(1)).getConnection();
+        }
+
+        @Test
+        @DisplayName("lo que se salto con el cortocircuito abierto se vacia en la siguiente tanda, una sola vez")
+        void loSaltadoSeVaciaEnLaSiguiente() {
+            when(availability.isAvailable()).thenReturn(false, true);
+            service.evictAfterInfrastructureWrite(List.of("ProfileService"));
+            verify(connectionFactory, never()).getConnection();
+
+            // Redis vuelve: la siguiente escritura, de otro servicio, arrastra lo pendiente.
+            service.evictAfterInfrastructureWrite(List.of("SectionInsulatorService"));
+
+            assertThat(patronesUsados()).containsExactlyInAnyOrder(
+                    APP + "::normal:item::ProfileService:*",
+                    APP + "::normal:list::ProfileService:*",
+                    APP + "::normal:page::ProfileService:*",
+                    APP + "::normal:search::ProfileService:*",
+                    APP + "::normal:item::SectionInsulatorService:*",
+                    APP + "::normal:list::SectionInsulatorService:*",
+                    APP + "::normal:page::SectionInsulatorService:*",
+                    APP + "::normal:search::SectionInsulatorService:*",
+                    APP + "::normal:item::TrackSchematicService:*");
+
+            // Y ya no queda nada pendiente: la tercera solo barre lo suyo.
+            service.evictNormalServiceCaches("TrackService");
+            assertThat(patronesUsados()).hasSize(9 + 4)
+                    .endsWith(APP + "::normal:item::TrackService:*",
+                            APP + "::normal:list::TrackService:*",
+                            APP + "::normal:page::TrackService:*",
+                            APP + "::normal:search::TrackService:*");
+        }
+
+        @Test
+        @DisplayName("un fallo a mitad de tanda deja pendiente solo lo que faltaba")
+        void unFalloAMitadDejaPendienteLoQueFaltaba() {
+            doReturn(cursor)
+                    .doThrow(new RedisConnectionFailureException("Connection reset"))
+                    .doReturn(cursor)
+                    .when(keyCommands).scan(any(ScanOptions.class));
+
+            // Cinco patrones: el primero se vacia, el segundo falla, quedan pendientes cuatro.
+            service.evictAfterInfrastructureWrite(List.of("ProfileService"));
+            verify(availability, times(1)).markDegraded(eq("eviction"), any());
+
+            service.evictNormalServiceCaches("TrackService");
+
+            List<String> patrones = patronesUsados();
+            assertThat(patrones.subList(2, patrones.size())).containsExactlyInAnyOrder(
+                    // los cuatro que faltaban de la primera tanda...
+                    APP + "::normal:list::ProfileService:*",
+                    APP + "::normal:page::ProfileService:*",
+                    APP + "::normal:search::ProfileService:*",
+                    APP + "::normal:item::TrackSchematicService:*",
+                    // ...y los de la segunda; el primero de la primera no se repite
+                    APP + "::normal:item::TrackService:*",
+                    APP + "::normal:list::TrackService:*",
+                    APP + "::normal:page::TrackService:*",
+                    APP + "::normal:search::TrackService:*");
         }
     }
 }

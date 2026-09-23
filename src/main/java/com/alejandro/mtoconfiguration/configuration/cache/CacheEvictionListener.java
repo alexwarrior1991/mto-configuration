@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -52,13 +53,16 @@ public class CacheEvictionListener {
         this.redisCacheEvictService = redisCacheEvictService;
     }
 
+    /**
+     * Una sola llamada, y por tanto una sola conexion a Redis, con todo lo que la escritura deja
+     * obsoleto: las caches del servicio que escribio, las de sus dependientes y el esquema de via
+     * (que depende de los ocho maestros, y el evento solo dice quien escribio).
+     */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onCacheEviction(CacheEvictionEvent event) {
-        redisCacheEvictService.evictNormalServiceCaches(event.serviceName());
-        for (String dependent : DEPENDENT_SERVICES.getOrDefault(event.serviceName(), List.of())) {
-            redisCacheEvictService.evictNormalServiceCaches(dependent);
-        }
-        // El esquema de via depende de los ocho maestros y el evento solo dice quien escribio.
-        redisCacheEvictService.evictTrackSchematics();
+        List<String> services = new ArrayList<>();
+        services.add(event.serviceName());
+        services.addAll(DEPENDENT_SERVICES.getOrDefault(event.serviceName(), List.of()));
+        redisCacheEvictService.evictAfterInfrastructureWrite(services);
     }
 }

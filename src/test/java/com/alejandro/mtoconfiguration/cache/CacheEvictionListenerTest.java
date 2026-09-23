@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -23,7 +22,6 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
@@ -48,23 +46,21 @@ class CacheEvictionListenerTest {
     }
 
     @Test
-    @DisplayName("una escritura de un maestro vacia sus cachés y, siempre, el esquema de via")
+    @DisplayName("una escritura de un maestro vacia sus cachés y el esquema de via, en una sola llamada")
     void unaEscrituraVaciaLoSuyoYElEsquema() {
         listener().onCacheEviction(new CacheEvictionEvent("SectionInsulatorService"));
 
-        InOrder enOrden = inOrder(evictService);
-        enOrden.verify(evictService).evictNormalServiceCaches("SectionInsulatorService");
-        enOrden.verify(evictService).evictTrackSchematics();
+        // Una llamada = una conexion a Redis; el esquema va dentro (evictAfterInfrastructureWrite).
+        verify(evictService).evictAfterInfrastructureWrite(List.of("SectionInsulatorService"));
         verifyNoMoreInteractions(evictService);
     }
 
     @Test
-    @DisplayName("un cambio de catalogo vacia ese LOV y tambien el esquema, que lleva sus codigos")
+    @DisplayName("un cambio de catalogo vacia ese LOV y el esquema, que lleva sus codigos, en una sola llamada")
     void unCatalogoVaciaElLovYElEsquema() {
         new LovCacheEvictionListener(evictService).onLovCacheEviction(new LovCacheEvictionEvent("PoleType"));
 
-        verify(evictService).evictLovCaches("PoleType");
-        verify(evictService).evictTrackSchematics();
+        verify(evictService).evictAfterLovWrite("PoleType");
         verifyNoMoreInteractions(evictService);
     }
 
@@ -91,11 +87,9 @@ class CacheEvictionListenerTest {
         void unPerfilArrastraSeccionadoresYBrazos() {
             listener().onCacheEviction(new CacheEvictionEvent("ProfileService"));
 
-            InOrder enOrden = inOrder(evictService);
-            enOrden.verify(evictService).evictNormalServiceCaches("ProfileService");
-            enOrden.verify(evictService).evictNormalServiceCaches("DisconnectorService");
-            enOrden.verify(evictService).evictNormalServiceCaches("SteadyArmService");
-            enOrden.verify(evictService).evictTrackSchematics();
+            // Primero quien escribio, luego a quien deja obsoleto: el orden es el de la lista.
+            verify(evictService).evictAfterInfrastructureWrite(
+                    List.of("ProfileService", "DisconnectorService", "SteadyArmService"));
             verifyNoMoreInteractions(evictService);
         }
 
@@ -105,10 +99,7 @@ class CacheEvictionListenerTest {
         void losPadresArrastranALosDosCacheables(String padre) {
             listener().onCacheEviction(new CacheEvictionEvent(padre));
 
-            verify(evictService).evictNormalServiceCaches(padre);
-            verify(evictService).evictNormalServiceCaches("DisconnectorService");
-            verify(evictService).evictNormalServiceCaches("SteadyArmService");
-            verify(evictService).evictTrackSchematics();
+            verify(evictService).evictAfterInfrastructureWrite(List.of(padre, "DisconnectorService", "SteadyArmService"));
             verifyNoMoreInteractions(evictService);
         }
 
@@ -117,9 +108,7 @@ class CacheEvictionListenerTest {
         void unaMensulaArrastraSoloLosBrazos() {
             listener().onCacheEviction(new CacheEvictionEvent("CantileverService"));
 
-            verify(evictService).evictNormalServiceCaches("CantileverService");
-            verify(evictService).evictNormalServiceCaches("SteadyArmService");
-            verify(evictService).evictTrackSchematics();
+            verify(evictService).evictAfterInfrastructureWrite(List.of("CantileverService", "SteadyArmService"));
             verifyNoMoreInteractions(evictService);
         }
 
@@ -128,8 +117,7 @@ class CacheEvictionListenerTest {
         void unSeccionadorNoArrastraANadie() {
             listener().onCacheEviction(new CacheEvictionEvent("DisconnectorService"));
 
-            verify(evictService).evictNormalServiceCaches("DisconnectorService");
-            verify(evictService).evictTrackSchematics();
+            verify(evictService).evictAfterInfrastructureWrite(List.of("DisconnectorService"));
             verifyNoMoreInteractions(evictService);
         }
 

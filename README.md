@@ -195,6 +195,13 @@ seccionador lleva `profileCode`/`profileKp` del perfil y se modifica dentro de u
 estación; el brazo, dentro de su ménsula. La tabla de quién arrastra a quién es
 `CacheEvictionListener.DEPENDENT_SERVICES`.
 
+Todo lo que vacía una escritura va por **una sola conexión** a Redis y respeta el cortocircuito de
+`RedisCacheAvailability`, como la lectura: con la caché degradada no se intenta nada, y un fallo
+de conexión la degrada (la traza sale una vez por ventana). Lo que no se pudo vaciar queda
+pendiente en memoria y se vacía con la siguiente escritura que encuentre Redis; si no llega
+ninguna, lo acota el TTL. Antes era una conexión por patrón: con Redis caído, una escritura de
+perfil pagaba trece intentos fallidos y trece trazas.
+
 ### RabbitMQ
 
 RabbitMQ está habilitado mediante `app.rabbitmq.enabled=true`. La configuración define:
