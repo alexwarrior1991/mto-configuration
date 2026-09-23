@@ -27,9 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.cache.annotation.Caching;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -437,15 +435,6 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
 
     private String getCurrentServiceName() {
         return AopUtils.getTargetClass(this).getSimpleName();
-    }
-
-    @Caching(evict = {
-            @CacheEvict(value = "${cache.application}.item", key = "#root.targetClass.getSimpleName()", allEntries = true),
-            @CacheEvict(value = "${cache.application}.list", key = "#root.targetClass.getSimpleName()"),
-            @CacheEvict(value = "${cache.application}.page", key = "#root.targetClass.getSimpleName()", allEntries = true)
-    })
-    public void cacheClean(Boolean redirect) {
-        log.info("Cleaning cache for service: {}", getClass().getSimpleName());
     }
 
 }
