@@ -189,6 +189,12 @@ cualquier escritura de infraestructura o de catálogo (`CacheEvictionListener` y
 `LovCacheEvictionListener`, siempre después del commit), porque el evento solo trae el nombre del
 servicio que escribió.
 
+Por lo mismo, las dos cachés de entidad (`DisconnectorService`, `SteadyArmService`) se vacían
+también cuando escribe otro servicio que copia sus datos o escribe sus filas anidadas: el
+seccionador lleva `profileCode`/`profileKp` del perfil y se modifica dentro de un perfil o de una
+estación; el brazo, dentro de su ménsula. La tabla de quién arrastra a quién es
+`CacheEvictionListener.DEPENDENT_SERVICES`.
+
 ### RabbitMQ
 
 RabbitMQ está habilitado mediante `app.rabbitmq.enabled=true`. La configuración define:
