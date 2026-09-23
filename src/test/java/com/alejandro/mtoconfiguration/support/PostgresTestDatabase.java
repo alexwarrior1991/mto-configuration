@@ -41,6 +41,14 @@ public final class PostgresTestDatabase {
         registry.add("spring.datasource.username", PostgresTestDatabase::username);
         registry.add("spring.datasource.password", PostgresTestDatabase::password);
         registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
+        // Cada clase que llama aqui es un contexto propio (su @DynamicPropertySource), Spring
+        // los guarda todos hasta que acaba la JVM y todos van contra la misma base. Con el pool
+        // por defecto de Hikari, cada uno se quedaba con 10 conexiones abiertas aunque su clase
+        // hubiese terminado, y once contextos agotan las 100 de PostgreSQL: el siguiente IT
+        // fallaba con "too many clients". El maximo sigue en 10 porque OutboxRelayIT y
+        // AsyncJobSlotIT abren 6 y 8 a la vez; lo que no se usa se devuelve a los 10 s.
+        registry.add("spring.datasource.hikari.minimum-idle", () -> "1");
+        registry.add("spring.datasource.hikari.idle-timeout", () -> "10000");
 
         registry.add("spring.flyway.enabled", () -> "true");
         registry.add("spring.flyway.locations", () -> "classpath:db/migration");

@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
+import org.hibernate.Hibernate;
 import org.hibernate.annotations.DynamicInsert;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.envers.Audited;
@@ -110,11 +111,23 @@ public abstract class BaseEntity implements IEntity, Comparable<BaseEntity>, Ser
         this.versionNumber = versionNumber;
     }
 
+    /**
+     * Bloqueo optimista con el {@code versionNumber} que el cliente leyo.
+     *
+     * <p>Hace falta comprobarlo a mano: el servicio carga la entidad en la misma transaccion en la
+     * que escribe, asi que el {@code @Version} de JPA nunca ve un conflicto, y los mappers no
+     * copian la version del DTO a la entidad.</p>
+     *
+     * <p>{@code null} no comprueba nada: quien no manda version escribe sobre lo que haya. Es lo
+     * que hacen a proposito el importador del maestro, que es la fuente del dato, y los trabajos
+     * que construyen el DTO en Java. Con version, tiene que ser la de la fila; si no, alguien ha
+     * guardado desde la lectura y aplicar el cambio pisaria el suyo (409 {@code CON-001}).</p>
+     */
     @Override
     public void validateVersion(Integer versionNumber) throws ConcurrencyException {
-        final Integer v = versionNumber == null ? 1 : versionNumber;
-        if (!this.versionNumber.equals(v)) {
-            throw new ConcurrencyException("validation.lock.notLastVersion");
+        if (versionNumber != null && !versionNumber.equals(this.versionNumber)) {
+            throw new ConcurrencyException("%s %d ha cambiado desde que se leyo: llego la version %d y va por la %d"
+                    .formatted(Hibernate.getClass(this).getSimpleName(), getId(), versionNumber, this.versionNumber));
         }
     }
 

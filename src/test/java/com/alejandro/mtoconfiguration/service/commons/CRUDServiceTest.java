@@ -3,7 +3,7 @@ package com.alejandro.mtoconfiguration.service.commons;
 import com.alejandro.mtoconfiguration.business.commons.CRUDBusiness;
 import com.alejandro.mtoconfiguration.configuration.cache.CacheEvictionEvent;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheKeyGenerator;
-import com.alejandro.mtoconfiguration.core.exception.BaseException;
+import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.model.commons.Alert;
@@ -145,13 +145,15 @@ class CRUDServiceTest {
     }
 
     @Test
-    @DisplayName("borrar un id inexistente nombra la entidad y el id en el error")
+    @DisplayName("borrar un id inexistente es un NotFoundException (404), con la entidad y el id")
     void borradoIdInexistente() {
         when(repository.findById(9L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.delete(new TestDTO(9L)))
-                .isInstanceOf(BaseException.class)
+                .isInstanceOf(NotFoundException.class)
                 .hasMessage("TestEntity Object not found with id 9");
+
+        verify(repository, never()).saveAndFlush(any());
     }
 
     @Test

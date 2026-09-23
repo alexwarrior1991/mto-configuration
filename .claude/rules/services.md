@@ -37,9 +37,20 @@ paths:
   (validadores sin estado y registrados en Spring).
 - Una colección de hijos en un `PUT` es el estado final (README_API.md §4). La reconcilian los
   mappers, no el servicio (ver `mappers.md`).
+- Bloqueo optimista: `update` y `bulkUpdate` (y los de `AbstractLovCrudService`) comparan el
+  `versionNumber` del DTO con el guardado antes de tocar nada (`BaseEntity.validateVersion`), porque
+  el `@Version` de JPA no ve el conflicto cuando la entidad se carga en la misma transacción. Si no
+  coincide, `ConcurrencyException` (409 `CON-001`) y no se escribe nada. `null` no comprueba nada: el
+  importador del maestro y los trabajos escriben así a propósito. Los hijos los compara el mapper (ver
+  `mappers.md`). Lo fijan `BaseServiceTest`, `AbstractLovCrudServiceTest`, `BaseEntityTest` y
+  `OptimisticLockingIT`.
+- La respuesta de una modificación lleva la versión que se acaba de escribir: se hace `flush` antes de
+  mapearla (`saveAndFlush`, o `saveAll` y `flush` en un lote). Con un `save` a secas la versión sube al
+  confirmar, después de mapear, y el cliente que reenvía la respuesta recibe un 409.
 - Borrar es lógico: `CRUDEntity.delete()` marca `deleted = true` y la fila se queda (ver
   `persistence.md`).
-- Lo que no existe se lanza como `NotFoundException` (404). Un `BaseException` con un texto libre sale
-  como 500 (ver `controllers.md`).
+- Lo que no existe se lanza como `NotFoundException` (404), también al modificar y al borrar
+  (`BaseService.notFound`). Un `BaseException` con un texto libre sale como 500 (ver
+  `controllers.md`).
 - Los tests de servicio no levantan Spring: JUnit con Mockito (`@ExtendWith(MockitoExtension.class)`)
   sobre los colaboradores.

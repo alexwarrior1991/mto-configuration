@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.mapper.commons;
 
+import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
 import org.junit.jupiter.api.DisplayName;
@@ -12,6 +13,8 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Utilidades de vinculacion padre-hijo que {@link BaseMapper} pone a disposicion de los mappers
@@ -262,6 +265,71 @@ class BaseMapperTest {
                     dto -> new Child(null), (dto, child) -> { }, Child::setParent);
 
             assertThat(entities).containsExactly(uno, otro);
+        }
+    }
+
+    @Nested
+    @DisplayName("Version de los hijos")
+    class VersionDeLosHijos {
+
+        private TestDTO dtoConVersion(Long id, Integer version) {
+            TestDTO dto = new TestDTO(id);
+            dto.setVersionNumber(version);
+            return dto;
+        }
+
+        @Test
+        @DisplayName("un hijo que llega con una version desactualizada es un conflicto y no se vuelca")
+        void hijoDesactualizado() {
+            // Otro ha guardado esa mensula desde que el cliente leyo el perfil: volcar el DTO
+            // pisaria su cambio sin que nadie se enterase.
+            Child existente = new Child(1L);
+            existente.setVersionNumber(4);
+            List<Child> entities = new ArrayList<>(List.of(existente));
+            List<Long> actualizados = new ArrayList<>();
+
+            assertThatThrownBy(() -> mapper.mergeCollection(List.of(dtoConVersion(1L, 3)), entities,
+                    new Parent(), dto -> new Child(null), (dto, child) -> actualizados.add(child.getId()),
+                    Child::setParent))
+                    .isInstanceOf(ConcurrencyException.class);
+
+            assertThat(actualizados).isEmpty();
+        }
+
+        @Test
+        @DisplayName("con la version que se leyo, o sin version, el hijo se vuelca")
+        void hijoAlDiaOSinVersion() {
+            Child alDia = new Child(1L);
+            alDia.setVersionNumber(4);
+            Child sinVersion = new Child(2L);
+            sinVersion.setVersionNumber(9);
+            List<Child> entities = new ArrayList<>(List.of(alDia, sinVersion));
+            List<Long> actualizados = new ArrayList<>();
+
+            mapper.mergeCollection(List.of(dtoConVersion(1L, 4), dtoConVersion(2L, null)), entities,
+                    new Parent(), dto -> new Child(null), (dto, child) -> actualizados.add(child.getId()),
+                    Child::setParent);
+
+            assertThat(actualizados).containsExactly(1L, 2L);
+        }
+
+        @Test
+        @DisplayName("el 1:1 solo se compara con su propia fila")
+        void unoAUnoSoloConSuFila() {
+            Child guardado = new Child(1L);
+            guardado.setVersionNumber(4);
+
+            // Mismo id y otra version: conflicto.
+            assertThatThrownBy(() -> mapper.checkVersion(dtoConVersion(1L, 3), guardado))
+                    .isInstanceOf(ConcurrencyException.class);
+
+            // Otra fila, un hijo nuevo o nada que comparar: no hay conflicto posible.
+            assertThatCode(() -> {
+                mapper.checkVersion(dtoConVersion(2L, 3), guardado);
+                mapper.checkVersion(dtoConVersion(null, 3), guardado);
+                mapper.checkVersion(dtoConVersion(1L, 3), null);
+                mapper.checkVersion(null, guardado);
+            }).doesNotThrowAnyException();
         }
     }
 

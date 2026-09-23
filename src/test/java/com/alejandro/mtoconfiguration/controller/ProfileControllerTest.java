@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.controller;
 import com.alejandro.mtoconfiguration.configuration.security.KeycloakJwtAuthenticationConverter;
 import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.controller.synchronous.infraestructure.ProfileController;
+import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.RestExceptionHandler;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
@@ -45,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -399,6 +401,39 @@ class ProfileControllerTest {
             when(profileService.getById(404L)).thenThrow(new NotFoundException("No existe el perfil 404"));
 
             mockMvc.perform(get(PROFILES + "/404")).andExpect(status().isNotFound());
+        }
+
+        @Test
+        @DisplayName("modificar o borrar un perfil que no existe sale como 404 NOT-001, no como 500")
+        void modificarOBorrarInexistente() throws Exception {
+            when(profileService.update(any()))
+                    .thenThrow(new NotFoundException("Profile Object not found with id 404"));
+            doThrow(new NotFoundException("Profile Object not found with id 404"))
+                    .when(profileService).delete(any());
+
+            mockMvc.perform(put(PROFILES + "/404")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"profileId\":\"P-404\"}"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("NOT-001"));
+
+            mockMvc.perform(delete(PROFILES + "/404"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("NOT-001"));
+        }
+
+        @Test
+        @DisplayName("un versionNumber desactualizado sale como 409 CON-001")
+        void versionDesactualizada() throws Exception {
+            when(profileService.update(any())).thenThrow(new ConcurrencyException(
+                    "Profile 7 ha cambiado desde que se leyo: llego la version 2 y va por la 3"));
+
+            mockMvc.perform(put(PROFILES + "/7")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"profileId\":\"P-7\",\"versionNumber\":2}"))
+                    .andExpect(status().isConflict())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                    .andExpect(jsonPath("$.code").value("CON-001"));
         }
 
         @Test

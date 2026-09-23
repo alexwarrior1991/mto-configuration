@@ -4,6 +4,8 @@ import com.alejandro.mtoconfiguration.business.commons.CRUDBusiness;
 import com.alejandro.mtoconfiguration.configuration.cache.CacheEvictionEvent;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheKeyGenerator;
 import com.alejandro.mtoconfiguration.core.exception.BaseException;
+import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
+import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.model.commons.Alert;
@@ -293,12 +295,14 @@ class BaseServiceTest {
         }
 
         @Test
-        @DisplayName("modificar un id inexistente nombra la entidad y el id en el error")
+        @DisplayName("modificar un id inexistente es un NotFoundException (404), con la entidad y el id")
         void updateIdInexistente() {
+            // Un BaseException a secas con este texto salia como 500 TEC-999: el manejador solo
+            // respeta el estado de los que llevan un codigo del catalogo.
             when(repository.findById(9L)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.update(new TestDTO(9L)))
-                    .isInstanceOf(BaseException.class)
+                    .isInstanceOf(NotFoundException.class)
                     .hasMessage("TestEntity Object not found with id 9");
         }
 
@@ -306,6 +310,54 @@ class BaseServiceTest {
         @DisplayName("modificar un DTO nulo es un error de servicio")
         void updateNulo() {
             assertThatThrownBy(() -> service.update(null)).isInstanceOf(BaseException.class);
+        }
+
+        @Test
+        @DisplayName("una version desactualizada es un conflicto y no toca nada")
+        void updateVersionDesactualizada() {
+            TestDTO dto = new TestDTO(5L);
+            dto.setVersionNumber(2);
+            TestEntity entity = new TestEntity(5L);
+            entity.setVersionNumber(3);
+
+            when(repository.findById(5L)).thenReturn(Optional.of(entity));
+
+            assertThatThrownBy(() -> service.update(dto))
+                    .isInstanceOf(ConcurrencyException.class)
+                    .hasMessageContaining("llego la version 2 y va por la 3");
+
+            verify(mapper, never()).updateEntityFromDTO(any(), any());
+            verify(repository, never()).saveAndFlush(any());
+            verifyNoInteractions(publisher);
+        }
+
+        @Test
+        @DisplayName("la version que se leyo deja guardar")
+        void updateVersionAlDia() {
+            TestDTO dto = new TestDTO(5L);
+            dto.setVersionNumber(3);
+            TestEntity entity = new TestEntity(5L);
+            entity.setVersionNumber(3);
+
+            when(repository.findById(5L)).thenReturn(Optional.of(entity));
+            when(repository.saveAndFlush(entity)).thenReturn(entity);
+
+            assertThat(service.update(dto)).isSameAs(dto);
+            verify(repository).saveAndFlush(entity);
+        }
+
+        @Test
+        @DisplayName("sin version no se comprueba nada: el importador del maestro escribe asi")
+        void updateSinVersion() {
+            TestEntity entity = new TestEntity(5L);
+            entity.setVersionNumber(7);
+
+            when(repository.findById(5L)).thenReturn(Optional.of(entity));
+            when(repository.saveAndFlush(entity)).thenReturn(entity);
+
+            service.update(new TestDTO(5L));
+
+            verify(repository).saveAndFlush(entity);
         }
     }
 
@@ -345,10 +397,29 @@ class BaseServiceTest {
             when(repository.findById(2L)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.bulkUpdate(List.of(new TestDTO(1L), new TestDTO(2L))))
-                    .isInstanceOf(BaseException.class)
+                    .isInstanceOf(NotFoundException.class)
                     .hasMessage("TestEntity Object not found with id 2");
 
             verify(repository, never()).saveAll(anyList());
+        }
+
+        @Test
+        @DisplayName("una version desactualizada en mitad del lote aborta la operacion entera")
+        void bulkUpdateVersionDesactualizada() {
+            TestDTO first = new TestDTO(1L);
+            TestDTO second = new TestDTO(2L);
+            second.setVersionNumber(1);
+            TestEntity secondEntity = new TestEntity(2L);
+            secondEntity.setVersionNumber(4);
+
+            when(repository.findById(1L)).thenReturn(Optional.of(new TestEntity(1L)));
+            when(repository.findById(2L)).thenReturn(Optional.of(secondEntity));
+
+            assertThatThrownBy(() -> service.bulkUpdate(List.of(first, second)))
+                    .isInstanceOf(ConcurrencyException.class);
+
+            verify(repository, never()).saveAll(anyList());
+            verifyNoInteractions(publisher);
         }
 
         @Test

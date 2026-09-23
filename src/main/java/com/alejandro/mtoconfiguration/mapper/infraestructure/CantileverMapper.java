@@ -64,7 +64,10 @@ public abstract class CantileverMapper implements BaseMapper<CantileverDTO, Cant
         }
 
         // 3. Sincronización de la relación 1:1 con SteadyArm (Bidireccional)
-        // Usamos linkEntity para asegurar que el SteadyArm apunte correctamente al Cantilever padre
+        // Usamos linkEntity para asegurar que el SteadyArm apunte correctamente al Cantilever padre.
+        // Antes, la version: el codigo generado ya ha volcado el DTO sobre el brazo, y si estaba
+        // desactualizado la excepcion deshace la transaccion sin escribir nada.
+        checkVersion(dto.getSteadyArm(), entity.getSteadyArm());
         linkEntity(
                 entity.getSteadyArm(),
                 entity,

@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.mapper.infraestructure;
 
+import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
@@ -41,6 +42,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -741,6 +743,73 @@ class ProfileMapperTest {
 
             assertThat(mapper.toDTO(entity).getDisconnector()).isNotNull();
             assertThat(mapper.toDTO(entity).getDisconnector().getName()).isEqualTo("SECC-1");
+        }
+
+        @Test
+        @DisplayName("una mensula que alguien guardo despues de leer el perfil es un conflicto")
+        void mensulaDesactualizada() {
+            Profile entity = new Profile();
+            Cantilever existente = new Cantilever();
+            existente.setId(1L);
+            existente.setVersionNumber(4);
+            existente.setCwHeight(new BigDecimal("5.500"));
+            entity.setCantilevers(new ArrayList<>(List.of(existente)));
+
+            ProfileDTO dto = dto();
+            CantileverDTO leida = cantilever(1L);
+            leida.setVersionNumber(3);
+            leida.setCwHeight(new BigDecimal("9.999"));
+            dto.setCantilevers(new ArrayList<>(List.of(leida)));
+
+            assertThatThrownBy(() -> mapper.updateEntityFromDTO(dto, entity))
+                    .isInstanceOf(ConcurrencyException.class);
+            assertThat(existente.getCwHeight()).as("la mensula no se ha tocado").isEqualByComparingTo("5.500");
+        }
+
+        @Test
+        @DisplayName("el seccionador que alguien guardo despues de leer el perfil es un conflicto")
+        void seccionadorDesactualizado() {
+            // El 1:1 lo vuelca el codigo generado antes del @AfterMapping; la excepcion deshace
+            // la transaccion, asi que lo que importa es que salte.
+            Disconnector guardado = new Disconnector();
+            guardado.setId(5L);
+            guardado.setVersionNumber(2);
+
+            Profile entity = new Profile();
+            entity.setDisconnector(guardado);
+
+            DisconnectorDTO leido = new DisconnectorDTO();
+            leido.setId(5L);
+            leido.setVersionNumber(1);
+            leido.setName("SECC-1");
+            ProfileDTO dto = dto();
+            dto.setDisconnector(leido);
+
+            assertThatThrownBy(() -> mapper.updateEntityFromDTO(dto, entity))
+                    .isInstanceOf(ConcurrencyException.class)
+                    .hasMessageContaining("llego la version 1 y va por la 2");
+        }
+
+        @Test
+        @DisplayName("el seccionador con la version que se leyo, o sin version, se vuelca")
+        void seccionadorAlDia() {
+            Disconnector guardado = new Disconnector();
+            guardado.setId(5L);
+            guardado.setVersionNumber(2);
+
+            Profile entity = new Profile();
+            entity.setDisconnector(guardado);
+
+            DisconnectorDTO leido = new DisconnectorDTO();
+            leido.setId(5L);
+            leido.setVersionNumber(2);
+            leido.setName("SECC-2");
+            ProfileDTO dto = dto();
+            dto.setDisconnector(leido);
+
+            mapper.updateEntityFromDTO(dto, entity);
+
+            assertThat(guardado.getName()).isEqualTo("SECC-2");
         }
     }
 

@@ -27,6 +27,11 @@ paths:
   `null` no toca nada (README_API.md §4). Los 1:1 se enlazan con `linkEntity`. Nunca con la estrategia
   de colecciones de MapStruct: reemplazar borra e inserta, y los hijos cambian de id y pierden su
   historial. Lo fijan `BaseMapperTest` («Fusion por id») y los `mapper/merge/*ChildMergeIT`.
+- Antes de volcar un hijo que llega con su id, se compara su `versionNumber` con el guardado
+  (`BaseMapper.checkVersion`): `mergeCollection` lo hace con cada hijo de la colección, y un 1:1 nuevo
+  tiene que llamarlo en su `@AfterMapping`, como el seccionador en `ProfileMapper` y el brazo en
+  `CantileverMapper`. Lo fijan `BaseMapperTest` («Version de los hijos»), `ProfileMapperTest` y
+  `CantileverMapperTest`.
 - Tests: `MapperGraph` monta los mappers generados reales con sus dependencias
   (`new MapperGraph(masterDataService, referenceMapper).profile`); un `XMapperTest` por mapper, con un
   `@Nested` por aspecto.

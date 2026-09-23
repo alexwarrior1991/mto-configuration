@@ -105,11 +105,17 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
         E entity = repository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException(getEntityName() + " not found with id " + id));
 
+        // Mismo bloqueo optimista que los maestros: sin version no se comprueba nada.
+        entity.validateVersion(dto.getVersionNumber());
+
         mapper.updateEntityFromDTO(dto, entity);
 
         beforeUpdate(dto, entity);
 
-        E saved = repository.save(entity);
+        // saveAndFlush y no save: el UPDATE, y con el la subida de versionNumber, tiene que
+        // haberse hecho antes de mapear la respuesta. Con save la respuesta traia la version
+        // anterior, y quien la reenviase en su siguiente modificacion recibiria un 409.
+        E saved = repository.saveAndFlush(entity);
 
         afterUpdate(saved);
 
@@ -179,6 +185,8 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
             E entity = repository.findById(id)
                     .orElseThrow(() -> new EntityNotFoundException(getEntityName() + " not found with id " + id));
 
+            entity.validateVersion(dto.getVersionNumber());
+
             mapper.updateEntityFromDTO(dto, entity);
 
             beforeUpdate(dto, entity);
@@ -187,6 +195,8 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
         }
 
         List<E> savedEntities = repository.saveAll(entities);
+        // Como en update: la respuesta tiene que llevar las versiones nuevas.
+        repository.flush();
 
         savedEntities.forEach(this::afterUpdate);
 
