@@ -196,7 +196,10 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
                 Cantilever::setProfile
         );
 
-        // 3. Sincronización de relación 1:1 con Disconnector (Bidireccional)
+        // 3. Sincronización de relación 1:1 con Disconnector (Bidireccional). El codigo generado
+        //    ya ha volcado el DTO sobre el seccionador; si estaba desactualizado, la excepcion
+        //    deshace la transaccion y no se escribe nada.
+        checkVersion(dto.getDisconnector(), entity.getDisconnector());
         if (entity.getDisconnector() != null) {
             linkEntity(entity.getDisconnector(), entity, Disconnector::setProfile);
         }

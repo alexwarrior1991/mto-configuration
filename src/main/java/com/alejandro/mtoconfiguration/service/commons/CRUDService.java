@@ -30,7 +30,7 @@ public abstract class CRUDService<T extends BaseDTO, E extends CRUDEntity> exten
                 .filter(Utils::exists)
                 .map(T::getId)
                 .map(id -> getRepository().findById(id)
-                        .orElseThrow(() -> new BaseException(getEntity().getClass().getSimpleName() + " Object not found with id " + id))
+                        .orElseThrow(() -> notFound(id))
                 )
                 .ifPresent(entity -> {
 

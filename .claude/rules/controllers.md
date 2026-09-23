@@ -43,8 +43,10 @@ paths:
   `validator/ErrorCatalogTest` (toda constante tiene entrada) y `core/exception/ErrorCatalogTest`
   (toda entrada tiene estado y título).
 - Lo que no existe se lanza como `NotFoundException` (o sale de `getReferenceById` como
-  `EntityNotFoundException`): 404 `NOT-001`. Un `BaseException` cuyas alertas no llevan un código del
-  catálogo acaba en 500 `TEC-999`, y un texto libre no es un código.
+  `EntityNotFoundException`): 404 `NOT-001`, al leer, al modificar y al borrar. Un `BaseException`
+  cuyas alertas no llevan un código del catálogo acaba en 500 `TEC-999`, y un texto libre no es un
+  código. Un `versionNumber` desactualizado es `ConcurrencyException`: 409 `CON-001` (ver
+  `services.md`). Lo fija `ProfileControllerTest` («Errores»).
 - Validación: el servicio lanza `ValidationException` con las alertas del validador y sale 400
   `VAL-000` con `errors[{field, code, message}]`, donde `field` es la ruta desde la raíz del cuerpo
   (`cantilevers[1].cwHeight`; `[0].name` en un lote). Un `IllegalArgumentException` es 400 `VAL-000`,

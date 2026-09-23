@@ -96,6 +96,21 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
         }
     }
 
+    /**
+     * Bloqueo optimista de un hijo que viaja dentro de la peticion de su padre.
+     *
+     * <p>El servicio comprueba la version del padre; la de cada hijo que el cliente devuelve con su
+     * id se comprueba aqui, al volcarlo. Si otro ha guardado ese hijo desde que el cliente lo leyo,
+     * aplicar el DTO pisaria su cambio: {@code ConcurrencyException}, 409 {@code CON-001}, y la
+     * transaccion no escribe nada. Sin id, sin version, o si el DTO es de otra fila, no hay nada
+     * que comprobar (ver {@code BaseEntity.validateVersion}).</p>
+     */
+    default void checkVersion(BaseDTO dto, IEntity entity) {
+        if (dto != null && entity != null && dto.getId() != null && dto.getId().equals(entity.getId())) {
+            entity.validateVersion(dto.getVersionNumber());
+        }
+    }
+
 
     /**
      * Establishes a many-to-many relationship between a collection of child entities and a single parent entity.
@@ -244,10 +259,12 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
                 continue;
             }
 
-            // 2. Modificacion sobre la instancia que ya esta en la coleccion.
+            // 2. Modificacion sobre la instancia que ya esta en la coleccion, si nadie la ha
+            //    guardado desde que el cliente la leyo.
             C existing = byId.get(dto.getId());
 
             if (existing != null) {
+                checkVersion(dto, existing);
                 updateExisting.accept(dto, existing);
             }
         }

@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.service.lov.commons;
 
 import com.alejandro.mtoconfiguration.configuration.cache.LovCacheEvictionEvent;
+import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
 import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
 import com.alejandro.mtoconfiguration.mapper.lov.commons.LovMapper;
 import com.alejandro.mtoconfiguration.model.commons.LovDTO;
@@ -238,13 +239,15 @@ class AbstractLovCrudServiceTest {
     class Modificacion {
 
         @Test
-        @DisplayName("la modificacion carga, vuelca el DTO sobre la entidad y publica invalidacion")
+        @DisplayName("la modificacion carga, vuelca el DTO, escribe con flush antes de responder y publica invalidacion")
         void updateOk() {
+            // Con flush antes de toDTO la respuesta lleva el versionNumber nuevo: sin el, traia el
+            // anterior, y reenviarlo en la siguiente modificacion daria un 409.
             LovDTO dto = dto(1L, "A");
             TestLov entity = new TestLov(1L);
 
             when(repository.findById(1L)).thenReturn(Optional.of(entity));
-            when(repository.save(entity)).thenReturn(entity);
+            when(repository.saveAndFlush(entity)).thenReturn(entity);
             when(mapper.toDTO(entity)).thenReturn(dto);
 
             assertThat(service.update(1L, dto)).isSameAs(dto);
@@ -252,7 +255,8 @@ class AbstractLovCrudServiceTest {
             InOrder order = inOrder(repository, mapper);
             order.verify(repository).findById(1L);
             order.verify(mapper).updateEntityFromDTO(dto, entity);
-            order.verify(repository).save(entity);
+            order.verify(repository).saveAndFlush(entity);
+            order.verify(mapper).toDTO(entity);
 
             assertThat(service.hooks()).containsExactly("beforeUpdate", "afterUpdate");
             verify(publisher).publishEvent(new LovCacheEvictionEvent("TestLov"));
@@ -276,6 +280,57 @@ class AbstractLovCrudServiceTest {
             assertThatThrownBy(() -> service.update(9L, dto(9L, "A")))
                     .isInstanceOf(EntityNotFoundException.class)
                     .hasMessage("TestLov not found with id 9");
+        }
+
+        @Test
+        @DisplayName("una version desactualizada es un conflicto y no vuelca ni guarda nada")
+        void updateVersionDesactualizada() {
+            LovDTO dto = dto(1L, "A");
+            dto.setVersionNumber(1);
+            TestLov entity = new TestLov(1L);
+            entity.setVersionNumber(2);
+
+            when(repository.findById(1L)).thenReturn(Optional.of(entity));
+
+            assertThatThrownBy(() -> service.update(1L, dto))
+                    .isInstanceOf(ConcurrencyException.class);
+
+            verify(mapper, never()).updateEntityFromDTO(any(), any());
+            verify(repository, never()).saveAndFlush(any());
+            verifyNoInteractions(publisher);
+        }
+
+        @Test
+        @DisplayName("sin version se guarda como siempre: el editor de catalogos del backoffice no la manda")
+        void updateSinVersion() {
+            LovDTO dto = dto(1L, "A");
+            TestLov entity = new TestLov(1L);
+            entity.setVersionNumber(5);
+
+            when(repository.findById(1L)).thenReturn(Optional.of(entity));
+            when(repository.saveAndFlush(entity)).thenReturn(entity);
+
+            service.update(1L, dto);
+
+            verify(repository).saveAndFlush(entity);
+        }
+
+        @Test
+        @DisplayName("una version desactualizada en un lote aborta el lote entero")
+        void bulkUpdateVersionDesactualizada() {
+            LovDTO primero = dto(1L, "A");
+            LovDTO segundo = dto(2L, "B");
+            segundo.setVersionNumber(3);
+            TestLov segundaEntidad = new TestLov(2L);
+            segundaEntidad.setVersionNumber(4);
+
+            when(repository.findById(1L)).thenReturn(Optional.of(new TestLov(1L)));
+            when(repository.findById(2L)).thenReturn(Optional.of(segundaEntidad));
+
+            assertThatThrownBy(() -> service.bulkUpdate(List.of(primero, segundo)))
+                    .isInstanceOf(ConcurrencyException.class);
+
+            verify(repository, never()).saveAll(anyList());
         }
     }
 
@@ -359,6 +414,11 @@ class AbstractLovCrudServiceTest {
             assertThat(service.bulkUpdate(dtos)).isEqualTo(dtos);
 
             verify(publisher, times(1)).publishEvent(new LovCacheEvictionEvent("TestLov"));
+            // Las versiones nuevas tienen que estar escritas antes de mapear la respuesta.
+            InOrder order = inOrder(repository, mapper);
+            order.verify(repository).saveAll(anyList());
+            order.verify(repository).flush();
+            order.verify(mapper).toListDTO(saved);
         }
 
         @Test

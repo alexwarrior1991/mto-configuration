@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.mapper.infraestructure;
 
+import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SteadyArm;
@@ -25,6 +26,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -268,5 +270,27 @@ class CantileverMapperTest {
         assertThat(dto.getId()).isEqualTo(21L);
         assertThat(dto.getProfileId()).isEqualTo(7L);
         assertThat(dto.getCwHeight()).isEqualByComparingTo("1.100");
+    }
+
+    @Test
+    @DisplayName("el brazo que alguien guardo despues de leer la mensula es un conflicto")
+    void brazoDesactualizado() {
+        SteadyArm guardado = new SteadyArm();
+        guardado.setId(8L);
+        guardado.setVersionNumber(3);
+
+        Cantilever entity = new Cantilever();
+        entity.setSteadyArm(guardado);
+
+        SteadyArmDTO leido = new SteadyArmDTO();
+        leido.setId(8L);
+        leido.setVersionNumber(2);
+        leido.setLength(900L);
+        CantileverDTO dto = dto();
+        dto.setSteadyArm(leido);
+
+        assertThatThrownBy(() -> mapper.updateEntityFromDTO(dto, entity))
+                .isInstanceOf(ConcurrencyException.class)
+                .hasMessageContaining("llego la version 2 y va por la 3");
     }
 }

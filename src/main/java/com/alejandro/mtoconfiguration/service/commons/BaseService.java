@@ -6,6 +6,7 @@ import com.alejandro.mtoconfiguration.configuration.cache.CacheNames;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheKeyGenerator;
 import com.alejandro.mtoconfiguration.core.exception.BaseException;
 import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
+import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.commons.IEntity;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
@@ -251,11 +252,12 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 })
                 .map(T::getId)
                 .map(id -> getRepository().findById(id)
-                        .orElseThrow(() -> new BaseException(
-                                getEntity().getClass().getSimpleName() + " Object not found with id " + id
-                        ))
+                        .orElseThrow(() -> notFound(id))
                 )
                 .map(entity -> {
+                    // Antes de tocar nada: si alguien ha guardado desde que el cliente leyo, 409.
+                    entity.validateVersion(dto.getVersionNumber());
+
                     Optional.ofNullable(getBusiness())
                             .ifPresent(b -> b.preMapperDTOToEntity(dto, entity));
 
@@ -291,11 +293,11 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                                 .filter(Utils::exists)
                                 .map(T::getId)
                                 .map(id -> getRepository().findById(id)
-                                        .orElseThrow(() -> new BaseException(
-                                                getEntity().getClass().getSimpleName() + " Object not found with id " + id
-                                        ))
+                                        .orElseThrow(() -> notFound(id))
                                 )
                                 .map(entity -> {
+                                    entity.validateVersion(dto.getVersionNumber());
+
                                     Optional.ofNullable(getBusiness())
                                             .ifPresent(b -> b.preMapperDTOToEntity(dto, entity));
 
@@ -435,6 +437,15 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
 
     private String getCurrentServiceName() {
         return AopUtils.getTargetClass(this).getSimpleName();
+    }
+
+    /**
+     * Un id que no existe al modificar o borrar es un 404 ({@code NOT-001}), como al leerlo. Un
+     * {@code BaseException} con este mismo texto saldria como 500: el manejador solo respeta el
+     * estado de un {@code BaseException} cuyas alertas llevan un codigo del catalogo.
+     */
+    protected NotFoundException notFound(Long id) {
+        return new NotFoundException(getEntity().getClass().getSimpleName() + " Object not found with id " + id);
     }
 
 }

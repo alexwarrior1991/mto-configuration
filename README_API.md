@@ -112,7 +112,9 @@ curl -X PUT "$BASE/tracks/42" \
 del cuerpo se descarta. Es lo que impide modificar el recurso 999 llamando a la ruta del 42.
 
 La auditoría tampoco se pisa: `createUser`, `createDate` y `versionNumber` conservan lo que hay en
-base de datos aunque mandes otra cosa.
+base de datos aunque mandes otra cosa. El `versionNumber` que mandas no se copia, se **compara**: si
+no es el guardado, alguien ha escrito desde tu lectura y la respuesta es un 409 (§9). Un id que no
+existe responde 404, igual al modificar que al borrar.
 
 ---
 
@@ -232,6 +234,10 @@ necesitas mover un perfil dentro de la vía, lo que se cambia es su `kp`.
 
 La relación 1:1 (`profiles.disconnector`, `cantilevers.steadyArm`) va aparte: mandar el objeto lo
 crea o actualiza, mandar `null` lo desvincula.
+
+Cada hijo que devuelves con su `id` lleva también su `versionNumber`, y se comprueba como el del
+padre (§9): si otro ha guardado esa ménsula, ese seccionador o esa aguja desde tu lectura, la
+petición entera responde 409 y no se escribe nada. Es otra razón para devolver lo leído tal cual.
 
 ---
 
@@ -673,20 +679,34 @@ Todos con el mismo formato (`application/problem+json`, RFC 9457):
 Cada entrada de `errors` trae `field`, `code` y `message`. El `code` es estable y viene del
 catálogo: úsalo para reaccionar en el cliente en lugar de parsear el texto, que puede cambiar.
 
-`retryable` dice si reintentar la misma petición puede funcionar. En un `409` o un `429` sí; en un
-error de validación no, hasta que cambies el cuerpo.
+`retryable` dice si volver a intentarlo puede funcionar: en un `429`, repitiendo la misma petición
+más tarde; en un `409` `CON-001`, releyendo primero (ver «Concurrencia», abajo). En un error de
+validación no, hasta que cambies el cuerpo.
 
 | HTTP | `code` | Cuándo |
 |---|---|---|
 | `400` | `VAL-000` | validación fallida, o cuerpo mal formado |
 | `401` / `403` | — | sin token, o sin el rol necesario |
-| `404` | `NOT-001` | el recurso no existe |
-| `409` | `CON-001` | conflicto de concurrencia (`versionNumber` desactualizado) |
+| `404` | `NOT-001` | el recurso no existe: al leerlo, al modificarlo o al borrarlo |
+| `409` | `CON-001` | conflicto de concurrencia: el `versionNumber` que mandas no es el guardado |
 | `429` | — | sin hueco para el trabajo |
 | `500` | `TEC-999` | error inesperado; el `traceId` es lo que hay que dar en la incidencia |
 
 La ruta del campo en `errors[].field` es **navegable desde la raíz del cuerpo**: `cantilevers[1].cwHeight`
 en un objeto, `[0].name` en un endpoint de lote.
 
-Para conflictos de concurrencia, devuelve el `versionNumber` que leíste. Si otro ha guardado
-mientras tanto, recibes un `409` en vez de pisar su cambio.
+### Concurrencia: el `versionNumber`
+
+Cada fila lleva un `versionNumber` que sube con cada escritura. Al modificar (`PUT /{id}` y
+`PUT /bulk`, en los maestros y en los catálogos) devuelve el que leíste:
+
+- si es el guardado, la escritura entra y la respuesta trae el nuevo;
+- si no lo es, alguien ha guardado desde tu lectura: **409 `CON-001`** y no se escribe nada. En un
+  lote, un solo elemento desactualizado aborta el lote entero. Repetir la misma petición vuelve a
+  fallar: hay que releer, aplicar otra vez el cambio y guardar con la versión nueva;
+- si no lo mandas (`null` u omitido), **no se comprueba** y la escritura pisa lo que haya. Es lo que
+  hacen a propósito el importador del maestro (que es la fuente del dato) y los trabajos que
+  construyen el cuerpo en Java. Un cliente que edita lo que enseña debe mandarlo siempre.
+
+Los hijos que viajan dentro del padre (§4), también los 1:1, se comprueban igual, cada uno con su
+propio `versionNumber`. Un hijo sin `id` es nuevo y no tiene versión que comprobar.
