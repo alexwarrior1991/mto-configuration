@@ -22,6 +22,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Sin este test la clasificacion se pudre en silencio: alguien anade un campo a
  * SteadyArmDTO dentro de seis meses, nadie toca isCacheable(), y vuelven los datos
  * desactualizados sin que salte nada.
+ * <p>
+ * Lo que este test NO ve: un DTO cacheable que copia campos planos de otra entidad
+ * (DisconnectorDTO.profileCode y profileKp salen del perfil) o cuya fila se escribe
+ * anidada desde otro servicio (el seccionador dentro de un PUT de perfil o de
+ * estacion, el brazo dentro de un PUT de mensula). Ahi la clasificacion sigue
+ * cuadrando y aun asi la cache miente, porque el evento solo trae el nombre de quien
+ * escribio. Esas dependencias viven en CacheEvictionListener.DEPENDENT_SERVICES y las
+ * pina CacheEvictionListenerTest: un campo copiado nuevo es una entrada mas alli.
  */
 class CacheableServicesTest {
 

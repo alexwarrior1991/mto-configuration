@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 
 /**
  * Reconciliacion de los perfiles de una via.
@@ -394,6 +395,28 @@ class TrackMapperTest {
             Page<TrackDTO> page = mapper.mapToSummaryDTOs(new PageImpl<>(List.of(viaConTresPerfiles())));
 
             assertThat(page.getContent()).singleElement().satisfies(fila -> assertThat(fila.getProfiles()).isNull());
+        }
+    }
+
+    @Nested
+    @DisplayName("Detalle: updateDTOFromEntity hereda las reglas de toDTO")
+    class Detalle {
+
+        @Test
+        @DisplayName("el detalle de una via lleva el id de su paquete, como las listas")
+        void paqueteComoIdEnElDetalle() {
+            ExecutionPackage paquete = new ExecutionPackage();
+            paquete.setId(100L);
+            Track entity = viaConTresPerfiles();
+            entity.setExecutionPackage(paquete);
+
+            TrackDTO dto = new TrackDTO();
+            mapper.updateDTOFromEntity(entity, dto);
+
+            assertThat(dto.getId()).isEqualTo(3L);
+            assertThat(dto.getExecutionPackageId()).isEqualTo(100L);
+            assertThat(dto.getProfiles()).extracting(ProfileDTO::getProfileId)
+                    .containsExactly("P-001", "P-002", "P-003");
         }
     }
 }

@@ -10,6 +10,7 @@ import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
+import org.mapstruct.InheritConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
@@ -59,6 +60,14 @@ public abstract class TrackMapper implements BaseMapper<TrackDTO, Track> {
     @Mapping(target = "executionPackageId", source = "executionPackage.id")
     @Mapping(target = "stationIds", ignore = true)   // se rellenan en mapEntityToDto
     public abstract TrackDTO toDTO(Track entity);
+
+    /**
+     * Hereda las reglas de {@code toDTO}: el detalle y el final de un alta o una modificacion
+     * vuelcan la entidad con este metodo, no con {@code toDTO} (ver {@code BaseMapper}).
+     */
+    @Override
+    @InheritConfiguration(name = "toDTO")
+    public abstract void updateDTOFromEntity(Track entity, @MappingTarget TrackDTO dto);
 
     @Override
     @Mapping(target = "executionPackage", source = "executionPackageId")

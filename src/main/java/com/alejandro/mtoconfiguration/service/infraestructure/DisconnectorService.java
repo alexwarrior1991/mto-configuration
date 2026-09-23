@@ -123,9 +123,13 @@ public class DisconnectorService extends CRUDService<DisconnectorDTO, Disconnect
     }
 
     /**
-     * DisconnectorDTO no embebe otros DTO de entidad, solo LOV, que se editan casi nunca.
-     * Sus entradas no se quedan obsoletas al cambiar otra entidad, asi que si
-     * compensa cachearlas. Ver BaseService.isCacheable().
+     * DisconnectorDTO no embebe otros DTO de entidad, solo LOV, que se editan casi nunca, asi
+     * que si compensa cachearlas. Pero no es del todo independiente: {@code profileCode} y
+     * {@code profileKp} se copian del perfil, y la fila se escribe tambien anidada en un perfil
+     * (1:1) o en una estacion, con lo que una escritura de {@code ProfileService},
+     * {@code TrackService}, {@code StationService} o {@code ExecutionPackageService} la deja
+     * obsoleta. {@code CacheEvictionListener.DEPENDENT_SERVICES} vacia esta cache con esos
+     * eventos. Ver BaseService.isCacheable().
      */
     @Override
     public boolean isCacheable() {

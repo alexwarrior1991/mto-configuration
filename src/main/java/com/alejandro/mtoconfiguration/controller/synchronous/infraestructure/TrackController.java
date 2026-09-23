@@ -22,6 +22,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO;
+import com.alejandro.mtoconfiguration.service.infraestructure.TrackSchematicService;
 
 @RestController
 @RequiredArgsConstructor
@@ -33,6 +35,7 @@ import java.util.List;
 public class TrackController extends CRUDController<TrackDTO, Track> {
 
     private final TrackService trackService;
+    private final TrackSchematicService trackSchematicService;
 
     @Override
     public TrackService getService() {
@@ -167,4 +170,20 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
         return processGenericPageRequest(f -> getService().getTracks(pageable, f), filter);
     }
 
+    @GetMapping("/{id}/schematic")
+    @Operation(
+            summary = "Track schematic",
+            description = "The track drawn as a line: its profiles in physical order with their cantilevers, "
+                    + "the disconnector hanging from each profile and the section insulators of the track. "
+                    + "Only what a schematic needs, served from the cache; KP and measures travel as plain text."
+    )
+    @ApiResponse(
+            responseCode = ApiConstants.CODE_200,
+            description = ApiConstants.DESC_200,
+            content = @Content(schema = @Schema(implementation = TrackSchematicDTO.class))
+    )
+    @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
+    public ResponseEntity<TrackSchematicDTO> getSchematic(@PathVariable Long id) {
+        return ResponseEntity.ok(trackSchematicService.getSchematic(id));
+    }
 }

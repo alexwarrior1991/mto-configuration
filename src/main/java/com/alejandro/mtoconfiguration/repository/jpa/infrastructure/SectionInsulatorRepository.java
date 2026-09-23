@@ -97,4 +97,22 @@ public interface SectionInsulatorRepository extends CRUDRepository<SectionInsula
     })
     @Query("select si from SectionInsulator si where si.id = :id")
     Optional<SectionInsulator> findByIdForMessaging(@Param("id") Long id);
+
+    /**
+     * Los aisladores que pintan en el esquema de una via ({@code TrackSchematicService}): los que
+     * cuelgan de ella y los que conectan con ella desde otra ({@code connectedTrack}), por KP, con
+     * su estacion, sus dos vias y sus agujas en una consulta (una sola coleccion en el
+     * {@code fetch}; Hibernate 6 no repite la raiz).
+     */
+    @Query("""
+            select si from SectionInsulator si
+            left join fetch si.station
+            left join fetch si.track
+            left join fetch si.connectedTrack
+            left join fetch si.switches sw
+            left join fetch sw.track
+            where si.track.id = :trackId or si.connectedTrack.id = :trackId
+            order by si.kp asc, si.id asc
+            """)
+    List<SectionInsulator> findForSchematic(@Param("trackId") Long trackId);
 }

@@ -26,6 +26,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 
 /**
  * Reconciliacion de las tres colecciones de una estacion.
@@ -244,6 +245,26 @@ class StationMapperTest {
             assertThat(fila.getDisconnectors()).isNull();
             assertThat(fila.getSectionInsulators()).isNull();
             assertThat(mapper.toDTO(estacionConDosVias()).getTracks()).as("el detalle sigue completo").hasSize(2);
+        }
+    }
+
+    @Nested
+    @DisplayName("Detalle: updateDTOFromEntity hereda las reglas de toDTO")
+    class Detalle {
+
+        @Test
+        @DisplayName("el detalle de una estacion lleva el id de su paquete, como las listas")
+        void paqueteComoIdEnElDetalle() {
+            ExecutionPackage paquete = new ExecutionPackage();
+            paquete.setId(100L);
+            Station entity = estacionConDosVias();
+            entity.setExecutionPackage(paquete);
+
+            StationDTO dto = new StationDTO();
+            mapper.updateDTOFromEntity(entity, dto);
+
+            assertThat(dto.getId()).isEqualTo(4L);
+            assertThat(dto.getExecutionPackageId()).isEqualTo(100L);
         }
     }
 }

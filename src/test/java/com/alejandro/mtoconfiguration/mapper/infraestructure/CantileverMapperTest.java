@@ -251,4 +251,22 @@ class CantileverMapperTest {
         assertThat(dto.getCreateUser()).isEqualTo("ana");
         assertThat(dto.getVersionNumber()).isEqualTo(3);
     }
+
+    @Test
+    @DisplayName("el detalle de una mensula lleva el id de su perfil, como las listas")
+    void perfilComoIdEnElDetalle() {
+        Profile profile = new Profile();
+        profile.setId(7L);
+        Cantilever entity = new Cantilever();
+        entity.setId(21L);
+        entity.setProfile(profile);
+        entity.setCwHeight(new BigDecimal("1.100"));
+
+        CantileverDTO dto = new CantileverDTO();
+        mapper.updateDTOFromEntity(entity, dto);
+
+        assertThat(dto.getId()).isEqualTo(21L);
+        assertThat(dto.getProfileId()).isEqualTo(7L);
+        assertThat(dto.getCwHeight()).isEqualByComparingTo("1.100");
+    }
 }

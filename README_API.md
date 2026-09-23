@@ -22,6 +22,7 @@ Ruta base: `/api/v1/configuration` — en los ejemplos aparece como `$BASE`.
 | `GET $BASE/{recurso}/paged` | `200` | página de Spring Data |
 | `POST $BASE/{recurso}/search` | `200` | página de Spring Data |
 | `POST $BASE/{recurso}/filter` | `200` | página de Spring Data |
+| `GET $BASE/tracks/{id}/schematic` | `200` | el esquema de la vía, cacheado (§6) |
 
 Recursos de infraestructura: `cantilevers`, `disconnectors`, `execution-packages`, `profiles`,
 `section-insulators`, `stations`, `steady-arms`, `tracks`. Aparte, `business-entities` (las
@@ -533,6 +534,53 @@ GET "$BASE/profiles/track/3/range?startKp=1.5&endKp=9.75"          # tramo por K
 
 El cursor son **los dos valores juntos** (`lastKp` y `lastId`). Mandar sólo uno se trata como
 primera ventana; hacen falta los dos porque dos perfiles pueden compartir KP.
+
+### El esquema de una vía
+
+Para dibujar una vía entera como una línea, en **una llamada** y sin paginar:
+
+```bash
+GET "$BASE/tracks/3/schematic"
+```
+
+Devuelve los perfiles de la vía en su **orden físico** (`orderInTrack`, `kp`, `id`, el mismo que
+`GET /tracks/{id}`; no el de `keyset`/`range`), cada uno con sus ménsulas y con su seccionador, y
+los aisladores de sección que cuelgan de la vía **o que conectan con ella** desde otra
+(`track` y `connectedTrack` dicen cuál es cuál). Solo lo que un esquema pinta: códigos de catálogo
+en vez de listas de valores, nada de auditoría ni de medidas que no se dibujen. Los KP y las
+medidas viajan como texto plano (`"12.345"`), igual que `kp` en el perfil, y en las unidades de
+cada campo (§4 bis: alturas en metros, `stagger` y `railPoleDistance` en milímetros con signo).
+
+```json
+{
+  "trackId": 3, "trackName": "VIA 1", "enabled": true, "executionPackageName": "EP4",
+  "stations": ["ATOCHA", "CHAMARTIN"],
+  "profiles": [
+    { "id": 7, "code": "P-007", "kp": "12.345", "orderInTrack": 1, "span": "55.000",
+      "poleType": "HEB", "supportType": "STD", "profileStatus": "OK", "railPoleDistance": "-2500",
+      "sectionings": ["S1"],
+      "cantilevers": [ { "id": 21, "type": "PT1", "stagger": "-200", "cwHeight": "5.300",
+                         "catenaryHeight": "1.400", "steadyArmType": "SA1", "steadyArmLength": 1200 } ],
+      "disconnector": { "id": 40, "name": "SEC-40", "onLoad": true, "function": "FEED", "station": "ATOCHA" } }
+  ],
+  "sectionInsulators": [
+    { "id": 50, "name": "AIS-50", "kp": "15.000", "installationType": "TRACK_CONNECTION", "enabled": true,
+      "station": "ATOCHA", "track": "VIA 1", "connectedTrack": "VIA 2",
+      "switches": [ { "id": 60, "code": "W31", "kp": "15.500", "turnoutDenominator": 9, "track": "VIA 1" } ] }
+  ]
+}
+```
+
+Lo que va a `null` no viaja. El perfil no tiene estación en el modelo: las de la vía van en
+`stations` y la del seccionador o del aislador, en su marca. Una vía sin perfiles devuelve las
+listas vacías; una vía inexistente, `404 NOT-001`.
+
+Está **cacheado** en Redis (`normal:item`, clave `TrackSchematicService:getSchematic:{id}`, 6 h):
+la segunda petición de la misma vía no toca la base de datos. Cualquier escritura de
+infraestructura (paquete, estación, vía, perfil, ménsula, brazo, seccionador o aislador, también
+por los importadores) y cualquier cambio de catálogo vacían el esquema de **todas** las vías al
+confirmar la transacción, porque el evento de invalidación solo dice qué servicio escribió, no
+qué vía. Es la única lectura de infraestructura que se cachea con sus hijos (`README.md`, Redis).
 
 ---
 

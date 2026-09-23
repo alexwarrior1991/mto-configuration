@@ -113,9 +113,13 @@ public class SteadyArmService extends CRUDService<SteadyArmDTO, SteadyArm> imple
     }
 
     /**
-     * SteadyArmDTO no embebe otros DTO de entidad, solo LOV, que se editan casi nunca.
-     * Sus entradas no se quedan obsoletas al cambiar otra entidad, asi que si
-     * compensa cachearlas. Ver BaseService.isCacheable().
+     * SteadyArmDTO no embebe otros DTO de entidad, solo LOV, que se editan casi nunca, asi que
+     * si compensa cachearlas. Pero la fila se escribe tambien anidada en su mensula (1:1), y la
+     * mensula en su perfil, el perfil en su via...: una escritura de {@code CantileverService},
+     * {@code ProfileService}, {@code TrackService}, {@code StationService} o
+     * {@code ExecutionPackageService} la deja obsoleta, y
+     * {@code CacheEvictionListener.DEPENDENT_SERVICES} vacia esta cache con esos eventos.
+     * Ver BaseService.isCacheable().
      */
     @Override
     public boolean isCacheable() {

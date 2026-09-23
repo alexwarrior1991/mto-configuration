@@ -93,6 +93,15 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
      * Los LOV que si embeben no cuentan: se editan casi nunca y su TTL acota la
      * ventana.
      * <p>
+     * Y no basta con no embeber: un DTO cacheable tampoco puede copiar campos planos
+     * de OTRA entidad (DisconnectorDTO.profileCode y profileKp salen del perfil), ni
+     * su fila puede escribirse anidada desde otro servicio (el seccionador dentro de
+     * un PUT de perfil o de estacion, el brazo dentro de un PUT de mensula), sin que
+     * la invalidacion lo tenga en cuenta: el evento solo lleva el nombre de quien
+     * escribio. Esas dependencias estan en CacheEvictionListener.DEPENDENT_SERVICES,
+     * que vacia tambien al dependiente; un campo copiado nuevo, o una anidacion nueva,
+     * es una entrada mas en ese mapa.
+     * <p>
      * CacheableServicesTest comprueba por reflexion que esta clasificacion sigue
      * cuadrando con lo que los DTO declaran de verdad.
      */

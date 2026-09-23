@@ -75,6 +75,20 @@ public interface CantileverRepository extends CRUDRepository<Cantilever>,
     @Query("select c from Cantilever c where c.id = :id")
     Optional<Cantilever> findByIdForMessaging(@Param("id") Long id);
 
-
-
+    /**
+     * Todas las ménsulas de una via para su esquema ({@code TrackSchematicService}), con su tipo y
+     * su brazo, en una consulta; el servicio las agrupa por {@code profile.id}, que se lee del
+     * proxy sin inicializarlo (acceso por propiedad). {@code steadyArm} es el lado INVERSO del
+     * {@code @OneToOne}: sin el {@code fetch} costaria un select por ménsula.
+     */
+    @Query("""
+            select c from Cantilever c
+            join c.profile p
+            left join fetch c.cantileverType
+            left join fetch c.steadyArm sa
+            left join fetch sa.steadyArmType
+            where p.track.id = :trackId
+            order by p.id asc, c.id asc
+            """)
+    List<Cantilever> findForSchematic(@Param("trackId") Long trackId);
 }

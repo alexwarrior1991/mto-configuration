@@ -46,6 +46,17 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
     @ToEntityIgnoreAudit
     void updateEntityFromDTO(T dto, @MappingTarget E entity);
 
+    /**
+     * Vuelca la entidad sobre un DTO ya construido. Es lo que usa {@code BaseService.getById} para
+     * el detalle, y con lo que terminan {@code create}, {@code update} y {@code cancel}.
+     *
+     * <p>MapStruct no comparte las {@code @Mapping} entre metodos: las reglas que un mapper pone en
+     * {@code toDTO} (los ids de padre como {@code trackId}, las LOV ignoradas y rellenadas en el
+     * {@code @AfterMapping}) no aplican aqui salvo que el mapper sobrescriba este metodo con
+     * {@code @InheritConfiguration(name = "toDTO")}. Sin eso las listas traian el id de padre y el
+     * detalle lo devolvia a {@code null}. Cada mapper de infraestructura lo sobrescribe asi; una
+     * {@code @Mapping} nueva en {@code toDTO} no hay que repetirla aqui.
+     */
     void updateDTOFromEntity(E entity, @MappingTarget T dto);
 
 

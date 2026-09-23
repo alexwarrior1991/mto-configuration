@@ -167,5 +167,47 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
     @Query("select p from Profile p where p.id = :id")
     Optional<Profile> findByIdForMessaging(@Param("id") Long id);
 
+    /**
+     * Los perfiles de una via para su esquema ({@code TrackSchematicService}), en el <b>orden
+     * fisico</b> de {@code Track.profiles} ({@code orderInTrack, kp, id}; README_API.md §4), no
+     * en el de las ventanas por KP.
+     *
+     * <p>Trae en la misma consulta todo lo a-uno que el dibujo lee: las tres LOV que enseña y el
+     * seccionador con su estacion y su funcion. {@code disconnector} es el lado INVERSO de un
+     * {@code @OneToOne} que Hibernate no puede proxear: sin el {@code fetch} pagaria un select por
+     * perfil, 600 en la via mas larga. Las ménsulas y los seccionamientos van en consultas aparte
+     * ({@code CantileverRepository.findForSchematic}, {@link #findSectioningCodesForSchematic})
+     * para no multiplicar filas con dos colecciones.
+     */
+    @Query("""
+            select p from Profile p
+            left join fetch p.poleType
+            left join fetch p.supportType
+            left join fetch p.profileStatus
+            left join fetch p.disconnector d
+            left join fetch d.station
+            left join fetch d.disconnectorFunction
+            where p.track.id = :trackId
+            order by p.orderInTrack asc, p.kp asc, p.id asc
+            """)
+    List<Profile> findForSchematic(@Param("trackId") Long trackId);
 
+    /**
+     * Los codigos de seccionamiento de cada perfil de la via, como pares de escalares: una
+     * consulta para toda la via en vez de inicializar {@code Profile.sectionings} perfil a perfil.
+     */
+    @Query("""
+            select p.id as profileId, s.code as code
+            from Profile p join p.sectionings s
+            where p.track.id = :trackId
+            order by p.id asc, s.code asc
+            """)
+    List<ProfileSectioningCode> findSectioningCodesForSchematic(@Param("trackId") Long trackId);
+
+    /** Proyeccion de {@link #findSectioningCodesForSchematic(Long)}. */
+    interface ProfileSectioningCode {
+        Long getProfileId();
+
+        String getCode();
+    }
 }

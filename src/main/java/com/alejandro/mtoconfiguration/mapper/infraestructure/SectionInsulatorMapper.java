@@ -9,6 +9,7 @@ import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
+import org.mapstruct.InheritConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
@@ -45,6 +46,14 @@ public abstract class SectionInsulatorMapper implements BaseMapper<SectionInsula
     @Mapping(target = "trackId", source = "track.id")
     @Mapping(target = "connectedTrackId", source = "connectedTrack.id")
     public abstract SectionInsulatorDTO toDTO(SectionInsulator entity);
+
+    /**
+     * Hereda las reglas de {@code toDTO}: el detalle y el final de un alta o una modificacion
+     * vuelcan la entidad con este metodo, no con {@code toDTO} (ver {@code BaseMapper}).
+     */
+    @Override
+    @InheritConfiguration(name = "toDTO")
+    public abstract void updateDTOFromEntity(SectionInsulator entity, @MappingTarget SectionInsulatorDTO dto);
 
     @Override
     @Mapping(target = "station", source = "stationId")

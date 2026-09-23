@@ -12,6 +12,7 @@ import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import org.mapstruct.AfterMapping;
+import org.mapstruct.InheritConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
@@ -60,6 +61,14 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
     @Override
     @Mapping(target = "executionPackageId", source = "executionPackage.id")
     public abstract StationDTO toDTO(Station entity);
+
+    /**
+     * Hereda las reglas de {@code toDTO}: el detalle y el final de un alta o una modificacion
+     * vuelcan la entidad con este metodo, no con {@code toDTO} (ver {@code BaseMapper}).
+     */
+    @Override
+    @InheritConfiguration(name = "toDTO")
+    public abstract void updateDTOFromEntity(Station entity, @MappingTarget StationDTO dto);
 
     @Override
     @Mapping(target = "executionPackage", source = "executionPackageId")
