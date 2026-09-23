@@ -548,7 +548,8 @@ Devuelve los perfiles de la vía en su **orden físico** (`orderInTrack`, `kp`, 
 los aisladores de sección que cuelgan de la vía **o que conectan con ella** desde otra
 (`track` y `connectedTrack` dicen cuál es cuál). Solo lo que un esquema pinta: códigos de catálogo
 en vez de listas de valores, nada de auditoría ni de medidas que no se dibujen. Los KP y las
-medidas viajan como texto plano (`"12.345"`), igual que `kp` en el perfil.
+medidas viajan como texto plano (`"12.345"`), igual que `kp` en el perfil, y en las unidades de
+cada campo (§4 bis: alturas en metros, `stagger` y `railPoleDistance` en milímetros con signo).
 
 ```json
 {
@@ -556,10 +557,10 @@ medidas viajan como texto plano (`"12.345"`), igual que `kp` en el perfil.
   "stations": ["ATOCHA", "CHAMARTIN"],
   "profiles": [
     { "id": 7, "code": "P-007", "kp": "12.345", "orderInTrack": 1, "span": "55.000",
-      "poleType": "HEB", "supportType": "STD", "profileStatus": "OK", "railPoleDistance": "-2.500",
+      "poleType": "HEB", "supportType": "STD", "profileStatus": "OK", "railPoleDistance": "-2500",
       "sectionings": ["S1"],
-      "cantilevers": [ { "id": 21, "type": "PT1", "stagger": "-200", "cwHeight": "5300",
-                         "catenaryHeight": "1400", "steadyArmType": "SA1", "steadyArmLength": 1200 } ],
+      "cantilevers": [ { "id": 21, "type": "PT1", "stagger": "-200", "cwHeight": "5.300",
+                         "catenaryHeight": "1.400", "steadyArmType": "SA1", "steadyArmLength": 1200 } ],
       "disconnector": { "id": 40, "name": "SEC-40", "onLoad": true, "function": "FEED", "station": "ATOCHA" } }
   ],
   "sectionInsulators": [

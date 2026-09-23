@@ -72,10 +72,10 @@ class RedisCacheValueSerializationTest {
      */
     @Test
     void shouldRoundTripATrackSchematicWithItsNestedRecords() {
-        var arm = new TrackSchematicDTO.CantileverArm(21L, "PT1", "-200", "5300", "1400", "SA1", 1200L);
+        var arm = new TrackSchematicDTO.CantileverArm(21L, "PT1", "-200", "5.300", "1.400", "SA1", 1200L);
         var disconnector = new TrackSchematicDTO.DisconnectorMark(40L, "SEC-40", true, "FEED", "ATOCHA");
         var profile = new TrackSchematicDTO.ProfileNode(7L, "P-007", "12.345", 1, "55.000", "HEB", null, "OK",
-                "-2.500", new ArrayList<>(List.of("S1")), new ArrayList<>(List.of(arm)), disconnector);
+                "-2500", new ArrayList<>(List.of("S1")), new ArrayList<>(List.of(arm)), disconnector);
         var bare = new TrackSchematicDTO.ProfileNode(8L, "P-008", "70.000", 2, null, null, null, null,
                 null, new ArrayList<>(), new ArrayList<>(), null);
         var turnout = new TrackSchematicDTO.SwitchMark(60L, "W31", "15.500", 9, "VIA 1");

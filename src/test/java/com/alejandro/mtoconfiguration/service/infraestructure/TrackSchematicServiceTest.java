@@ -133,8 +133,8 @@ class TrackSchematicServiceTest {
         cantilever.setProfile(profile);
         cantilever.setCantileverType(type);
         cantilever.setStagger(new BigDecimal(stagger));
-        cantilever.setCwHeight(new BigDecimal("5300"));
-        cantilever.setCatenaryHeight(new BigDecimal("1400"));
+        cantilever.setCwHeight(new BigDecimal("5.300"));
+        cantilever.setCatenaryHeight(new BigDecimal("1.400"));
         return cantilever;
     }
 
@@ -156,7 +156,7 @@ class TrackSchematicServiceTest {
         p1.setPoleType(lov(new PoleType(), "HEB"));
         p1.setProfileStatus(lov(new ProfileStatus(), "OK"));
         p1.setSpan(new BigDecimal("55.000"));
-        p1.setRailPoleDistance(new BigDecimal("-2.500"));
+        p1.setRailPoleDistance(new BigDecimal("-2500"));
 
         p2 = profile(2L, "P-002", "20.000", 2, via1);
         Disconnector seccionador = new Disconnector();
@@ -226,7 +226,7 @@ class TrackSchematicServiceTest {
             assertThat(primero.kp()).isEqualTo("10.000");
             assertThat(primero.orderInTrack()).isEqualTo(1);
             assertThat(primero.span()).isEqualTo("55.000");
-            assertThat(primero.railPoleDistance()).isEqualTo("-2.500");
+            assertThat(primero.railPoleDistance()).isEqualTo("-2500");
             assertThat(primero.poleType()).isEqualTo("HEB");
             assertThat(primero.profileStatus()).isEqualTo("OK");
             assertThat(primero.supportType()).as("lo que no hay va a null, no a texto vacio").isNull();
@@ -244,7 +244,7 @@ class TrackSchematicServiceTest {
                     .containsExactly(
                             org.assertj.core.groups.Tuple.tuple(21L, "PT1", "-200", "SA1", 1200L),
                             org.assertj.core.groups.Tuple.tuple(22L, null, "200", null, null));
-            assertThat(perfiles.getFirst().cantilevers().getFirst().cwHeight()).isEqualTo("5300");
+            assertThat(perfiles.getFirst().cantilevers().getFirst().cwHeight()).isEqualTo("5.300");
             assertThat(perfiles.get(1).cantilevers()).as("sin ménsulas: lista vacia, no null").isEmpty();
             assertThat(perfiles.get(1).sectionings()).isEmpty();
         }

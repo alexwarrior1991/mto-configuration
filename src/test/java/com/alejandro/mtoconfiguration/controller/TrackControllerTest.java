@@ -75,10 +75,10 @@ class TrackControllerTest {
     private TrackSchematicService trackSchematicService;
 
     private static TrackSchematicDTO esquema() {
-        var brazo = new TrackSchematicDTO.CantileverArm(21L, "PT1", "-200", "5300", "1400", "SA1", 1200L);
+        var brazo = new TrackSchematicDTO.CantileverArm(21L, "PT1", "-200", "5.300", "1.400", "SA1", 1200L);
         var seccionador = new TrackSchematicDTO.DisconnectorMark(40L, "SEC-40", true, "FEED", "ATOCHA");
         var p1 = new TrackSchematicDTO.ProfileNode(1L, "P-001", "10.000", 1, "55.000", "HEB", null, "OK",
-                "-2.500", new ArrayList<>(List.of("S1")), new ArrayList<>(List.of(brazo)), null);
+                "-2500", new ArrayList<>(List.of("S1")), new ArrayList<>(List.of(brazo)), null);
         var p2 = new TrackSchematicDTO.ProfileNode(2L, "P-002", "20.000", 2, null, null, null, null,
                 null, new ArrayList<>(), new ArrayList<>(), seccionador);
         var aguja = new TrackSchematicDTO.SwitchMark(60L, "W31", "15.500", 9, "VIA 1");
@@ -105,7 +105,7 @@ class TrackControllerTest {
                     .andExpect(jsonPath("$.stations[1]").value("CHAMARTIN"))
                     .andExpect(jsonPath("$.profiles[0].code").value("P-001"))
                     .andExpect(jsonPath("$.profiles[0].kp").value("10.000"))
-                    .andExpect(jsonPath("$.profiles[0].railPoleDistance").value("-2.500"))
+                    .andExpect(jsonPath("$.profiles[0].railPoleDistance").value("-2500"))
                     .andExpect(jsonPath("$.profiles[0].sectionings[0]").value("S1"))
                     .andExpect(jsonPath("$.profiles[0].cantilevers[0].type").value("PT1"))
                     .andExpect(jsonPath("$.profiles[0].cantilevers[0].steadyArmLength").value(1200))

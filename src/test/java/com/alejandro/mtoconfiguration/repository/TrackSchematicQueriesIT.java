@@ -166,7 +166,7 @@ class TrackSchematicQueriesIT extends AbstractCriteriaSearchIT {
         Cantilever mensula = new Cantilever();
         mensula.setCantileverType(tipo);
         mensula.setStagger(new BigDecimal(stagger));
-        mensula.setCwHeight(new BigDecimal("5300"));
+        mensula.setCwHeight(new BigDecimal("5.300"));   // metros: @Digits(1, 3)
         perfil.addCantilever(mensula);
         em.persist(mensula);
         return mensula;
