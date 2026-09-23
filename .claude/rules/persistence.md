@@ -35,6 +35,9 @@ paths:
   - los que necesitan el esquema migrado usan `support/PostgresTestDatabase`: un contenedor
     `postgres:17-alpine` para toda la JVM, o una base desechable indicada con
     `-Dmto.test.postgres.url` (más `.username` y `.password`), sin Docker. Sin ninguna de las dos
-    cosas fallan, no se saltan;
+    cosas fallan, no se saltan. Cada clase es un contexto de Spring propio (su
+    `@DynamicPropertySource`), y todos quedan en caché hasta el final contra la misma base, con sus
+    100 conexiones. Por eso `registerProperties` deja el pool con `minimum-idle` 1: con el de
+    Hikari por defecto, once contextos agotaban la base;
   - los de búsqueda por criterios heredan `AbstractCriteriaSearchIT`, que arranca su propio
     contenedor con `ddl-auto: create-drop` y necesita Docker siempre.
