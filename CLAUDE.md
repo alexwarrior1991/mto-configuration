@@ -37,6 +37,7 @@ Tests en `src/test/java`, misma raíz de paquete.
 - `README_MESSAGING.md` — RabbitMQ / eventos
 - `keycloak/README.md` — qué aporta este repo al realm (`mto-configuration-partial-import.json` y `mto-configuration-dev.json`); el realm base y el orden de ensamblado son de `mto-platform`
 - `README_ASYNC_JOBS.md` — trabajos en segundo plano (202 Accepted + jobId), capa paralela a `/async`
+- `README_MOBILE_ANDROID.md` — guía para construir la app móvil Android (Kotlin + Jetpack Compose) que consume esta API: herramientas, arquitectura, red, Keycloak desde el móvil y las trampas del contrato
 - `data/README.md` — los dos maestros generados desde los workbooks (`lov-master.xlsx` y `profile-master.xlsx`), sus generadores en Python y `topology.yml`, que es donde se declara lo que no está en los ficheros
 
 ## Reglas específicas
