@@ -96,6 +96,7 @@ public class ProfileService extends CRUDService<ProfileDTO, Profile>
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<ProfileDTO> getProfiles(Pageable pageable, ProfileFilter filter) {
         log.info("Buscando perfiles con filtros por código LOV: {}", filter);
 

@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -91,6 +92,7 @@ public class TrackService extends CRUDService<TrackDTO, Track>
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<TrackDTO> getTracks(Pageable pageable, TrackFilter filter) {
         log.info("Consultando vías con filtros funcionales");
 
