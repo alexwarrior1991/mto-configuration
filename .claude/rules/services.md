@@ -16,7 +16,9 @@ paths:
 - `BaseService` y `CRUDService` escriben con `jakarta.transaction.Transactional` y su `rollbackOn`;
   el resto del código usa el `@Transactional` de Spring, con `readOnly = true` en las lecturas.
   `spring.jpa.open-in-view` es `false`: recorrer una asociación perezosa fuera de una transacción lanza
-  `LazyInitializationException`, así que un método que lee un grafo es transaccional.
+  `LazyInitializationException`, así que un método que lee un grafo es transaccional. Los tests con
+  una transacción alrededor no lo ven, porque la sesión sigue abierta al mapear: lo fijan
+  `GetByIdOutsideTransactionIT` y `FilterOutsideTransactionIT`, que llaman al servicio sin ella.
 - Cada escritura de la base publica dos eventos:
   - el de entidad (`publishEntityCreatedEvent`/`Updated`/`Deleted`), que
     `MasterDataEntityChangedEventListener`, un `@EventListener` síncrono, convierte en fila del outbox
