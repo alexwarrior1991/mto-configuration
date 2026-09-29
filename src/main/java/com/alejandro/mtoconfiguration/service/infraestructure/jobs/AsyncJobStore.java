@@ -12,6 +12,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +44,12 @@ public class AsyncJobStore {
     private final AsyncJobRepository repository;
     private final ObjectMapper objectMapper;
     private final AsyncJobProperties properties;
+
+    /**
+     * Como {@code ObjectProvider} porque el publicador es condicional a {@code app.rabbitmq.enabled}:
+     * sin broker no hay evento, pero el estado del trabajo se sigue escribiendo igual.
+     */
+    private final ObjectProvider<JobFinishedEventPublisher> finishedEventPublisher;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -225,6 +232,11 @@ public class AsyncJobStore {
      *
      * <p>Admite {@code null} solo en el caso en que no llego a ejecutarse nada —un trabajo que no
      * se pudo ni encolar—, donde no hay contadores que conservar.</p>
+     *
+     * <p>Deja ademas en el outbox el evento {@code job.finished}, <b>en esta misma transaccion</b>:
+     * o se confirman el estado terminal y su evento, o ninguno de los dos. Un evento que anunciara
+     * un final que hizo rollback, o un final sin evento, romperian lo que el consumidor cuenta con
+     * ello; y es la misma garantia con la que salen los eventos de datos maestros.</p>
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markFinished(UUID jobId,
@@ -243,6 +255,8 @@ public class AsyncJobStore {
             job.setErrorMessage(truncateErrorMessage(errorMessage));
 
             repository.saveAndFlush(job);
+
+            finishedEventPublisher.ifAvailable(publisher -> publisher.publish(job));
 
             log.info("Trabajo terminado jobId={} type={} status={} procesados={} ok={} ko={}",
                     jobId, job.getType(), status, job.getProcessedItems(),

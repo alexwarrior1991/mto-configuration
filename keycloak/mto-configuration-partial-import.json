@@ -45,6 +45,9 @@
           "client": {
             "mto-configuration-api": [
               "config-read"
+            ],
+            "mto-notification-api": [
+              "notification-inbox"
             ]
           }
         }
@@ -59,6 +62,9 @@
               "config-read",
               "config-write",
               "config-import"
+            ],
+            "mto-notification-api": [
+              "notification-inbox"
             ]
           }
         }
@@ -76,6 +82,10 @@
               "config-delete",
               "lov-manage",
               "config-audit"
+            ],
+            "mto-notification-api": [
+              "notification-inbox",
+              "notification-activity-read"
             ]
           }
         }
@@ -89,6 +99,11 @@
             "mto-configuration-api": [
               "config-read",
               "config-audit"
+            ],
+            "mto-notification-api": [
+              "notification-inbox",
+              "notification-activity-read",
+              "notification-access-read"
             ]
           }
         }

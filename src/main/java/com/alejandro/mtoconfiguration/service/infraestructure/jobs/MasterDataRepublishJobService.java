@@ -117,7 +117,10 @@ public class MasterDataRepublishJobService {
         heartbeat.register(jobId);
 
         try {
-            taskExecutor.execute(() -> run(jobId, target, trackId, stationId, totalItems));
+            // El jobId como correlationId del hilo de fondo, igual que en ProfileJobService: cada
+            // evento republicado sale con el, y el consumidor puede agrupar el republicado entero.
+            taskExecutor.execute(JobCorrelation.wrap(jobId,
+                    () -> run(jobId, target, trackId, stationId, totalItems)));
         } catch (RuntimeException e) {
             heartbeat.unregister(jobId);
             store.markFinished(jobId, JobStatus.FAILED, null,

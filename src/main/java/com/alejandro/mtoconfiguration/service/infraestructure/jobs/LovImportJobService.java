@@ -90,7 +90,8 @@ public class LovImportJobService {
         heartbeat.register(jobId);
 
         try {
-            taskExecutor.execute(() -> run(jobId, content, dryRun));
+            // El jobId como correlationId del hilo de fondo, igual que en ProfileJobService.
+            taskExecutor.execute(JobCorrelation.wrap(jobId, () -> run(jobId, content, dryRun)));
         } catch (RuntimeException e) {
             heartbeat.unregister(jobId);
             store.markFinished(jobId, JobStatus.FAILED, null,

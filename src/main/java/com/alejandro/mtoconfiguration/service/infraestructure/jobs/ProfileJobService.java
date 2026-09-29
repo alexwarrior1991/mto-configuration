@@ -174,7 +174,10 @@ public class ProfileJobService {
         heartbeat.register(jobId);
 
         try {
-            taskExecutor.execute(() -> run(jobId, type, task));
+            // Con el jobId como correlationId del hilo de fondo: es lo que agrupa cada linea de log
+            // y cada evento del outbox que el trabajo escriba bajo el trabajo, no bajo la peticion
+            // de un segundo que lo lanzo.
+            taskExecutor.execute(JobCorrelation.wrap(jobId, () -> run(jobId, type, task)));
         } catch (RuntimeException e) {
             heartbeat.unregister(jobId);
             store.markFinished(jobId, JobStatus.FAILED, null,

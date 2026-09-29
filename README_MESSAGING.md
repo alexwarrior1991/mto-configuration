@@ -4,6 +4,25 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ El sobre gana `actor` y `correlationId`, nace `job.finished` y las cuatro colas desaparecen
+
+Tres cambios, todos compatibles hacia atrás para quien consume:
+
+- **El sobre `AsynchronousMessage` lleva dos claves más**: `actor` (`{id, username, kind}`, con
+  `kind` `PERSON`, `SERVICE` o `SYSTEM`, tal como lo clasifica este servicio al escribir el evento) y
+  `correlationId` (el `X-Correlation-Id` de la petición, o el `jobId` del trabajo en segundo plano
+  que escribió el evento). **Solo añade claves**: `messageHash` sigue siendo la huella de las siete
+  originales, y un consumidor que las ignore no nota nada. Detalle en §2.1.
+- **Nace el evento `job.finished`**, por un exchange nuevo, `mto.configuration.exchange`, con clave
+  `mto.configuration.job.finished` y `data` en la forma `DomainEvent`. Va aparte del exchange de
+  datos maestros para que quien escucha `mto.master-data.#` no reciba nada que no sea un dato
+  maestro. Detalle en §2.6.
+- **Este servicio deja de declarar colas.** Las cuatro de `mto.master-data.*.queue` no las leía
+  nadie: cada consumidor real (`mto-stock`, `mto-maintenance`, `mto-notification`) ya declara la
+  suya. Hay que borrarlas del broker a mano, porque nadie más las va a tocar: §9.1.
+
+Un ejemplo completo por evento, comprobado contra el código, en `docs/messaging/examples/`.
+
 ## ⚠️ El evento `section-insulator` crece
 
 El aislador de sección gana `kp`, `installationType`, `track`, `connectedTrack` y la lista
@@ -42,6 +61,7 @@ El patrón **Outbox** soluciona esto guardando el mensaje en una tabla de la mis
 - **Resiliencia**: Reintentos con backoff exponencial acotado en caso de fallos de red o del broker.
 - **Exactamente una publicación por réplica**: el relay reclama los mensajes con `FOR UPDATE SKIP LOCKED`, de modo que varias instancias reparten el trabajo en lugar de duplicarlo.
 - **Confirmación del broker**: un mensaje solo pasa a `PUBLISHED` cuando RabbitMQ lo ha aceptado (publisher confirms).
+- **Contexto**: cada mensaje dice quién pidió el cambio (`actor`) y bajo qué petición o trabajo (`correlationId`), leídos en el único momento en que existen: al escribir el outbox.
 
 ---
 
@@ -59,9 +79,22 @@ Este paquete define el contrato corporativo de los mensajes asíncronos.
     - `eventType`: Nombre lógico del evento (ej: `MASTER_DATA_STATION_CREATED`).
     - `data`: El contenido real del evento (payload).
     - `messageHash`: Huella del contenido en el momento de crearlo. **No es una firma** y no sirve para verificar integridad en destino: ver sección 13.
+    - `actor`: Quién pidió la operación, como `{ "id", "username", "kind" }`: el `sub` y el `preferred_username` del token, y `kind` `PERSON` (una persona), `SERVICE` (la cuenta de servicio de otro servicio del dominio, `service-account-*`) o `SYSTEM` (nadie autenticado: un proceso de fondo, con `id` y `username` nulos). Lo clasifica este servicio porque es el único que tiene el token delante.
+    - `correlationId`: El `X-Correlation-Id` de la petición que causó el evento, o el `jobId` del trabajo en segundo plano que lo escribió (una importación de perfiles emite miles de eventos con el mismo). Nulo fuera de ambos.
+
+    Las dos últimas se añadieron después: **no entran en `messageHash`**, y un consumidor anterior las ignora. En el contrato son opcionales; lo que este servicio publica hoy las lleva siempre (`actor` nunca es nulo: lo que no tiene usuario se dice como `SYSTEM`).
 
 *   **`AsynchronousMessageFactory`**:
-    Componente encargado de construir instancias de `AsynchronousMessage`. Automatiza la generación de UUIDs, timestamps y el cálculo del hash inicial.
+    Componente encargado de construir instancias de `AsynchronousMessage`. Automatiza la generación de UUIDs, timestamps, el cálculo del hash inicial y el contexto (`actor` y `correlationId`), que lee de `MessageContextResolver` en el momento de crear el mensaje: dentro de la transacción de negocio, que es cuando el `SecurityContext` de la petición (o el propagado al hilo de un trabajo) y el MDC todavía existen. El relay que publica después corre en un hilo del planificador, sin ninguno de los dos.
+
+*   **`MessageContextResolver`**:
+    Resuelve el actor desde `CurrentUserService` (persona, cuenta de servicio o sistema) y el `correlationId` desde el MDC, donde lo dejan `CorrelationIdFilter` en una petición y `JobCorrelation` en un trabajo.
+
+*   **`DomainEvent` (Record)**:
+    El `data` de los eventos que **no** son de datos maestros: `{ entityName, entityId, eventName, values }`. Los datos maestros siguen viajando como `MasterDataChangedEvent`, cuya `operation` es un enumerado cerrado que los consumidores deserializan tal cual; lo demás que este servicio cuenta lleva el nombre del evento en texto, y es la forma que usarán los productores de los otros servicios del dominio.
+
+*   **`ConfigurationRabbitMqNames`**:
+    El exchange propio, `mto.configuration.exchange`, y sus claves: `mto.configuration.<entidad>.<evento>` de enrutado y `CONFIGURATION_<ENTIDAD>_<EVENTO>` como `eventType`.
 
 *   **`AsynchronousMessageHashService`**:
     Calcula la huella `messageHash` con SHA-256 sobre el contenido antes de serializarlo. **No** ofrece validación en destino: la tenía y devolvía `false` para mensajes legítimos (ver sección 13). Para verificar de verdad está `MessagePayloadSignature`.
@@ -217,6 +250,33 @@ todo el trabajo a un lote, pero sin bloqueo pesimista una edición confirmada en
 `INSERT` todavía puede acabar con un `sequence_number` menor que el del republicado y perder frente
 a él en la marca de agua del consumidor (§11.4). Conviene lanzarlo en una ventana sin ediciones.
 
+### 2.6. Eventos propios: `job.finished`
+
+Lo que este servicio cuenta de sí mismo no es un dato maestro y no sale por el mismo exchange. Hoy
+hay un evento: el final de un trabajo en segundo plano (`README_ASYNC_JOBS.md` §12).
+
+| | |
+| :--- | :--- |
+| Exchange | `mto.configuration.exchange` (topic, durable) |
+| Clave de enrutado | `mto.configuration.job.finished` |
+| `eventType` | `CONFIGURATION_JOB_FINISHED` |
+| Agregado (`aggregateType`/`aggregateId`) | `job` / el `jobId` |
+| `data` | `DomainEvent`: `entityName` `job`, `entityId` el `jobId`, `eventName` `finished`, `values` con `jobId`, `type`, `status`, `createdBy`, `createdAt`, `startedAt`, `finishedAt`, `totalItems`, `processedItems`, `successfulItems`, `failedItems`, `fileName`, `trackId`, `mapperType`, `errorMessage` |
+| `actor` | quien lanzó el trabajo (el executor propaga su `SecurityContext` al hilo de fondo) |
+| `correlationId` | el propio `jobId` |
+| Quién lo consume | `mto-notification`, con su cola `mto.notification.configuration.queue` bindeada a `mto.configuration.#` |
+
+Lo escribe `JobFinishedEventPublisher` desde `AsyncJobStore.markFinished`, **en la misma transacción
+`REQUIRES_NEW` que el estado terminal**: o se confirman los dos o ninguno. El detalle de errores por
+elemento no viaja (puede pesar megas; para eso está el trabajo, al que el aviso enlaza), un trabajo
+rechazado por capacidad no publica nada, y el que cierra el reaper por falta de latido tampoco.
+Ejemplo completo en `docs/messaging/examples/job-finished.json`.
+
+Un evento nuevo de este servicio es una llamada más a `AsynchronousMessageFactory` y `OutboxService`
+con `ConfigurationRabbitMqNames.routingKey(entidad, evento)` y `eventType(entidad, evento)`, su
+ejemplo en `docs/messaging/examples/` y su aviso al principio de este fichero: la cola que lo
+recibe la declara el consumidor.
+
 ---
 
 ## 3. Infraestructura de RabbitMQ (Exchanges, Colas y Dead Letter)
@@ -224,32 +284,48 @@ a él en la marca de agua del consumidor (§11.4). Conviene lanzarlo en una vent
 El sistema utiliza una configuración dinámica basada en propiedades para definir la infraestructura de mensajería, asegurando que el broker (RabbitMQ) esté siempre alineado con los requisitos del código.
 
 ### 3.1. Exchanges (Intercambiadores)
-El punto central de recepción de mensajes es el **Topic Exchange** llamado `mto.master-data.exchange`.
+Este servicio declara dos **Topic Exchange**, y son su contrato como productor:
+
+| Exchange | Qué sale por él | Quién lo escucha |
+| :--- | :--- | :--- |
+| `mto.master-data.exchange` | Los datos maestros: `mto.master-data.<entidad>.<created\|updated\|deleted>` | `mto-stock`, `mto-maintenance` y `mto-notification`, con `mto.master-data.#` |
+| `mto.configuration.exchange` | Lo que el servicio cuenta de sí mismo: hoy `mto.configuration.job.finished` (§2.6) | `mto-notification`, con `mto.configuration.#` |
+
 - **Tipo Topic**: A diferencia de un exchange directo, este permite una distribución selectiva. Los mensajes se envían con una "Routing Key" (ej: `mto.master-data.station.created`) y el exchange los entrega a las colas cuyo "Binding Pattern" coincida.
-- **Durabilidad**: Declarado como `durable`, lo que garantiza que la configuración del exchange sobreviva a un reinicio de RabbitMQ.
-- **Auto-declaración**: La clase `RabbitMqConfiguration` lee la lista de exchanges desde el YAML y utiliza `RabbitAdmin` para crearlos automáticamente si no existen.
+- **Durabilidad**: Declarados como `durable`, lo que garantiza que la configuración del exchange sobreviva a un reinicio de RabbitMQ.
+- **Auto-declaración**: La clase `RabbitMqConfiguration` lee la lista de exchanges desde el YAML y utiliza `RabbitAdmin` para crearlos automáticamente si no existen. Los consumidores los declaran también, con los mismos argumentos: así no importa quién arranca primero.
+- Son dos y no uno a propósito: quien escucha `mto.master-data.#` no tiene por qué recibir el final de un trabajo, y un exchange nuevo no obliga a ningún consumidor existente a cambiar nada.
 
 ### 3.2. Colas (Queues)
-Las colas son los buzones donde residen los mensajes hasta que un consumidor los procesa.
-- **Nomenclatura**: Siguen el estándar `mto.master-data.{propósito}.queue`.
+Las colas son los buzones donde residen los mensajes hasta que un consumidor los procesa, y **este
+servicio no declara ninguna**: una cola pertenece a quien la consume, que es quien sabe qué TTL, qué
+límite y qué tipo necesita, y quien la declara con sus bindings y su dead letter. `app.rabbitmq.queues`
+y `app.rabbitmq.bindings` están vacíos, y `ApplicationRabbitMqTopologyTest` lo fija.
+
+Las colas que hoy existen las declaran sus consumidores, cada uno en su repositorio:
+
+| Cola | Binding (Routing Key) | De quién es |
+| :--- | :--- | :--- |
+| `mto.stock.master-data.queue` | `mto.master-data.#` | `mto-stock` |
+| `mto.maintenance.master-data.queue` | `mto.master-data.#` | `mto-maintenance` |
+| `mto.notification.master-data.queue` | `mto.master-data.#` | `mto-notification` |
+| `mto.notification.configuration.queue` | `mto.configuration.#` | `mto-notification` |
+
+Las cuatro colas `mto.master-data.{events,cache,audit,deleted}.queue` que este servicio declaraba
+no las leía nadie, y se borran del broker a mano (§9.1).
+
+Lo que sigue en esta sección y en la 9 describe lo que `RabbitMqConfiguration` sabe hacer con una
+cola, por si algún día vuelve a haber una aquí; hoy no aplica a ninguna:
+
 - **Tipo**: `classic` (por defecto) o `quorum`, replicada entre nodos. Ver sección 9.3.
 - **Propiedad**: `declare` indica si este servicio crea la cola o pertenece a su consumidor. Ver sección 9.1.
 - **Modo Lazy**: ~~configurable vía propiedades~~. **Obsoleto**: RabbitMQ 3.12 y posteriores ignoran `x-queue-mode`, porque las colas clásicas v2 ya escriben a disco por defecto.
 - **Persistencia**: Por defecto son `durable`, asegurando que los mensajes no se pierdan si el broker se apaga.
 
-**Topología de Colas Estándar:**
-
-| Cola | Binding (Routing Key) | Propósito |
-| :--- | :--- | :--- |
-| `mto.master-data.events.queue` | `mto.master-data.#` | Procesamiento general de cambios. |
-| `mto.master-data.cache.queue` | `mto.master-data.#` | Invalidación/Refresco de cachés distribuidas. |
-| `mto.master-data.audit.queue` | `mto.master-data.#` | Registro histórico de auditoría técnica. |
-| `mto.master-data.deleted.queue` | `mto.master-data.*.deleted` | Lógica específica para limpieza de datos eliminados. |
-
 ### 3.3. Estrategia de Dead Letter (DLX/DLQ)
-Para garantizar la resiliencia, el sistema implementa un mecanismo automático de gestión de errores mediante **Dead Lettering**.
-- **Dead Letter Exchange (DLX)**: Por cada cola configurada con `dead-letter-enabled: true`, el sistema crea un exchange adicional de tipo `direct` con el sufijo `.dlx` (ej: `mto.master-data.events.queue.dlx`).
-- **Dead Letter Queue (DLQ)**: Se crea una cola espejo con el sufijo `.dlq` (ej: `mto.master-data.events.queue.dlq`) conectada al DLX.
+Para garantizar la resiliencia, el sistema implementa un mecanismo automático de gestión de errores mediante **Dead Lettering**. Con la lista de colas vacía, aquí no se crea ninguno: cada consumidor crea el de su cola con el mismo esquema.
+- **Dead Letter Exchange (DLX)**: Por cada cola configurada con `dead-letter-enabled: true`, el sistema crea un exchange adicional de tipo `direct` con el sufijo `.dlx` (ej: `mto.notification.master-data.queue.dlx`, que crea `mto-notification` con el mismo esquema).
+- **Dead Letter Queue (DLQ)**: Se crea una cola espejo con el sufijo `.dlq` (ej: `mto.notification.master-data.queue.dlq`) conectada al DLX.
 - **Flujo de Error**: Cuando un mensaje no puede ser procesado (ej: formato inválido, error persistente en el consumidor o expiración de TTL), RabbitMQ lo mueve automáticamente de la cola principal a la DLQ. Esto permite:
     1. **Aislamiento**: Los mensajes problemáticos no bloquean el procesamiento de los mensajes nuevos.
     2. **Inspección**: Los administradores pueden revisar la DLQ para entender por qué falló el mensaje.
@@ -264,21 +340,21 @@ El flujo de un evento en este módulo sigue un camino estrictamente controlado p
 ### Fase 1: Captura del Evento (Base de Datos)
 1.  **Operación de Negocio**: Un servicio realiza un cambio en una entidad (ej: `repository.save(station)`).
 2.  **Llamada al Publisher**: Dentro de la misma transacción `@Transactional`, se llama a `eventPublisher.publishCreated(savedEntity)`.
-3.  **Serialización**: El sistema convierte la entidad en un `AsynchronousMessage<T>`, calculando la huella `messageHash` y asignando un `operationId`. La firma verificable se calcula después, al publicar, sobre los bytes reales (sección 13).
+3.  **Serialización**: El sistema convierte la entidad en un `AsynchronousMessage<T>`, calculando la huella `messageHash`, asignando un `operationId` y leyendo el contexto (`actor` y `correlationId`) mientras todavía existe. La firma verificable se calcula después, al publicar, sobre los bytes reales (sección 13).
 4.  **Persistencia Outbox**: El mensaje se guarda en la tabla `outbox_message` con estado `PENDING`. 
     *   *Importante*: Si la transacción de base de datos falla (rollback), el registro en la tabla Outbox nunca se crea, evitando enviar eventos falsos.
 
 ### Fase 2: El Relay (Envío al Broker)
 5.  **Scheduler**: El `OutboxPublisherScheduler` despierta cada N segundos.
 6.  **Reclamo** (transacción corta): `FOR UPDATE SKIP LOCKED` se lleva un lote **disjunto** del que se lleve cualquier otra réplica. Las filas pasan a `IN_PROGRESS` y quedan invisibles durante `claim-visibility-timeout`. Si el proceso muere antes de cerrarlas, otra réplica las recupera al expirar ese plazo.
-7.  **Publicación** (fuera de transacción): se envía el JSON al exchange `mto.master-data.exchange` y se **espera el publisher confirm**.
+7.  **Publicación** (fuera de transacción): se envía el JSON al exchange de la fila (`mto.master-data.exchange` o `mto.configuration.exchange`) y se **espera el publisher confirm**.
 8.  **Cierre** (transacción corta):
     *   **Éxito**: con el `ack` del broker el mensaje pasa a `PUBLISHED`.
     *   **Fallo temporal**: `nack`, mensaje no enrutable, o sin respuesta dentro de `confirm-timeout`. Vuelve a `PENDING` con el siguiente intento aplazado por backoff exponencial.
     *   **Fallo definitivo**: agotados los intentos, queda en `FAILED`. **No es terminal**: `POST /actuator/outbox` lo devuelve a `PENDING` una vez corregida la causa.
 
 ### Fase 3: Enrutado y Consumo
-9.  **Distribución**: El Exchange recibe el mensaje y, basándose en la Routing Key, lo deposita en una o varias colas (Audit, Events, Cache, etc.).
+9.  **Distribución**: El Exchange recibe el mensaje y, basándose en la Routing Key, lo deposita en la cola de cada consumidor cuyo binding coincida.
 10. **Procesamiento**: El microservicio destino consume el mensaje. Si falla y el sistema está configurado para no reencolar, el mensaje viaja a la **DLQ** para su posterior análisis.
 
 ---
@@ -328,14 +404,11 @@ app:
     exchanges:
       - name: mto.master-data.exchange
         type: topic
-    queues:
-      - name: mto.master-data.events.queue
-        dead-letter-enabled: true
-      # ... otras colas
-    bindings:
-      - queue: mto.master-data.events.queue
-        exchange: mto.master-data.exchange
-        routing-key: mto.master-data.#
+      - name: mto.configuration.exchange
+        type: topic
+    # Ninguna cola ni binding: pertenecen a los consumidores (seccion 9.1)
+    queues: []
+    bindings: []
 
   outbox:
     enabled: true
@@ -439,14 +512,19 @@ Si `outbox_message` ya es enorme en producción, conviene crearlos antes a mano 
 
 ### 9.1. Una cola pertenece a quien la consume
 
-Este servicio **publica**, no consume: no hay un solo `@RabbitListener` en el repositorio. Sin embargo declara las cuatro colas de datos maestros, que consumen otros servicios. Eso trae dos problemas:
+Este servicio **publica**, no consume: no hay un solo `@RabbitListener` en el repositorio, y **no
+declara ninguna cola**. Declaraba cuatro (`mto.master-data.{events,cache,audit,deleted}.queue`) que
+no leía nadie: los consumidores reales —`mto-stock`, `mto-maintenance`, `mto-notification`— declaran
+cada uno la suya, con sus bindings y su dead letter. Dejar colas huérfanas trae dos problemas:
 
 - **El consumidor es quien sabe lo que necesita** (qué TTL, qué límite, qué tipo de cola). Mientras las declare el productor, esas decisiones se toman en el sitio equivocado.
-- **Un desacuerdo rompe el enrutado.** Declarar en los dos lados es idempotente **solo si los argumentos coinciden exactamente**. Si no, el broker responde `PRECONDITION_FAILED (406)` y cierra el canal. `RabbitAdmin` declara en este orden —exchanges, colas, bindings— sobre un único canal, así que los exchanges ya declarados sobreviven, pero se quedan sin declarar el resto de colas del lote y **todos los bindings**. Sin bindings no se enruta nada.
+- **Una cola sin consumidor solo crece.** Bindeada a `mto.master-data.#`, recibe una copia de cada evento y no la vacía nadie; sin límite, acaba llenando el disco del broker, y un broker con el disco lleno bloquea las publicaciones de **todos** los servicios (9.2).
+
+Y si algún día se declarase una cola en los dos lados, valdría lo de siempre: **un desacuerdo rompe el enrutado**. Declarar en los dos lados es idempotente **solo si los argumentos coinciden exactamente**. Si no, el broker responde `PRECONDITION_FAILED (406)` y cierra el canal. `RabbitAdmin` declara en este orden —exchanges, colas, bindings— sobre un único canal, así que los exchanges ya declarados sobreviven, pero se quedan sin declarar el resto de colas del lote y **todos los bindings**. Sin bindings no se enruta nada.
 
 Declarar el **exchange** en ambos lados sí es buena idea: es el contrato del productor, sus argumentos (tipo y durabilidad) casi nunca cambian, y hacerlo en los dos sitios elimina la dependencia de orden en el despliegue. El problema son las colas, cuyos argumentos son justo los que evolucionan.
 
-Por eso existe `declare`:
+`declare` sigue existiendo para una cola que se listara aquí sin ser de este servicio (no se declara ni ella, ni su dead letter, ni sus bindings):
 
 ```yaml
 app:
@@ -454,19 +532,36 @@ app:
     defaults:
       declare-queues: true      # global
     queues:
-      - name: mto.master-data.audit.queue
+      - name: cola.de.otro.servicio
         declare: false          # esta cola es de otro servicio
 ```
 
-Con `declare: false` no se declara ni la cola, ni su dead letter, ni sus bindings.
+#### Borrar las colas huérfanas del broker
 
-**Sigue en `true`** porque las colas ya existen en los entornos y las consumen otros servicios: pasarlo a `false` hay que coordinarlo. El traspaso es:
+Quitar las colas del YAML no las quita del broker: una cola durable sobrevive a los reinicios y a
+los despliegues hasta que alguien la borra. En cada entorno que arrancó alguna vez con la
+configuración anterior hay ocho colas (cuatro principales y sus `.dlq`) y cuatro exchanges `.dlx` que
+siguen recibiendo una copia de cada evento y que nadie vacía. Se borran una vez, a mano:
 
-1. El servicio consumidor empieza a declarar la cola, su DLX/DLQ y su binding, **con exactamente los mismos argumentos** que usa hoy este servicio (si no, `PRECONDITION_FAILED` en el consumidor).
-2. Se despliega el consumidor y se comprueba que la cola sigue viva.
-3. Se pone `declare: false` aquí y se despliega.
+```bash
+# En el contenedor del broker de mto-platform: docker compose exec rabbitmq sh -c '...'
+for q in events cache audit deleted; do
+  rabbitmqctl delete_queue "mto.master-data.$q.queue"
+  rabbitmqctl delete_queue "mto.master-data.$q.queue.dlq"
+done
+# rabbitmqctl no borra exchanges: la API de administracion si (usuario y contrasena del broker)
+for q in events cache audit deleted; do
+  curl -s -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X DELETE \
+    "http://localhost:15672/api/exchanges/%2F/mto.master-data.$q.queue.dlx"
+done
+```
 
-Si en algún momento la cola deja de existir, los mensajes no son enrutables: con `mandatory: true` y publisher returns, el relay lo detecta y marca el mensaje como fallido en lugar de perderlo en silencio.
+Antes de borrar, `rabbitmqctl list_queues name messages consumers` enseña que las cuatro no tienen
+ningún consumidor: lo que tengan acumulado son copias de eventos que los consumidores reales ya
+recibieron por su propia cola. En el entorno local de `mto-platform`, `docker compose down -v`
+(que borra el volumen del broker) lo deja igual de limpio.
+
+Si en algún momento una cola de un consumidor deja de existir, sus mensajes no son enrutables: con `mandatory: true` y publisher returns, el relay lo detecta y marca el mensaje como fallido en lugar de perderlo en silencio.
 
 ### 9.2. Los argumentos de una cola existente son inmutables
 
@@ -491,7 +586,7 @@ Las colas actuales son clásicas y sin réplica: si cae el nodo que las aloja, s
 
 ```yaml
 queues:
-  - name: mto.master-data.events.queue
+  - name: mto.<consumidor>.master-data.queue   # en el YAML del consumidor, que es quien la declara
     type: quorum
     delivery-limit: 5     # solo quorum: protección contra mensaje envenenado
 ```

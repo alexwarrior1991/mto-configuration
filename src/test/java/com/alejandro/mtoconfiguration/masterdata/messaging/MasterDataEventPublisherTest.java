@@ -59,7 +59,9 @@ class MasterDataEventPublisherTest {
                 Instant.now(),
                 "MASTER_DATA_STATION_CREATED",
                 new MasterDataChangedEvent("station", "10", MasterDataOperation.CREATED, Map.of("id", 10L)),
-                "hash"
+                "hash",
+                null,
+                null
         );
     }
 

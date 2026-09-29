@@ -6,9 +6,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * El routing key es lo que decide, dentro del exchange topic, a que colas llega el
- * mensaje: README_MESSAGING.md documenta el patron {@code mto.master-data.#} (y
- * {@code mto.master-data.*.deleted} para la cola de borrados), asi que el formato que
- * construye este metodo no es un detalle cosmetico.
+ * mensaje: README_MESSAGING.md documenta el patron {@code mto.master-data.#} con el que
+ * los consumidores bindean sus colas (y {@code mto.master-data.*.deleted} para quien solo
+ * quiera las bajas), asi que el formato que construye este metodo no es un detalle
+ * cosmetico.
  */
 class MasterDataRabbitMqNamesTest {
 

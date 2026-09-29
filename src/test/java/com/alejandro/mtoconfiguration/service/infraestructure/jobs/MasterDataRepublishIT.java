@@ -1,7 +1,9 @@
 package com.alejandro.mtoconfiguration.service.infraestructure.jobs;
 
+import com.alejandro.mtoconfiguration.configuration.security.CurrentUserService;
 import com.alejandro.mtoconfiguration.core.messaging.AsynchronousMessageFactory;
 import com.alejandro.mtoconfiguration.core.messaging.AsynchronousMessageHashService;
+import com.alejandro.mtoconfiguration.core.messaging.MessageContextResolver;
 import com.alejandro.mtoconfiguration.core.outbox.NoOpOutboxTracing;
 import com.alejandro.mtoconfiguration.core.outbox.OutboxMessage;
 import com.alejandro.mtoconfiguration.core.outbox.OutboxMessageRepository;
@@ -443,7 +445,10 @@ class MasterDataRepublishIT {
 
         @Bean
         AsynchronousMessageFactory asynchronousMessageFactory(AsynchronousMessageHashService hashService) {
-            return new AsynchronousMessageFactory(hashService);
+            // Sin usuario ni peticion: el sobre sale con actor SYSTEM y sin correlationId, que es
+            // lo que le pasaria a un republicado lanzado por un proceso.
+            return new AsynchronousMessageFactory(hashService,
+                    new MessageContextResolver(new CurrentUserService()));
         }
 
         @Bean
