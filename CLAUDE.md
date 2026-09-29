@@ -34,7 +34,7 @@ Tests en `src/test/java`, misma raíz de paquete.
 - `README_API.md` — uso de los endpoints (alta, modificación, colecciones de hijos, consultas, errores)
 - `README_FLYWAY.md` — migraciones de BD
 - `README_LOCAL_DOCKER.md` — entorno local con Docker (la infraestructura vive en `mto-platform`)
-- `README_MESSAGING.md` — RabbitMQ / eventos
+- `README_MESSAGING.md` — RabbitMQ / eventos; `docs/messaging/examples/` trae un JSON por evento publicado, comprobado por `MessagingContractExamplesTest`
 - `keycloak/README.md` — qué aporta este repo al realm (`mto-configuration-partial-import.json` y `mto-configuration-dev.json`); el realm base y el orden de ensamblado son de `mto-platform`
 - `README_ASYNC_JOBS.md` — trabajos en segundo plano (202 Accepted + jobId), capa paralela a `/async`
 - `data/README.md` — los dos maestros generados desde los workbooks (`lov-master.xlsx` y `profile-master.xlsx`), sus generadores en Python y `topology.yml`, que es donde se declara lo que no está en los ficheros

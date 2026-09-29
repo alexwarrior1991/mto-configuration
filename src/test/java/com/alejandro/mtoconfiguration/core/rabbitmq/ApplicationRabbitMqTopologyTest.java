@@ -1,5 +1,7 @@
 package com.alejandro.mtoconfiguration.core.rabbitmq;
 
+import com.alejandro.mtoconfiguration.core.messaging.ConfigurationRabbitMqNames;
+import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataRabbitMqNames;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.Declarables;
@@ -13,7 +15,6 @@ import org.springframework.core.env.StandardEnvironment;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -44,6 +45,13 @@ class ApplicationRabbitMqTopologyTest {
                 .rabbitDeclarables(new RabbitMqTopologyValidator(properties));
     }
 
+    private List<Exchange> exchanges(Declarables declarables) {
+        return declarables.getDeclarables().stream()
+                .filter(Exchange.class::isInstance)
+                .map(Exchange.class::cast)
+                .toList();
+    }
+
     @Test
     void laTopologiaDeLaAplicacionEsCoherente() throws IOException {
         RabbitMqProperties properties = applicationProperties();
@@ -53,127 +61,42 @@ class ApplicationRabbitMqTopologyTest {
     }
 
     @Test
-    void seDeclaraElExchangeDeDatosMaestrosComoTopicDurable() throws IOException {
-        List<Exchange> exchanges = declarables(applicationProperties()).getDeclarables().stream()
-                .filter(Exchange.class::isInstance)
-                .map(Exchange.class::cast)
-                .filter(exchange -> !exchange.getName().endsWith(".dlx"))
-                .toList();
+    void seDeclaranLosDosExchangesDelContratoComoTopicDurables() throws IOException {
+        List<Exchange> exchanges = exchanges(declarables(applicationProperties()));
 
-        assertThat(exchanges).hasSize(1);
-        assertThat(exchanges.getFirst().getName()).isEqualTo("mto.master-data.exchange");
-        assertThat(exchanges.getFirst().getType()).isEqualTo("topic");
-        assertThat(exchanges.getFirst().isDurable())
-                .as("sin durable, la configuracion del exchange no sobrevive a un reinicio del broker")
-                .isTrue();
-    }
+        // Cambiar esta lista es cambiar el contrato con los servicios que consumen: el de datos
+        // maestros lo escuchan los tres, y el propio lo escucha mto-notification.
+        assertThat(exchanges)
+                .extracting(Exchange::getName)
+                .containsExactlyInAnyOrder(
+                        MasterDataRabbitMqNames.MASTER_DATA_EXCHANGE,
+                        ConfigurationRabbitMqNames.CONFIGURATION_EXCHANGE);
 
-    @Test
-    void todaColaDeclaradaTieneSuDeadLetter() throws IOException {
-        Declarables declarables = declarables(applicationProperties());
-
-        List<String> colas = declarables.getDeclarables().stream()
-                .filter(Queue.class::isInstance)
-                .map(Queue.class::cast)
-                .map(Queue::getName)
-                .toList();
-
-        colas.stream()
-                .filter(nombre -> !nombre.endsWith(".dlq"))
-                .forEach(nombre -> assertThat(colas)
-                        .as("la cola %s se queda sin dead letter: un mensaje que no se puede"
-                                + " procesar bloquearia el resto", nombre)
-                        .contains(nombre + ".dlq"));
-    }
-
-    @Test
-    void todaColaDeclaradaEsDurableYNoSeAutoborra() throws IOException {
-        List<Queue> colas = declarables(applicationProperties()).getDeclarables().stream()
-                .filter(Queue.class::isInstance)
-                .map(Queue.class::cast)
-                .toList();
-
-        assertThat(colas).isNotEmpty();
-        assertThat(colas).allSatisfy(cola -> {
-            assertThat(cola.isDurable()).as("%s no es durable", cola.getName()).isTrue();
-            assertThat(cola.isAutoDelete()).as("%s se autoborra", cola.getName()).isFalse();
-            assertThat(cola.isExclusive()).as("%s es exclusive", cola.getName()).isFalse();
+        assertThat(exchanges).allSatisfy(exchange -> {
+            assertThat(exchange.getType()).as("%s no es topic", exchange.getName()).isEqualTo("topic");
+            assertThat(exchange.isDurable())
+                    .as("sin durable, la configuracion de %s no sobrevive a un reinicio del broker",
+                            exchange.getName())
+                    .isTrue();
+            assertThat(exchange.isAutoDelete()).as("%s se autoborra", exchange.getName()).isFalse();
         });
     }
 
     @Test
-    void todoBindingApuntaAUnExchangeYAUnaColaQueSeDeclaranAqui() throws IOException {
+    void esteServicioNoDeclaraNingunaColaNiNingunBinding() throws IOException {
         Declarables declarables = declarables(applicationProperties());
 
-        List<String> colas = declarables.getDeclarables().stream()
-                .filter(Queue.class::isInstance).map(Queue.class::cast).map(Queue::getName).toList();
-        List<String> exchanges = declarables.getDeclarables().stream()
-                .filter(Exchange.class::isInstance).map(Exchange.class::cast).map(Exchange::getName).toList();
-        List<Binding> bindings = declarables.getDeclarables().stream()
-                .filter(Binding.class::isInstance).map(Binding.class::cast).toList();
+        // Este servicio publica y no consume: una cola pertenece a quien la consume, que es quien
+        // sabe que limites y que tipo necesita y quien la declara con sus bindings. Las cuatro colas
+        // que se declaraban aqui no las leia nadie, y volver a declarar una cola ajena con otros
+        // argumentos tumba la declaracion entera con PRECONDITION_FAILED.
+        assertThat(declarables.getDeclarables())
+                .noneMatch(Queue.class::isInstance)
+                .noneMatch(Binding.class::isInstance);
 
-        assertThat(bindings).isNotEmpty();
-        assertThat(bindings).allSatisfy(binding -> {
-            assertThat(colas).contains(binding.getDestination());
-            assertThat(exchanges).contains(binding.getExchange());
-        });
-    }
-
-    @Test
-    void ningunaColaDeclaradaSeQuedaSinBinding() throws IOException {
-        Declarables declarables = declarables(applicationProperties());
-
-        List<String> conBinding = declarables.getDeclarables().stream()
-                .filter(Binding.class::isInstance)
-                .map(Binding.class::cast)
-                .map(Binding::getDestination)
-                .toList();
-
-        List<String> colas = declarables.getDeclarables().stream()
-                .filter(Queue.class::isInstance)
-                .map(Queue.class::cast)
-                .map(Queue::getName)
-                .toList();
-
-        // Perder un binding no rompe nada de forma visible: la cola sigue existiendo,
-        // el exchange sigue aceptando mensajes y simplemente nadie recibe ese evento.
-        assertThat(colas).allSatisfy(cola -> assertThat(conBinding)
-                .as("la cola %s se declara pero no esta bindeada a ningun exchange:"
-                        + " no recibira ni un mensaje", cola)
-                .contains(cola));
-    }
-
-    @Test
-    void ningunaColaDeclaraArgumentosQueNoLeCorrespondenASuTipo() throws IOException {
-        // Las colas de application.yaml son clasicas: mandarles x-queue-type o
-        // x-delivery-limit las haria irredeclarables contra el broker que ya las tiene.
-        List<Queue> colas = declarables(applicationProperties()).getDeclarables().stream()
-                .filter(Queue.class::isInstance)
-                .map(Queue.class::cast)
-                .toList();
-
-        assertThat(colas).allSatisfy(cola -> {
-            Map<String, Object> argumentos = cola.getArguments();
-            assertThat(argumentos).doesNotContainKey(RabbitMqConstants.ARG_QUEUE_TYPE);
-            assertThat(argumentos).doesNotContainKey(RabbitMqConstants.ARG_DELIVERY_LIMIT);
-        });
-    }
-
-    @Test
-    void lasColasDeDatosMaestrosSiguenSiendoLasEsperadas() throws IOException {
-        List<String> colas = declarables(applicationProperties()).getDeclarables().stream()
-                .filter(Queue.class::isInstance)
-                .map(Queue.class::cast)
-                .map(Queue::getName)
-                .filter(nombre -> !nombre.endsWith(".dlq"))
-                .toList();
-
-        // Cambiar esta lista significa cambiar el contrato con los servicios que las
-        // consumen, asi que conviene que no se pueda hacer sin darse cuenta.
-        assertThat(colas).containsExactlyInAnyOrder(
-                "mto.master-data.events.queue",
-                "mto.master-data.cache.queue",
-                "mto.master-data.audit.queue",
-                "mto.master-data.deleted.queue");
+        // Sin colas tampoco hay dead letter que declarar: ni exchanges .dlx ni colas .dlq.
+        assertThat(exchanges(declarables))
+                .extracting(Exchange::getName)
+                .noneMatch(name -> name.endsWith(".dlx"));
     }
 }

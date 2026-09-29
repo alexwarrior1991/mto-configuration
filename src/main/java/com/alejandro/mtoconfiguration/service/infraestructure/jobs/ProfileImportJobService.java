@@ -89,7 +89,10 @@ public class ProfileImportJobService {
         heartbeat.register(jobId);
 
         try {
-            taskExecutor.execute(() -> run(jobId, content, dryRun));
+            // El jobId como correlationId del hilo de fondo, igual que en ProfileJobService. En una
+            // importacion es lo que convierte sus miles de eventos de datos maestros en una sola
+            // rafaga para quien los agrupa.
+            taskExecutor.execute(JobCorrelation.wrap(jobId, () -> run(jobId, content, dryRun)));
         } catch (RuntimeException e) {
             heartbeat.unregister(jobId);
             store.markFinished(jobId, JobStatus.FAILED, null,

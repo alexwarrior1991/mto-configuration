@@ -29,11 +29,17 @@ public class AsyncConfiguration {
      * auditoría de {@code SpringSecurityAuditorAware} atribuiría cada escritura de {@code /async}
      * al usuario «system», y cualquier {@code @PreAuthorize} sobre un servicio fallaría por falta
      * de autenticación en vez de por falta de permisos.
+     *
+     * <p>El MDC viaja por la misma razón ({@link MdcTaskDecorator}): sin él, el
+     * {@code correlationId} de la petición no llega ni a los logs del hilo de fondo ni a los
+     * eventos que escribe en el outbox.</p>
      */
     @Bean(TASK_EXECUTOR)
     public AsyncTaskExecutor applicationTaskExecutor() {
-        return new DelegatingSecurityContextAsyncTaskExecutor(
-                new TaskExecutorAdapter(Executors.newVirtualThreadPerTaskExecutor()));
+        TaskExecutorAdapter adapter = new TaskExecutorAdapter(Executors.newVirtualThreadPerTaskExecutor());
+        adapter.setTaskDecorator(new MdcTaskDecorator());
+
+        return new DelegatingSecurityContextAsyncTaskExecutor(adapter);
     }
 
 }

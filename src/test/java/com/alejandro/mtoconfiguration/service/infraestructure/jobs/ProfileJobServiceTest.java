@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.service.infraestructure.jobs;
 
 import com.alejandro.mtoconfiguration.configuration.security.CurrentUserService;
+import com.alejandro.mtoconfiguration.configuration.web.CorrelationIdFilter;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.jobs.AsyncJob;
@@ -18,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.slf4j.MDC;
 import org.springframework.core.task.support.TaskExecutorAdapter;
 
 import java.io.UncheckedIOException;
@@ -26,6 +28,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -283,5 +286,22 @@ class ProfileJobServiceTest {
         assertThatThrownBy(() -> service.getJob(unknown))
                 .isInstanceOf(NotFoundException.class)
                 .hasMessageContaining(unknown.toString());
+    }
+
+    @Test
+    @DisplayName("el trabajo corre con su propio id como correlationId, y lo suelta al terminar")
+    void elTrabajoCorreConSuIdComoCorrelationId() {
+        AtomicReference<String> correlationIdEnElTrabajo = new AtomicReference<>();
+        doAnswer(invocation -> {
+            correlationIdEnElTrabajo.set(MDC.get(CorrelationIdFilter.MDC_KEY));
+            return null;
+        }).when(exportRunner).run(any(), any(), any(), any());
+
+        ProfileJobSubmission submission = service.submitExport(42L, "basic");
+
+        // Es lo que agrupa cada linea de log y cada evento del outbox que escribe el trabajo bajo el
+        // trabajo, y no bajo la peticion de un segundo que lo lanzo.
+        assertThat(correlationIdEnElTrabajo.get()).isEqualTo(submission.job().getId().toString());
+        assertThat(MDC.get(CorrelationIdFilter.MDC_KEY)).isNull();
     }
 }

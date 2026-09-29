@@ -206,10 +206,14 @@ perfil pagaba trece intentos fallidos y trece trazas.
 
 RabbitMQ está habilitado mediante `app.rabbitmq.enabled=true`. La configuración define:
 
-- Exchange principal `mto.master-data.exchange` de tipo `topic`.
-- Colas para eventos, caché, auditoría y eliminados.
-- Dead letter queues habilitadas.
-- Bindings con patrones como `mto.master-data.#` y `mto.master-data.*.deleted`.
+- Exchange `mto.master-data.exchange` de tipo `topic`: los datos maestros, con claves
+  `mto.master-data.<entidad>.<created|updated|deleted>`.
+- Exchange `mto.configuration.exchange` de tipo `topic`: lo que el servicio cuenta de sí mismo, hoy
+  `mto.configuration.job.finished`.
+- Ninguna cola: pertenecen a los consumidores (`mto-stock`, `mto-maintenance`, `mto-notification`),
+  que las declaran con sus bindings y su dead letter. Ver `README_MESSAGING.md` §9.1.
+- Cada mensaje lleva `actor` (quién) y `correlationId` (la petición, o el trabajo en segundo plano
+  que lo escribió). Un ejemplo por evento en `docs/messaging/examples/`.
 
 ### Persistencia
 

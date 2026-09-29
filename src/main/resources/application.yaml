@@ -194,19 +194,16 @@ app:
 
     # Default settings for exchanges, queues, and bindings
     defaults:
-      # Si este servicio declara las colas de la lista.
+      # Si este servicio declara las colas de la lista. La lista esta vacia: este
+      # servicio publica y no consume, y una cola pertenece a quien la CONSUME, que es
+      # el que sabe que TTL, que limite y que tipo necesita (mto-stock, mto-maintenance
+      # y mto-notification declaran las suyas). Las cuatro colas que se declaraban aqui
+      # no las leia nadie; README_MESSAGING.md, seccion 9.1, dice como borrarlas del broker.
       #
-      # Una cola pertenece a quien la CONSUME, no a quien publica: es el consumidor
-      # el que sabe que TTL, que limite y que tipo necesita.
-      #
-      # Declararla en los dos lados es idempotente SOLO si los argumentos coinciden
-      # exactamente. Si no, el broker responde PRECONDITION_FAILED y cierra el canal:
-      # los exchanges ya declarados sobreviven, pero se quedan sin declarar el resto
-      # de colas del lote y TODOS los bindings, y sin bindings no se enruta nada.
-      #
-      # Sigue en true porque las colas de abajo ya existen en los entornos y las
-      # consumen otros servicios: pasarlo a false hay que coordinarlo con ellos.
-      # Ver README_MESSAGING.md, "Traspaso de las colas a sus consumidores".
+      # Declarar una cola en los dos lados es idempotente SOLO si los argumentos
+      # coinciden exactamente. Si no, el broker responde PRECONDITION_FAILED y cierra
+      # el canal: los exchanges ya declarados sobreviven, pero se quedan sin declarar el
+      # resto de colas del lote y TODOS los bindings, y sin bindings no se enruta nada.
       declare-queues: true
       # Tipo por defecto. Cambiar el tipo de una cola que ya existe obliga a
       # borrarla y recrearla, asi que esto solo aplica a colas nuevas.
@@ -231,64 +228,36 @@ app:
       # Return messages if they cannot be routed to any queue
       mandatory: true
 
-    # RabbitMQ exchange definitions - routing mechanisms for messages
+    # Los exchanges son el contrato de este servicio como productor, y los declara
+    # aqui y en cada consumidor: sus argumentos (tipo y durabilidad) casi nunca
+    # cambian, y declararlos en los dos sitios quita la dependencia de orden en el
+    # despliegue.
     exchanges:
-      # Topic exchange for master data events with pattern-based routing
+      # Datos maestros: mto.master-data.<entidad>.<created|updated|deleted>. Lo
+      # escuchan mto-stock, mto-maintenance y mto-notification con mto.master-data.#.
       - name: mto.master-data.exchange
         type: topic
         durable: true
         auto-delete: false
 
-    # RabbitMQ queue definitions - message storage endpoints
+      # Lo que este servicio cuenta de si mismo: hoy mto.configuration.job.finished.
+      # Aparte del de datos maestros para que quien escucha mto.master-data.# no
+      # reciba nada que no sea un dato maestro. Lo escucha mto-notification.
+      - name: mto.configuration.exchange
+        type: topic
+        durable: true
+        auto-delete: false
+
+    # Ninguna cola ni binding: pertenecen a los consumidores (ver defaults).
     #
-    # OJO al tocar estas colas: los argumentos de una cola que ya existe son
-    # INMUTABLES. Anadir aqui un max-length o un overflow a una cola ya creada hace
-    # que el broker responda PRECONDITION_FAILED y se caiga la declaracion entera.
-    # Para ponerle limites a una cola existente se usa una policy del broker; para
-    # cambiarle el tipo, hay que borrarla y recrearla. Ambos procedimientos estan en
-    # README_MESSAGING.md.
-    queues:
-      # Queue for general master data events
-      - name: mto.master-data.events.queue
-        durable: true
-        dead-letter-enabled: true
-
-      # Queue for cache invalidation events
-      - name: mto.master-data.cache.queue
-        durable: true
-        dead-letter-enabled: true
-
-      # Queue for audit trail events
-      - name: mto.master-data.audit.queue
-        durable: true
-        dead-letter-enabled: true
-
-      # Queue specifically for deleted entity events
-      - name: mto.master-data.deleted.queue
-        durable: true
-        dead-letter-enabled: true
-
-    # RabbitMQ bindings - connect queues to exchanges with routing keys
-    bindings:
-      # Bind events queue to receive all master data events
-      - queue: mto.master-data.events.queue
-        exchange: mto.master-data.exchange
-        routing-key: mto.master-data.#
-
-      # Bind cache queue to receive all master data events for cache invalidation
-      - queue: mto.master-data.cache.queue
-        exchange: mto.master-data.exchange
-        routing-key: mto.master-data.#
-
-      # Bind audit queue to receive all master data events for audit logging
-      - queue: mto.master-data.audit.queue
-        exchange: mto.master-data.exchange
-        routing-key: mto.master-data.#
-
-      # Bind deleted queue to receive only deletion events (pattern: *.deleted)
-      - queue: mto.master-data.deleted.queue
-        exchange: mto.master-data.exchange
-        routing-key: mto.master-data.*.deleted
+    # OJO si algun dia vuelve a haber colas aqui: los argumentos de una cola que ya
+    # existe son INMUTABLES. Anadir un max-length o un overflow a una cola ya creada
+    # hace que el broker responda PRECONDITION_FAILED y se caiga la declaracion
+    # entera. Para ponerle limites a una cola existente se usa una policy del broker;
+    # para cambiarle el tipo, hay que borrarla y recrearla. Ambos procedimientos estan
+    # en README_MESSAGING.md.
+    queues: []
+    bindings: []
 
   # Application security configuration for authentication and authorization
   security:

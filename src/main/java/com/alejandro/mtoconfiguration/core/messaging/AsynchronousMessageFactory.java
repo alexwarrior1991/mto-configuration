@@ -7,11 +7,20 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * Construye el sobre de un mensaje: identificador, origen, fecha, huella y el contexto de la
+ * operacion que lo genera (quien y bajo que {@code correlationId}).
+ * <p>
+ * El contexto se lee aqui, en el momento de crear el mensaje, porque es el unico en el que existe:
+ * el evento se escribe en el outbox dentro de la transaccion de negocio, y el relay que lo publica
+ * despues corre en un hilo del planificador, sin peticion ni usuario.
+ */
 @Component
 @RequiredArgsConstructor
 public class AsynchronousMessageFactory {
 
     private final AsynchronousMessageHashService hashService;
+    private final MessageContextResolver contextResolver;
 
     @Value("${spring.application.name:mto-configuration}")
     private String applicationName;
@@ -21,17 +30,7 @@ public class AsynchronousMessageFactory {
             String eventType,
             T data
     ) {
-        AsynchronousMessage<T> message = new AsynchronousMessage<>(
-                UUID.randomUUID(),
-                referenceId,
-                applicationName,
-                Instant.now(),
-                eventType,
-                data,
-                "PENDING"
-        );
-
-        return withHash(message);
+        return create(UUID.randomUUID(), referenceId, eventType, data);
     }
 
     public <T> AsynchronousMessage<T> create(
@@ -47,23 +46,11 @@ public class AsynchronousMessageFactory {
                 Instant.now(),
                 eventType,
                 data,
-                "PENDING"
+                "PENDING",
+                contextResolver.currentActor(),
+                contextResolver.currentCorrelationId()
         );
 
-        return withHash(message);
-    }
-
-    private <T> AsynchronousMessage<T> withHash(AsynchronousMessage<T> message) {
-        String hashCode = hashService.calculate(message);
-
-        return new AsynchronousMessage<>(
-                message.operationId(),
-                message.referenceId(),
-                message.origin(),
-                message.creationDate(),
-                message.eventType(),
-                message.data(),
-                hashCode
-        );
+        return message.withMessageHash(hashService.calculate(message));
     }
 }

@@ -509,6 +509,8 @@ tocó. En `bulk-create` no se exige.
 | `service.infraestructure.jobs.MasterDataRepublishBatchPublisher` | la transacción del lote: lee y publica dentro de ella |
 | `enums.jobs.MasterDataRepublishTarget` | qué se republica (`profile`/`disconnector`/`section-insulator`/`all`) |
 | `service.infraestructure.jobs.ProfileJobFiles` | dueño del directorio de exportación: nombra, localiza, borra |
+| `service.infraestructure.jobs.JobFinishedEventPublisher` | el evento `job.finished` en el outbox, en la transacción del cierre (ver §12) |
+| `service.infraestructure.jobs.JobCorrelation` | el `jobId` como `correlationId` del hilo de fondo |
 | `enums.jobs.JobSlotGroup` | grupos de cupo y claves de cerrojo |
 | `controller.synchronous.infraestructure.AsyncJobController` + `service.infraestructure.jobs.AsyncJobQueryService` | el listado de todas las familias (`GET /jobs`), solo lectura |
 | `entity.jobs.AsyncJob` + `repository.jpa.jobs.AsyncJobRepository` | persistencia |
@@ -544,7 +546,8 @@ Cuatro decisiones que sostienen el resto:
   `sequence_number` menor. Lo correcto es lanzarlo cuando no haya ediciones en curso.
 - **Un trabajo cuya réplica muere se pierde, no se reanuda.** Se cierra como `FAILED` y hay que
   volver a lanzarlo; el progreso parcial de una carga masiva ya está confirmado, así que relanzarla
-  reintenta también lo que ya se hizo.
+  reintenta también lo que ya se hizo. Y ese cierre lo hace el reaper con un `UPDATE` masivo, sin
+  pasar por `markFinished`, así que **no publica `job.finished`**: quien lo lanzó no recibe aviso.
 
 ## 11. Cambios en lo que ya existía
 
@@ -562,3 +565,55 @@ Todo aditivo, sin romper contratos:
 - `application.yaml`: bloque `app.jobs`.
 - `FlywayMigrationIT`: versiones esperadas hasta `7`, más comprobaciones de `async_job` (columnas,
   latido obligatorio, índices parciales y `CHECK` de estado).
+
+## 12. El evento `job.finished`
+
+Un trabajo que llega a un estado terminal por `AsyncJobStore.markFinished` deja en el outbox, **en
+la misma transacción `REQUIRES_NEW` que su estado**, el evento `mto.configuration.job.finished`
+(`JobFinishedEventPublisher`): o se confirman los dos o ninguno. Sale por `mto.configuration.exchange`
+—el exchange propio del servicio, no el de datos maestros— con `eventType`
+`CONFIGURATION_JOB_FINISHED`, agregado `job`/`<jobId>` y `data` en la forma `DomainEvent`:
+
+```json
+{
+  "entityName": "job",
+  "entityId": "00000000-0000-4000-8000-0000000000aa",
+  "eventName": "finished",
+  "values": {
+    "jobId": "00000000-0000-4000-8000-0000000000aa",
+    "type": "LOV_IMPORT",
+    "status": "COMPLETED_WITH_ERRORS",
+    "createdBy": "config.responsable",
+    "createdAt": "2026-09-29T07:00:00Z",
+    "startedAt": "2026-09-29T07:00:01Z",
+    "finishedAt": "2026-09-29T07:00:09Z",
+    "totalItems": 120,
+    "processedItems": 120,
+    "successfulItems": 118,
+    "failedItems": 2,
+    "fileName": "lov-import-00000000-0000-4000-8000-0000000000aa.json",
+    "trackId": null,
+    "mapperType": null,
+    "errorMessage": null
+  }
+}
+```
+
+El sobre completo, con `actor` (quien lanzó el trabajo, porque el executor propaga su
+`SecurityContext` al hilo de fondo) y `correlationId` (el propio `jobId`), está en
+`docs/messaging/examples/job-finished.json`; `MessagingContractExamplesTest` lo mantiene igual que
+el código. Lo consume `mto-notification`, que avisa a quien lo lanzó con un resumen («Importación
+de LOV terminada: 120 filas, 2 errores») en vez de con los miles de eventos de datos maestros que
+una importación emite por el camino. Por eso mismo el detalle de errores por elemento **no viaja**:
+puede pesar megas, y para eso está el trabajo, al que el aviso enlaza.
+
+Tres cosas que conviene saber:
+
+- **El `jobId` es el `correlationId` del hilo de fondo** (`JobCorrelation.wrap`, al encolar). Todo lo
+  que el trabajo escribe en el outbox —cada evento `profile` de una importación, su `job.finished`—
+  sale con él, y cada línea de log del trabajo también. Es lo que permite a `mto-notification`
+  contar una importación entera como una sola ráfaga.
+- **Un trabajo rechazado por capacidad no publica nada.** Nace y muere `REJECTED` en la petición
+  que lo lanzó, que ya se lleva el 429.
+- **Con `app.rabbitmq.enabled=false` no hay evento**, como tampoco lo hay de datos maestros: el
+  publicador es condicional y `AsyncJobStore` lo recibe como `ObjectProvider`.

@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.core.messaging;
 
+import com.alejandro.mtoconfiguration.configuration.security.CurrentUserService;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataChangedEvent;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataOperation;
 import org.junit.jupiter.api.Test;
@@ -27,7 +28,8 @@ class MessageIntegrityContrastTest {
             new AsynchronousMessageHashService(objectMapper);
 
     private AsynchronousMessage<MasterDataChangedEvent> mensajeConDecimales() throws Exception {
-        AsynchronousMessageFactory factory = new AsynchronousMessageFactory(hashService);
+        AsynchronousMessageFactory factory = new AsynchronousMessageFactory(hashService,
+                new MessageContextResolver(new CurrentUserService()));
         java.lang.reflect.Field applicationName =
                 AsynchronousMessageFactory.class.getDeclaredField("applicationName");
         applicationName.setAccessible(true);

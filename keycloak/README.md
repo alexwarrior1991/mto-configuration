@@ -43,12 +43,19 @@ llega con sus permisos dentro de `resource_access`.
 
 La ventaja de separarlos: cambiar lo que puede hacer un perfil se hace aquí, sin desplegar.
 
-| Perfil | Agrupa |
-|---|---|
-| `mto-viewer` | `config-read` |
-| `mto-editor` | `config-read`, `config-write`, `config-import` |
-| `mto-admin` | los de editor + `config-delete`, `lov-manage`, `config-audit` |
-| `mto-auditor` | `config-read`, `config-audit` |
+| Perfil | Agrupa de `mto-configuration-api` | Y de `mto-notification-api` |
+|---|---|---|
+| `mto-viewer` | `config-read` | `notification-inbox` |
+| `mto-editor` | `config-read`, `config-write`, `config-import` | `notification-inbox` |
+| `mto-admin` | los de editor + `config-delete`, `lov-manage`, `config-audit` | `notification-inbox`, `notification-activity-read` |
+| `mto-auditor` | `config-read`, `config-audit` | `notification-inbox`, `notification-activity-read`, `notification-access-read` |
+
+Los permisos de `mto-notification-api` van dentro de cada perfil porque la bandeja de
+notificaciones es de todo el dominio: quien tiene un perfil de este servicio ve sus avisos
+(`notification-inbox`), los responsables y los auditores leen además el registro de actividad, y
+solo el auditor ve los accesos, que llevan usuario e IP. Un compuesto solo puede nombrar roles de un
+cliente que ya exista, así que `mto-platform/keycloak/apply-partials.sh` aplica la parcial de
+`mto-notification` **antes** que esta; los usuarios de desarrollo no cambian, heredan por perfil.
 
 `mto-ops` no está en esta lista: es el perfil de quien explota la plataforma entera y lo define
 `mto-platform/keycloak/mto-ops-cross-service.json`, que agrupa el Actuator de los tres servicios.

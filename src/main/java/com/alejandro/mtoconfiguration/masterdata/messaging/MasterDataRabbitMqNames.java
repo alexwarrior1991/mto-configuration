@@ -1,13 +1,17 @@
 package com.alejandro.mtoconfiguration.masterdata.messaging;
 
+/**
+ * Nombres del contrato de datos maestros: el exchange y la forma de sus claves de enrutado.
+ * <p>
+ * Aqui no hay nombres de cola a proposito. Una cola pertenece a quien la consume
+ * ({@code mto.stock.master-data.queue}, {@code mto.maintenance.master-data.queue},
+ * {@code mto.notification.master-data.queue}), que es quien sabe que limites y que tipo necesita y
+ * quien la declara; este servicio solo conoce el exchange al que publica y los patrones con los
+ * que esas colas se bindean a el (README_MESSAGING.md, seccion 9.1).
+ */
 public final class MasterDataRabbitMqNames {
 
     public static final String MASTER_DATA_EXCHANGE = "mto.master-data.exchange";
-
-    public static final String MASTER_DATA_EVENTS_QUEUE = "mto.master-data.events.queue";
-    public static final String MASTER_DATA_CACHE_QUEUE = "mto.master-data.cache.queue";
-    public static final String MASTER_DATA_AUDIT_QUEUE = "mto.master-data.audit.queue";
-    public static final String MASTER_DATA_DELETED_QUEUE = "mto.master-data.deleted.queue";
 
     public static final String MASTER_DATA_ROUTING_PREFIX = "mto.master-data";
     public static final String MASTER_DATA_ROUTING_PATTERN = "mto.master-data.#";
