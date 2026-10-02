@@ -57,6 +57,3 @@ app:
     required-audience: ${KEYCLOAK_AUDIENCE:mto-configuration-api}
     # Entorno de desarrollo: la documentacion interactiva es la forma habitual de probar la API.
     expose-api-docs: ${APP_SECURITY_EXPOSE_API_DOCS:true}
-    cors:
-      allowed-origins:
-        - ${APP_CORS_ALLOWED_ORIGIN:http://localhost:4200}

@@ -223,6 +223,8 @@ La aplicación usa Spring Data JPA y PostgreSQL. En `application.yaml` se define
 
 El proyecto incluye Spring Security y OAuth2 Resource Server para validar tokens JWT. También contiene clientes Feign orientados a obtener tokens desde Keycloak.
 
+No tiene CORS propio: todo navegador llega por `mto-gateway`, que resuelve el CORS y quita `Origin` antes de llamar a este servicio. Aquí no hay `.cors()` ni `OPTIONS` abierto, así que un *preflight* que llegara directamente pide token como cualquier otra petición (`ApiAuthorizationRulesTest`).
+
 ## Componentes comunes destacados
 
 ### Servicios base

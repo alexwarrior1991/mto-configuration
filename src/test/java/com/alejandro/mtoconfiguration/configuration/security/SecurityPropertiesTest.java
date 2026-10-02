@@ -11,18 +11,14 @@ import org.springframework.context.annotation.Configuration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * La configuración de seguridad tiene dos valores cuyo error no se nota funcionando: una audiencia
- * vacía deja pasar cualquier token del realm, y un comodín en los orígenes de CORS revienta cada
- * preflight en tiempo de ejecución. Los dos deben impedir el arranque, que es lo que se fija aquí.
+ * La configuración de seguridad tiene un valor cuyo error no se nota funcionando: una audiencia
+ * vacía deja pasar cualquier token del realm. Debe impedir el arranque, que es lo que se fija aquí.
  */
 class SecurityPropertiesTest {
 
     private static final String[] CONFIGURACION_MINIMA = {
             "app.security.client-id=mto-configuration-api",
-            "app.security.principal-claim=preferred_username",
-            "app.security.cors.allowed-origins=http://localhost:4200",
-            "app.security.cors.allowed-methods=GET",
-            "app.security.cors.allowed-headers=Authorization"
+            "app.security.principal-claim=preferred_username"
     };
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
@@ -65,19 +61,6 @@ class SecurityPropertiesTest {
         contextRunner
                 .withPropertyValues("app.security.audience-validation-enabled=false")
                 .run(context -> assertThat(context).hasNotFailed());
-    }
-
-    @Test
-    @DisplayName("el comodín en los orígenes de CORS impide el arranque")
-    void elComodinEnLosOrigenesDeCorsImpideElArranque() {
-        contextRunner
-                .withPropertyValues(
-                        "app.security.audience-validation-enabled=false",
-                        "app.security.cors.allowed-origins=*")
-                .run(context -> assertThat(context)
-                        .hasFailed()
-                        .getFailure()
-                        .hasStackTraceContaining("app.security.cors.allowed-origins no admite el comodín"));
     }
 
     @Configuration(proxyBeanMethods = false)

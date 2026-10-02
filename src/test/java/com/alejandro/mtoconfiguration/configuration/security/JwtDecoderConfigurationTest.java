@@ -97,10 +97,7 @@ class JwtDecoderConfigurationTest {
 
     private SecurityConfiguration configuracion(boolean validarAudiencia) {
         SecurityProperties propiedades = new SecurityProperties(
-                AUDIENCIA, JwtClaimNames.PREFERRED_USERNAME, validarAudiencia, AUDIENCIA, false,
-                new SecurityProperties.Cors(
-                        List.of("http://localhost:4200"), List.of("GET"), List.of("Authorization"),
-                        List.of(), false, 3600));
+                AUDIENCIA, JwtClaimNames.PREFERRED_USERNAME, validarAudiencia, AUDIENCIA, false);
 
         return new SecurityConfiguration(
                 propiedades,

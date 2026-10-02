@@ -47,7 +47,6 @@ services:
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-mto-configuration-api}
       KEYCLOAK_SERVICE_CLIENT_SECRET: ${KEYCLOAK_SERVICE_CLIENT_SECRET:?falta en .env, copiese .env.example}
 
-      APP_CORS_ALLOWED_ORIGIN: ${APP_CORS_ALLOWED_ORIGIN:-http://localhost:4200}
       JAVA_OPTS: ${JAVA_OPTS:-}
     # El 'iss' del token es http://auth.mto.local:8082 y la aplicacion tiene que poder resolver ese
     # mismo nombre para descargar el JWK Set: es el mismo string el que viaja en el token y el que
