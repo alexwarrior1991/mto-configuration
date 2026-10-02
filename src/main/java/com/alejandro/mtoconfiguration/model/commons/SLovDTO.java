@@ -5,8 +5,17 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.io.Serial;
 import java.time.LocalDateTime;
-import java.util.Date;
 
+/**
+ * Una entrada de catálogo tal como sale por la API: la de {@code GET /pole-types} y la que viaja
+ * dentro de un maestro ({@code profile.poleType}).
+ *
+ * <p>Lleva de {@link BaseDTO} el {@code versionNumber}, que es el bloqueo optimista de
+ * {@code PUT /{id}} y {@code PUT /bulk} (README_API.md §9), y {@code versionDate} y
+ * {@code versionUser}, quién la tocó por última vez. Hasta que se publicaron estaban ocultos, así que
+ * ningún cliente podía devolver la versión que leyó: el servicio no comprobaba nada y ganaba el
+ * último en guardar. Solo se ocultan los de creación, que nadie usa.</p>
+ */
 public class SLovDTO extends LovDTO {
 
     @Serial
@@ -15,13 +24,7 @@ public class SLovDTO extends LovDTO {
     @JsonIgnore
     private String createUser;
     @JsonIgnore
-    private String versionUser;
-    @JsonIgnore
     private LocalDateTime createDate;
-    @JsonIgnore
-    private LocalDateTime versionDate;
-    @JsonIgnore
-    private Integer versionNumber;
 
     public SLovDTO() {
         super();
@@ -48,16 +51,6 @@ public class SLovDTO extends LovDTO {
     }
 
     @Override
-    public String getVersionUser() {
-        return versionUser;
-    }
-
-    @Override
-    public void setVersionUser(String versionUser) {
-        this.versionUser = versionUser;
-    }
-
-    @Override
     public LocalDateTime getCreateDate() {
         return createDate;
     }
@@ -65,26 +58,6 @@ public class SLovDTO extends LovDTO {
     @Override
     public void setCreateDate(LocalDateTime createDate) {
         this.createDate = createDate;
-    }
-
-    @Override
-    public LocalDateTime getVersionDate() {
-        return versionDate;
-    }
-
-    @Override
-    public void setVersionDate(LocalDateTime versionDate) {
-        this.versionDate = versionDate;
-    }
-
-    @Override
-    public Integer getVersionNumber() {
-        return versionNumber;
-    }
-
-    @Override
-    public void setVersionNumber(Integer versionNumber) {
-        this.versionNumber = versionNumber;
     }
 
     public static boolean validLovDTO(LovDTO dto) {

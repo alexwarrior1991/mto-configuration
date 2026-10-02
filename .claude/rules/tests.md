@@ -16,8 +16,8 @@ paths:
 - Los tests guardianes recorren el código y fallan cuando un cambio rompe una regla que el compilador
   no ve: `CacheableServicesTest`, `CacheEvictionListenerTest`, `LovControllerGuardInheritanceTest`,
   `ControllerConstraintDeclarationTest`, `MasterDataPayloadMapperCoverageTest`,
-  `ValidatorBeanContractTest` y los dos `ErrorCatalogTest`. Cada regla de `.claude/rules/` dice cuál
-  la vigila.
+  `ValidatorBeanContractTest`, los dos `ErrorCatalogTest` y «Todos los catálogos» de
+  `LovMapperTest`. Cada regla de `.claude/rules/` dice cuál la vigila.
 - Para ejecutar un solo IT contra un PostgreSQL existente, sin Docker (solo los que usan
   `PostgresTestDatabase`, ver `persistence.md`):
   `./mvnw verify -Dit.test=XxxIT -Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false

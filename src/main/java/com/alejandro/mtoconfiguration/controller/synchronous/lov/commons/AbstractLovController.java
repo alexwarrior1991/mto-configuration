@@ -166,11 +166,14 @@ public abstract class AbstractLovController<D extends LovDTO> {
     @PreAuthorize("hasRole('" + SecurityRoles.LOV_MANAGE + "')")
     @Operation(
             summary = "Delete LOV record",
-            description = "Performs a logical deletion of the LOV record."
+            description = "Deletes the LOV record. It is a physical deletion, not a logical one: "
+                    + "to retire an entry that is still in use, update it with enabled=false. "
+                    + "An entry that other records reference is not deleted (409 BUS-002)."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Resource deleted successfully."),
             @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404),
+            @ApiResponse(responseCode = "409", description = "Conflict. Other records still reference the entry."),
             @ApiResponse(responseCode = ApiConstants.CODE_500, description = ApiConstants.DESC_500)
     })
     public ResponseEntity<Void> delete(

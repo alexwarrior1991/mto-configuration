@@ -1,19 +1,35 @@
 package com.alejandro.mtoconfiguration.mapper.lov.commons;
 
 import com.alejandro.mtoconfiguration.entity.lov.ProfileStatus;
+import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
+import com.alejandro.mtoconfiguration.mapper.lov.AnchorageFoundationMapperImpl;
+import com.alejandro.mtoconfiguration.mapper.lov.FoundationMapperImpl;
+import com.alejandro.mtoconfiguration.mapper.lov.PortalMapperImpl;
 import com.alejandro.mtoconfiguration.mapper.lov.ProfileStatusMapperImpl;
+import com.alejandro.mtoconfiguration.model.commons.LovDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.ProfileStatusRepository;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import org.springframework.core.type.filter.AssignableTypeFilter;
+import org.springframework.util.ClassUtils;
 
+import java.lang.reflect.Method;
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,6 +62,22 @@ class LovMapperTest {
         dto.setDescription("Descripcion " + code);
         dto.setEnabled(true);
         return dto;
+    }
+
+    /**
+     * Los mappers generados de los diecisiete catálogos, buscados en el classpath: uno nuevo entra
+     * solo en los casos de «Todos los catálogos».
+     */
+    static List<Named<Class<?>>> lovMappers() {
+        ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
+        scanner.addIncludeFilter(new AssignableTypeFilter(LovMapper.class));
+
+        return scanner.findCandidateComponents("com.alejandro.mtoconfiguration.mapper.lov").stream()
+                .map(BeanDefinition::getBeanClassName)
+                .<Class<?>>map(name -> ClassUtils.resolveClassName(name, LovMapperTest.class.getClassLoader()))
+                .sorted(Comparator.comparing(Class::getSimpleName))
+                .map(type -> Named.<Class<?>>of(type.getSimpleName(), type))
+                .toList();
     }
 
     private static ProfileStatus entity(Long id, String code) {
@@ -112,6 +144,106 @@ class LovMapperTest {
         void nulos() {
             assertThat(mapper.toEntity(null)).isNull();
             assertThat(mapper.toDTO(null)).isNull();
+        }
+    }
+
+    /**
+     * Lo que fija {@code @ToEntityIgnoreAudit} en cada catálogo, no solo en {@code ProfileStatus}.
+     *
+     * <p>Un mapper que sobrescribe {@code toEntity} o {@code updateEntityFromDTO} para ignorar su tipo
+     * padre pierde esa anotación si no la repite: MapStruct no hereda los {@code @Mapping}. Les pasó a
+     * {@code foundations}, {@code portals} y {@code anchorage-foundations}, que copiaban del cuerpo el
+     * id, la versión y la creación; como el JSON no lleva la creación, toda modificación acababa en un
+     * 500, y un alta con id podía pisar esa fila.</p>
+     */
+    @Nested
+    @DisplayName("Todos los catálogos")
+    class TodosLosCatalogos {
+
+        private static final LocalDateTime ANTES = LocalDateTime.of(2000, 1, 1, 0, 0);
+
+        @SuppressWarnings("unchecked")
+        private static LovMapper<LovDTO, Lov> instancia(Class<?> impl) throws ReflectiveOperationException {
+            return (LovMapper<LovDTO, Lov>) impl.getDeclaredConstructor().newInstance();
+        }
+
+        /** {@code toEntity(XDTO)} del mapper generado, no el puente genérico. */
+        private static Method toEntity(Class<?> impl) {
+            return Arrays.stream(impl.getMethods())
+                    .filter(method -> method.getName().equals("toEntity"))
+                    .filter(method -> method.getParameterCount() == 1 && !method.isBridge())
+                    .findFirst()
+                    .orElseThrow();
+        }
+
+        private static <T> T nueva(Class<T> type) throws ReflectiveOperationException {
+            var constructor = type.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            return constructor.newInstance();
+        }
+
+        /** Un cuerpo que trae id, versión y auditoría: nada de eso puede llegar a la entidad. */
+        private static LovDTO cuerpo(Class<?> impl) throws ReflectiveOperationException {
+            LovDTO dto = (LovDTO) nueva(toEntity(impl).getParameterTypes()[0]);
+            dto.setId(99L);
+            dto.setCode("NUEVO");
+            dto.setDescription("Descripcion NUEVO");
+            dto.setEnabled(true);
+            dto.setVersionNumber(7);
+            dto.setVersionDate(ANTES);
+            dto.setVersionUser("intruso");
+            dto.setCreateDate(ANTES);
+            dto.setCreateUser("intruso");
+            return dto;
+        }
+
+        @Test
+        @DisplayName("se encuentran los mappers generados, también los tres con tipo padre")
+        void seEncuentran() {
+            assertThat(lovMappers()).extracting(Named::getPayload)
+                    .contains(ProfileStatusMapperImpl.class, FoundationMapperImpl.class, PortalMapperImpl.class,
+                            AnchorageFoundationMapperImpl.class);
+        }
+
+        @ParameterizedTest(name = "{0}")
+        @MethodSource("com.alejandro.mtoconfiguration.mapper.lov.commons.LovMapperTest#lovMappers")
+        @DisplayName("el alta no copia del cuerpo el id, la versión ni la auditoría")
+        void alta(Class<?> impl) throws ReflectiveOperationException {
+            Lov entity = instancia(impl).toEntity(cuerpo(impl));
+
+            assertThat(entity.getCode()).isEqualTo("NUEVO");
+            assertThat(entity.getId()).isNull();
+            assertThat(entity.getVersionNumber()).isEqualTo(1);
+            assertThat(entity.getVersionDate()).isNull();
+            assertThat(entity.getVersionUser()).isNull();
+            assertThat(entity.getCreateDate()).isNull();
+            assertThat(entity.getCreateUser()).isNull();
+        }
+
+        @ParameterizedTest(name = "{0}")
+        @MethodSource("com.alejandro.mtoconfiguration.mapper.lov.commons.LovMapperTest#lovMappers")
+        @DisplayName("la modificación vuelca el cuerpo sin tocar el id, la versión ni la auditoría de la fila")
+        void modificacion(Class<?> impl) throws ReflectiveOperationException {
+            LocalDateTime creada = LocalDateTime.of(2026, 8, 1, 10, 0);
+            LocalDateTime modificada = LocalDateTime.of(2026, 9, 1, 10, 0);
+            Lov fila = (Lov) nueva(toEntity(impl).getReturnType());
+            fila.setId(5L);
+            fila.setCode("VIEJO");
+            fila.setVersionNumber(4);
+            fila.setVersionDate(modificada);
+            fila.setVersionUser("luis");
+            fila.setCreateDate(creada);
+            fila.setCreateUser("ana");
+
+            instancia(impl).updateEntityFromDTO(cuerpo(impl), fila);
+
+            assertThat(fila.getCode()).isEqualTo("NUEVO");
+            assertThat(fila.getId()).isEqualTo(5L);
+            assertThat(fila.getVersionNumber()).isEqualTo(4);
+            assertThat(fila.getVersionDate()).isEqualTo(modificada);
+            assertThat(fila.getVersionUser()).isEqualTo("luis");
+            assertThat(fila.getCreateDate()).isEqualTo(creada);
+            assertThat(fila.getCreateUser()).isEqualTo("ana");
         }
     }
 
