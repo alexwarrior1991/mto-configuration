@@ -202,6 +202,12 @@ pendiente en memoria y se vacía con la siguiente escritura que encuentre Redis;
 ninguna, lo acota el TTL. Antes era una conexión por patrón: con Redis caído, una escritura de
 perfil pagaba trece intentos fallidos y trece trazas.
 
+Las escrituras en la caché son **inmediatas** (`RedisCacheConfig`, con `immediateWrites()`): el
+`put` vuelve cuando Redis ya tiene el valor. Spring Data Redis 4 escribe en segundo plano por
+defecto con Lettuce, por otra conexión. Con eso, una lectura justo después podía no encontrar el
+valor y volver a la base de datos. Y un `SET` fallido no llegaba a `ResilientCacheErrorHandler`: ni
+degradaba la caché ni contaba en `cache.errors`.
+
 ### RabbitMQ
 
 RabbitMQ está habilitado mediante `app.rabbitmq.enabled=true`. La configuración define:

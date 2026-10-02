@@ -88,11 +88,10 @@ class RedisCacheResilienceIT {
     static void redisProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", redis::getFirstMappedPort);
-        // 2s y no 500ms: con el contenedor recien arrancado, la escritura que puebla la cache en
-        // shouldKeepServingFromDatabaseWhenRedisGoesDown se pasaba a veces de ese margen. Cuando
-        // ocurre, ResilientCacheErrorHandler se traga el fallo —que es su cometido— y la segunda
-        // llamada vuelve al repositorio, de modo que el test fallaba por una carrera con el
-        // arranque y no por lo que pretende comprobar.
+        // 2s y no el 1s de application.yaml: margen para un runner cargado, porque una operacion
+        // que se pase del timeout arma el cortocircuito y la fase con Redis vivo dejaria de probar
+        // nada. No era eso lo que hacia fallar este test de vez en cuando ("was 2 times"): era la
+        // escritura en segundo plano de Spring Data Redis 4, que RedisCacheConfig hace inmediata.
         //
         // No encarece la parte de degradacion: en cuanto Redis cae, la disponibilidad se marca
         // como perdida y las llamadas siguientes cortocircuitan sin intentar conectarse, asi que
@@ -107,17 +106,18 @@ class RedisCacheResilienceIT {
     /**
      * Abre y cierra una conexión antes de tocar la caché.
      * <p>
-     * No es precaución de más: con el contenedor recién arrancado, la primera operación contra
-     * Redis paga la conexión en frío de Lettuce, y si se pasa de {@code spring.data.redis.timeout}
-     * el {@code ResilientCacheErrorHandler} se la traga —su cometido— pero además
-     * {@link RedisCacheAvailability#markDegraded} arma el cortocircuito durante
-     * {@code cache.redis.degraded-retry-window}, aquí 30 segundos. A partir de ahí
-     * {@code ResilientCache} corta ANTES de llamar a Redis, así que la segunda llamada del test
-     * vuelve al repositorio y la aserción falla con "was 2 times" por una carrera de arranque y no
-     * por lo que el test pretende comprobar.
+     * Con el contenedor recién arrancado, la primera operación contra Redis paga la conexión en frío
+     * de Lettuce. Si se pasara de {@code spring.data.redis.timeout}, el
+     * {@code ResilientCacheErrorHandler} se la tragaría —su cometido— y
+     * {@link RedisCacheAvailability#markDegraded} armaría el cortocircuito durante
+     * {@code cache.redis.degraded-retry-window}, aquí 30 segundos: la segunda llamada volvería al
+     * repositorio sin que Redis hubiera caído. Pagando ese coste aquí, fuera del camino de la caché,
+     * una conexión lenta no puede armarlo.
      * <p>
-     * Pagando ese coste aquí, fuera del camino de la caché, una conexión lenta no puede armar el
-     * cortocircuito. Subir el timeout —que es lo que se intentó antes— solo baja la probabilidad.
+     * No era eso lo que daba el "was 2 times" de vez en cuando: en el log de esos fallos no hay
+     * ninguna degradación. Era la escritura en segundo plano (ver {@code RedisCacheConfig}), que
+     * ahora es inmediata. Si algún día vuelve a fallar, la aserción sobre {@code cache.errors} dice
+     * cuál de las dos cosas ha sido.
      */
     private void calentarLaConexion() {
         await().atMost(Duration.ofSeconds(15))
@@ -147,6 +147,10 @@ class RedisCacheResilienceIT {
         // Con Redis vivo: primera llamada puebla la caché, la segunda es un acierto.
         assertThat(service.item("K").name()).isEqualTo("desde-bd");
         assertThat(service.item("K").name()).isEqualTo("desde-bd");
+        assertThat(totalCacheErrors())
+                .withFailMessage("Redis falló con Redis vivo y la caché se degradó, así que la segunda "
+                        + "llamada no podía salir de Redis: busca el WARN «Caché Redis degradada».")
+                .isZero();
         verify(repository, times(1)).load("K");
 
         redis.stop();

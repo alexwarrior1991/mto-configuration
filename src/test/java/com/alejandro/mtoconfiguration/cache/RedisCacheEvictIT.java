@@ -35,11 +35,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * cara: si la invalidacion granular de {@code Anchorage} arrastra {@code AnchorageFoundation} se
  * vacia media cache sin motivo, y si no arrastra lo suyo se sirven datos viejos.
  *
- * <p>Las claves se escriben <b>a mano</b>, sin pasar por {@code @Cacheable}. No es un atajo: los
- * aciertos de cache de este proyecto son inestables en el entorno de test y estan en cuarentena
- * (ver {@code RedisCacheIT}). Apoyar este test en esa ruta lo haria fallar por un motivo que no
- * tiene nada que ver con lo que se quiere probar. Escribiendo las claves directamente se ejercita
- * exactamente la unidad que interesa: el SCAN y el DEL.
+ * <p>Las claves se escriben <b>a mano</b>, sin pasar por {@code @Cacheable}: asi se ejercita
+ * exactamente la unidad que interesa, el SCAN y el DEL. Que un {@code @Cacheable} guarde y sirva
+ * desde Redis lo prueba {@code RedisCacheIT}.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @ImportAutoConfiguration(DataRedisAutoConfiguration.class)
