@@ -301,7 +301,7 @@ class AbstractLovCrudServiceTest {
         }
 
         @Test
-        @DisplayName("sin version se guarda como siempre: el editor de catalogos del backoffice no la manda")
+        @DisplayName("sin version no se comprueba nada: es lo que hace el importador del maestro, que es la fuente del dato")
         void updateSinVersion() {
             LovDTO dto = dto(1L, "A");
             TestLov entity = new TestLov(1L);

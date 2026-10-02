@@ -11,7 +11,10 @@ paths:
   `unmappedTargetPolicy = IGNORE`: un campo que no casa por nombre no da aviso, se queda sin mapear.
 - `toEntity` y `updateEntityFromDTO` llevan `@ToEntityIgnoreAudit`: el id, la auditoría
   (`createDate`, `createUser`, `versionDate`, `versionUser`), `versionNumber` y `dirty` nunca se copian
-  del DTO a la entidad.
+  del DTO a la entidad. Un mapper que sobrescribe uno de los dos (los de catálogo con tipo padre, para
+  ignorarlo) repite la anotación, porque MapStruct no hereda los `@Mapping`: sin ella, el alta podía
+  pisar la fila del id del cuerpo y la modificación acababa en un 500. Lo fija `LovMapperTest`
+  («Todos los catálogos»), que recorre los mappers generados de los diecisiete catálogos.
 - `BaseMapper.updateDTOFromEntity` no lleva `@Mapping`, y MapStruct no comparte los `@Mapping` entre
   métodos. Un mapper cuyo `toDTO` pone ids de padre (`@Mapping(target = "trackId", source =
   "track.id")`) la sobrescribe con `@Override @InheritConfiguration(name = "toDTO")`; si no, el

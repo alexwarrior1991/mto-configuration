@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.mapper.lov;
 
 import com.alejandro.mtoconfiguration.entity.lov.AnchorageFoundation;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
+import com.alejandro.mtoconfiguration.mapper.commons.ToEntityIgnoreAudit;
 import com.alejandro.mtoconfiguration.mapper.lov.commons.LovMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageFoundationDTO;
 import org.mapstruct.Mapper;
@@ -12,10 +13,12 @@ import org.mapstruct.MappingTarget;
 public interface AnchorageFoundationMapper extends LovMapper<AnchorageFoundationDTO, AnchorageFoundation> {
 
     @Override
+    @ToEntityIgnoreAudit
     @Mapping(target = "anchorageFoundationType", ignore = true)
     AnchorageFoundation toEntity(AnchorageFoundationDTO dto);
 
     @Override
+    @ToEntityIgnoreAudit
     @Mapping(target = "anchorageFoundationType", ignore = true)
     void updateEntityFromDTO(AnchorageFoundationDTO dto, @MappingTarget AnchorageFoundation entity);
 }

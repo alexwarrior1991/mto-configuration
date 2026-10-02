@@ -457,6 +457,44 @@ Un id o código inexistente responde **404**.
 Un `code` repetido dentro del mismo catálogo responde **409** `BUS-002` (`DUPLICATED_RESOURCE`): hay un
 índice único por `code` en cada tabla LOV desde `V9`. Un cuerpo sin `code` responde **400** `VAL-000`.
 
+### Una entrada de catálogo
+
+```jsonc
+// GET $BASE/foundations/12
+{
+  "id": 12,
+  "code": "ZAP-1",
+  "description": "Zapata aislada",
+  "type": null,
+  "enabled": true,
+  "versionNumber": 3,                       // el bloqueo optimista (§9)
+  "versionDate": "2026-09-30T08:15:00",     // la última modificación…
+  "versionUser": "ana",                     // …y quién la hizo
+  "drawingNumber": 1234,                    // solo en nueve catálogos
+  "foundationType": { "id": 4, "code": "FT1", "description": "Superficial", … }  // otra entrada, entera
+}
+```
+
+- **`versionNumber`, `versionDate` y `versionUser` salen en todos los catálogos**, también en los
+  que viajan dentro de un maestro. Hasta este cambio no salían, así que ningún cliente podía devolver
+  la versión y no se comprobaba. La fecha y el usuario de creación no salen.
+- **`drawingNumber`** (número de plano) lo tienen `anchorages`, `anchorage-foundations`,
+  `assembly-configurations`, `cantilever-types`, `foundations`, `pole-types`, `portals`,
+  `return-supports` y `support-types`.
+- **Tres catálogos dependen de otro, y el tipo es obligatorio**, en el alta y en la modificación:
+  `foundations` → `foundationType` (`foundation-types`), `portals` → `portalType` (`portal-types`) y
+  `anchorage-foundations` → `anchorageFoundationType` (`anchorage-foundation-types`). Se manda como
+  referencia, `{ "id": 4 }` o `{ "code": "FT1" }`. Sin él la respuesta es **400** `VAL-000`, y con
+  uno que no existe, **404** `NOT-001`.
+- **El alta** no lleva `id` ni versión: si llegan, se ignoran. Nace con `versionNumber: 1`.
+- **Una modificación (`PUT /{id}` y `PUT /bulk`) sustituye la entrada entera**: lo que no viaja se
+  queda vacío, también `drawingNumber`. Se manda la entrada leída con lo cambiado encima, con su
+  `versionNumber` (§9). El id de la ruta manda sobre el del cuerpo; en `/bulk`, cada elemento lleva el
+  suyo.
+- **`DELETE` borra la fila**, no es un borrado lógico. Si otro registro la usa (un perfil, una
+  ménsula, una cimentación de ese tipo…), no se borra: **409** `BUS-002`. Para retirar una entrada en
+  uso se modifica con `"enabled": false`.
+
 Escribir en una LOV exige el rol **`LOV_MANAGE`** además del permiso de escritura habitual. Es
 deliberado: un perfil de edición diaria (`mto-editor`) mantiene infraestructura sin poder tocar el
 catálogo del que depende todo lo demás.
@@ -689,6 +727,7 @@ validación no, hasta que cambies el cuerpo.
 | `401` / `403` | — | sin token, o sin el rol necesario |
 | `404` | `NOT-001` | el recurso no existe: al leerlo, al modificarlo o al borrarlo |
 | `409` | `CON-001` | conflicto de concurrencia: el `versionNumber` que mandas no es el guardado |
+| `409` | `BUS-002` | un valor único repetido (el `code` de un catálogo), o al borrar, una fila que otro registro usa |
 | `429` | — | sin hueco para el trabajo |
 | `500` | `TEC-999` | error inesperado; el `traceId` es lo que hay que dar en la incidencia |
 

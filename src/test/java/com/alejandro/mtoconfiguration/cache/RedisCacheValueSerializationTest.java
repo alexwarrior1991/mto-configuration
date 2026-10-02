@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.SerializationException;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
@@ -14,7 +15,10 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.InstanceOfAssertFactories.LIST;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.FoundationDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.FoundationTypeDTO;
 
 /**
  * Fija que valores se pueden guardar y volver a leer de la cache.
@@ -85,6 +89,42 @@ class RedisCacheValueSerializationTest {
                 new ArrayList<>(List.of(profile, bare)), new ArrayList<>(List.of(insulator)));
 
         assertThat(roundTrip(original)).isEqualTo(original);
+    }
+
+    /**
+     * Un catalogo se cachea entero ({@code findAll}, {@code findById}) y el serializador respeta las
+     * anotaciones de Jackson del DTO: lo que la API oculta tampoco se guarda. La version y quien la
+     * toco por ultima vez tienen que sobrevivir a la cache, o un acierto devolveria la entrada sin
+     * ellas y el bloqueo optimista dejaria de comprobar nada.
+     */
+    @Test
+    void shouldRoundTripACatalogueWithItsVersionAndItsParentType() {
+        FoundationTypeDTO type = new FoundationTypeDTO();
+        type.setId(4L);
+        type.setCode("FT1");
+        type.setVersionNumber(2);
+        FoundationDTO foundation = new FoundationDTO();
+        foundation.setId(9L);
+        foundation.setCode("F1");
+        foundation.setDescription("Zapata");
+        foundation.setEnabled(true);
+        foundation.setDrawingNumber(1234L);
+        foundation.setFoundationType(type);
+        foundation.setVersionNumber(3);
+        foundation.setVersionDate(LocalDateTime.of(2026, 9, 30, 8, 15));
+        foundation.setVersionUser("ana");
+
+        Object read = roundTrip(new ArrayList<>(List.of(foundation)));
+
+        assertThat(read).asInstanceOf(LIST).singleElement()
+                .isInstanceOfSatisfying(FoundationDTO.class, cached -> {
+                    assertThat(cached.getVersionNumber()).isEqualTo(3);
+                    assertThat(cached.getVersionDate()).isEqualTo(LocalDateTime.of(2026, 9, 30, 8, 15));
+                    assertThat(cached.getVersionUser()).isEqualTo("ana");
+                    assertThat(cached.getDrawingNumber()).isEqualTo(1234L);
+                    assertThat(cached.getFoundationType().getCode()).isEqualTo("FT1");
+                    assertThat(cached.getFoundationType().getVersionNumber()).isEqualTo(2);
+                });
     }
 
     private Object roundTrip(Object value) {

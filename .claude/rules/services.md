@@ -45,12 +45,15 @@ paths:
   coincide, `ConcurrencyException` (409 `CON-001`) y no se escribe nada. `null` no comprueba nada: el
   importador del maestro y los trabajos escriben así a propósito. Los hijos los compara el mapper (ver
   `mappers.md`). Lo fijan `BaseServiceTest`, `AbstractLovCrudServiceTest`, `BaseEntityTest` y
-  `OptimisticLockingIT`.
+  `OptimisticLockingIT`. Para que un cliente pueda devolver la versión, el DTO de catálogo
+  (`SLovDTO`) la publica en el JSON; lo fijan `LovControllerContractTest` y `LovCrudIT`.
 - La respuesta de una modificación lleva la versión que se acaba de escribir: se hace `flush` antes de
   mapearla (`saveAndFlush`, o `saveAll` y `flush` en un lote). Con un `save` a secas la versión sube al
   confirmar, después de mapear, y el cliente que reenvía la respuesta recibe un 409.
-- Borrar es lógico: `CRUDEntity.delete()` marca `deleted = true` y la fila se queda (ver
-  `persistence.md`).
+- Borrar un maestro es lógico: `CRUDEntity.delete()` marca `deleted = true` y la fila se queda (ver
+  `persistence.md`). Un catálogo no: `AbstractLovCrudService.delete` borra la fila, y si otro
+  registro la usa, la clave ajena lo impide al confirmar y sale como 409 `BUS-002`; una entrada en uso
+  se retira con `enabled = false`. Lo fijan `LovCrudIT` y `LovControllerContractTest`.
 - Lo que no existe se lanza como `NotFoundException` (404), también al modificar y al borrar
   (`BaseService.notFound`). Un `BaseException` con un texto libre sale como 500 (ver
   `controllers.md`).
