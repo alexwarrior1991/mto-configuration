@@ -128,6 +128,19 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
         applicationEventPublisher.publishEvent(new EntityChangeApplicationEvent<>(entity, operation));
     }
 
+    /**
+     * La lista entera, que solo sirve {@code GET /async/{recurso}} ({@code BaseAsyncService}).
+     *
+     * <p>Las cuatro lecturas de esta clase ({@code getById}, esta, {@code findAll(Pageable)} y
+     * {@code search}) llevan el {@code @Transactional(readOnly = true)} de Spring: con
+     * {@code open-in-view: false}, mapear una fila recorre lo perezoso (las estaciones de una via, las
+     * mensulas de un perfil, el perfil de un seccionador, las agujas de un aislador), y sin transaccion
+     * eso es {@code LazyInitializationException}, un 500 en cuanto hay datos. Su llamante no la abre:
+     * el controlador, el hilo de {@code /async} o el importador. Va con su nombre completo porque este
+     * fichero importa el de jakarta para las escrituras, que necesitan su {@code rollbackOn}. Lo fijan
+     * {@code GetByIdOutsideTransactionIT} y {@code FilterOutsideTransactionIT}.
+     */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     @Cacheable(
             cacheNames = CacheNames.NORMAL_LIST,
             keyGenerator = "redisCacheKeyGenerator",
@@ -146,7 +159,11 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
      * la fila de {@link BaseMapper#mapToSummaryDTOs}: el DTO completo, salvo en los padres con
      * colecciones grandes (paquete de ejecucion, estacion, via), que van sin hijos. El detalle
      * ({@code GET /{id}}) sigue trayendolo todo.
+     *
+     * <p>Transaccional como las demas lecturas (ver {@link #findAll()}). Con la cache, la pagina se
+     * mapea dentro de {@code PageCacheService}, y esta transaccion tambien envuelve esa carga.
      */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public Page<T> findAll(Pageable pageable) throws BaseException {
         if (!isCacheable()) {
             return getMapper().mapToSummaryDTOs(getRepository().findAll(pageable));
@@ -161,6 +178,8 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .toPage();
     }
 
+    /** Transaccional como las demas lecturas (ver {@link #findAll()}); la cache, como en la pagina. */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public Page<T> search(SearchRequestDTO searchRequestDTO) throws BaseException {
         // La validación va FUERA de la caché: debe ejecutarse también en cache hit.
         Optional.ofNullable(getValidator())
@@ -364,9 +383,9 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
      * {@code LazyInitializationException: no session}. Lo destapo el importador del maestro,
      * que llama desde un metodo sin transaccion y veia fallar asi las 11.714 modificaciones de
      * su segunda pasada; le pasa igual a cualquier otro llamante que no la abra, empezando por
-     * {@code ReadController}.
+     * {@code ReadController}. Es de solo lectura, como las demas lecturas (ver {@link #findAll()}).
      */
-    @Transactional
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     @Cacheable(
             cacheNames = CacheNames.NORMAL_ITEM,
             keyGenerator = "redisCacheKeyGenerator",
