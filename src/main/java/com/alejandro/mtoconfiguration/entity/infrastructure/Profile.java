@@ -390,6 +390,13 @@ public class Profile extends CRUDEntity {
     }
 
 
+    /**
+     * El seccionador que cuelga del perfil. Es el lado <b>inverso</b>: el vinculo lo escribe el
+     * seccionador ({@code profile_id}), y desde la API del perfil es solo de salida
+     * ({@code ProfileMapper} lo ignora al escribir). Desde V24 un seccionador borrado conserva su
+     * perfil sin ocuparlo, asi que puede haber uno borrado y otro vivo en el mismo: la restriccion
+     * es lo que carga el vivo.
+     */
     @SQLRestriction("deleted = false") // ver CRUDEntity
     @OneToOne(
             mappedBy = "profile",

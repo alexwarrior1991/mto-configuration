@@ -33,6 +33,11 @@ public class ProfileDTO extends BaseDTO {
     private BigDecimal railPoleDistance;
 
     private Long trackId;
+    /**
+     * El seccionador que cuelga del perfil, <b>solo de salida</b>. Al escribir se ignora: el vinculo
+     * y los datos son del seccionador, y se cambian con su propio recurso y su {@code profileId}
+     * (README_API.md §4).
+     */
     private DisconnectorDTO disconnector;
     private List<CantileverDTO> cantilevers = new ArrayList<>();
 

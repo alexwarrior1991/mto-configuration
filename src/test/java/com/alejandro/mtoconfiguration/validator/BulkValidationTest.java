@@ -41,7 +41,7 @@ class BulkValidationTest {
     }
 
     private static ProfileValidator profile() {
-        return new ProfileValidator(cantilever(), new DisconnectorValidator());
+        return new ProfileValidator(cantilever());
     }
 
     private static TrackValidator track() {

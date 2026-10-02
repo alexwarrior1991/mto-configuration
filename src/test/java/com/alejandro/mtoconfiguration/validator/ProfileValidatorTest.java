@@ -2,10 +2,10 @@ package com.alejandro.mtoconfiguration.validator;
 
 import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import com.alejandro.mtoconfiguration.validator.infrastructure.CantileverValidator;
-import com.alejandro.mtoconfiguration.validator.infrastructure.DisconnectorValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.ProfileValidator;
 import com.alejandro.mtoconfiguration.validator.infrastructure.SteadyArmValidator;
 import org.junit.jupiter.api.DisplayName;
@@ -25,12 +25,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProfileValidatorTest {
 
     private final ProfileValidator validator = new ProfileValidator(
-            new CantileverValidator(new SteadyArmValidator()),
-            new DisconnectorValidator());
+            new CantileverValidator(new SteadyArmValidator()));
 
     @Test
     void aceptaUnPerfilValido() {
         assertNoErrors(validator.validateBeforeSave(ValidDtos.rootProfile()));
+    }
+
+    @Test
+    @DisplayName("el seccionador anidado no se valida: al escribir un perfil se ignora")
+    void elSeccionadorAnidadoNoSeValida() {
+        // Es solo de salida (README_API.md §4): validarlo haria fallar el perfil por un dato que
+        // no se va a escribir.
+        ProfileDTO dto = ValidDtos.rootProfile();
+        dto.setDisconnector(new DisconnectorDTO());
+
+        assertNoErrors(validator.validateBeforeSave(dto));
     }
 
     @Test
