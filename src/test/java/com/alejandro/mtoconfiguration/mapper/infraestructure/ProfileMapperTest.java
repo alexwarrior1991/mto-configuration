@@ -718,8 +718,10 @@ class ProfileMapperTest {
         }
 
         @Test
-        @DisplayName("el seccionador queda apuntando a su perfil")
-        void seccionadorVinculado() {
+        @DisplayName("al dar de alta, el seccionador anidado se ignora: el perfil no crea ninguno")
+        void altaIgnoraElSeccionador() {
+            // El seccionador es el lado propietario del vinculo y se escribe por su recurso; desde el
+            // perfil es solo de salida (README_API.md §4). Antes se creaba aqui, como copia.
             ProfileDTO dto = dto();
             DisconnectorDTO disconnector = new DisconnectorDTO();
             disconnector.setName("SECC-1");
@@ -728,8 +730,7 @@ class ProfileMapperTest {
 
             Profile entity = mapper.toEntity(dto);
 
-            assertThat(entity.getDisconnector()).isNotNull();
-            assertThat(entity.getDisconnector().getProfile()).isSameAs(entity);
+            assertThat(entity.getDisconnector()).isNull();
         }
 
         @Test
@@ -794,49 +795,49 @@ class ProfileMapperTest {
         }
 
         @Test
-        @DisplayName("el seccionador que alguien guardo despues de leer el perfil es un conflicto")
-        void seccionadorDesactualizado() {
-            // El 1:1 lo vuelca el codigo generado antes del @AfterMapping; la excepcion deshace
-            // la transaccion, asi que lo que importa es que salte.
+        @DisplayName("al modificar, otro seccionador anidado no se copia sobre el que cuelga, ni cuenta su version")
+        void modificarIgnoraOtroSeccionador() {
+            // Antes los datos de SECC-9 acababan en la fila de SECC-5, y una version vieja del
+            // anidado impedia guardar el perfil aunque nadie quisiera cambiar el seccionador.
             Disconnector guardado = new Disconnector();
             guardado.setId(5L);
             guardado.setVersionNumber(2);
+            guardado.setName("SECC-5");
 
             Profile entity = new Profile();
             entity.setDisconnector(guardado);
 
-            DisconnectorDTO leido = new DisconnectorDTO();
-            leido.setId(5L);
-            leido.setVersionNumber(1);
-            leido.setName("SECC-1");
+            DisconnectorDTO otro = new DisconnectorDTO();
+            otro.setId(9L);
+            otro.setVersionNumber(1);
+            otro.setName("SECC-9");
             ProfileDTO dto = dto();
-            dto.setDisconnector(leido);
-
-            assertThatThrownBy(() -> mapper.updateEntityFromDTO(dto, entity))
-                    .isInstanceOf(ConcurrencyException.class)
-                    .hasMessageContaining("llego la version 1 y va por la 2");
-        }
-
-        @Test
-        @DisplayName("el seccionador con la version que se leyo, o sin version, se vuelca")
-        void seccionadorAlDia() {
-            Disconnector guardado = new Disconnector();
-            guardado.setId(5L);
-            guardado.setVersionNumber(2);
-
-            Profile entity = new Profile();
-            entity.setDisconnector(guardado);
-
-            DisconnectorDTO leido = new DisconnectorDTO();
-            leido.setId(5L);
-            leido.setVersionNumber(2);
-            leido.setName("SECC-2");
-            ProfileDTO dto = dto();
-            dto.setDisconnector(leido);
+            dto.setDisconnector(otro);
 
             mapper.updateEntityFromDTO(dto, entity);
 
-            assertThat(guardado.getName()).isEqualTo("SECC-2");
+            assertThat(entity.getDisconnector()).isSameAs(guardado);
+            assertThat(guardado.getName()).isEqualTo("SECC-5");
+            assertThat(guardado.getVersionNumber()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("al modificar, el seccionador a null no lo quita del perfil")
+        void modificarConNullConservaElSeccionador() {
+            // El vinculo esta en disconnector.profile_id: vaciar el lado inverso no lo cambiaba en la
+            // base, pero la respuesta del PUT salia sin seccionador, como si se hubiese desvinculado.
+            Disconnector guardado = new Disconnector();
+            guardado.setId(5L);
+
+            Profile entity = new Profile();
+            entity.setDisconnector(guardado);
+
+            ProfileDTO dto = dto();
+            dto.setDisconnector(null);
+
+            mapper.updateEntityFromDTO(dto, entity);
+
+            assertThat(entity.getDisconnector()).isSameAs(guardado);
         }
     }
 

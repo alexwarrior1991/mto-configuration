@@ -26,7 +26,7 @@ import static com.alejandro.mtoconfiguration.validator.AlertAssert.assertNoError
 class TrackAndStationValidatorTest {
 
     private final TrackValidator trackValidator = new TrackValidator(new ProfileValidator(
-            new CantileverValidator(new SteadyArmValidator()), new DisconnectorValidator()));
+            new CantileverValidator(new SteadyArmValidator())));
 
     private final StationValidator stationValidator = new StationValidator(
             trackValidator, new DisconnectorValidator(), new SectionInsulatorValidator(new SectionInsulatorSwitchValidator()));

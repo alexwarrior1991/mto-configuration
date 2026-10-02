@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ExecutionPackageValidatorTest {
 
     private final TrackValidator trackValidator = new TrackValidator(new ProfileValidator(
-            new CantileverValidator(new SteadyArmValidator()), new DisconnectorValidator()));
+            new CantileverValidator(new SteadyArmValidator())));
 
     private final ExecutionPackageValidator validator = new ExecutionPackageValidator(
             trackValidator,

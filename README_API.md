@@ -254,16 +254,17 @@ La relación 1:1 va aparte, y no funciona igual en los dos casos:
 
 - **`cantilevers.steadyArm`**: mandar el objeto crea el brazo o lo actualiza, y mandar `null` lo
   quita.
-- **`profiles.disconnector`**: devuélvelo como lo leíste. El vínculo es del seccionador, no del
-  perfil: se cambia con `PUT $BASE/disconnectors/{id}` y su `profileId`, que es obligatorio, así que
-  un seccionador siempre cuelga de un perfil (sin él, 400). Desde el perfil no se puede: `null` no
-  desvincula nada, y mandar otro seccionador no lo mueve, sino que copia sus datos sobre el que ya
-  cuelga del perfil (o crea uno nuevo si no colgaba ninguno). Un perfil solo admite un seccionador,
-  también contando los borrados, que conservan su perfil: enlazar un segundo da 409 `BUS-002`.
+- **`profiles.disconnector`**: es **solo de salida**, como `profileCode` y `profileKp` en el
+  seccionador. Al escribir un perfil se ignora: no se crea, no se modifica, no se desvincula y su
+  versión no se comprueba, así que da igual devolverlo como lo leíste o no mandarlo. El vínculo y
+  los datos son del seccionador, y se cambian con `PUT $BASE/disconnectors/{id}`: el perfil del que
+  cuelga es su `profileId`, que es obligatorio (sin él, 400). Un seccionador se mueve de perfil, no
+  se desvincula; si sobra, se borra. Un perfil admite un solo seccionador vivo: colgarle un segundo
+  da 409 `BUS-002`, pero uno borrado ya no lo ocupa (`V24`).
 
 Cada hijo que devuelves con su `id` lleva también su `versionNumber`, y se comprueba como el del
-padre (§9): si otro ha guardado esa ménsula, ese seccionador o esa aguja desde tu lectura, la
-petición entera responde 409 y no se escribe nada. Es otra razón para devolver lo leído tal cual.
+padre (§9): si otro ha guardado esa ménsula, ese brazo o esa aguja desde tu lectura, la petición
+entera responde 409 y no se escribe nada. Es otra razón para devolver lo leído tal cual.
 
 ---
 

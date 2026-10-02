@@ -1,7 +1,6 @@
 package com.alejandro.mtoconfiguration.mapper.infraestructure;
 
 import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
-import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.mapper.commons.CentralConfigMapper;
@@ -75,9 +74,18 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @InheritConfiguration(name = "toDTO")
     public abstract void updateDTOFromEntity(Profile entity, @MappingTarget ProfileDTO dto);
 
+    /**
+     * El seccionador no se escribe desde el perfil: el vinculo es suyo ({@code disconnector.profile_id},
+     * del que el perfil es el lado inverso) y sus datos tambien, asi que se cambia con su propio
+     * recurso. Aqui es solo de salida, como {@code profileCode} y {@code profileKp} en el seccionador
+     * (README_API.md §4). Antes lo escribia el codigo generado, y mal: otro seccionador copiaba sus
+     * datos sobre el que ya colgaba, o creaba una copia si no colgaba ninguno, y {@code null} lo
+     * quitaba de la respuesta pero no de la base.
+     */
     @Override
     @Mapping(target = "track", source = "trackId")
     @Mapping(target = "cantilevers", ignore = true) // se reconcilia en mapDtoToEntity
+    @Mapping(target = "disconnector", ignore = true) // solo de salida (ver arriba)
     @Mapping(target = "anchorages", ignore = true)
     @Mapping(target = "anchorageFoundation", ignore = true)
     @Mapping(target = "foundation", ignore = true)
@@ -95,6 +103,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Override
     @Mapping(target = "track", source = "trackId")
     @Mapping(target = "cantilevers", ignore = true) // se reconcilia en mapDtoToEntity
+    @Mapping(target = "disconnector", ignore = true) // solo de salida (ver toEntity)
     @Mapping(target = "anchorages", ignore = true)
     @Mapping(target = "anchorageFoundation", ignore = true)
     @Mapping(target = "foundation", ignore = true)
@@ -195,15 +204,6 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
                 (childDto, child) -> cantileverChildMapper.updateEntityFromDTO(childDto, child),
                 Cantilever::setProfile
         );
-
-        // 3. Sincronización de relación 1:1 con Disconnector (Bidireccional). El codigo generado
-        //    ya ha volcado el DTO sobre el seccionador; si estaba desactualizado, la excepcion
-        //    deshace la transaccion y no se escribe nada.
-        checkVersion(dto.getDisconnector(), entity.getDisconnector());
-        if (entity.getDisconnector() != null) {
-            linkEntity(entity.getDisconnector(), entity, Disconnector::setProfile);
-        }
-
     }
 
 

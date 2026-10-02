@@ -41,7 +41,6 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
     private static final String FIELD_PROFILE_STATUS = "profileStatus";
     private static final String FIELD_PROFILES = "profiles";
     private static final String FIELD_CANTILEVERS = "cantilevers";
-    private static final String FIELD_DISCONNECTOR = "disconnector";
     private static final String FIELD_SPAN = "span";
     private static final String FIELD_HEIGHT_CANTILEVER_SUPPORT = "heightCantileverSupport";
     private static final String FIELD_POLE_GAUGE_LOCATION = "poleGaugeLocation";
@@ -55,7 +54,6 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
     private static final String KP_PATTERN = "\\d+(\\.\\d+)?";
 
     private final CantileverValidator cantileverValidator;
-    private final DisconnectorValidator disconnectorValidator;
 
     @Override
     protected String getEntityName() {
@@ -116,10 +114,14 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
                 .validateRequiredField(dto.getTrackId(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_TRACK_ID);
     }
 
+    /**
+     * Solo las mensulas: el seccionador del perfil es de salida y no se escribe desde aqui
+     * (ver {@code ProfileMapper#toEntity}), asi que validarlo haria fallar el perfil por un dato que
+     * se va a ignorar.
+     */
     @Override
     protected void validateNestedDtos(ProfileDTO dto, List<Alert> alerts) {
         validateChildren(alerts, dto.getCantilevers(), cantileverValidator, FIELD_CANTILEVERS);
-        validateChild(alerts, dto.getDisconnector(), disconnectorValidator, FIELD_DISCONNECTOR);
     }
 
     /**

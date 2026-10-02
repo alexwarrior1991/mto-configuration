@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24");
     }
 
     /**
@@ -246,6 +246,34 @@ class FlywayMigrationIT {
                     .contains("UNIQUE")
                     .contains("deleted = false");
         }
+    }
+
+    /**
+     * V24: un perfil solo admite un seccionador <b>vivo</b>.
+     *
+     * <p>El {@code unique} de {@code disconnector.profile_id} de V1 contaba tambien las filas
+     * borradas, y el borrado logico conserva el perfil: un seccionador borrado dejaba su perfil
+     * ocupado para siempre, y colgarle otro daba 409. Lo sustituye un indice unico parcial, el mismo
+     * criterio que las claves naturales de V12.
+     */
+    @Test
+    void unPerfilSoloAdmiteUnSeccionadorVivo() {
+        List<String> indices = jdbc().queryForList("select indexdef from pg_indexes"
+                + " where schemaname = ? and indexname = 'ux_disconnector_profile_id'", String.class, SCHEMA);
+        assertThat(indices).singleElement(org.assertj.core.api.InstanceOfAssertFactories.STRING)
+                .contains("UNIQUE")
+                .contains("(profile_id)")
+                .contains("deleted = false");
+
+        Integer restriccionesUnicas = jdbc().queryForObject("""
+                select count(*) from pg_constraint c
+                  join pg_class t on t.oid = c.conrelid
+                  join pg_namespace n on n.oid = t.relnamespace
+                 where n.nspname = ? and t.relname = 'disconnector' and c.contype = 'u'
+                """, Integer.class, SCHEMA);
+        assertThat(restriccionesUnicas)
+                .as("el unique de V1 sobre profile_id ya no existe")
+                .isZero();
     }
 
     /**

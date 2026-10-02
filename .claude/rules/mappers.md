@@ -29,16 +29,19 @@ paths:
   `ProfileMapperTest` y `LovReferenceResolverTest`.
 - Las colecciones de hijos también se ignoran en el `@Mapping` y se reconcilian en `mapDtoToEntity`
   con `BaseMapper.mergeCollection`: con id se actualiza, sin id se crea, lo que no llega se borra y
-  `null` no toca nada (README_API.md §4). Los 1:1 se enlazan con `linkEntity`; el seccionador del
-  perfil es el lado inverso, así que desde el perfil `null` no lo desvincula y otro se copia sobre el
-  actual: el vínculo se cambia desde el seccionador (README_API.md §4). Nunca con la estrategia
-  de colecciones de MapStruct: reemplazar borra e inserta, y los hijos cambian de id y pierden su
-  historial. Lo fijan `BaseMapperTest` («Fusion por id») y los `mapper/merge/*ChildMergeIT`.
+  `null` no toca nada (README_API.md §4). Los 1:1 se enlazan con `linkEntity`. Nunca con la
+  estrategia de colecciones de MapStruct: reemplazar borra e inserta, y los hijos cambian de id y
+  pierden su historial. Lo fijan `BaseMapperTest` («Fusion por id») y los `mapper/merge/*ChildMergeIT`.
+- El seccionador del perfil no es un hijo: el perfil es el lado inverso de un vínculo que escribe el
+  seccionador (`disconnector.profile_id`, con sus datos), así que `ProfileMapper` lo ignora al
+  escribir (`@Mapping(target = "disconnector", ignore = true)`) y `ProfileValidator` no lo valida.
+  Desde el perfil es solo de salida (README_API.md §4). Cuando el código generado lo volcaba, otro
+  seccionador se copiaba sobre el actual, el alta creaba una copia y `null` lo quitaba de la
+  respuesta pero no de la base. Lo fijan `ProfileMapperTest` y `DisconnectorLinkIT`.
 - Antes de volcar un hijo que llega con su id, se compara su `versionNumber` con el guardado
   (`BaseMapper.checkVersion`): `mergeCollection` lo hace con cada hijo de la colección, y un 1:1 nuevo
-  tiene que llamarlo en su `@AfterMapping`, como el seccionador en `ProfileMapper` y el brazo en
-  `CantileverMapper`. Lo fijan `BaseMapperTest` («Version de los hijos»), `ProfileMapperTest` y
-  `CantileverMapperTest`.
+  tiene que llamarlo en su `@AfterMapping`, como el brazo en `CantileverMapper`. Lo fijan
+  `BaseMapperTest` («Version de los hijos»), `ProfileMapperTest` y `CantileverMapperTest`.
 - Tests: `MapperGraph` monta los mappers generados reales con sus dependencias
   (`new MapperGraph(masterDataService, referenceMapper).profile`); un `XMapperTest` por mapper, con un
   `@Nested` por aspecto.
