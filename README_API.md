@@ -255,11 +255,11 @@ La relación 1:1 va aparte, y no funciona igual en los dos casos:
 - **`cantilevers.steadyArm`**: mandar el objeto crea el brazo o lo actualiza, y mandar `null` lo
   quita.
 - **`profiles.disconnector`**: devuélvelo como lo leíste. El vínculo es del seccionador, no del
-  perfil: se cambia con `PUT $BASE/disconnectors/{id}` y su `profileId`, y `profileId: null` lo
-  desvincula. Desde el perfil no se puede: `null` no desvincula nada, y mandar otro seccionador no lo
-  mueve, sino que copia sus datos sobre el que ya cuelga del perfil (o crea uno nuevo si no colgaba
-  ninguno). Un perfil solo admite un seccionador, también contando los borrados, que conservan su
-  perfil: enlazar un segundo da 409 `BUS-002`.
+  perfil: se cambia con `PUT $BASE/disconnectors/{id}` y su `profileId`, que es obligatorio, así que
+  un seccionador siempre cuelga de un perfil (sin él, 400). Desde el perfil no se puede: `null` no
+  desvincula nada, y mandar otro seccionador no lo mueve, sino que copia sus datos sobre el que ya
+  cuelga del perfil (o crea uno nuevo si no colgaba ninguno). Un perfil solo admite un seccionador,
+  también contando los borrados, que conservan su perfil: enlazar un segundo da 409 `BUS-002`.
 
 Cada hijo que devuelves con su `id` lleva también su `versionNumber`, y se comprueba como el del
 padre (§9): si otro ha guardado esa ménsula, ese seccionador o esa aguja desde tu lectura, la
