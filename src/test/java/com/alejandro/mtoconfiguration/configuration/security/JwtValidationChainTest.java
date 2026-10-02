@@ -81,11 +81,6 @@ class JwtValidationChainTest {
         registro.add("app.security.audience-validation-enabled", () -> "true");
         registro.add("app.security.required-audience", () -> AUDIENCIA);
         registro.add("app.security.expose-api-docs", () -> "false");
-        registro.add("app.security.cors.allowed-origins", () -> "http://localhost:4200");
-        registro.add("app.security.cors.allowed-methods", () -> "GET,POST");
-        registro.add("app.security.cors.allowed-headers", () -> "Authorization");
-        registro.add("app.security.cors.allow-credentials", () -> "false");
-        registro.add("app.security.cors.max-age", () -> "3600");
     }
 
     @Autowired

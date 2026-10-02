@@ -275,34 +275,7 @@ app:
     # entorno desplegado nuevo no exponga el catalogo completo de endpoints por olvido: los
     # perfiles de desarrollo lo abren explicitamente.
     expose-api-docs: ${APP_SECURITY_EXPOSE_API_DOCS:false}
-    # Cross-Origin Resource Sharing (CORS) configuration
-    cors:
-      # Allowed origins for cross-origin requests
-      allowed-origins:
-        - ${APP_CORS_ALLOWED_ORIGIN:http://localhost:4200}
-      # HTTP methods allowed for cross-origin requests
-      allowed-methods:
-        - GET
-        - POST
-        - PUT
-        - PATCH
-        - DELETE
-        - OPTIONS
-      # Headers allowed in cross-origin requests
-      allowed-headers:
-        - Authorization
-        - Content-Type
-        - Accept
-        - Origin
-        - X-Requested-With
-      # Headers exposed to the client in cross-origin responses
-      exposed-headers:
-        - Location
-      # La API es stateless y se autentica con la cabecera Authorization: no hay cookies que
-      # enviar, asi que habilitar credenciales solo ampliaria la superficie.
-      allow-credentials: false
-      # How long preflight request results can be cached (seconds)
-      max-age: 3600
+    # Sin CORS: lo resuelve mto-gateway, que quita Origin antes de llamar a este servicio.
   
   # Trabajos en segundo plano (202 Accepted + jobId + consulta de estado).
   #

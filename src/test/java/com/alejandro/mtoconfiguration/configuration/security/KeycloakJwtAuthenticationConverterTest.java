@@ -158,9 +158,6 @@ class KeycloakJwtAuthenticationConverterTest {
                 JwtClaimNames.PREFERRED_USERNAME,
                 true,
                 CLIENT_ID,
-                false,
-                new SecurityProperties.Cors(
-                        List.of("http://localhost:4200"), List.of("GET"), List.of("Authorization"),
-                        List.of(), false, 3600));
+                false);
     }
 }

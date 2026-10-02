@@ -67,6 +67,3 @@ app:
     required-audience: mto-configuration-api
     # Entorno de desarrollo: la documentacion interactiva es la forma habitual de probar la API.
     expose-api-docs: true
-    cors:
-      allowed-origins:
-        - http://localhost:4200
