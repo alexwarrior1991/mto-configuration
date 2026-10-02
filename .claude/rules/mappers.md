@@ -24,10 +24,14 @@ paths:
 - Las referencias a catálogo se ignoran en el `@Mapping` y se resuelven en los `@AfterMapping`:
   `mapDtoToEntity` las busca por código en `MasterDataService`, y `mapEntityToDto` las rellena por id
   desde su caché. Un `@AfterMapping` se aplica a todo método con esos tipos, también a
-  `updateDTOFromEntity`.
+  `updateDTOFromEntity`. Al modificar, una referencia a `null` no toca nada y una sin código la
+  quita, porque el catálogo no resuelve un código vacío (README_API.md §3); lo fijan
+  `ProfileMapperTest` y `LovReferenceResolverTest`.
 - Las colecciones de hijos también se ignoran en el `@Mapping` y se reconcilian en `mapDtoToEntity`
   con `BaseMapper.mergeCollection`: con id se actualiza, sin id se crea, lo que no llega se borra y
-  `null` no toca nada (README_API.md §4). Los 1:1 se enlazan con `linkEntity`. Nunca con la estrategia
+  `null` no toca nada (README_API.md §4). Los 1:1 se enlazan con `linkEntity`; el seccionador del
+  perfil es el lado inverso, así que desde el perfil `null` no lo desvincula y otro se copia sobre el
+  actual: el vínculo se cambia desde el seccionador (README_API.md §4). Nunca con la estrategia
   de colecciones de MapStruct: reemplazar borra e inserta, y los hijos cambian de id y pierden su
   historial. Lo fijan `BaseMapperTest` («Fusion por id») y los `mapper/merge/*ChildMergeIT`.
 - Antes de volcar un hijo que llega con su id, se compara su `versionNumber` con el guardado

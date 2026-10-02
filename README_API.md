@@ -116,6 +116,24 @@ base de datos aunque mandes otra cosa. El `versionNumber` que mandas no se copia
 no es el guardado, alguien ha escrito desde tu lectura y la respuesta es un 409 (§9). Un id que no
 existe responde 404, igual al modificar que al borrar.
 
+**Las referencias a catálogo se resuelven por su `code`** (`poleType`, `profileStatus`,
+`cantileverType`, `disconnectorFunction`…); el resto del objeto no cuenta, así que devolver la que
+leíste la deja como está. En un perfil, una referencia a `null` (o que no viaja) es «no la toques»,
+y para quitar una opcional se manda **sin código**:
+
+```jsonc
+{
+  "id": 7,
+  // …el resto del perfil, como lo leíste
+  "poleType": {},     // se quita
+  "portal": null,     // se queda como estaba
+  "versionNumber": 3
+}
+```
+
+La `disconnectorFunction` de un seccionador no se puede quitar: sin código se ignora. Y en los dos,
+un código que el catálogo no tiene no da error: deja la referencia vacía.
+
 ---
 
 ## 4. Colecciones de hijos en una modificación — **léelo antes de tocar nada**
@@ -232,8 +250,16 @@ El orden lo decide el servidor, no la posición en la que los mandaste:
 Mandar los hijos en otro orden no cambia nada: no hay forma de reordenarlos desde la API. Si
 necesitas mover un perfil dentro de la vía, lo que se cambia es su `kp`.
 
-La relación 1:1 (`profiles.disconnector`, `cantilevers.steadyArm`) va aparte: mandar el objeto lo
-crea o actualiza, mandar `null` lo desvincula.
+La relación 1:1 va aparte, y no funciona igual en los dos casos:
+
+- **`cantilevers.steadyArm`**: mandar el objeto crea el brazo o lo actualiza, y mandar `null` lo
+  quita.
+- **`profiles.disconnector`**: devuélvelo como lo leíste. El vínculo es del seccionador, no del
+  perfil: se cambia con `PUT $BASE/disconnectors/{id}` y su `profileId`, que es obligatorio, así que
+  un seccionador siempre cuelga de un perfil (sin él, 400). Desde el perfil no se puede: `null` no
+  desvincula nada, y mandar otro seccionador no lo mueve, sino que copia sus datos sobre el que ya
+  cuelga del perfil (o crea uno nuevo si no colgaba ninguno). Un perfil solo admite un seccionador,
+  también contando los borrados, que conservan su perfil: enlazar un segundo da 409 `BUS-002`.
 
 Cada hijo que devuelves con su `id` lleva también su `versionNumber`, y se comprueba como el del
 padre (§9): si otro ha guardado esa ménsula, ese seccionador o esa aguja desde tu lectura, la
