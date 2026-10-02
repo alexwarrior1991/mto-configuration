@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
@@ -77,6 +78,7 @@ public class DisconnectorService extends CRUDService<DisconnectorDTO, Disconnect
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<DisconnectorDTO> getDisconnectors(Pageable pageable, DisconnectorFilter filter) {
         log.info("Consultando seccionadores con filtros funcionales");
         QDisconnector qEntity = QDisconnector.disconnector;
@@ -106,6 +108,7 @@ public class DisconnectorService extends CRUDService<DisconnectorDTO, Disconnect
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<DisconnectorDTO> getDisconnectorByStationId(Long stationId) {
         return Optional.ofNullable(stationId)
                 .map(repository::findByStationId)
@@ -114,6 +117,7 @@ public class DisconnectorService extends CRUDService<DisconnectorDTO, Disconnect
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<DisconnectorDTO> getDisconnectorsByStationName(String stationName) {
         return Optional.ofNullable(stationName)
                 .filter(name -> !name.isBlank())

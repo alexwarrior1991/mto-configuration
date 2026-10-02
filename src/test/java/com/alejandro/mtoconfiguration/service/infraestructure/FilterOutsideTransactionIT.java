@@ -1,9 +1,14 @@
 package com.alejandro.mtoconfiguration.service.infraestructure;
 
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorSwitchDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.DisconnectorFilter;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.ProfileFilter;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.SectionInsulatorFilter;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.TrackFilter;
 import com.alejandro.mtoconfiguration.support.PostgresTestDatabase;
 import org.junit.jupiter.api.AfterEach;
@@ -18,17 +23,24 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
+import java.math.BigDecimal;
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Las listas filtradas de vias y perfiles ({@code POST /tracks/filter}, {@code POST /profiles/filter})
- * llamadas desde fuera de una transaccion, que es como las llama su controlador.
+ * Las listas filtradas de vias, perfiles, seccionadores y aisladores ({@code POST /{recurso}/filter},
+ * y las de una estacion de los dos ultimos) llamadas desde fuera de una transaccion, que es como las
+ * llama su controlador.
  *
- * <p>Con {@code open-in-view} a false, mapear la fila recorre una coleccion perezosa: las estaciones
- * de la via ({@code stationIds}) y las mensulas del perfil. Sin transaccion en el servicio eso es
- * {@code LazyInitializationException}, y las dos rutas respondian 500 {@code TEC-999} en cuanto habia
- * datos: el backoffice no podia abrir Vias ni Perfiles. Los tests con transaccion alrededor no lo
- * veian, porque la sesion seguia abierta al mapear.
+ * <p>Con {@code open-in-view} a false, mapear la fila recorre lo perezoso: las estaciones de la via
+ * ({@code stationIds}), las mensulas del perfil, el perfil del que cuelga un seccionador
+ * ({@code profileCode}, {@code profileKp}) y las agujas del aislador. Sin transaccion en el servicio
+ * eso es {@code LazyInitializationException}, y las rutas respondian 500 {@code TEC-999} en cuanto
+ * habia datos: el backoffice no podia abrir Vias ni Perfiles, y una lista de seccionadores o de
+ * aisladores con datos tampoco se podia leer. Los tests con transaccion alrededor no lo veian, porque
+ * la sesion seguia abierta al mapear. Estaciones y paquetes no entran: su fila solo lee el id de sus
+ * referencias, que el proxy tiene sin ir a la base.
  *
  * <p>Los datos se insertan con SQL, como en {@code GetByIdOutsideTransactionIT}: darlos de alta por
  * el servicio no taparia nada aqui, pero asi la prueba no depende de validadores ni de catalogos. Se
@@ -43,6 +55,9 @@ class FilterOutsideTransactionIT {
     private static final long TRACK = -73L;
     private static final long PROFILE = -74L;
     private static final long CANTILEVER = -75L;
+    private static final long DISCONNECTOR = -76L;
+    private static final long INSULATOR = -77L;
+    private static final long SWITCH = -78L;
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -56,6 +71,10 @@ class FilterOutsideTransactionIT {
     private TrackService trackService;
     @Autowired
     private ProfileService profileService;
+    @Autowired
+    private DisconnectorService disconnectorService;
+    @Autowired
+    private SectionInsulatorService sectionInsulatorService;
 
     @BeforeEach
     void inserta() {
@@ -87,10 +106,31 @@ class FilterOutsideTransactionIT {
                         version_date, version_user, version_number)
                 values (?, ?, false, now(), 'test', now(), 'test', 1)
                 """, CANTILEVER, PROFILE);
+        jdbcTemplate.update("""
+                insert into disconnector (id, name, onload, profile_id, station_id, deleted, create_date,
+                        create_user, version_date, version_user, version_number)
+                values (?, 'IT-FILTER-DISCONNECTOR', true, ?, ?, false, now(), 'test', now(), 'test', 1)
+                """, DISCONNECTOR, PROFILE, STATION);
+        jdbcTemplate.update("""
+                insert into section_insulator (id, name, status, station_id, track_id, kilometric_point,
+                        installation_type, deleted, create_date, create_user, version_date, version_user,
+                        version_number)
+                values (?, 'IT-FILTER-INSULATOR', true, ?, ?, 1.500, 'IN_TRACK', false, now(), 'test',
+                        now(), 'test', 1)
+                """, INSULATOR, STATION, TRACK);
+        jdbcTemplate.update("""
+                insert into section_insulator_switch (id, code, section_insulator_id, track_id,
+                        kilometric_point, turnout_denominator, status, deleted, create_date, create_user,
+                        version_date, version_user, version_number)
+                values (?, 'W31', ?, ?, 1.500, 9, true, false, now(), 'test', now(), 'test', 1)
+                """, SWITCH, INSULATOR, TRACK);
     }
 
     @AfterEach
     void limpia() {
+        jdbcTemplate.update("delete from section_insulator_switch where id = ?", SWITCH);
+        jdbcTemplate.update("delete from section_insulator where id = ?", INSULATOR);
+        jdbcTemplate.update("delete from disconnector where id = ?", DISCONNECTOR);
         jdbcTemplate.update("delete from cantilever where id = ?", CANTILEVER);
         jdbcTemplate.update("delete from profile where id = ?", PROFILE);
         jdbcTemplate.update("delete from track_station where track_id = ?", TRACK);
@@ -119,5 +159,55 @@ class FilterOutsideTransactionIT {
         assertThat(page.getContent()).singleElement()
                 .satisfies(profile -> assertThat(profile.getCantilevers())
                         .extracting(CantileverDTO::getId).containsExactly(CANTILEVER));
+    }
+
+    @Test
+    @DisplayName("un seccionador de la lista trae el codigo y el KP de su perfil")
+    void unSeccionadorDeLaListaTraeSuPerfil() {
+        Page<DisconnectorDTO> page = disconnectorService.getDisconnectors(PageRequest.of(0, 10),
+                new DisconnectorFilter("IT-FILTER-DISCONNECTOR", null, null, null, null));
+
+        assertThat(page.getContent()).singleElement().satisfies(this::traeSuPerfil);
+    }
+
+    @Test
+    @DisplayName("los seccionadores de una estacion, por id o por nombre, traen su perfil")
+    void losSeccionadoresDeUnaEstacionTraenSuPerfil() {
+        List<DisconnectorDTO> porId = disconnectorService.getDisconnectorByStationId(STATION);
+        List<DisconnectorDTO> porNombre = disconnectorService.getDisconnectorsByStationName("IT-FILTER-STATION");
+
+        assertThat(porId).singleElement().satisfies(this::traeSuPerfil);
+        assertThat(porNombre).singleElement().satisfies(this::traeSuPerfil);
+    }
+
+    @Test
+    @DisplayName("un aislador de la lista trae sus agujas")
+    void unAisladorDeLaListaTraeSusAgujas() {
+        Page<SectionInsulatorDTO> page = sectionInsulatorService.getSectionInsulators(PageRequest.of(0, 10),
+                new SectionInsulatorFilter("IT-FILTER-INSULATOR", null, null, null, null, null, null));
+
+        assertThat(page.getContent()).singleElement().satisfies(this::traeSusAgujas);
+    }
+
+    @Test
+    @DisplayName("los aisladores de una estacion, por id o por nombre, traen sus agujas")
+    void losAisladoresDeUnaEstacionTraenSusAgujas() {
+        List<SectionInsulatorDTO> porId = sectionInsulatorService.getSectionInsulatorsByStationId(STATION);
+        List<SectionInsulatorDTO> porNombre =
+                sectionInsulatorService.getSectionInsulatorsByStationName("IT-FILTER-STATION");
+
+        assertThat(porId).singleElement().satisfies(this::traeSusAgujas);
+        assertThat(porNombre).singleElement().satisfies(this::traeSusAgujas);
+    }
+
+    private void traeSuPerfil(DisconnectorDTO disconnector) {
+        assertThat(disconnector.getProfileId()).isEqualTo(PROFILE);
+        assertThat(disconnector.getProfileCode()).isEqualTo("IT-FILTER-PROFILE");
+        assertThat(new BigDecimal(disconnector.getProfileKp())).isEqualByComparingTo("1");
+    }
+
+    private void traeSusAgujas(SectionInsulatorDTO insulator) {
+        assertThat(insulator.getSwitches())
+                .extracting(SectionInsulatorSwitchDTO::getCode).containsExactly("W31");
     }
 }

@@ -45,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
@@ -442,6 +443,32 @@ class ProfileMapperTest {
             assertThat(entity.getAnchorages()).isEmpty();
             assertThat(entity.getSectioningFeedings()).isEmpty();
             verifyNoInteractions(masterDataService);
+        }
+
+        /**
+         * Al modificar, una LOV a null es «no la toques», y una referencia sin codigo ({@code {}})
+         * la quita: el catalogo no resuelve un codigo vacio (LovReferenceResolverTest). Es como se
+         * vacia una LOV opcional del perfil (README_API.md §3), y lo que hace mto-frontend.
+         */
+        @Test
+        @DisplayName("al modificar, una LOV a null se queda como estaba y una sin codigo ({}) se quita")
+        void lovSinCodigoSeQuita() {
+            PoleType poleType = new PoleType();
+            poleType.setId(1L);
+            poleType.setCode("PT1");
+            Profile entity = new Profile();
+            entity.setPoleType(poleType);
+
+            ProfileDTO sinTocar = dto();
+            sinTocar.setPoleType(null);
+            mapper.updateEntityFromDTO(sinTocar, entity);
+            assertThat(entity.getPoleType()).isSameAs(poleType);
+
+            ProfileDTO vaciada = dto();
+            vaciada.setPoleType(new PoleTypeDTO());
+            mapper.updateEntityFromDTO(vaciada, entity);
+            assertThat(entity.getPoleType()).isNull();
+            verify(masterDataService).getPoleTypeByCode(null);
         }
 
         /**

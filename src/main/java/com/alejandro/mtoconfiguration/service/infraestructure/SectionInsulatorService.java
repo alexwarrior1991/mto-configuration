@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
@@ -87,6 +88,7 @@ public class SectionInsulatorService extends CRUDService<SectionInsulatorDTO, Se
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<SectionInsulatorDTO> getSectionInsulators(Pageable pageable, SectionInsulatorFilter filter) {
         log.info("Consultando aisladores de sección con filtros funcionales");
 
@@ -125,6 +127,7 @@ public class SectionInsulatorService extends CRUDService<SectionInsulatorDTO, Se
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<SectionInsulatorDTO> getSectionInsulatorsByStationId(Long stationId) {
         return Optional.ofNullable(stationId)
                 .map(repository::findByStationId)
@@ -133,6 +136,7 @@ public class SectionInsulatorService extends CRUDService<SectionInsulatorDTO, Se
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<SectionInsulatorDTO> getSectionInsulatorsByStationName(String stationName) {
         return Optional.ofNullable(stationName)
                 .filter(name -> !name.isBlank())
