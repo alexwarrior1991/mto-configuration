@@ -1,5 +1,7 @@
 package com.alejandro.mtoconfiguration.service.infraestructure;
 
+import com.alejandro.mtoconfiguration.model.commons.PageableDTO;
+import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
@@ -19,19 +21,23 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Las listas filtradas de vias, perfiles, seccionadores y aisladores ({@code POST /{recurso}/filter},
- * y las de una estacion de los dos ultimos) llamadas desde fuera de una transaccion, que es como las
- * llama su controlador.
+ * Las listas de vias, perfiles, seccionadores y aisladores llamadas desde fuera de una transaccion,
+ * que es como las llama su controlador: las filtradas ({@code POST /{recurso}/filter}, y las de una
+ * estacion de los dos ultimos), las genericas de {@code BaseService} ({@code GET /{recurso}/paged} y
+ * {@code POST /{recurso}/search}) y la lista entera, que solo sirve {@code GET /async/{recurso}}.
  *
  * <p>Con {@code open-in-view} a false, mapear la fila recorre lo perezoso: las estaciones de la via
  * ({@code stationIds}), las mensulas del perfil, el perfil del que cuelga un seccionador
@@ -39,15 +45,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  * eso es {@code LazyInitializationException}, y las rutas respondian 500 {@code TEC-999} en cuanto
  * habia datos: el backoffice no podia abrir Vias ni Perfiles, y una lista de seccionadores o de
  * aisladores con datos tampoco se podia leer. Los tests con transaccion alrededor no lo veian, porque
- * la sesion seguia abierta al mapear. Estaciones y paquetes no entran: su fila solo lee el id de sus
- * referencias, que el proxy tiene sin ir a la base.
+ * la sesion seguia abierta al mapear. Estaciones, paquetes, mensulas y brazos no entran: su fila solo
+ * lee el id de sus referencias, que el proxy tiene sin ir a la base, y el brazo de una mensula se carga
+ * con ella, porque es el lado inverso de un uno a uno.
  *
  * <p>Los datos se insertan con SQL, como en {@code GetByIdOutsideTransactionIT}: darlos de alta por
  * el servicio no taparia nada aqui, pero asi la prueba no depende de validadores ni de catalogos. Se
  * afirma sobre lo que solo esta en la coleccion, que es lo que obliga a inicializarla.
  */
 @SpringBootTest
-@DisplayName("Listas filtradas sin transaccion del llamante")
+@DisplayName("Listas sin transaccion del llamante")
 class FilterOutsideTransactionIT {
 
     private static final long PACKAGE = -71L;
@@ -198,6 +205,77 @@ class FilterOutsideTransactionIT {
 
         assertThat(porId).singleElement().satisfies(this::traeSusAgujas);
         assertThat(porNombre).singleElement().satisfies(this::traeSusAgujas);
+    }
+
+    @Test
+    @DisplayName("la pagina (/paged) y la busqueda (/search) de vias traen las estaciones de cada via")
+    void pagedYSearchDeViasTraenSusEstaciones() {
+        for (Page<TrackDTO> page : List.of(
+                trackService.findAll(primeraPaginaPorId()),
+                trackService.search(busqueda("name", "IT-FILTER-TRACK")))) {
+            assertThat(page.getContent()).filteredOn(track -> track.getId() == TRACK).singleElement()
+                    .satisfies(track -> assertThat(track.getStationIds()).containsExactly(STATION));
+        }
+    }
+
+    @Test
+    @DisplayName("la pagina (/paged) y la busqueda (/search) de perfiles traen sus mensulas")
+    void pagedYSearchDePerfilesTraenSusMensulas() {
+        for (Page<ProfileDTO> page : List.of(
+                profileService.findAll(primeraPaginaPorId()),
+                profileService.search(busqueda("profileId", "IT-FILTER-PROFILE")))) {
+            assertThat(page.getContent()).filteredOn(profile -> profile.getId() == PROFILE).singleElement()
+                    .satisfies(profile -> assertThat(profile.getCantilevers())
+                            .extracting(CantileverDTO::getId).containsExactly(CANTILEVER));
+        }
+    }
+
+    @Test
+    @DisplayName("la pagina (/paged) y la busqueda (/search) de seccionadores traen su perfil")
+    void pagedYSearchDeSeccionadoresTraenSuPerfil() {
+        // DisconnectorService es cacheable: su pagina y su busqueda se mapean dentro de PageCacheService.
+        for (Page<DisconnectorDTO> page : List.of(
+                disconnectorService.findAll(primeraPaginaPorId()),
+                disconnectorService.search(busqueda("name", "IT-FILTER-DISCONNECTOR")))) {
+            assertThat(page.getContent()).filteredOn(disconnector -> disconnector.getId() == DISCONNECTOR)
+                    .singleElement().satisfies(this::traeSuPerfil);
+        }
+    }
+
+    @Test
+    @DisplayName("la pagina (/paged) y la busqueda (/search) de aisladores traen sus agujas")
+    void pagedYSearchDeAisladoresTraenSusAgujas() {
+        for (Page<SectionInsulatorDTO> page : List.of(
+                sectionInsulatorService.findAll(primeraPaginaPorId()),
+                sectionInsulatorService.search(busqueda("name", "IT-FILTER-INSULATOR")))) {
+            assertThat(page.getContent()).filteredOn(insulator -> insulator.getId() == INSULATOR)
+                    .singleElement().satisfies(this::traeSusAgujas);
+        }
+    }
+
+    @Test
+    @DisplayName("la lista entera (GET /async/{recurso}) de seccionadores y de aisladores trae su perfil y sus agujas")
+    void laListaEnteraTraeLoPerezoso() {
+        assertThat(disconnectorService.findAll()).filteredOn(disconnector -> disconnector.getId() == DISCONNECTOR)
+                .singleElement().satisfies(this::traeSuPerfil);
+        assertThat(sectionInsulatorService.findAll()).filteredOn(insulator -> insulator.getId() == INSULATOR)
+                .singleElement().satisfies(this::traeSusAgujas);
+    }
+
+    /** Los ids de prueba son negativos: ordenados por id van primero, haya lo que haya en la base. */
+    private static PageRequest primeraPaginaPorId() {
+        return PageRequest.of(0, 50, Sort.by("id"));
+    }
+
+    /** Una busqueda por un filtro de texto, como la manda {@code POST /{recurso}/search}. */
+    private static SearchRequestDTO busqueda(String filtro, String valor) {
+        PageableDTO pageable = new PageableDTO();
+        pageable.setPage(0);
+        pageable.setSize(10);
+        SearchRequestDTO request = new SearchRequestDTO();
+        request.setFilters(new HashMap<>(Map.of(filtro, valor)));
+        request.setPageable(pageable);
+        return request;
     }
 
     private void traeSuPerfil(DisconnectorDTO disconnector) {
