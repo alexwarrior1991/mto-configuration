@@ -59,8 +59,11 @@ paths:
   `POST …/search`, `…/filter` y `…/jobs/export` también (`QUERY_BY_POST`); `…/bulk`,
   `…/jobs/bulk-create`, `…/jobs/bulk-update`, `…/jobs/import` y `master-data/republish` piden
   `CONFIG_IMPORT` (`BULK`); el resto de `POST`, `PUT` y `PATCH`, `CONFIG_WRITE`; `DELETE`,
-  `CONFIG_DELETE`. Escribir o borrar un catálogo pide además `LOV_MANAGE`. Ningún permiso implica
-  otro. Lo fija `ApiAuthorizationRulesTest`, con controladores sonda en las rutas reales.
+  `CONFIG_DELETE`. Escribir o borrar un catálogo pide además `LOV_MANAGE`, e importarlo
+  (`/lovs/jobs/import`) también: `CONFIG_IMPORT` por la ruta y `LOV_MANAGE` por el
+  `@PreAuthorize` del controlador. Ningún permiso implica otro. Lo fija `ApiAuthorizationRulesTest`,
+  con controladores sonda en las rutas reales y, para la importación del catálogo, el
+  `LovImportJobController` real, porque una sonda llevaría su propia copia de la anotación.
 - Una ruta nueva que consulta por `POST`, o que escribe en masa, va a `QUERY_BY_POST` o a `BULK`; si
   no, cae en la regla general de escritura. Lleva su caso en `ApiAuthorizationRulesTest`.
 - Los permisos son roles del cliente de la API; los roles de realm solo llegan como `ROLE_REALM_*`, de

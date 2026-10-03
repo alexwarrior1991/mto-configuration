@@ -4,8 +4,15 @@ import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.core.exception.web.ApiErrorConfiguration;
 import com.alejandro.mtoconfiguration.core.exception.web.ErrorCatalog;
 import com.alejandro.mtoconfiguration.core.exception.web.ProblemDetailFactory;
+import com.alejandro.mtoconfiguration.controller.synchronous.lov.LovImportJobController;
 import com.alejandro.mtoconfiguration.controller.synchronous.lov.commons.AbstractLovController;
+import com.alejandro.mtoconfiguration.entity.jobs.AsyncJob;
+import com.alejandro.mtoconfiguration.enums.jobs.JobStatus;
+import com.alejandro.mtoconfiguration.enums.jobs.JobType;
 import com.alejandro.mtoconfiguration.model.commons.LovDTO;
+import com.alejandro.mtoconfiguration.service.infraestructure.jobs.LovImportJobResponseMapper;
+import com.alejandro.mtoconfiguration.service.infraestructure.jobs.LovImportJobService;
+import com.alejandro.mtoconfiguration.service.infraestructure.jobs.LovImportJobSubmission;
 import com.alejandro.mtoconfiguration.service.lov.commons.LovCrudService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -15,16 +22,24 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -39,6 +54,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Se prueba contra controladores sonda montados en rutas con la misma forma que las reales, no
  * contra los controladores de negocio: lo que se está verificando son los patrones de la cadena de
  * filtros, y arrastrar la capa de servicio solo añadiría ruido y fragilidad.
+ * <p>
+ * La única excepción es la importación del catálogo de LOV: su {@code lov-manage} es un
+ * {@code @PreAuthorize} del propio {@link LovImportJobController}, que no hereda de nada que una
+ * sonda pueda copiar. Por eso se monta el controlador real, con su servicio y su mapper dobles: una
+ * sonda llevaría su propia copia de la anotación y seguiría pasando aunque se borrara la del
+ * controlador.
  */
 @WebMvcTest(controllers = ApiAuthorizationRulesTest.ProbeController.class)
 @AutoConfigureMockMvc
@@ -50,7 +71,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         ApiAuthorizationRulesTest.ProbeController.class,
         ApiAuthorizationRulesTest.ProbeAsyncController.class,
         ApiAuthorizationRulesTest.ProbeLovController.class,
-        ApiAuthorizationRulesTest.ProbeRepublishController.class})
+        ApiAuthorizationRulesTest.ProbeRepublishController.class,
+        LovImportJobController.class})
 @TestPropertySource(properties = {
         "app.security.client-id=mto-configuration-api",
         "app.security.principal-claim=preferred_username",
@@ -68,6 +90,9 @@ class ApiAuthorizationRulesTest {
     // que el patron de seguridad esta escrito entero y solo se puede comprobar sobre el mismo.
     private static final String REPUBLISH = ConfigurationApiPaths.BASE_PATH + "/master-data/republish";
 
+    // La ruta real de la importación del catálogo: se monta su controlador, no una sonda.
+    private static final String LOV_IMPORT = LovImportJobResponseMapper.JOBS_PATH + "/import";
+
     /**
      * Se deja el {@code JwtDecoder} real, sin sustituir por un doble: así el contexto ejercita el
      * cableado del bean —que depende de {@code OAuth2ResourceServerProperties}— y no solo las
@@ -79,6 +104,12 @@ class ApiAuthorizationRulesTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private LovImportJobService lovImportJobService;
+
+    @MockitoBean
+    private LovImportJobResponseMapper lovImportJobResponseMapper;
 
     @Test
     @DisplayName("el contexto publica el decodificador construido por la configuración")
@@ -380,6 +411,50 @@ class ApiAuthorizationRulesTest {
             mockMvc.perform(json(post(LOVS)).with(con(SecurityRoles.LOV_MANAGE)))
                     .andExpect(status().isForbidden());
         }
+
+        @Test
+        @DisplayName("importar el catálogo exige además lov-manage: config-import solo no basta")
+        void importarElCatalogoExigeLovManage() throws Exception {
+            mockMvc.perform(multipart(LOV_IMPORT).file(catalogoMaestro()).with(con(SecurityRoles.CONFIG_IMPORT)))
+                    .andExpect(status().isForbidden());
+
+            // El @PreAuthorize corta antes del cuerpo del método: no se encola nada.
+            verify(lovImportJobService, never()).submit(any(), anyBoolean());
+        }
+
+        @Test
+        @DisplayName("con config-import y lov-manage la importación del catálogo se acepta")
+        void conConfigImportYLovManageSeImportaElCatalogo() throws Exception {
+            when(lovImportJobService.submit(any(), anyBoolean()))
+                    .thenReturn(LovImportJobSubmission.accepted(trabajoDeLov()));
+
+            mockMvc.perform(multipart(LOV_IMPORT).file(catalogoMaestro())
+                            .with(con(SecurityRoles.CONFIG_IMPORT, SecurityRoles.LOV_MANAGE)))
+                    .andExpect(status().isAccepted());
+        }
+
+        @Test
+        @DisplayName("lov-manage no salta la regla de la ruta: con config-write no se importa")
+        void lovManageNoSaltaLaReglaDeLaImportacion() throws Exception {
+            mockMvc.perform(multipart(LOV_IMPORT).file(catalogoMaestro())
+                            .with(con(SecurityRoles.CONFIG_WRITE, SecurityRoles.LOV_MANAGE)))
+                    .andExpect(status().isForbidden());
+
+            verify(lovImportJobService, never()).submit(any(), anyBoolean());
+        }
+    }
+
+    private static MockMultipartFile catalogoMaestro() {
+        return new MockMultipartFile("file", "lov-master.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "contenido".getBytes());
+    }
+
+    private static AsyncJob trabajoDeLov() {
+        AsyncJob job = new AsyncJob();
+        job.setId(UUID.randomUUID());
+        job.setType(JobType.LOV_IMPORT);
+        job.setStatus(JobStatus.PENDING);
+        return job;
     }
 
     private static RequestPostProcessor con(String... roles) {

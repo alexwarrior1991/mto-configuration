@@ -195,7 +195,13 @@ Content-Type: application/json
 }
 ```
 
-Los campos que no aplican se **omiten** en lugar de viajar a `null`.
+Los campos que no aplican se **omiten** en lugar de viajar a `null`. `totalItems` es uno de ellos
+mientras no se sabe:
+
+- en un alta o una modificación masiva se conoce desde el 202: es el tamaño de la lista enviada;
+- en una exportación falta hasta que termina, cuando ya se sabe cuántos perfiles se han escrito;
+- en una importación no se conoce nunca;
+- en un republicado se cuenta antes de crear la fila, así que también llega en el 202.
 
 ### Consulta del estado
 

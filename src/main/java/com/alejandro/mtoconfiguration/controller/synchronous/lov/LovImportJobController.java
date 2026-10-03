@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.controller.synchronous.lov;
 
+import com.alejandro.mtoconfiguration.configuration.security.SecurityRoles;
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
 import com.alejandro.mtoconfiguration.entity.jobs.AsyncJob;
 import com.alejandro.mtoconfiguration.enums.jobs.JobStatus;
@@ -70,7 +71,7 @@ public class LovImportJobController {
     private final LovImportJobResponseMapper responseMapper;
 
     @PostMapping(path = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('LOV_MANAGE')")
+    @PreAuthorize("hasRole('" + SecurityRoles.LOV_MANAGE + "')")
     @Operation(
             summary = "Import the LOV master catalogue",
             description = """
