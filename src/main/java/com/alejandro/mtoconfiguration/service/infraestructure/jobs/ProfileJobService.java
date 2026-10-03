@@ -177,7 +177,8 @@ public class ProfileJobService {
             // Con el jobId como correlationId del hilo de fondo: es lo que agrupa cada linea de log
             // y cada evento del outbox que el trabajo escriba bajo el trabajo, no bajo la peticion
             // de un segundo que lo lanzo.
-            taskExecutor.execute(JobCorrelation.wrap(jobId, () -> run(jobId, type, task)));
+            taskExecutor.execute(JobCorrelation.wrap(jobId,
+                    () -> run(jobId, type, totalItems, task)));
         } catch (RuntimeException e) {
             heartbeat.unregister(jobId);
             store.markFinished(jobId, JobStatus.FAILED, null,
@@ -198,15 +199,21 @@ public class ProfileJobService {
      * saliera de este metodo moriria dentro del executor sin traza util, y el trabajo se quedaria
      * en RUNNING para siempre, indistinguible de uno que sigue corriendo.</p>
      */
-    private void run(UUID jobId, JobType type, JobTask task) {
+    private void run(UUID jobId, JobType type, Integer totalItems, JobTask task) {
         long startedAtNanos = System.nanoTime();
 
         // El progreso se crea FUERA del try para que el catch tambien lo vea. Estaba dentro, y eso
         // hacia que un fallo global tirara los errores por elemento ya recogidos: una carga que
         // procesa nueve mil elementos, acumula sus fallos y revienta por algo global terminaba con
         // el detalle vacio, que es justo cuando mas falta hace.
+        //
+        // Con el total del lote, y no a null, como en el republicado: cada volcado —y siempre el
+        // cierre— copia los contadores del progreso sobre la fila, totalItems incluido, asi que un
+        // null aqui borraba el total que el 202 acababa de anunciar. Una exportacion llega con null
+        // porque no sabe cuantos perfiles hay hasta escribirlos: lo fija ProfileExportJobRunner al
+        // terminar.
         ProfileJobProgress progress = new ProfileJobProgress(
-                null, properties.getProfile(), p -> store.saveProgress(jobId, p));
+                totalItems, properties.getProfile(), p -> store.saveProgress(jobId, p));
 
         // El finally quita el trabajo del latido pase lo que pase, tambien si el hilo muere por un
         // Error. Olvidarlo ya no cuesta un hueco para siempre —eso era el semaforo—, pero si deja a
