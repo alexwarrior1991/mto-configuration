@@ -51,5 +51,18 @@ paths:
   demás. La invalidación respeta el mismo cortocircuito y guarda lo pendiente para la siguiente
   escritura. Los servicios no capturan excepciones de caché. Lo fijan `ResilientCacheErrorHandlerTest`
   y `RedisCacheEvictServiceTest`.
-- Un acierto de caché no se prueba con un IT: los de `RedisCacheIT` están `@Disabled` por
-  intermitentes. Se prueba la clave, la serialización y la invalidación con los tests de arriba.
+- Las escrituras en Redis son inmediatas: `RedisCacheConfig` construye el escritor de la caché con
+  `immediateWrites()`. Spring Data Redis 4 escribe en segundo plano por defecto con Lettuce, por la
+  conexión reactiva, y entonces:
+  - el `put` volvía antes de que Redis tuviera el valor;
+  - una lectura justo después podía no encontrarlo, sin excepción ni traza;
+  - y un `SET` fallido no pasaba por `ResilientCacheErrorHandler`: ni contaba en `cache.errors` ni
+    armaba el cortocircuito.
+
+  Quien cambie el `RedisCacheManager` o su escritor lo conserva. Lo fija `RedisCacheConfigTest`.
+- Los aciertos de caché se prueban contra Redis de verdad:
+  - `RedisCacheIT`: cada caché, las páginas y los tipos que viajan;
+  - `RedisCacheResilienceIT`: el acierto antes de la caída.
+
+  Estuvieron en cuarentena por intermitentes hasta que se vio que la causa era la escritura en
+  segundo plano. `RedisCacheEvictIT` escribe sus claves a mano para probar solo el `SCAN` y el `DEL`.

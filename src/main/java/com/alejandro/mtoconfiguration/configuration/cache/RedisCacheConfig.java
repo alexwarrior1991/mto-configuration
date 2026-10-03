@@ -7,6 +7,8 @@ import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.cache.RedisCacheWriter;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import tools.jackson.databind.MapperFeature;
@@ -58,9 +60,11 @@ public class RedisCacheConfig {
     @Bean
     public RedisCacheManagerBuilderCustomizer redisCacheManagerBuilderCustomizer(
             RedisCacheConfiguration defaultConfiguration,
-            RedisCacheProperties redisCacheProperties
+            RedisCacheProperties redisCacheProperties,
+            RedisConnectionFactory redisConnectionFactory
     ) {
         return builder -> builder
+                .cacheWriter(immediateCacheWriter(redisConnectionFactory))
                 .withCacheConfiguration(
                         CacheNames.NORMAL_ITEM,
                         defaultConfiguration.entryTtl(redisCacheProperties.getNormalItemTtl())
@@ -86,6 +90,30 @@ public class RedisCacheConfig {
                         defaultConfiguration.entryTtl(redisCacheProperties.getLovListTtl())
                 );
 
+    }
+
+    /**
+     * El escritor de la caché, con escrituras inmediatas: el {@code put} vuelve cuando Redis ya
+     * tiene el valor.
+     * <p>
+     * Spring Data Redis 4 escribe en segundo plano por defecto cuando la factoría de conexiones es
+     * también reactiva, y la de Lettuce lo es. El {@code SET} salía por la conexión reactiva y el
+     * {@code put} no lo esperaba. Así pasaban tres cosas:
+     * <ul>
+     *   <li>una lectura justo después podía llegar a Redis antes que el valor y volver a la base de
+     *       datos, sin excepción ni traza (de ahí los aciertos intermitentes de
+     *       {@code RedisCacheIT} y {@code RedisCacheResilienceIT});</li>
+     *   <li>{@link ResilientCache} daba la caché por sana antes de saber si la escritura había
+     *       llegado;</li>
+     *   <li>y un {@code SET} fallido no pasaba por {@link ResilientCacheErrorHandler}: ni contaba en
+     *       {@code cache.errors} ni armaba el cortocircuito.</li>
+     * </ul>
+     * Por lo demás es el escritor que monta Spring Boot: sin bloqueo y con {@code KEYS} para vaciar.
+     * Las estadísticas ({@code spring.cache.redis.enable-statistics}) se le aplican al construir el
+     * {@code RedisCacheManager}. Lo fija {@code RedisCacheConfigTest}.
+     */
+    private static RedisCacheWriter immediateCacheWriter(RedisConnectionFactory connectionFactory) {
+        return RedisCacheWriter.create(connectionFactory, RedisCacheWriter.RedisCacheWriterConfigurer::immediateWrites);
     }
 
     private PolymorphicTypeValidator buildTypeValidator(RedisCacheProperties redisCacheProperties) {
