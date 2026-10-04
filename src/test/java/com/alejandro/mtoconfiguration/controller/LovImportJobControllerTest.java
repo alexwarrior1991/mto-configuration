@@ -54,8 +54,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@code dryRun} llega al servicio: si se perdiera por el camino, una simulacion
  * escribiria en base de datos, que es el peor fallo posible de este endpoint.
  *
- * <p>La seguridad se apaga en el slice a proposito; los permisos de la ruta se cubren
- * contra la cadena de filtros real en {@code ApiAuthorizationRulesTest}.
+ * <p>La seguridad se apaga en el slice a proposito. Los permisos —{@code CONFIG_IMPORT} por la
+ * ruta y {@code LOV_MANAGE} por el {@code @PreAuthorize} de este controlador— se cubren contra la
+ * cadena de filtros real en {@code ApiAuthorizationRulesTest}, que monta este mismo controlador.
  */
 @WebMvcTest(controllers = LovImportJobController.class,
         excludeAutoConfiguration = {

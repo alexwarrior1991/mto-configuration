@@ -139,6 +139,45 @@ class ProfileJobServiceTest {
     }
 
     @Test
+    @DisplayName("una carga masiva arranca el progreso con el total del lote, no a null")
+    void elProgresoDeUnaCargaConservaElTotal() {
+        ProfileJobSubmission submission = service.submitBulkUpdate(
+                List.of(new ProfileDTO(), new ProfileDTO(), new ProfileDTO()));
+
+        verify(store).createClaimingSlot(eq(JobType.PROFILE_BULK_UPDATE), isNull(), isNull(), eq(3), eq("ana"));
+
+        // Cada volcado —y siempre el cierre— copia los contadores del progreso sobre la fila,
+        // totalItems incluido: con el progreso a null se borraba el total que el 202 acababa de
+        // anunciar, y todo alta o modificacion masiva terminaba sin el.
+        ArgumentCaptor<ProfileJobProgress> progress = ArgumentCaptor.forClass(ProfileJobProgress.class);
+        verify(store).markFinished(eq(submission.job().getId()), eq(JobStatus.COMPLETED),
+                progress.capture(), isNull());
+        assertThat(progress.getValue().getTotalItems()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("una exportacion empieza sin total y cierra con el que fija su runner")
+    void laExportacionCierraConElTotalDeSuRunner() {
+        AtomicReference<Integer> totalAlEmpezar = new AtomicReference<>(-1);
+        doAnswer(invocation -> {
+            ProfileJobProgress progress = invocation.getArgument(3);
+            totalAlEmpezar.set(progress.getTotalItems());
+            progress.setTotalItems(5);
+            return null;
+        }).when(exportRunner).run(any(), eq(42L), eq("basic"), any());
+
+        ProfileJobSubmission submission = service.submitExport(42L, "basic");
+
+        // Una exportacion no sabe cuantos perfiles hay hasta escribirlos: arranca sin total y es
+        // su runner quien lo fija al terminar.
+        assertThat(totalAlEmpezar.get()).isNull();
+        ArgumentCaptor<ProfileJobProgress> progress = ArgumentCaptor.forClass(ProfileJobProgress.class);
+        verify(store).markFinished(eq(submission.job().getId()), eq(JobStatus.COMPLETED),
+                progress.capture(), isNull());
+        assertThat(progress.getValue().getTotalItems()).isEqualTo(5);
+    }
+
+    @Test
     @DisplayName("un fallo global deja el trabajo FAILED con su motivo")
     void falloGlobal() {
         doThrow(new UncheckedIOException("disco lleno", new IOException("no space left")))
