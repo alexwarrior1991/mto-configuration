@@ -601,8 +601,15 @@ humano.
 
 ### La hoja de seccionadores
 
-`DISCONNECTORS` identifica cada seccionador por `EP + ESTACION + NOMBRE`, su clave natural, como el
-aislador. El resto de columnas:
+`DISCONNECTORS` identifica cada seccionador por `EP + NOMBRE`, su clave natural. No lleva la
+estación, al contrario que el aislador, porque la de un seccionador es opcional: dos filas con el mismo
+nombre en el mismo EP salen en el informe, y cambiar en la hoja la estación de uno ya cargado lo
+modifica en vez de dar de alta otro. El resto de columnas:
+
+- **`ESTACION`**: la del EP, o **`SIN ESTACION`** (con tilde o sin ella) si no es de ninguna: uno en
+  plena vía, en una zona neutra o en una subestación. Se escribe porque en blanco sería un olvido, y
+  la fila sale en el informe. Sin estación y sin poste, su `VIA` es lo único que lo sitúa, y una que
+  no está entre las del paquete también sale en el informe.
 
 - **`PROFILE_ID` y `VIA`**: el poste del que cuelga y la vía de ese poste, que es donde el
   importador lo busca, entre los perfiles de la hoja `PROFILES`. Un poste admite **un solo**
@@ -953,7 +960,11 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
   una nota («vía distinta»); con el KP más lejos, la fila espera a una persona.
 - **Estación**: el prefijo del nombre si es una estación del maestro. Las zonas neutras, túneles y
   subestaciones (`KAF`, `TN3`, `HSA`) no lo son: se propone la estación del plano más cercana y se
-  decide **una vez por prefijo**, en la hoja `ESTACION_POR_PREFIJO`.
+  decide **una vez por prefijo**, en la hoja `ESTACION_POR_PREFIJO`. Un seccionador puede no ser de
+  ninguna estación: entonces se escribe `SIN ESTACION`, en su fila o en `ESTACION_CORRECTA` de su
+  prefijo.
+- **Nombre repetido**: el importador identifica cada seccionador por su EP y su nombre, así que dos
+  filas con el mismo nombre en el mismo EP salen las dos con `REVISAR = SI` y `ENABLED = NO`.
 - **Función**: el código del poste casado; si no hay, una propuesta por lo que puentea y el nombre.
 - **Vía conectada** (`V27`): un seccionador de puesta en paralelo une su vía con otra. Lo es si su
   poste lleva `PP` en `SECTIONING_FEEDING` (`Disc/PP`, `LoadB/PP`), o si el nombre lleva la B del
@@ -981,7 +992,7 @@ Lo que se elige lleva desplegable, así que revisar es elegir y no ir a buscar a
 
 | Columna | Opciones |
 |---|---|
-| `ESTACION`, `VIA`, `VIA_CONECTADA`, `ESTACION_CORRECTA` | Las del EP de la fila en el maestro. Otra se admite con un aviso: si lo que está mal es el EP, la lista sigue siendo la del EP de antes |
+| `ESTACION`, `VIA`, `VIA_CONECTADA`, `ESTACION_CORRECTA` | Las del EP de la fila en el maestro, y en la estación de un seccionador, `SIN ESTACION` al final. Otra se admite con un aviso: si lo que está mal es el EP, la lista sigue siendo la del EP de antes |
 | `PROFILE_ID`, `KP_POSTE` | El poste de la fila primero, y después los del EP a menos de 80 m del KP del rótulo, del más cercano al más lejano. `POSTES_CERCANOS` dice de cada uno su vía, su KP, a cuántos metros está y sus códigos: cambiar de poste es cambiar también `VIA` y `KP_POSTE`. Otro se admite con un aviso |
 | `NOMBRE` | En un símbolo sin rótulo, los rótulos sueltos de `ROTULOS_SIN_SIMBOLO` que tiene al lado. Otro se admite con un aviso |
 | `DISCONNECTOR_FUNCTION` | El catálogo `DisconnectorFunction` habilitado de `lov-master.xlsx` (`--lovs`), los de seccionador (`Disc`, `LoadB`, `ED`) primero |

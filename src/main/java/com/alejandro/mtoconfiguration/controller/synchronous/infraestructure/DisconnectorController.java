@@ -153,7 +153,8 @@ public class DisconnectorController extends CRUDController<DisconnectorDTO, Disc
     @PostMapping("/filter")
     @Operation(
             summary = "Filter disconnectors",
-            description = "Retrieves a page of disconnectors applying specific filters using QueryDSL."
+            description = "Retrieves a page of disconnectors applying specific filters. The station and the pole "
+                    + "are optional: a disconnector without them is listed too, also when sorting by them."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,

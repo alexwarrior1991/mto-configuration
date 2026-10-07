@@ -2,7 +2,8 @@ package com.alejandro.mtoconfiguration.service.infraestructure;
 
 import com.alejandro.mtoconfiguration.business.infrastructure.DisconnectorBusiness;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
-import com.alejandro.mtoconfiguration.entity.infrastructure.QDisconnector;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
+import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
 import com.alejandro.mtoconfiguration.mapper.infraestructure.DisconnectorMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.DisconnectorFilter;
@@ -12,16 +13,24 @@ import com.alejandro.mtoconfiguration.service.commons.CRUDService;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.utils.InfrastructureUtils;
 import com.alejandro.mtoconfiguration.validator.infrastructure.DisconnectorValidator;
-import com.querydsl.core.BooleanBuilder;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -77,34 +86,56 @@ public class DisconnectorService extends CRUDService<DisconnectorDTO, Disconnect
         return business;
     }
 
+    /**
+     * La lista de seccionadores con sus filtros, como {@link Specification} y no como predicado de
+     * QueryDSL: la estación y el poste son opcionales, y QueryDSL solo llega a ellos con joins
+     * implícitos, que son internos. Un seccionador sin estación desaparecía de la búsqueda por texto
+     * aunque casara por su nombre, y de la lista ordenada por estación; uno sin poste, de la ordenada
+     * por poste. Aquí la estación y la función van con join externo, y Spring Data ordena por una
+     * asociación opcional ({@code station.name}, {@code profile.profileId}) con otro join externo,
+     * que reutiliza estos. Un filtro en blanco no filtra, y {@code onLoad} solo si viene.
+     */
     @Override
     @Transactional(readOnly = true)
     public Page<DisconnectorDTO> getDisconnectors(Pageable pageable, DisconnectorFilter filter) {
         log.info("Consultando seccionadores con filtros funcionales");
-        QDisconnector qEntity = QDisconnector.disconnector;
-        BooleanBuilder builder = new BooleanBuilder();
-
-        applyCondition(builder, filter.name(), qEntity.name::containsIgnoreCase);
-        applyCondition(builder, filter.stationName(), qEntity.station.name::containsIgnoreCase);
-        applyCondition(builder, filter.functionName(), qEntity.disconnectorFunction.description::containsIgnoreCase);
-
-        // Filtro por onLoad: solo si viene; ausente no filtra (ver DisconnectorFilter)
-        applyCondition(builder, filter.onLoad(), qEntity.onLoad::eq);
-
-        // Búsqueda general (SearchText)
-        Optional.ofNullable(filter.searchText())
-                .filter(text -> !text.isBlank())
-                .ifPresent(text -> {
-                    BooleanBuilder searchBuilder = new BooleanBuilder();
-                    searchBuilder.or(qEntity.name.containsIgnoreCase(text));
-                    searchBuilder.or(qEntity.station.name.containsIgnoreCase(text));
-                    searchBuilder.or(qEntity.disconnectorFunction.description.containsIgnoreCase(text));
-
-                    builder.and(searchBuilder);
-                });
-
-        return getRepository().findAll(builder, pageable)
+        return getRepository().findAll(matching(filter), pageable)
                 .map(getMapper()::toDTO);
+    }
+
+    static Specification<Disconnector> matching(DisconnectorFilter filter) {
+        return (root, query, cb) -> {
+            Join<Disconnector, Station> station = root.join("station", JoinType.LEFT);
+            Join<Disconnector, DisconnectorFunction> function = root.join("disconnectorFunction", JoinType.LEFT);
+            List<Predicate> conditions = new ArrayList<>();
+
+            contains(cb, root.get("name"), filter.name()).ifPresent(conditions::add);
+            contains(cb, station.get("name"), filter.stationName()).ifPresent(conditions::add);
+            contains(cb, function.get("description"), filter.functionName()).ifPresent(conditions::add);
+            Optional.ofNullable(filter.onLoad())
+                    .map(onLoad -> cb.equal(root.get("onLoad"), onLoad))
+                    .ifPresent(conditions::add);
+
+            // Busqueda general (searchText): el nombre, la estacion o la funcion.
+            if (!filter.searchText().isBlank()) {
+                conditions.add(cb.or(Stream.of(
+                                contains(cb, root.get("name"), filter.searchText()),
+                                contains(cb, station.get("name"), filter.searchText()),
+                                contains(cb, function.get("description"), filter.searchText()))
+                        .flatMap(Optional::stream)
+                        .toArray(Predicate[]::new)));
+            }
+
+            return cb.and(conditions.toArray(Predicate[]::new));
+        };
+    }
+
+    /** Contiene el texto, sin distinguir mayusculas, como {@code JoinPredicates}; en blanco no filtra. */
+    private static Optional<Predicate> contains(CriteriaBuilder cb, Expression<String> value, String text) {
+        if (text == null || text.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(cb.like(cb.upper(value), "%" + text.toUpperCase(Locale.ROOT) + "%"));
     }
 
     @Override

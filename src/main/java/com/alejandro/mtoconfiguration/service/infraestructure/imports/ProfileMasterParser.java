@@ -257,6 +257,10 @@ public class ProfileMasterParser {
      * que ESTACIONES en TRACKS: sin la columna, todos los seccionadores se cargarían sin poste y sin
      * una sola queja. KP, KP_POSTE, NORMALLY_OPEN y DRIVE_TYPE no: llegaron después (V25 y V26) y
      * una celda vacía es un dato que no está.
+     *
+     * <p>Una fila sin paquete o sin nombre se salta, como en las demás hojas. Sin estación no: la
+     * estación es opcional y se dice escribiendo {@code SIN ESTACION}, así que una celda vacía es un
+     * olvido, y el importador lo señala en su fila en vez de cargarla sin estación o perderla.
      */
     private List<DisconnectorMasterRow> readDisconnectors(ExcelWorkbook workbook) {
         return readOptional(workbook, DISCONNECTORS_SHEET,
@@ -266,7 +270,7 @@ public class ProfileMasterParser {
                     String ep = text(row, columns.get(COL_EP));
                     String station = text(row, columns.get(COL_STATION));
                     String name = text(row, columns.get(COL_NAME));
-                    if (ep.isBlank() || station.isBlank() || name.isBlank()) {
+                    if (ep.isBlank() || name.isBlank()) {
                         return null;
                     }
                     return new DisconnectorMasterRow(ep, station,

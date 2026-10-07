@@ -1070,6 +1070,12 @@ READ_ME = [
      "un libro de revision con estas mismas columnas, y una vez revisado se guarda como "
      "data/sectioning-review.xlsx, de donde este generador copia sus filas. Sin ese fichero, las "
      "tres hojas salen con cabecera y sin filas."),
+    ("ESTACION / NOMBRE del seccionador",
+     "El seccionador se identifica por EP + NOMBRE: dos filas con el mismo nombre en el mismo EP "
+     "salen en el informe de la importacion. La estacion es opcional: SIN ESTACION si no es de "
+     "ninguna (en plena via, una zona neutra, una subestacion). En blanco no se carga, porque "
+     "seria un olvido. Sin estacion y sin poste, su VIA es lo unico que lo situa, y tiene que ser "
+     "una del EP."),
     ("PROFILE_ID / VIA / KP del seccionador",
      "Con PROFILE_ID, VIA es la del poste y sirve para encontrarlo (un PROFILE_ID se repite en "
      "vias distintas), y KP va vacio: el KP y la via son los del poste. Sin PROFILE_ID (un "
@@ -1145,6 +1151,8 @@ def load_sectioning(path):
     que se carga lo decide ENABLED, que es de quien revisa. ESTACION_CORRECTA de la hoja
     ESTACION_POR_PREFIJO se aplica a los seccionadores de ese prefijo en ese EP, porque la
     estacion de una zona neutra o de una subestacion se decide una vez por prefijo, no fila a fila.
+    SIN ESTACION, en ESTACION o en ESTACION_CORRECTA, pasa tal cual: es lo que el importador lee
+    como un seccionador que no es de ninguna estacion.
 
     Sin fichero, las tres hojas salen vacias, como antes de que hubiera plano.
     """

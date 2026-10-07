@@ -79,12 +79,17 @@ public class DisconnectorValidator extends NormalEntityValidator<DisconnectorDTO
     }
 
     /**
-     * La estación es obligatoria; el poste ({@code profileId}), no: hay seccionadores que no están en
-     * un poste de la línea, y esos guardan solo su estación.
+     * Ni la estación ni el poste ({@code profileId}) son obligatorios: un seccionador en plena vía, en
+     * una zona neutra o en una subestación no es de ninguna estación, y los de los pórticos de
+     * subestación y los de puesta a tierra no están en un poste. Pero tiene que estar en algún sitio:
+     * sin estación, en un poste o con su vía propia (V26), y si no, el 400 va sobre la estación.
+     *
+     * <p>Solo cuando viaja solo: dentro de su estación, la estación es la del padre.
      */
     @Override
     protected void validateParentReferences(DisconnectorDTO dto, List<Alert> alerts) {
-        check(alerts)
-                .validateRequiredField(dto.getStationId(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_STATION_ID);
+        if (dto.getStationId() == null && dto.getProfileId() == null && dto.getTrackId() == null) {
+            alerts.add(Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, FIELD_STATION_ID));
+        }
     }
 }

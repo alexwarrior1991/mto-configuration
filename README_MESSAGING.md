@@ -4,6 +4,24 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ El evento `disconnector` puede llegar con `station` a `null`
+
+Un cambio compatible hacia atrás para quien consume: **ninguna clave nueva, renombrada ni quitada**.
+Cambia lo que se puede esperar de una que ya estaba:
+
+- **La estación del seccionador deja de ser obligatoria.** La clave `station` (`{id, name}`) ya
+  podía viajar a `null`, pero la API exigía `stationId`, así que en la práctica siempre llegaba. Un
+  seccionador en plena vía, en una zona neutra o en una subestación no es de ninguna estación, y
+  entonces `station` llega a `null`. Nunca a la vez sin poste (`profile`) y sin vía propia
+  (`track`): uno de los tres lo sitúa. Al no tener estación no sale en `disconnectors[]` del evento
+  `station` de ninguna, y su `PUT` puede quitársela a uno que la tenía (llega un `UPDATED` con
+  `station` a `null`, y el `station` de la que tenía deja de listarlo en su siguiente evento).
+
+`mto-maintenance` ya guardaba la estación de un activo como opcional (`station_id` anulable) y toma
+el paquete del poste o de la vía, nunca de la estación (su `docs/06-messaging.md`). `mto-notification`
+solo copia de `values` su lista blanca de escalares, en la que no está. `mto-stock` registra el evento
+sin tratarlo.
+
 ## ⚠️ El evento `disconnector` gana `connectedTrack`
 
 Un cambio, compatible hacia atrás para quien consume: **solo añade una clave**.
@@ -291,6 +309,13 @@ cargarlas: `track` y `connectedTrack` entran en el `@EntityGraph` de
 esperar de él: desde `V25` el poste es opcional, y un seccionador que no está en un poste lo trae a
 `null`. Entonces el KP y la vía son los suyos, `kp` y `track`, que pueden faltar también; nunca vienen
 a la vez que un `profile`.
+
+`station` tampoco cambia de forma (`{ "id", "name" }` o `null`), y también es opcional: un
+seccionador en plena vía, en una zona neutra o en una subestación no es de ninguna estación y la trae
+a `null`. La API no deja uno sin estación, sin poste y sin vía propia (400 `BUS-001` sobre
+`stationId`), así que `station`, `profile` y `track` nunca llegan los tres a `null`; uno con estación
+y sin poste sí puede llegar sin `track`. Un seccionador sin estación no sale en la copia de ningún
+`station`.
 
 ### 2.5. Republicado de lo que ya existe
 

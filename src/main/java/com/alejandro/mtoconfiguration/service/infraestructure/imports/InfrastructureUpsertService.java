@@ -301,20 +301,37 @@ public class InfrastructureUpsertService {
      * <p>La via conectada (V27) llega resuelta por el importador, que ya ha comprobado que es de su
      * paquete y que no es la propia; con poste o sin el, viaja tal cual.
      *
+     * <p>La clave natural es el nombre dentro del paquete, y no dentro de la estacion, porque la
+     * estacion es opcional: uno en plena via, en una zona neutra o en una subestacion no es de
+     * ninguna. Un nombre que ya esta dos veces en el paquete no se resuelve eligiendo uno: la fila
+     * sale en el informe. Asi, cambiar la estacion de un seccionador en la hoja lo modifica, en vez
+     * de dar de alta otro con el mismo nombre.
+     *
+     * @param stationId        su estacion; null en uno que no es de ninguna
+     * @param packageId        su paquete, donde se busca por nombre; null en la simulacion si el
+     *                         paquete se da de alta en la misma carga, y entonces el seccionador
+     *                         tambien es nuevo
      * @param trackId          la via propia de un seccionador sin poste; null con poste
      * @param connectedTrackId la otra via de uno que pone dos en paralelo; null en los demas, y en la
      *                         simulacion si esa via se da de alta en la misma carga
      */
-    public UpsertResult upsertDisconnector(DisconnectorMasterRow row, Long stationId, Long profileId,
-                                           Long trackId, Long connectedTrackId, boolean dryRun) {
+    public UpsertResult upsertDisconnector(DisconnectorMasterRow row, Long stationId, Long packageId,
+                                           Long profileId, Long trackId, Long connectedTrackId,
+                                           boolean dryRun) {
         boolean onAPole = !StringUtils.isBlank(row.profileId());
         if (onAPole && !StringUtils.isBlank(row.kp())) {
             throw new ValidationException("KP es el del seccionador sin poste, y este va en el poste "
                     + row.profileId().trim() + ", que ya tiene el suyo: deja KP vacio o quita PROFILE_ID");
         }
 
-        Optional<Disconnector> existing = disconnectorRepository
-                .findByNameIgnoreCaseAndStationId(row.name(), stationId);
+        List<Disconnector> sameName = packageId == null ? List.of()
+                : disconnectorRepository.findByNameInPackage(row.name(), packageId);
+        if (sameName.size() > 1) {
+            throw new ValidationException("el nombre '" + row.name().trim() + "' ya esta "
+                    + sameName.size() + " veces en el paquete " + row.executionPackage().trim()
+                    + ", y el maestro identifica cada seccionador por su paquete y su nombre");
+        }
+        Optional<Disconnector> existing = sameName.stream().findFirst();
 
         DisconnectorDTO dto = new DisconnectorDTO();
         dto.setName(row.name());
@@ -813,7 +830,8 @@ public class InfrastructureUpsertService {
         }
 
         Optional<LinkIds> links = disconnectorRepository.findLinkIdsById(entity.getId());
-        return Objects.equals(links.map(LinkIds::getProfileId).orElse(null), dto.getProfileId())
+        return Objects.equals(links.map(LinkIds::getStationId).orElse(null), dto.getStationId())
+                && Objects.equals(links.map(LinkIds::getProfileId).orElse(null), dto.getProfileId())
                 && Objects.equals(links.map(LinkIds::getTrackId).orElse(null), dto.getTrackId())
                 && Objects.equals(links.map(LinkIds::getConnectedTrackId).orElse(null), dto.getConnectedTrackId())
                 && Objects.equals(links.map(LinkIds::getDisconnectorFunctionId).orElse(null), function.getId());

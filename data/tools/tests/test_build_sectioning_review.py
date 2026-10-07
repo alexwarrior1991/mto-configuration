@@ -449,6 +449,26 @@ class DisconnectorRowsTest(unittest.TestCase):
         self.assertEqual(ready["ENABLED"], "SI")
         self.assertNotIn("repite el poste", ready["MOTIVO_REVISAR"])
 
+    def test_a_name_repeated_in_the_ep_holds_both_rows(self):
+        # El importador identifica cada seccionador por su EP y su nombre, sin mayusculas: de los
+        # dos solo cargaria el primero. Los dos esperan a una persona, aunque cada uno tenga su
+        # poste; en otro EP, el mismo nombre no choca con nada.
+        other = dict(self.POLE, profile="93-1.07", kp=93600.0)
+        elsewhere = dict(self.POLE, ep="EP5", profile="93-1.09", kp=93700.0)
+        master = dict(self.MASTER, profiles=[self.POLE, other, elsewhere])
+        records = [
+            self.record(handle="H1", name="TSA-B01"),
+            self.record(handle="H2", name="tsa-b01", pole=other, kp_m=93600),
+            self.record(handle="H3", name="TSA-B01", ep="EP5", pole=elsewhere, kp_m=93700),
+        ]
+        rows, _ = bsr.disconnector_rows(records, master)
+        by_handle = {d["HANDLE"]: d for d in rows}
+        for handle in ("H1", "H2"):
+            row = by_handle[handle]
+            self.assertEqual((row["REVISAR"], row["ENABLED"]), ("SI", "NO"), handle)
+            self.assertIn("se repite en EP6", row["MOTIVO_REVISAR"])
+        self.assertNotIn("se repite", by_handle["H3"]["MOTIVO_REVISAR"])
+
     TRACK_2 = {"name": "TRACK 2 TLV SAVIDOR", "num": "2", "stations": ["TSA"]}
 
     def two_tracks(self):
@@ -630,9 +650,15 @@ class DropDownTest(unittest.TestCase):
         wb = openpyxl.load_workbook(path)
         options = wb["OPCIONES"]
         header = [c.value for c in options[1]]
-        stations = header.index("ESTACIONES EP6") + 1
         self.assertEqual(
-            [options.cell(row=i, column=stations).value for i in (2, 3)], ["HER", "TSA"]
+            [options.cell(row=i, column=header.index("ESTACIONES EP6") + 1).value for i in (2, 3)],
+            ["HER", "TSA"],
+        )
+        # La estacion de un seccionador puede no ser ninguna, y la de un aislador no.
+        stations = header.index("ESTACIONES_SECCIONADOR EP6") + 1
+        self.assertEqual(
+            [options.cell(row=i, column=stations).value for i in (2, 3, 4)],
+            ["HER", "TSA", "SIN ESTACION"],
         )
         validations = wb["DISCONNECTORS"].data_validations.dataValidation
 
@@ -642,7 +668,7 @@ class DropDownTest(unittest.TestCase):
             return found[0]
 
         letter = openpyxl.utils.get_column_letter(stations)
-        self.assertEqual(of("B2").formula1, "OPCIONES!$%s$2:$%s$3" % (letter, letter))
+        self.assertEqual(of("B2").formula1, "OPCIONES!$%s$2:$%s$4" % (letter, letter))
         self.assertEqual(of("B2").errorStyle, "warning", "una estacion de otro EP, con aviso")
         # Las opciones propias de la fila, en su fila de la hoja oculta y con su tipo: un KP
         # escrito como texto no seria un numero en un Excel con coma decimal.
