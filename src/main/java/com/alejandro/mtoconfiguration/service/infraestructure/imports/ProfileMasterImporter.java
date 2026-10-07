@@ -4,6 +4,7 @@ import com.alejandro.mtoconfiguration.core.exception.BaseException;
 import com.alejandro.mtoconfiguration.core.exception.GenericException;
 import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.CantileverMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.DisconnectorMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileImportReport;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
@@ -16,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,9 +32,10 @@ import java.util.stream.Collectors;
  *
  * <h2>El orden no es negociable</h2>
  *
- * <p>{@code EPS -> STATIONS -> TRACKS -> PROFILES (+ CANTILEVERS)}. Cada nivel necesita
- * el identificador del anterior, que solo se conoce despues de escribirlo. Una vía sin
- * estación es correcta —la columna es anulable a proposito— pero una vía sin paquete no.
+ * <p>{@code EPS -> STATIONS -> TRACKS -> PROFILES (+ CANTILEVERS) -> SECTION_INSULATORS
+ * (+ SWITCHES) -> DISCONNECTORS}. Cada nivel necesita el identificador del anterior, que solo
+ * se conoce despues de escribirlo. Una vía sin estación es correcta —la columna es anulable a
+ * proposito— pero una vía sin paquete no.
  *
  * <h2>Qué pasa cuando falta el padre</h2>
  *
@@ -70,8 +73,9 @@ public class ProfileMasterImporter {
         Map<StationKey, Long> stationsByKey = importStations(content, packagesByCode, dryRun, report, progress);
         Map<TrackKey, Long> tracksByKey = importTracks(content, packagesByCode, stationsByKey, dryRun,
                 report, progress);
-        importProfiles(content, tracksByKey, dryRun, report, progress);
+        Map<Integer, Long> profileIdsByRow = importProfiles(content, tracksByKey, dryRun, report, progress);
         importSectionInsulators(content, stationsByKey, tracksByKey, dryRun, report, progress);
+        importDisconnectors(content, stationsByKey, tracksByKey, profileIdsByRow, dryRun, report, progress);
 
         log.info("Importacion del maestro de perfiles terminada dryRun={} altas={} modificaciones={} "
                         + "mensulas={} agujas={} errores={} omitidos={}",
@@ -176,9 +180,14 @@ public class ProfileMasterImporter {
         return byKey;
     }
 
-    private void importProfiles(ProfileMasterParser.ProfileMasterContent content,
-                                Map<TrackKey, Long> tracksByKey, boolean dryRun,
-                                ProfileImportReport report, Consumer<Boolean> progress) {
+    /**
+     * @return el id de cada perfil escrito, por su fila de la hoja PROFILES: es como los busca
+     *         {@link #importDisconnectors}. En simulacion, el de un alta es null, pero la fila esta
+     */
+    private Map<Integer, Long> importProfiles(ProfileMasterParser.ProfileMasterContent content,
+                                              Map<TrackKey, Long> tracksByKey, boolean dryRun,
+                                              ProfileImportReport report, Consumer<Boolean> progress) {
+        Map<Integer, Long> idsByRow = new HashMap<>();
         // Las mensulas se agrupan de una vez: buscarlas por perfil dentro del bucle seria
         // recorrer 14.592 filas por cada uno de los 11.715 perfiles.
         Map<ProfileKey, List<CantileverMasterRow>> cantileversByProfile = content.cantilevers().stream()
@@ -212,11 +221,13 @@ public class ProfileMasterImporter {
                 var result = upsertService.upsertProfile(row, tracksByKey.get(trackKey), cantilevers, dryRun);
                 count(report, ProfileImportReport.PROFILE, result.outcome());
                 report.addCantilevers(cantilevers.size());
+                idsByRow.put(row.sourceRow(), result.id());
                 progress.accept(true);
             } catch (Exception e) {
                 fail(report, row.sourceRow(), ProfileImportReport.PROFILE, reference(row), e, progress);
             }
         }
+        return idsByRow;
     }
 
     /**
@@ -374,6 +385,133 @@ public class ProfileMasterImporter {
         });
     }
 
+    /**
+     * Los seccionadores van los ultimos: su estacion, su poste y, sin poste, su via tienen que estar
+     * ya escritos.
+     *
+     * <p>El poste se busca en la hoja PROFILES, por su via y su identificador, y no en la base: asi la
+     * simulacion, que no escribe, encuentra los mismos que la carga real, y un poste deshabilitado o
+     * que fallo no se confunde con uno que no existe. Una via de dos tramos concatenados repite
+     * identificadores —el caso de EP9A que obliga a casar las mensulas por ORDEN—, y ahi decide
+     * KP_POSTE ({@link #findPole}).
+     *
+     * <p>Sin poste, la via que la fila nombra y no existe se deja a null, como la de un aislador: la
+     * columna es anulable y el seccionador sigue siendo de su estacion.
+     *
+     * @param profileIdsByRow lo que devuelve {@link #importProfiles}
+     */
+    private void importDisconnectors(ProfileMasterParser.ProfileMasterContent content,
+                                     Map<StationKey, Long> stationsByKey,
+                                     Map<TrackKey, Long> tracksByKey,
+                                     Map<Integer, Long> profileIdsByRow, boolean dryRun,
+                                     ProfileImportReport report, Consumer<Boolean> progress) {
+        if (content.disconnectors().isEmpty()) {
+            return;
+        }
+
+        Map<PoleKey, List<ProfileMasterRow>> poles = content.profiles().stream()
+                .collect(Collectors.groupingBy(row -> new PoleKey(
+                        key(row.executionPackage()), key(row.track()), key(row.profileId()))));
+        // Que fila de la hoja se ha llevado ya cada poste: un poste admite un solo seccionador, y
+        // dos filas en el mismo se señalan aqui, con el nombre de la otra, antes de que el indice
+        // unico conteste por ellas.
+        Map<Integer, String> claimedBy = new HashMap<>();
+
+        for (DisconnectorMasterRow row : content.disconnectors()) {
+            if (!row.enabled()) {
+                report.skipDisabled();
+                continue;
+            }
+
+            String code = key(row.executionPackage());
+            StationKey stationKey = new StationKey(code, key(row.station()));
+            if (!stationsByKey.containsKey(stationKey)) {
+                fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
+                        "su estacion '" + row.station() + "' no se ha podido cargar", progress);
+                continue;
+            }
+
+            Long profileId = null;
+            Long trackId = null;
+            if (key(row.profileId()).isEmpty()) {
+                trackId = tracksByKey.get(new TrackKey(code, key(row.track())));
+            } else {
+                PoleMatch match = findPole(row, poles.getOrDefault(
+                        new PoleKey(code, key(row.track()), key(row.profileId())), List.of()));
+                if (match.pole() == null) {
+                    fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
+                            match.problem(), progress);
+                    continue;
+                }
+                int poleRow = match.pole().sourceRow();
+                if (!profileIdsByRow.containsKey(poleRow)) {
+                    fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
+                            "su poste '" + row.profileId() + "' de la via '" + row.track()
+                                    + "' no se ha podido cargar", progress);
+                    continue;
+                }
+                String other = claimedBy.putIfAbsent(poleRow, row.name());
+                if (other != null) {
+                    fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
+                            "su poste '" + row.profileId() + "' ya lo lleva '" + other
+                                    + "' en esta misma hoja, y un poste admite un solo seccionador",
+                            progress);
+                    continue;
+                }
+                profileId = profileIdsByRow.get(poleRow);
+            }
+
+            try {
+                var result = upsertService.upsertDisconnector(row, stationsByKey.get(stationKey),
+                        profileId, trackId, dryRun);
+                count(report, ProfileImportReport.DISCONNECTOR, result.outcome());
+                progress.accept(true);
+            } catch (Exception e) {
+                fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row), e, progress);
+            }
+        }
+    }
+
+    /**
+     * El poste de la fila entre los que la hoja PROFILES tiene en su via con su identificador.
+     *
+     * <p>Uno solo es el caso normal, y entonces KP_POSTE no se mira: el identificador basta, y quien
+     * cambia de poste en la hoja no tiene por que acordarse de cambiar tambien su KP. Varios es una
+     * via de dos tramos concatenados, y ahi KP_POSTE es lo unico que los distingue.
+     */
+    private PoleMatch findPole(DisconnectorMasterRow row, List<ProfileMasterRow> candidates) {
+        if (candidates.isEmpty()) {
+            return PoleMatch.notFound("su poste '" + row.profileId() + "' no esta en la via '"
+                    + row.track() + "' de la hoja " + ProfileMasterParser.PROFILES_SHEET);
+        }
+        if (candidates.size() == 1) {
+            return PoleMatch.found(candidates.getFirst());
+        }
+
+        String kps = candidates.stream().map(ProfileMasterRow::kp).collect(Collectors.joining(", "));
+        if (row.profileKp() == null) {
+            return PoleMatch.notFound("la via '" + row.track() + "' tiene " + candidates.size()
+                    + " postes '" + row.profileId() + "', en los KP " + kps
+                    + ", y KP_POSTE no dice cual es el suyo");
+        }
+        return candidates.stream()
+                .filter(candidate -> sameKp(candidate.kp(), row.profileKp()))
+                .findFirst()
+                .map(PoleMatch::found)
+                .orElseGet(() -> PoleMatch.notFound("ninguno de los " + candidates.size() + " postes '"
+                        + row.profileId() + "' de la via '" + row.track() + "' esta en el KP_POSTE "
+                        + row.profileKp().toPlainString() + ": estan en los KP " + kps));
+    }
+
+    /** {@code 98375.5} y {@code 98375.500} son el mismo KP; uno que no es un numero no casa con nada. */
+    private static boolean sameKp(String kp, BigDecimal expected) {
+        try {
+            return kp != null && !kp.isBlank() && new BigDecimal(kp.trim()).compareTo(expected) == 0;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
     private void count(ProfileImportReport report, String entity,
                        InfrastructureUpsertService.UpsertResult.Outcome outcome) {
         switch (outcome) {
@@ -434,6 +572,10 @@ public class ProfileMasterImporter {
         return row.executionPackage() + " / " + row.station() + " / " + row.name();
     }
 
+    private String reference(DisconnectorMasterRow row) {
+        return row.executionPackage() + " / " + row.station() + " / " + row.name();
+    }
+
     /**
      * Las claves se comparan en mayusculas, igual que los indices unicos de V12: el
      * origen no es consistente y {@code HR TRACK 3 HAD} convive con {@code HR Track 3 BIN}.
@@ -452,5 +594,21 @@ public class ProfileMasterImporter {
     }
 
     private record SectionInsulatorKey(String executionPackage, String station, String name) {
+    }
+
+    /** Un poste por su via y su identificador: lo que nombra una fila de DISCONNECTORS. */
+    private record PoleKey(String executionPackage, String track, String profileId) {
+    }
+
+    /** El poste encontrado, o por que no. */
+    private record PoleMatch(ProfileMasterRow pole, String problem) {
+
+        static PoleMatch found(ProfileMasterRow pole) {
+            return new PoleMatch(pole, null);
+        }
+
+        static PoleMatch notFound(String problem) {
+            return new PoleMatch(null, problem);
+        }
     }
 }

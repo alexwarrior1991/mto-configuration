@@ -16,6 +16,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.InstanceOfAssertFactories.LIST;
+import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.FoundationDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.FoundationTypeDTO;
@@ -125,6 +127,49 @@ class RedisCacheValueSerializationTest {
                     assertThat(cached.getFoundationType().getCode()).isEqualTo("FT1");
                     assertThat(cached.getFoundationType().getVersionNumber()).isEqualTo(2);
                 });
+    }
+
+    /**
+     * El seccionador se cachea ({@code DisconnectorService} es uno de los dos servicios
+     * cacheables), y desde V25 lleva un enum y un booleano que pueden faltar, igual que su poste.
+     * El enum es una clase final, asi que viaja sin marcador: se tiene que poder leer por el tipo
+     * declarado del campo.
+     */
+    @Test
+    void shouldRoundTripADisconnectorWithItsNormalStateItsDriveAndNoPole() {
+        DisconnectorDTO onPole = new DisconnectorDTO();
+        onPole.setId(40L);
+        onPole.setName("SEC-40");
+        onPole.setOnLoad(true);
+        onPole.setNormallyOpen(true);
+        onPole.setDriveType(DisconnectorDriveType.MOTOR);
+        onPole.setStationId(2L);
+        onPole.setProfileId(7L);
+        onPole.setProfileCode("P-007");
+        onPole.setProfileKp("12345.000");
+        DisconnectorDTO withoutPole = new DisconnectorDTO();
+        withoutPole.setId(41L);
+        withoutPole.setName("SEC-41");
+        withoutPole.setOnLoad(false);
+        withoutPole.setStationId(2L);
+        withoutPole.setKp("98375.500");
+        withoutPole.setTrackId(3L);
+
+        Object read = roundTrip(new ArrayList<>(List.of(onPole, withoutPole)));
+
+        assertThat(read).asInstanceOf(LIST).satisfiesExactly(
+                first -> assertThat(first).isInstanceOfSatisfying(DisconnectorDTO.class, cached -> {
+                    assertThat(cached.getNormallyOpen()).isTrue();
+                    assertThat(cached.getDriveType()).isEqualTo(DisconnectorDriveType.MOTOR);
+                    assertThat(cached.getProfileId()).isEqualTo(7L);
+                }),
+                second -> assertThat(second).isInstanceOfSatisfying(DisconnectorDTO.class, cached -> {
+                    assertThat(cached.getNormallyOpen()).isNull();
+                    assertThat(cached.getDriveType()).isNull();
+                    assertThat(cached.getProfileId()).isNull();
+                    assertThat(cached.getKp()).isEqualTo("98375.500");
+                    assertThat(cached.getTrackId()).isEqualTo(3L);
+                }));
     }
 
     private Object roundTrip(Object value) {

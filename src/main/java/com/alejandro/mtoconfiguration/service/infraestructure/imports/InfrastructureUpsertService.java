@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.service.infraestructure.imports;
 import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
 import com.alejandro.mtoconfiguration.model.commons.LovDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorDTO;
@@ -11,6 +12,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDT
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SteadyArmDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.CantileverMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.DisconnectorMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileLovCodes;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
@@ -32,16 +34,21 @@ import com.alejandro.mtoconfiguration.model.synchronous.lov.SupportTypeDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.AssemblyConfigurationDTO;
 import com.alejandro.mtoconfiguration.model.commons.SLovDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SteadyArmTypeDTO;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
+import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
+import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.BusinessEntityRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.CantileverRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.CantileverRepository.CantileverIds;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.DisconnectorRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.DisconnectorRepository.LinkIds;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorRepository;
@@ -50,6 +57,7 @@ import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsul
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.StationRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackRepository;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
+import com.alejandro.mtoconfiguration.service.infraestructure.DisconnectorService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ExecutionPackageService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ProfileService;
 import com.alejandro.mtoconfiguration.service.infraestructure.SectionInsulatorService;
@@ -104,6 +112,7 @@ public class InfrastructureUpsertService {
     private final TrackService trackService;
     private final ProfileService profileService;
     private final SectionInsulatorService sectionInsulatorService;
+    private final DisconnectorService disconnectorService;
 
     private final ExecutionPackageRepository executionPackageRepository;
     private final StationRepository stationRepository;
@@ -112,6 +121,7 @@ public class InfrastructureUpsertService {
     private final CantileverRepository cantileverRepository;
     private final SectionInsulatorRepository sectionInsulatorRepository;
     private final SectionInsulatorSwitchRepository sectionInsulatorSwitchRepository;
+    private final DisconnectorRepository disconnectorRepository;
     private final BusinessEntityRepository businessEntityRepository;
     private final MasterDataService masterDataService;
 
@@ -126,6 +136,11 @@ public class InfrastructureUpsertService {
      * escribe cuando ha comprobado que cada parte esta en el catalogo.
      */
     private static final String LOV_SEPARATOR = "\\|";
+
+    /** Un SI de la hoja: la misma manga ancha que ENABLED en {@code ProfileMasterParser}. */
+    private static final Set<String> YES = Set.of("SI", "SÍ", "S", "X", "TRUE", "1");
+    /** Y su espejo. Lo que no esta en ninguno de los dos no se adivina. */
+    private static final Set<String> NO = Set.of("NO", "N", "FALSE", "0");
 
     public UpsertResult upsertExecutionPackage(ExecutionPackageMasterRow row, boolean dryRun) {
         Optional<ExecutionPackage> existing = executionPackageRepository.findByNameIgnoreCase(row.name());
@@ -270,6 +285,114 @@ public class InfrastructureUpsertService {
 
     private static String normalize(String value) {
         return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * Alta o modificacion de un seccionador, en un poste o sin el.
+     *
+     * <p>El poste llega ya resuelto: lo busca el importador entre los perfiles que acaba de cargar,
+     * que es donde sabe si la via repite su identificador. En simulacion llega a null si el poste es
+     * un alta de esta misma carga; no se escribe nada, y la fila se cuenta igual que en la real.
+     *
+     * <p>Con poste, el KP y la via propios no viajan: son los del perfil (V26). Una fila con poste
+     * <b>y</b> con KP se señala aqui con las columnas de la hoja, y no con el {@code BUS-001 [kp]}
+     * del validador, que no dice que es lo que sobra.
+     *
+     * @param trackId la via propia de un seccionador sin poste; null con poste
+     */
+    public UpsertResult upsertDisconnector(DisconnectorMasterRow row, Long stationId, Long profileId,
+                                           Long trackId, boolean dryRun) {
+        boolean onAPole = !StringUtils.isBlank(row.profileId());
+        if (onAPole && !StringUtils.isBlank(row.kp())) {
+            throw new ValidationException("KP es el del seccionador sin poste, y este va en el poste "
+                    + row.profileId().trim() + ", que ya tiene el suyo: deja KP vacio o quita PROFILE_ID");
+        }
+
+        Optional<Disconnector> existing = disconnectorRepository
+                .findByNameIgnoreCaseAndStationId(row.name(), stationId);
+
+        DisconnectorDTO dto = new DisconnectorDTO();
+        dto.setName(row.name());
+        dto.setStationId(stationId);
+        dto.setProfileId(profileId);
+        dto.setKp(onAPole || StringUtils.isBlank(row.kp()) ? null : row.kp().trim());
+        dto.setTrackId(onAPole ? null : trackId);
+        dto.setOnLoad(yesNo(row.onLoad(), "ON_LOAD"));
+        dto.setNormallyOpen(yesNo(row.normallyOpen(), "NORMALLY_OPEN"));
+        dto.setDriveType(driveType(row.driveType()));
+        // En blanco viaja a null y lo rechaza el validador, que la exige.
+        dto.setDisconnectorFunction(lov(row.disconnectorFunction(), DisconnectorFunctionDTO::new));
+
+        requireResolvableFunction(row.disconnectorFunction());
+        requireFreePole(profileId, existing.map(entity -> entity.getId()).orElse(null));
+
+        return write(existing.map(entity -> entity.getId()), dto,
+                disconnectorService::create, disconnectorService::update,
+                existing.filter(entity -> sinCambios(entity, dto)).isPresent(), dryRun);
+    }
+
+    /**
+     * Un SI/NO de la hoja; vacio es "sin dato". Lo demas no se adivina: un estado normal leido al
+     * reves es peor que uno que falta, asi que la fila sale en el informe con su columna.
+     */
+    private static Boolean yesNo(String raw, String column) {
+        if (StringUtils.isBlank(raw)) {
+            return null;
+        }
+        String value = raw.trim().toUpperCase(Locale.ROOT);
+        if (YES.contains(value)) {
+            return Boolean.TRUE;
+        }
+        if (NO.contains(value)) {
+            return Boolean.FALSE;
+        }
+        throw new ValidationException(column + " '" + raw.trim() + "' no es SI ni NO");
+    }
+
+    /** Por lo mismo que {@link #yesNo}: un accionamiento que no se entiende señala su fila. */
+    private static DisconnectorDriveType driveType(String raw) {
+        if (StringUtils.isBlank(raw)) {
+            return null;
+        }
+        DisconnectorDriveType value = DisconnectorDriveType.fromCode(raw);
+        if (value == null) {
+            throw new ValidationException("DRIVE_TYPE '" + raw.trim() + "' no es MOTOR ni MANUAL");
+        }
+        return value;
+    }
+
+    /**
+     * La funcion tiene que existir en su catalogo, por lo mismo que {@link #requireResolvableCodes}:
+     * el mapper resuelve un codigo desconocido a null sin quejarse y el validador solo mira que
+     * venga informado, asi que el seccionador se guardaria sin funcion mientras el informe lo cuenta
+     * como cargado.
+     */
+    private void requireResolvableFunction(String code) {
+        List<String> unresolved = new ArrayList<>();
+        check(unresolved, "DISCONNECTOR_FUNCTION", code, masterDataService::getDisconnectorFunctionByCode);
+        if (!unresolved.isEmpty()) {
+            throw new NotFoundException("codigos que no existen habilitados en su catalogo: "
+                    + String.join(", ", unresolved));
+        }
+    }
+
+    /**
+     * Un poste admite un solo seccionador vivo ({@code ux_disconnector_profile_id}, V24). Si ya lo
+     * lleva otro, se dice cual, en vez de dejar que el indice conteste con un valor unico repetido
+     * que no nombra a ninguno. Pasa, por ejemplo, al renombrar en la hoja un seccionador ya cargado:
+     * para la clave natural es otro, y el de antes sigue en su poste.
+     */
+    private void requireFreePole(Long profileId, Long disconnectorId) {
+        if (profileId == null) {
+            return;
+        }
+        disconnectorRepository.findPoleHolder(profileId)
+                .filter(holder -> !holder.getId().equals(disconnectorId))
+                .ifPresent(holder -> {
+                    throw new ValidationException("su poste ya lo lleva el seccionador '" + holder.getName()
+                            + "' (id " + holder.getId() + ") y un poste admite uno solo: quitaselo, en su "
+                            + "fila o en la aplicacion, y vuelve a importar");
+                });
     }
 
     /** El KP de la fila como numero, o vacio si el origen no trajo uno utilizable. */
@@ -659,6 +782,45 @@ public class InfrastructureUpsertService {
         }
 
         return sameSwitches(entity.getId(), dto.getSwitches());
+    }
+
+    /**
+     * Escalares del seccionador y sus tres referencias: el poste, la via propia y la funcion.
+     *
+     * <p>Las referencias salen de una proyeccion de ids y no de {@code entity.getProfile()}, por la
+     * trampa de siempre: la entidad llega detached y tocar un {@code LAZY} revienta (ver el aislador,
+     * justo arriba).
+     */
+    private boolean sinCambios(Disconnector entity, DisconnectorDTO dto) {
+        if (!Objects.equals(entity.getName(), dto.getName())
+                || !Objects.equals(entity.getOnLoad(), dto.getOnLoad())
+                || !Objects.equals(entity.getNormallyOpen(), dto.getNormallyOpen())
+                || entity.getDriveType() != dto.getDriveType()
+                || !sameKp(entity.getKp(), dto.getKp())) {
+            return false;
+        }
+
+        DisconnectorFunction function = dto.getDisconnectorFunction() == null ? null
+                : masterDataService.getDisconnectorFunctionByCode(dto.getDisconnectorFunction().getCode());
+        if (function == null) {
+            return false;
+        }
+
+        Optional<LinkIds> links = disconnectorRepository.findLinkIdsById(entity.getId());
+        return Objects.equals(links.map(LinkIds::getProfileId).orElse(null), dto.getProfileId())
+                && Objects.equals(links.map(LinkIds::getTrackId).orElse(null), dto.getTrackId())
+                && Objects.equals(links.map(LinkIds::getDisconnectorFunctionId).orElse(null), function.getId());
+    }
+
+    /**
+     * El KP de la fila, que viaja como texto, contra el de la columna. Uno que no es un numero es
+     * siempre un cambio: asi llega al validador, que lo señala, en vez de pasar por igual a un hueco.
+     */
+    private static boolean sameKp(BigDecimal actual, String incoming) {
+        if (StringUtils.isBlank(incoming)) {
+            return actual == null;
+        }
+        return kilometricPoint(incoming).map(kp -> sameKp(actual, kp)).orElse(false);
     }
 
     private boolean sameSwitches(Long sectionInsulatorId, List<SectionInsulatorSwitchDTO> incoming) {

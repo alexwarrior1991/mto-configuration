@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.service.infraestructure.imports;
 
 import com.alejandro.mtoconfiguration.core.excel.ExcelException;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.CantileverMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.DisconnectorMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.TrackMasterRow;
 import org.apache.poi.ss.usermodel.Row;
@@ -263,6 +264,104 @@ class ProfileMasterParserTest {
 
             assertThat(content.executionPackages()).isEmpty();
             assertThat(content.profiles()).isEmpty();
+        }
+    }
+
+    /**
+     * La hoja que llega del libro de revisión del plano de seccionamiento. Es opcional, como las de
+     * los aisladores: un maestro sin ella se lee sin seccionadores.
+     */
+    @Nested
+    @DisplayName("la hoja DISCONNECTORS")
+    class HojaDeSeccionadores {
+
+        private static final String[] HEADER = {"EP", "ESTACION", "VIA", "PROFILE_ID", "KP_POSTE", "NOMBRE",
+                "KP", "ON_LOAD", "NORMALLY_OPEN", "DRIVE_TYPE", "DISCONNECTOR_FUNCTION", "ENABLED", "REVISAR"};
+
+        @Test
+        @DisplayName("lee el seccionador con su poste o con su KP propio, y los SI/NO tal cual vienen")
+        void leeLosSeccionadores() throws IOException {
+            ProfileMasterParser.ProfileMasterContent content = parser.parseAll(withDisconnectors(HEADER, List.of(
+                    new String[]{"EP9A", "LOD", "TRACK 1", "5-1.03", "5000.410", "LOD-03", "", "SI", "NO",
+                            "MOTOR", "Disc/IO", "SI", "NO"},
+                    new String[]{"EP4", "BIN", "TRACK 2 BIN", "", "", "BIN-B01", "98375.5", "NO", "", "",
+                            "ED", "NO", "SI"})));
+
+            assertThat(content.disconnectors()).hasSize(2);
+            DisconnectorMasterRow enPoste = content.disconnectors().getFirst();
+            assertThat(enPoste.profileId()).isEqualTo("5-1.03");
+            assertThat(enPoste.profileKp()).isEqualByComparingTo("5000.41");
+            assertThat(enPoste.kp()).isEmpty();
+            assertThat(enPoste.onLoad()).isEqualTo("SI");
+            assertThat(enPoste.normallyOpen()).isEqualTo("NO");
+            assertThat(enPoste.driveType()).isEqualTo("MOTOR");
+            assertThat(enPoste.disconnectorFunction()).isEqualTo("Disc/IO");
+            assertThat(enPoste.enabled()).isTrue();
+            assertThat(enPoste.sourceRow()).isEqualTo(2);
+
+            DisconnectorMasterRow sinPoste = content.disconnectors().get(1);
+            assertThat(sinPoste.station()).isEqualTo("BIN");
+            assertThat(sinPoste.track()).isEqualTo("TRACK 2 BIN");
+            assertThat(sinPoste.profileId()).isEmpty();
+            assertThat(sinPoste.profileKp()).isNull();
+            assertThat(sinPoste.kp()).isEqualTo("98375.5");
+            assertThat(sinPoste.enabled()).isFalse();
+        }
+
+        @Test
+        @DisplayName("un maestro sin la hoja se lee sin seccionadores")
+        void sinLaHoja() throws IOException {
+            assertThat(parser.parseAll(workbook(Map.of())).disconnectors()).isEmpty();
+        }
+
+        /**
+         * Sin la columna PROFILE_ID, todos los seccionadores se cargarian sin poste y sin una sola
+         * queja: la cabecera se exige aunque la celda pueda ir vacia.
+         */
+        @Test
+        @DisplayName("si la hoja esta, PROFILE_ID es obligatoria en la cabecera aunque su celda pueda ir vacia")
+        void profileIdObligatoria() throws IOException {
+            InputStream excel = withDisconnectors(
+                    new String[]{"EP", "ESTACION", "VIA", "NOMBRE", "ON_LOAD", "DISCONNECTOR_FUNCTION", "ENABLED"},
+                    List.of());
+
+            assertThatThrownBy(() -> parser.parseAll(excel))
+                    .isInstanceOf(ExcelException.class)
+                    .hasMessageContaining("PROFILE_ID")
+                    .hasMessageContaining(ProfileMasterParser.DISCONNECTORS_SHEET);
+        }
+
+        /** KP y KP_POSTE llegaron con V26 y el estado y el accionamiento con V25: son opcionales. */
+        @Test
+        @DisplayName("KP, KP_POSTE, NORMALLY_OPEN y DRIVE_TYPE pueden faltar en la cabecera")
+        void columnasOpcionales() throws IOException {
+            ProfileMasterParser.ProfileMasterContent content = parser.parseAll(withDisconnectors(
+                    new String[]{"EP", "ESTACION", "VIA", "PROFILE_ID", "NOMBRE", "ON_LOAD", "DISCONNECTOR_FUNCTION",
+                            "ENABLED"},
+                    List.<String[]>of(new String[]{"EP6", "HER", "TRACK 1", "83-1.02", "HER-01", "SI", "Disc/IO", "SI"})));
+
+            DisconnectorMasterRow row = content.disconnectors().getFirst();
+            assertThat(row.kp()).isEmpty();
+            assertThat(row.profileKp()).isNull();
+            assertThat(row.normallyOpen()).isEmpty();
+            assertThat(row.driveType()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("una fila sin paquete, sin estacion o sin nombre se salta, como en las demas hojas")
+        void filaSinClave() throws IOException {
+            ProfileMasterParser.ProfileMasterContent content = parser.parseAll(withDisconnectors(HEADER, List.of(
+                    new String[]{"EP6", "HER", "TRACK 1", "", "", ""},
+                    new String[]{"EP6", "", "TRACK 1", "", "", "HER-02"},
+                    new String[]{"EP6", "HER", "TRACK 1", "", "", "HER-03"})));
+
+            assertThat(content.disconnectors()).extracting(DisconnectorMasterRow::name).containsExactly("HER-03");
+        }
+
+        private InputStream withDisconnectors(String[] header, List<String[]> rows) throws IOException {
+            Map<String, String[]> headers = new LinkedHashMap<>(HEADERS);
+            headers.put(ProfileMasterParser.DISCONNECTORS_SHEET, header);
+            return workbook(headers, Map.of(ProfileMasterParser.DISCONNECTORS_SHEET, rows));
         }
     }
 

@@ -30,6 +30,7 @@ public abstract class DisconnectorMapper implements BaseMapper<DisconnectorDTO, 
     @Mapping(target = "profileId", source = "profile.id")
     @Mapping(target = "profileCode", source = "profile.profileId")
     @Mapping(target = "profileKp", source = "profile.kp")
+    @Mapping(target = "trackId", source = "track.id")
     @Mapping(target = "disconnectorFunction", ignore = true)
     public abstract DisconnectorDTO toDTO(Disconnector entity);
 
@@ -44,6 +45,7 @@ public abstract class DisconnectorMapper implements BaseMapper<DisconnectorDTO, 
     @Override
     @Mapping(target = "station", source = "stationId")
     @Mapping(target = "profile", source = "profileId")
+    @Mapping(target = "track", source = "trackId")
     @Mapping(target = "disconnectorFunction", ignore = true)
     @ToEntityIgnoreAudit
     public abstract Disconnector toEntity(DisconnectorDTO dto);
@@ -51,6 +53,7 @@ public abstract class DisconnectorMapper implements BaseMapper<DisconnectorDTO, 
     @Override
     @Mapping(target = "station", source = "stationId")
     @Mapping(target = "profile", source = "profileId")
+    @Mapping(target = "track", source = "trackId")
     @Mapping(target = "disconnectorFunction", ignore = true)
     @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(DisconnectorDTO dto, @MappingTarget Disconnector entity);

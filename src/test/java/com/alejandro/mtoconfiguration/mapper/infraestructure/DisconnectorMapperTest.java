@@ -3,6 +3,8 @@ package com.alejandro.mtoconfiguration.mapper.infraestructure;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
+import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
@@ -114,5 +116,53 @@ class DisconnectorMapperTest {
         assertThat(dto.getProfileId()).isEqualTo(7L);
         assertThat(dto.getProfileCode()).isEqualTo("P-007");
         assertThat(dto.getProfileKp()).isEqualTo("12.345");
+    }
+
+    @Test
+    @DisplayName("el estado normal y el accionamiento van y vuelven, y un PUT sin ellos los vacia")
+    void estadoNormalYAccionamiento() {
+        Disconnector entity = seccionador();
+        entity.setNormallyOpen(true);
+        entity.setDriveType(DisconnectorDriveType.MOTOR);
+
+        DisconnectorDTO dto = mapper.toDTO(entity);
+        assertThat(dto.getNormallyOpen()).isTrue();
+        assertThat(dto.getDriveType()).isEqualTo(DisconnectorDriveType.MOTOR);
+
+        dto.setNormallyOpen(false);
+        dto.setDriveType(DisconnectorDriveType.MANUAL);
+        Disconnector creado = mapper.toEntity(dto);
+        assertThat(creado.getNormallyOpen()).isFalse();
+        assertThat(creado.getDriveType()).isEqualTo(DisconnectorDriveType.MANUAL);
+
+        // El PUT sustituye la fila entera (README_API.md §4): lo que no viaja se queda sin dato.
+        DisconnectorDTO sinDatos = new DisconnectorDTO();
+        sinDatos.setName("SEC-1");
+        sinDatos.setOnLoad(true);
+        mapper.updateEntityFromDTO(sinDatos, entity);
+        assertThat(entity.getNormallyOpen()).isNull();
+        assertThat(entity.getDriveType()).isNull();
+    }
+
+    @Test
+    @DisplayName("un seccionador sin poste lleva su KP como texto y su via por id, en la salida y en el detalle")
+    void kpYViaDeUnSeccionadorSinPoste() {
+        Track track = new Track();
+        track.setId(3L);
+        Disconnector entity = seccionador();
+        entity.setProfile(null);
+        entity.setKp(new BigDecimal("98375.500"));
+        entity.setTrack(track);
+
+        DisconnectorDTO dto = mapper.toDTO(entity);
+        assertThat(dto.getKp()).isEqualTo("98375.500");
+        assertThat(dto.getTrackId()).isEqualTo(3L);
+        DisconnectorDTO detalle = new DisconnectorDTO();
+        mapper.updateDTOFromEntity(entity, detalle);
+        assertThat(detalle.getTrackId()).isEqualTo(3L);
+
+        dto.setKp("98400.5");
+        Disconnector escrito = mapper.toEntity(dto);
+        assertThat(escrito.getKp()).isEqualByComparingTo("98400.5");
     }
 }

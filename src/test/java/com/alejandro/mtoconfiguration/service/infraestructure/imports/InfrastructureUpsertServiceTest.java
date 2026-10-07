@@ -3,16 +3,19 @@ package com.alejandro.mtoconfiguration.service.infraestructure.imports;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
 import com.alejandro.mtoconfiguration.entity.lov.CantileverType;
 import com.alejandro.mtoconfiguration.entity.lov.PoleType;
 import com.alejandro.mtoconfiguration.entity.lov.ProfileStatus;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.CantileverMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.DisconnectorMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileLovCodes;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
@@ -26,6 +29,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDT
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.BusinessEntityRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.CantileverRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.DisconnectorRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ExecutionPackageRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorRepository;
@@ -35,6 +39,7 @@ import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.StationRepos
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackRepository;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.service.infraestructure.imports.InfrastructureUpsertService.UpsertResult;
+import com.alejandro.mtoconfiguration.service.infraestructure.DisconnectorService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ExecutionPackageService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ProfileService;
 import com.alejandro.mtoconfiguration.service.infraestructure.SectionInsulatorService;
@@ -45,9 +50,11 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDT
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
 import com.alejandro.mtoconfiguration.entity.lov.Anchorage;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
+import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
 import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -116,6 +123,10 @@ class InfrastructureUpsertServiceTest {
     private BusinessEntityRepository businessEntityRepository;
     @Mock
     private MasterDataService masterDataService;
+    @Mock
+    private DisconnectorService disconnectorService;
+    @Mock
+    private DisconnectorRepository disconnectorRepository;
 
     @InjectMocks
     private InfrastructureUpsertService service;
@@ -1151,4 +1162,278 @@ class InfrastructureUpsertServiceTest {
         }
     }
 
+
+    @Nested
+    @DisplayName("Seccionador")
+    class Seccionador {
+
+        private static final long STATION_ID = 9L;
+        private static final long PROFILE_ID = 70L;
+        private static final long TRACK_ID = 3L;
+        private static final long FUNCTION_ID = 40L;
+
+        @BeforeEach
+        void catalogoYBaseVacia() {
+            DisconnectorFunction function = new DisconnectorFunction();
+            function.setId(FUNCTION_ID);
+            when(masterDataService.getDisconnectorFunctionByCode("Disc/IO")).thenReturn(function);
+            when(disconnectorRepository.findByNameIgnoreCaseAndStationId(any(), any())).thenReturn(Optional.empty());
+            when(disconnectorRepository.findPoleHolder(any())).thenReturn(Optional.empty());
+            when(disconnectorService.create(any())).thenAnswer(invocation -> {
+                DisconnectorDTO created = invocation.getArgument(0);
+                created.setId(88L);
+                return created;
+            });
+            when(disconnectorService.update(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        }
+
+        @Test
+        @DisplayName("uno en un poste se crea con su poste, sus SI/NO leidos y sin KP ni via propios")
+        void enUnPoste() {
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, false);
+
+            assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.CREATED);
+            assertThat(result.id()).isEqualTo(88L);
+            DisconnectorDTO dto = captureCreated();
+            assertThat(dto.getName()).isEqualTo("HER-01");
+            assertThat(dto.getStationId()).isEqualTo(STATION_ID);
+            assertThat(dto.getProfileId()).isEqualTo(PROFILE_ID);
+            assertThat(dto.getKp()).isNull();
+            assertThat(dto.getTrackId()).isNull();
+            assertThat(dto.getOnLoad()).isTrue();
+            assertThat(dto.getNormallyOpen()).isFalse();
+            assertThat(dto.getDriveType()).isEqualTo(DisconnectorDriveType.MOTOR);
+            assertThat(dto.getDisconnectorFunction().getCode()).isEqualTo("Disc/IO");
+        }
+
+        @Test
+        @DisplayName("uno sin poste lleva su KP y su via, y una celda vacia es 'sin dato'")
+        void sinPoste() {
+            service.upsertDisconnector(row("", "98375.5", "SI", "", "", "Disc/IO"),
+                    STATION_ID, null, TRACK_ID, false);
+
+            DisconnectorDTO dto = captureCreated();
+            assertThat(dto.getProfileId()).isNull();
+            assertThat(dto.getKp()).isEqualTo("98375.5");
+            assertThat(dto.getTrackId()).isEqualTo(TRACK_ID);
+            assertThat(dto.getNormallyOpen()).isNull();
+            assertThat(dto.getDriveType()).isNull();
+        }
+
+        @Test
+        @DisplayName("los SI/NO admiten la misma manga ancha que ENABLED, y su espejo")
+        void siNoConMangaAncha() {
+            service.upsertDisconnector(row("", "", "x", "n", "manual", "Disc/IO"), STATION_ID, null, null, false);
+
+            DisconnectorDTO dto = captureCreated();
+            assertThat(dto.getOnLoad()).isTrue();
+            assertThat(dto.getNormallyOpen()).isFalse();
+            assertThat(dto.getDriveType()).isEqualTo(DisconnectorDriveType.MANUAL);
+        }
+
+        /**
+         * Un estado normal leido al reves es peor que uno que falta: lo que no es ni SI ni NO no se
+         * adivina, se señala con su columna para que se corrija la celda.
+         */
+        @Test
+        @DisplayName("un SI/NO que no se entiende señala la fila con su columna, y no se escribe")
+        void siNoQueNoSeEntiende() {
+            assertThatThrownBy(() -> service.upsertDisconnector(row("83-1.02", "", "SI", "QUIZA", "MOTOR", "Disc/IO"),
+                    STATION_ID, PROFILE_ID, null, false))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessage("NORMALLY_OPEN 'QUIZA' no es SI ni NO");
+            verifyNoInteractions(disconnectorService);
+        }
+
+        @Test
+        @DisplayName("un accionamiento que no es MOTOR ni MANUAL señala la fila")
+        void accionamientoDesconocido() {
+            assertThatThrownBy(() -> service.upsertDisconnector(row("83-1.02", "", "SI", "NO", "DIESEL", "Disc/IO"),
+                    STATION_ID, PROFILE_ID, null, false))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessage("DRIVE_TYPE 'DIESEL' no es MOTOR ni MANUAL");
+            verifyNoInteractions(disconnectorService);
+        }
+
+        /**
+         * Con poste, el KP es el del perfil (V26). El validador lo rechazaria con un
+         * {@code BUS-001 [kp]} que no dice que es lo que sobra; aqui se dice con las columnas.
+         */
+        @Test
+        @DisplayName("con poste Y con KP, la fila se señala con las dos columnas")
+        void posteYKp() {
+            assertThatThrownBy(() -> service.upsertDisconnector(row("83-1.02", "98375.5", "SI", "NO", "MOTOR", "Disc/IO"),
+                    STATION_ID, PROFILE_ID, null, false))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("KP")
+                    .hasMessageContaining("PROFILE_ID");
+            verifyNoInteractions(disconnectorService);
+        }
+
+        /**
+         * El mapper resuelve un codigo desconocido a null sin quejarse, y el validador solo mira que
+         * venga: sin esta comprobacion el seccionador se guardaba sin funcion.
+         */
+        @Test
+        @DisplayName("una funcion que no esta en el catalogo impide cargarlo y sale nombrada")
+        void funcionDesconocida() {
+            assertThatThrownBy(() -> service.upsertDisconnector(row("83-1.02", "", "SI", "NO", "MOTOR", "Disc/XX"),
+                    STATION_ID, PROFILE_ID, null, false))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("DISCONNECTOR_FUNCTION='Disc/XX'");
+            verifyNoInteractions(disconnectorService);
+        }
+
+        @Test
+        @DisplayName("un poste que ya lleva otro seccionador se señala con su nombre, antes que el indice")
+        void posteOcupado() {
+            when(disconnectorRepository.findPoleHolder(PROFILE_ID)).thenReturn(Optional.of(holder(55L, "HER-VIEJO")));
+
+            assertThatThrownBy(() -> service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, false))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("'HER-VIEJO' (id 55)");
+            verifyNoInteractions(disconnectorService);
+        }
+
+        @Test
+        @DisplayName("el poste que ya lleva el propio seccionador no es un conflicto, y sin cambios no se reescribe")
+        void posteDelPropioSinCambios() {
+            when(disconnectorRepository.findByNameIgnoreCaseAndStationId("HER-01", STATION_ID))
+                    .thenReturn(Optional.of(existente(55L, null)));
+            when(disconnectorRepository.findPoleHolder(PROFILE_ID)).thenReturn(Optional.of(holder(55L, "HER-01")));
+            when(disconnectorRepository.findLinkIdsById(55L))
+                    .thenReturn(Optional.of(links(PROFILE_ID, null, FUNCTION_ID)));
+
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, false);
+
+            assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UNCHANGED);
+            assertThat(result.id()).isEqualTo(55L);
+            verify(disconnectorService, never()).update(any());
+            verify(disconnectorService, never()).create(any());
+        }
+
+        @Test
+        @DisplayName("sin poste y sin cambios tampoco se reescribe, aunque el KP llegue con otra escala")
+        void sinPosteSinCambios() {
+            when(disconnectorRepository.findByNameIgnoreCaseAndStationId("HER-01", STATION_ID))
+                    .thenReturn(Optional.of(existente(55L, new BigDecimal("98375.500"))));
+            when(disconnectorRepository.findLinkIdsById(55L))
+                    .thenReturn(Optional.of(links(null, TRACK_ID, FUNCTION_ID)));
+
+            UpsertResult result = service.upsertDisconnector(row("", "98375.5", "SI", "NO", "MOTOR", "Disc/IO"),
+                    STATION_ID, null, TRACK_ID, false);
+
+            assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UNCHANGED);
+            verify(disconnectorService, never()).update(any());
+        }
+
+        @Test
+        @DisplayName("cambiar de poste si lo reescribe, sobre su id")
+        void cambioDePoste() {
+            when(disconnectorRepository.findByNameIgnoreCaseAndStationId("HER-01", STATION_ID))
+                    .thenReturn(Optional.of(existente(55L, null)));
+            when(disconnectorRepository.findLinkIdsById(55L))
+                    .thenReturn(Optional.of(links(71L, null, FUNCTION_ID)));
+
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, false);
+
+            assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UPDATED);
+            ArgumentCaptor<DisconnectorDTO> captor = ArgumentCaptor.forClass(DisconnectorDTO.class);
+            verify(disconnectorService).update(captor.capture());
+            assertThat(captor.getValue().getId()).isEqualTo(55L);
+            assertThat(captor.getValue().getProfileId()).isEqualTo(PROFILE_ID);
+        }
+
+        /**
+         * Un KP que no es un numero no se compara como un hueco: si lo hiciera, contra un seccionador
+         * sin KP saldria "sin cambios" y la celda mal escrita no llegaria nunca al validador.
+         */
+        @Test
+        @DisplayName("un KP que no es un numero no pasa por igual a un hueco: llega al validador")
+        void kpQueNoEsUnNumero() {
+            when(disconnectorRepository.findByNameIgnoreCaseAndStationId("HER-01", STATION_ID))
+                    .thenReturn(Optional.of(existente(55L, null)));
+            when(disconnectorRepository.findLinkIdsById(55L))
+                    .thenReturn(Optional.of(links(null, TRACK_ID, FUNCTION_ID)));
+
+            UpsertResult result = service.upsertDisconnector(row("", "98+375", "SI", "NO", "MOTOR", "Disc/IO"),
+                    STATION_ID, null, TRACK_ID, false);
+
+            assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UPDATED);
+            ArgumentCaptor<DisconnectorDTO> captor = ArgumentCaptor.forClass(DisconnectorDTO.class);
+            verify(disconnectorService).update(captor.capture());
+            assertThat(captor.getValue().getKp()).isEqualTo("98+375");
+        }
+
+        @Test
+        @DisplayName("la simulacion no escribe nada, ni el alta")
+        void simulacion() {
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, true);
+
+            assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.CREATED);
+            assertThat(result.id()).isNull();
+            verifyNoInteractions(disconnectorService);
+        }
+
+        private DisconnectorDTO captureCreated() {
+            ArgumentCaptor<DisconnectorDTO> captor = ArgumentCaptor.forClass(DisconnectorDTO.class);
+            verify(disconnectorService).create(captor.capture());
+            return captor.getValue();
+        }
+
+        private static DisconnectorMasterRow onAPole() {
+            return row("83-1.02", "", "SI", "NO", "MOTOR", "Disc/IO");
+        }
+
+        private static DisconnectorMasterRow row(String profileId, String kp, String onLoad, String normallyOpen,
+                                                 String driveType, String function) {
+            return new DisconnectorMasterRow("EP6", "HERZLIYA", "TRACK 1", profileId, null, "HER-01", kp,
+                    onLoad, normallyOpen, driveType, function, true, 11);
+        }
+
+        /** Como lo deja una carga anterior de {@link #onAPole()}: en carga, cerrado y con motor. */
+        private static Disconnector existente(long id, BigDecimal kp) {
+            Disconnector entity = new Disconnector();
+            entity.setId(id);
+            entity.setName("HER-01");
+            entity.setOnLoad(Boolean.TRUE);
+            entity.setNormallyOpen(Boolean.FALSE);
+            entity.setDriveType(DisconnectorDriveType.MOTOR);
+            entity.setKp(kp);
+            return entity;
+        }
+
+        private static DisconnectorRepository.LinkIds links(Long profileId, Long trackId, Long functionId) {
+            return new DisconnectorRepository.LinkIds() {
+                @Override
+                public Long getProfileId() {
+                    return profileId;
+                }
+
+                @Override
+                public Long getTrackId() {
+                    return trackId;
+                }
+
+                @Override
+                public Long getDisconnectorFunctionId() {
+                    return functionId;
+                }
+            };
+        }
+
+        private static DisconnectorRepository.PoleHolder holder(Long id, String name) {
+            return new DisconnectorRepository.PoleHolder() {
+                @Override
+                public Long getId() {
+                    return id;
+                }
+
+                @Override
+                public String getName() {
+                    return name;
+                }
+            };
+        }
+    }
 }

@@ -12,6 +12,7 @@ data/
 │   ├── synoptic.py             # Lector del formato sinóptico (RUBI), también compartido
 │   ├── build_lov_master.py     # Generador del catálogo de LOVs
 │   ├── build_profile_master.py # Generador de los datos de infraestructura
+│   ├── build_sectioning_review.py # Seccionadores y aisladores desde el plano DXF (libro de revisión)
 │   ├── aliases.yml             # Tablas de mapeo — se amplía aquí, no en los scripts
 │   ├── topology.yml            # Lo que solo puede decir una persona (ver más abajo)
 │   └── tests/                  # Pruebas de las reglas de mapeo (unittest, sin dependencias)
@@ -23,7 +24,7 @@ Los dos maestros son lo único que lee la aplicación: los workbooks no los abre
 El de LOVs va **primero**, porque los perfiles referencian sus códigos.
 
 El resto de este documento describe el catálogo de LOVs. El maestro de perfiles tiene
-su propia sección al final.
+su propia sección más abajo, y el seccionamiento sacado del plano DXF, la suya al final.
 
 ## Por qué hay dos pasos
 
@@ -590,7 +591,7 @@ mapear**: una hoja sin declarar o una cabecera desconocida van a `NO_RECONOCIDO`
 | `EPS` / `STATIONS` / `TRACKS` | Lo declarado en `topology.yml`, ya resuelto |
 | `PROFILES` | Una fila por perfil: identificador, KP, las 9 LOV (con `ASSEMBLY_CONFIGURATION` desde `V21`, que solo trae RUBI) y los 4 campos técnicos |
 | `CANTILEVERS` | Una fila por ménsula, con su `SLOT` (1..3) y el brazo ya partido en tipo y longitud |
-| `DISCONNECTORS` / `SECTION_INSULATORS` / `SECTION_INSULATOR_SWITCHES` | Cabeceras y **ninguna fila**: la costura para cuando lleguen esos datos |
+| `DISCONNECTORS` / `SECTION_INSULATORS` / `SECTION_INSULATOR_SWITCHES` | El seccionamiento, copiado del libro de revisión del plano ya revisado (`data/sectioning-review.xlsx`, ver «El seccionamiento desde el plano DXF»). Sin ese fichero, cabeceras y **ninguna fila** |
 | `NO_MAPEADO` | Columnas reales del origen que hoy no tienen campo en el dominio |
 | `DESCARTADOS` | Todo lo rechazado, con motivo y celda de origen |
 | `NO_RECONOCIDO` | Lo que no se supo mapear. **Si tiene filas, el maestro está incompleto** |
@@ -598,10 +599,36 @@ mapear**: una hoja sin declarar o una cabecera desconocida van a `NO_RECONOCIDO`
 `ENABLED` (`SI`/`NO`) decide si la fila se carga; `REVISAR` resalta lo que necesita ojo
 humano.
 
+### La hoja de seccionadores
+
+`DISCONNECTORS` identifica cada seccionador por `EP + ESTACION + NOMBRE`, su clave natural, como el
+aislador. El resto de columnas:
+
+- **`PROFILE_ID` y `VIA`**: el poste del que cuelga y la vía de ese poste, que es donde el
+  importador lo busca, entre los perfiles de la hoja `PROFILES`. Un poste admite **un solo**
+  seccionador: dos filas en el mismo poste, o un poste que ya lleva otro seccionador en la base, salen
+  en el informe con el nombre del otro. Sin `PROFILE_ID`, el seccionador no está en un poste (los
+  de los pórticos de subestación, los de puesta a tierra) y `VIA` es la suya; una vía que no existe
+  se queda vacía, como la de un aislador.
+- **`KP_POSTE`**: el KP del poste, en metros. Una vía de dos tramos concatenados (EP9A) repite el
+  `PROFILE_ID` dentro de la misma vía, y entonces es lo único que distingue un poste del otro; con
+  un solo poste con ese `PROFILE_ID` no se mira. El libro de revisión lo rellena con el del poste
+  que propone.
+- **`KP`**: el del propio seccionador, en metros, **solo sin poste** (`V26`); con poste, el KP es el
+  del perfil, y una fila con los dos sale en el informe.
+- **`ON_LOAD`** (`SI`/`NO`, obligatorio), **`NORMALLY_OPEN`** (`SI` = normalmente abierto, `NO` =
+  cerrado, vacío = sin dato) y **`DRIVE_TYPE`** (`MOTOR`, `MANUAL` o vacío). Un valor que no es
+  ninguno de esos no se adivina: la fila sale en el informe con su columna.
+- **`DISCONNECTOR_FUNCTION`**: el código del catálogo `DisconnectorFunction`. Obligatorio, y
+  tiene que existir habilitado.
+
+Como en el resto de hojas, `ENABLED` decide si la fila se carga. La hoja es **opcional al leer**,
+pero si está, sus columnas `PROFILE_ID` y `VIA` tienen que estar aunque la celda vaya vacía: sin
+ellas, todos los seccionadores se cargarían sin poste sin una sola queja.
+
 ### Las dos hojas del aislador de sección
 
-Salen vacías, pero el camino de importación está entero: el día que el origen traiga el dato
-basta con rellenarlas.
+Salen vacías hasta que se revisa el plano, pero el camino de importación está entero.
 
 `SECTION_INSULATORS` identifica cada aislador por `EP + ESTACION + NOMBRE`, que es su clave
 natural. `TIPO_INSTALACION` es `TRACK_CONNECTION` (el aislador separa las catenarias de **dos**
@@ -836,3 +863,136 @@ Cuanto antes se haga, más barato sale: hoy solo hay un commit implicado.
 Alternativa a considerar en ese punto: los workbooks son **entrada** del generador y la
 aplicación no los abre nunca —solo necesita `lov-master.xlsx`, que son 124 KB—, así que
 podrían vivir fuera del repo con su ubicación documentada aquí.
+
+---
+
+# El seccionamiento desde el plano DXF
+
+Las hojas `DISCONNECTORS`, `SECTION_INSULATORS` y `SECTION_INSULATOR_SWITCHES` del maestro de
+perfiles salen vacías porque los workbooks no traen esos datos. Los trae el **plano de operación de
+seccionadores** («Operational disconnectors 28.07.25 (based on OCS-SCADA_PD_R38)»), exportado a DXF.
+`tools/build_sectioning_review.py` lo lee y escribe un **libro de revisión**, no un maestro: las tres
+hojas con exactamente sus columnas, cruzadas con los postes de `profile-master.xlsx`, y cada dato
+dudoso señalado para que lo complete una persona.
+
+```bash
+pip install ezdxf scipy openpyxl
+python3 data/tools/build_sectioning_review.py plano.dxf -o sectioning-review.xlsx
+```
+
+**Del libro revisado al maestro.** Una vez revisado, el libro se guarda como
+`data/sectioning-review.xlsx` y `build_profile_master.py` copia de él las tres hojas al maestro
+(`--sectioning` para otra ruta): solo las columnas de la costura y tal cual, porque lo que se carga
+lo decide `ENABLED`, que es de quien revisa. `ESTACION_CORRECTA` de `ESTACION_POR_PREFIJO` se aplica
+a los seccionadores de ese prefijo y ese EP, porque la estación de una zona neutra o de una
+subestación se decide una vez por prefijo. Sin el fichero, las tres hojas salen vacías.
+
+El DXF no está en el repositorio: son 46 MB más de binarios (ver «El tamaño de `workbook/`»).
+
+## Qué lee del plano
+
+| Dato | De dónde sale |
+|---|---|
+| Seccionador | Bloque dinámico `DISCONNECTOR` (1.168), más `Disc_open`/`Disc_closed`, `EARTHING DISCONNECTOR 2`, `OnLoad_Circuit_breaker_opened` y 33 dibujados explotados |
+| On-load / off-load | El círculo de accionamiento medio relleno (estado de visibilidad `ON-LOAD`) o vacío |
+| Estado normal (`NORMALLY_OPEN`) | La cuchilla inclinada (abierto, `SI`) o alineada con sus dos contactos (cerrado, `NO`) |
+| Accionamiento (`DRIVE_TYPE`) | El círculo del accionamiento es el motor: `MOTOR`. Lo llevan todos los símbolos del plano de julio de 2025 |
+| Nombre y KP | El MTEXT de la capa `0_Disconnectors` (`TSA-BF06` / `KP93+451` = 93451 m) |
+| Vía | El rótulo `-N-` de la línea a la que se conectan las patas |
+| Lo que puentea | La lámina de aire (`Insu_Overlap`) o el aislador (`Section_insulator`) entre sus dos patas |
+| Aislador de sección | Bloque `Section_insulator`: en un escape entre dos vías o en una sola vía |
+| Agujas | El rótulo `W31` y su `1:9` junto a cada extremo del escape |
+
+**El rótulo y el símbolo no están unidos en el DXF.** El nombre es un MTEXT suelto encima o debajo del
+símbolo, a veces con una línea de referencia y a veces solo en su columna. Se asocian en tres pasos:
+la línea de referencia, luego una asignación global de coste mínimo con el símbolo en la columna del
+rótulo, y al final la misma asignación, más permisiva, con lo que haya sobrado. «El más cercano» no
+vale: con dos símbolos apilados, dos rótulos se quedaban el mismo y uno ninguno.
+
+## Qué entra y qué no
+
+**Lo decide el EP, no la capa.** Entra todo lo que cae en un EP del maestro: lo dibujado en
+servicio, lo de las capas `0_FutureSectionEquip` y `0_NeutralSections_FutureStage`, lo de vía no
+electrificada y la zona neutra de Holtz, dibujada como deshabilitada. `ESTADO_DIBUJO` dice cuál es
+cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que no impide cargarlo.
+
+- **El EP sale del prefijo** del nombre, si es una estación del maestro; si no, de los seccionadores
+  ya situados alrededor cuyo EP cubre el KP. Sin KP (un rótulo `KP47+XXX` o un símbolo sin rótulo),
+  de los tres vecinos más cercanos si los tres dicen el mismo: así entra en EP4 la zona neutra
+  futura de Remez, entre Binyamina y Hadera.
+- **El depósito de Haifa/Kishon** (el recuadro rayado en verde) es de EP futuros que el maestro no
+  tiene: no recibe EP nunca y solo sale en el inventario, con su estado.
+- **Las líneas que el maestro no tiene** (prefijos BSD, OFA, GOR, NAN, LCH…): sin EP ni poste
+  posibles, van a `SECCIONADORES_FUERA_MAESTRO` y `AISLADORES_FUERA_MAESTRO`.
+- **El color del rótulo** (verde o rojo, instalado o no): está desactualizado y se ignora.
+
+## El cruce con el maestro
+
+- **Poste**: asignación 1:1 por EP contra los postes con `Disc*`/`LoadB*`/`ED*` en
+  `SECTIONING_FEEDING`, a menos de 80 m del KP, preferente en la misma vía y del mismo tipo (y uno
+  de puesta a tierra, solo con `ED`). Medido
+  sobre el plano de julio de 2025: el 87 % de los casados está a menos de 10 m del KP del rótulo, y
+  on-load coincide con `LoadB`/`Disc` en el 94 %. Sin poste con código, se propone el más cercano a
+  menos de 30 m, con su KP en `KP_POSTE`: los dos van juntos y en naranja.
+- **Sin poste**: el poste es opcional en `Disconnector` (`V25`), porque hay seccionadores que no
+  están en uno: los de los pórticos de subestación y los de puesta a tierra. Los de alimentación
+  (`FP` en el nombre: `HSA-FP1.1`) no compiten por los postes, y uno de puesta a tierra solo casa
+  con un poste que el maestro marca con `ED`; sin él, los dos salen sin poste y con una nota. De
+  los demás, el generador no distingue uno que no está en un poste de un poste que no ha sabido
+  encontrar, así que la fila sale con `ENABLED = NO` y el motivo lo dice: si no está en un poste,
+  se deja `PROFILE_ID` vacío y se pone `ENABLED = SI`.
+- **KP y vía sin poste**: uno que no está en un poste guarda su propio KP y su vía (`V26`), y el
+  libro rellena `KP` con el del rótulo (`KP_ROTULO_M`) solo en esas filas. Con poste, `KP` va vacío
+  y `KP_POSTE` lleva el del poste, que es lo que lo distingue en una vía que repite su `PROFILE_ID`.
+- **Vía**: la del plano solo desempata. Numera las vías de la estación y no las del maestro (`1`/`2`
+  donde el maestro dice `INT`/`EXT`), así que una vía distinta con el KP casado a 10 m o menos es
+  una nota («vía distinta»); con el KP más lejos, la fila espera a una persona.
+- **Estación**: el prefijo del nombre si es una estación del maestro. Las zonas neutras, túneles y
+  subestaciones (`KAF`, `TN3`, `HSA`) no lo son: se propone la estación del plano más cercana y se
+  decide **una vez por prefijo**, en la hoja `ESTACION_POR_PREFIJO`.
+- **Función**: el código del poste casado; si no hay, una propuesta por lo que puentea y el nombre.
+
+## Lo que el plano no dice
+
+- **El nombre y el KP de los aisladores.** El nombre que sale es una propuesta (las agujas del
+  escape); el KP, solo cuando un seccionador rotulado lo puentea. `KP_ESTIMADO_M` interpola entre
+  los vecinos y es solo una pista: el plano no está a escala (mediana de error ~20 m, uno de cada
+  cinco a más de 70 m).
+- **El KP de las agujas.**
+- **El número de vía en plena vía.** Solo se rotula en las estaciones. Donde el maestro tiene dos
+  postes con seccionador al mismo KP, uno por vía, y la vía del plano no dice cuál es, la fila lo
+  dice («vía sin comprobar»).
+
+## Los desplegables
+
+Lo que se elige lleva desplegable, así que revisar es elegir y no ir a buscar al maestro:
+
+| Columna | Opciones |
+|---|---|
+| `ESTACION`, `VIA`, `VIA_CONECTADA`, `ESTACION_CORRECTA` | Las del EP de la fila en el maestro. Otra se admite con un aviso: si lo que está mal es el EP, la lista sigue siendo la del EP de antes |
+| `PROFILE_ID`, `KP_POSTE` | El poste de la fila primero, y después los del EP a menos de 80 m del KP del rótulo, del más cercano al más lejano. `POSTES_CERCANOS` dice de cada uno su vía, su KP, a cuántos metros está y sus códigos: cambiar de poste es cambiar también `VIA` y `KP_POSTE`. Otro se admite con un aviso |
+| `NOMBRE` | En un símbolo sin rótulo, los rótulos sueltos de `ROTULOS_SIN_SIMBOLO` que tiene al lado. Otro se admite con un aviso |
+| `DISCONNECTOR_FUNCTION` | El catálogo `DisconnectorFunction` habilitado de `lov-master.xlsx` (`--lovs`), los de seccionador (`Disc`, `LoadB`, `ED`) primero |
+| `ON_LOAD`, `NORMALLY_OPEN`, `ENABLED` | `SI` o `NO` |
+| `DRIVE_TYPE` | `MOTOR` o `MANUAL` |
+| `TIPO_INSTALACION` | `TRACK_CONNECTION` o `IN_TRACK` |
+
+Las cuatro últimas no admiten otro valor, porque el importador lo rechazaría. Las listas van en la
+hoja `OPCIONES`, y las de cada fila en la hoja oculta `OPCIONES_FILA`, cada valor con su tipo. No
+van dentro de la validación de la celda: ahí todo es texto, y un Excel con coma decimal no leería
+`93453.41` como un número; además no caben más de 255 caracteres ni una coma dentro de un valor. El
+KP, la tangente y el nombre de un aislador no llevan desplegable: son un número o un nombre que no
+sale de ninguna lista.
+
+## Probar
+
+`tools/tests/test_build_sectioning_review.py` prueba las reglas que no necesitan el DXF: la lectura
+del KP, cuántos aparatos nombra un rótulo, qué es un rótulo de subestación, la columna de un rótulo
+girado, la elección de la vía del maestro, y qué filas de `DISCONNECTORS` entran y cuáles salen
+listas para cargar (las de otra capa dentro de un EP, la de Haifa, la que no tiene poste, la vía
+distinta y los dos postes al mismo KP), el KP propio solo sin poste, y los desplegables: los postes
+cercanos con el de la fila primero, el KP del poste propuesto, los rótulos sueltos como nombre, el
+orden del catálogo de funciones y el libro con sus listas. El módulo importa `ezdxf` y
+`scipy` solo dentro de las funciones que los usan, así que corre en el mismo paso de CI que los
+demás, con `openpyxl` y `pyyaml`. `tools/tests/test_build_profile_master.py` prueba el paso del
+libro revisado al maestro.

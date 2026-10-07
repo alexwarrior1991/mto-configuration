@@ -51,13 +51,15 @@ igual que hacía el endpoint antiguo.
 ### Importación del maestro de infraestructura
 
 `POST /profiles/jobs/import` carga `data/profile-master.xlsx` (ver `data/README.md`): paquetes de
-ejecución, estaciones, vías, perfiles y ménsulas, **en ese orden**, porque cada nivel necesita el
-identificador del anterior.
+ejecución, estaciones, vías, perfiles y ménsulas, aisladores de sección con sus agujas y
+seccionadores, **en ese orden**, porque cada nivel necesita el identificador del anterior.
 
 Cada entidad se da de alta o se actualiza **por su clave natural** —`execution_package(name)`,
-`station(paquete, name)`, `track(paquete, name)`, `profile(vía, profileId)`—, apoyándose en los
-índices únicos parciales que añade `V12`. Reimportar el mismo maestro no crea nada: eso es lo que
-hace que la carga se pueda repetir sin miedo.
+`station(paquete, name)`, `track(paquete, name)`, `profile(vía, profileId, kp)`,
+`section_insulator(estación, name)`, `disconnector(estación, name)`—, apoyándose en los índices
+únicos parciales que añaden `V12` y `V18`. El poste de un seccionador se busca en la hoja `PROFILES`
+por su vía y su identificador, y en una vía que lo repite, por `KP_POSTE`. Reimportar el mismo
+maestro no crea nada: eso es lo que hace que la carga se pueda repetir sin miedo.
 
 Solo se cargan las filas marcadas `ENABLED=SI`. Con `dryRun=true` no se escribe nada y el informe
 sale con **los mismos recuentos** que la carga real, que es lo único que hace útil una simulación:

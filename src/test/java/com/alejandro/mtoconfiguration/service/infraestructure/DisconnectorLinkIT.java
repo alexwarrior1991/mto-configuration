@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.service.infraestructure;
 
+import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.ProfileMasterDataPayloadMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
@@ -236,6 +237,53 @@ class DisconnectorLinkIT {
 
         assertThat(profileService.getById(PROFILE_FREE).getDisconnector().getId()).isEqualTo(DISCONNECTOR_A);
         assertThat(profileService.getById(PROFILE_A).getDisconnector()).isNull();
+    }
+
+    @Test
+    @DisplayName("un seccionador se desvincula de su poste con su PUT, y el perfil deja de enseñarlo")
+    void seDesvinculaConSuPut() {
+        DisconnectorDTO seccionador = disconnectorService.getById(DISCONNECTOR_A);
+        seccionador.setProfileId(null);
+
+        DisconnectorDTO guardado = disconnectorService.update(seccionador);
+
+        assertThat(guardado.getProfileId()).isNull();
+        assertThat(guardado.getProfileCode()).isNull();
+        assertThat(fila(DISCONNECTOR_A)).containsEntry("profile_id", null);
+        assertThat(profileService.getById(PROFILE_A).getDisconnector()).isNull();
+    }
+
+    @Test
+    @DisplayName("se da de alta un seccionador sin poste, con su estado normal, su accionamiento, su KP y su vía (V25, V26)")
+    void altaSinPoste() {
+        DisconnectorFunctionDTO function = new DisconnectorFunctionDTO();
+        function.setCode(FUNCTION_CODE);
+        DisconnectorDTO nuevo = new DisconnectorDTO();
+        nuevo.setName("IT-LINK-SIN-POSTE");
+        nuevo.setOnLoad(false);
+        nuevo.setNormallyOpen(true);
+        nuevo.setDriveType(DisconnectorDriveType.MANUAL);
+        nuevo.setKp("98375.5");
+        nuevo.setTrackId(TRACK);
+        nuevo.setStationId(STATION);
+        nuevo.setDisconnectorFunction(function);
+
+        DisconnectorDTO creado = disconnectorService.create(nuevo);
+
+        assertThat(creado.getProfileId()).isNull();
+        assertThat(creado.getNormallyOpen()).isTrue();
+        assertThat(creado.getDriveType()).isEqualTo(DisconnectorDriveType.MANUAL);
+        assertThat(new BigDecimal(creado.getKp())).isEqualByComparingTo("98375.5");
+        assertThat(creado.getTrackId()).isEqualTo(TRACK);
+        Map<String, Object> fila = jdbcTemplate.queryForMap(
+                "select profile_id, normally_open, drive_type, kilometric_point, track_id from disconnector where id = ?",
+                creado.getId());
+        assertThat(fila)
+                .containsEntry("profile_id", null)
+                .containsEntry("normally_open", true)
+                .containsEntry("drive_type", "MANUAL")
+                .containsEntry("track_id", TRACK);
+        assertThat((BigDecimal) fila.get("kilometric_point")).isEqualByComparingTo("98375.5");
     }
 
     @Test

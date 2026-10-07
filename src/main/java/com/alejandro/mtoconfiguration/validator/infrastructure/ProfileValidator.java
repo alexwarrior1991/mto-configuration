@@ -51,7 +51,6 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
      * {@code @PositiveOrZero}: sin este patrón un valor no numérico pasaba la validación y reventaba
      * al mapear.
      */
-    private static final String KP_PATTERN = "\\d+(\\.\\d+)?";
 
     private final CantileverValidator cantileverValidator;
 
@@ -68,8 +67,8 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
                 .validateRequiredLovDTO(dto.getProfileStatus(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_PROFILE_STATUS)
                 .validateLengthField(dto.getProfileId(), PROFILE_ID_MIN_LENGTH, PROFILE_ID_MAX_LENGTH,
                         ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_PROFILE_ID)
-                .validateFormat(dto.getKp(), KP_PATTERN, ErrorCodes.VALIDATION_INVALID_FORMAT, FIELD_KP)
-                .validateBigDecimalWithPrecision(parseKp(dto.getKp()), KP_INTEGER_DIGITS, KP_FRACTION_DIGITS,
+                .validateFormat(dto.getKp(), KpText.PATTERN, ErrorCodes.VALIDATION_INVALID_FORMAT, FIELD_KP)
+                .validateBigDecimalWithPrecision(KpText.parse(dto.getKp()), KP_INTEGER_DIGITS, KP_FRACTION_DIGITS,
                         ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_KP)
                 .validateMaxSize(dto.getCantilevers(), PROFILE_MAX_CANTILEVERS,
                         ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_CANTILEVERS);
@@ -175,19 +174,6 @@ public class ProfileValidator extends NormalEntityValidator<ProfileDTO> {
                 .forEach(index -> alerts.add(Alert.ofDanger(
                         ErrorCodes.DUPLICATED_RESOURCE,
                         "[" + index + "]." + fieldName)));
-    }
-
-    private static BigDecimal parseKp(String kp) {
-        if (StringUtils.isBlank(kp)) {
-            return null;
-        }
-
-        try {
-            return new BigDecimal(kp.trim());
-        } catch (NumberFormatException e) {
-            // El formato ya lo reporta validateFormat; aquí no hay precisión que comprobar.
-            return null;
-        }
     }
 
     private static String normalizeProfileId(String profileId) {

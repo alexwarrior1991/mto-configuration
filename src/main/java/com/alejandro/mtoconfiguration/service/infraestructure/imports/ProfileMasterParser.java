@@ -7,6 +7,7 @@ import com.alejandro.mtoconfiguration.core.excel.ExcelRow;
 import com.alejandro.mtoconfiguration.core.excel.ExcelSheet;
 import com.alejandro.mtoconfiguration.core.excel.ExcelWorkbook;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.CantileverMasterRow;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.DisconnectorMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ExecutionPackageMasterRow;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileLovCodes;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports.ProfileMasterRow;
@@ -51,6 +52,7 @@ public class ProfileMasterParser {
     public static final String CANTILEVERS_SHEET = "CANTILEVERS";
     public static final String SECTION_INSULATORS_SHEET = "SECTION_INSULATORS";
     public static final String SECTION_INSULATOR_SWITCHES_SHEET = "SECTION_INSULATOR_SWITCHES";
+    public static final String DISCONNECTORS_SHEET = "DISCONNECTORS";
 
     private static final String COL_EP = "EP";
     private static final String COL_NAME = "NOMBRE";
@@ -69,13 +71,15 @@ public class ProfileMasterParser {
     private static final String COL_KP = "KP";
     private static final String COL_SECTION_INSULATOR = "AISLADOR";
     private static final String COL_CODE = "CODIGO";
+    private static final String COL_ON_LOAD = "ON_LOAD";
+    private static final String COL_DISCONNECTOR_FUNCTION = "DISCONNECTOR_FUNCTION";
 
     private static final int HEADER_ROW = 0;
     private static final int FIRST_DATA_ROW = 1;
 
     private final ExcelReader excelReader = new ExcelReader();
 
-    /** Las siete hojas de datos del maestro. El InputStream se cierra siempre. */
+    /** Las ocho hojas de datos del maestro. El InputStream se cierra siempre. */
     public ProfileMasterContent parseAll(InputStream inputStream) {
         ExcelWorkbook workbook = excelReader.read(inputStream);
         return new ProfileMasterContent(
@@ -85,7 +89,8 @@ public class ProfileMasterParser {
                 readProfiles(workbook),
                 readCantilevers(workbook),
                 readSectionInsulators(workbook),
-                readSectionInsulatorSwitches(workbook));
+                readSectionInsulatorSwitches(workbook),
+                readDisconnectors(workbook));
     }
 
     private List<ExecutionPackageMasterRow> readExecutionPackages(ExcelWorkbook workbook) {
@@ -247,6 +252,38 @@ public class ProfileMasterParser {
     }
 
     /**
+     * PROFILE_ID y VIA son obligatorias en la cabecera aunque su celda pueda ir vacía, por lo mismo
+     * que ESTACIONES en TRACKS: sin la columna, todos los seccionadores se cargarían sin poste y sin
+     * una sola queja. KP, KP_POSTE, NORMALLY_OPEN y DRIVE_TYPE no: llegaron después (V25 y V26) y
+     * una celda vacía es un dato que no está.
+     */
+    private List<DisconnectorMasterRow> readDisconnectors(ExcelWorkbook workbook) {
+        return readOptional(workbook, DISCONNECTORS_SHEET,
+                List.of(COL_EP, COL_STATION, COL_TRACK, COL_PROFILE_ID, COL_NAME, COL_ON_LOAD,
+                        COL_DISCONNECTOR_FUNCTION, COL_ENABLED),
+                (row, columns, index) -> {
+                    String ep = text(row, columns.get(COL_EP));
+                    String station = text(row, columns.get(COL_STATION));
+                    String name = text(row, columns.get(COL_NAME));
+                    if (ep.isBlank() || station.isBlank() || name.isBlank()) {
+                        return null;
+                    }
+                    return new DisconnectorMasterRow(ep, station,
+                            text(row, columns.get(COL_TRACK)),
+                            text(row, columns.get(COL_PROFILE_ID)),
+                            decimal(row, columns.get("KP_POSTE")),
+                            name,
+                            text(row, columns.get(COL_KP)),
+                            text(row, columns.get(COL_ON_LOAD)),
+                            text(row, columns.get("NORMALLY_OPEN")),
+                            text(row, columns.get("DRIVE_TYPE")),
+                            text(row, columns.get(COL_DISCONNECTOR_FUNCTION)),
+                            flag(text(row, columns.get(COL_ENABLED))),
+                            index + 1);
+                });
+    }
+
+    /**
      * Como {@link #read}, pero una hoja que no está devuelve lista vacía en lugar de reventar.
      *
      * <p>Es para las hojas que llegaron después: un maestro generado antes de {@code V23} no trae
@@ -394,7 +431,7 @@ public class ProfileMasterParser {
         T read(ExcelRow row, Map<String, Integer> columns, int index);
     }
 
-    /** Las siete hojas de datos, leidas de una vez. */
+    /** Las ocho hojas de datos, leidas de una vez. */
     public record ProfileMasterContent(
             List<ExecutionPackageMasterRow> executionPackages,
             List<StationMasterRow> stations,
@@ -402,7 +439,8 @@ public class ProfileMasterParser {
             List<ProfileMasterRow> profiles,
             List<CantileverMasterRow> cantilevers,
             List<SectionInsulatorMasterRow> sectionInsulators,
-            List<SectionInsulatorSwitchMasterRow> sectionInsulatorSwitches
+            List<SectionInsulatorSwitchMasterRow> sectionInsulatorSwitches,
+            List<DisconnectorMasterRow> disconnectors
     ) {
     }
 }

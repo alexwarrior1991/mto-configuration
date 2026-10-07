@@ -3,16 +3,22 @@ package com.alejandro.mtoconfiguration.entity.infrastructure;
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
+import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Setter;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
+import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.Objects;
 
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_INTEGER_DIGITS;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.NAME_MAX_LENGTH;
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
@@ -31,8 +37,12 @@ public class Disconnector extends CRUDEntity {
 
     private String name;
     private Boolean onLoad;
+    private Boolean normallyOpen;
+    private DisconnectorDriveType driveType;
     private Station station;
     private Profile profile;
+    private BigDecimal kp;
+    private Track track;
     private DisconnectorFunction disconnectorFunction;
 
     @Id
@@ -59,6 +69,26 @@ public class Disconnector extends CRUDEntity {
         return onLoad;
     }
 
+    /**
+     * Estado normal de explotación: {@code true} si está normalmente abierto, {@code false} si está
+     * normalmente cerrado.
+     *
+     * <p>Anulable, como {@code driveType}: los seccionadores que ya estaban en base no lo traen, y
+     * exigirlo convertiría el despliegue en una migración de datos que nadie puede rellenar todavía
+     * (ver {@code V25}).
+     */
+    @Column(name = "NORMALLY_OPEN", nullable = true)
+    public Boolean getNormallyOpen() {
+        return normallyOpen;
+    }
+
+    /** Cómo se acciona: con motor o a mano. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "DRIVE_TYPE", length = 30, nullable = true)
+    public DisconnectorDriveType getDriveType() {
+        return driveType;
+    }
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "STATION_ID", nullable = true) // nullable = true permite que sea opcional
     @Audited(targetAuditMode = NOT_AUDITED)
@@ -73,11 +103,38 @@ public class Disconnector extends CRUDEntity {
         return disconnectorFunction;
     }
 
+    /**
+     * Poste del que cuelga. Opcional: no todos los seccionadores están en un poste de la línea, y
+     * uno que no lo está guarda solo su estación.
+     */
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "PROFILE_ID", nullable = true)
     @Audited(targetAuditMode = NOT_AUDITED)
     public Profile getProfile() {
         return profile;
+    }
+
+    /**
+     * KP en metros, <b>solo</b> de un seccionador sin poste: el de uno en un poste es el de su
+     * perfil, y guardarlo dos veces dejaría dos datos que pueden contradecirse (V26). Lo exige
+     * {@code DisconnectorValidator}.
+     */
+    @PositiveOrZero
+    @Digits(integer = KP_INTEGER_DIGITS, fraction = KP_FRACTION_DIGITS)
+    @Column(name = "KILOMETRIC_POINT",
+            precision = KP_INTEGER_DIGITS + KP_FRACTION_DIGITS,
+            scale = KP_FRACTION_DIGITS,
+            nullable = true)
+    public BigDecimal getKp() {
+        return kp;
+    }
+
+    /** Vía, <b>solo</b> de un seccionador sin poste, por lo mismo que {@link #getKp()}. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "TRACK_ID", nullable = true)
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Track getTrack() {
+        return track;
     }
 
     @Override
