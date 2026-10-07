@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.mapper.infraestructure;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
+import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
@@ -114,5 +115,31 @@ class DisconnectorMapperTest {
         assertThat(dto.getProfileId()).isEqualTo(7L);
         assertThat(dto.getProfileCode()).isEqualTo("P-007");
         assertThat(dto.getProfileKp()).isEqualTo("12.345");
+    }
+
+    @Test
+    @DisplayName("el estado normal y el accionamiento van y vuelven, y un PUT sin ellos los vacia")
+    void estadoNormalYAccionamiento() {
+        Disconnector entity = seccionador();
+        entity.setNormallyOpen(true);
+        entity.setDriveType(DisconnectorDriveType.MOTOR);
+
+        DisconnectorDTO dto = mapper.toDTO(entity);
+        assertThat(dto.getNormallyOpen()).isTrue();
+        assertThat(dto.getDriveType()).isEqualTo(DisconnectorDriveType.MOTOR);
+
+        dto.setNormallyOpen(false);
+        dto.setDriveType(DisconnectorDriveType.MANUAL);
+        Disconnector creado = mapper.toEntity(dto);
+        assertThat(creado.getNormallyOpen()).isFalse();
+        assertThat(creado.getDriveType()).isEqualTo(DisconnectorDriveType.MANUAL);
+
+        // El PUT sustituye la fila entera (README_API.md §4): lo que no viaja se queda sin dato.
+        DisconnectorDTO sinDatos = new DisconnectorDTO();
+        sinDatos.setName("SEC-1");
+        sinDatos.setOnLoad(true);
+        mapper.updateEntityFromDTO(sinDatos, entity);
+        assertThat(entity.getNormallyOpen()).isNull();
+        assertThat(entity.getDriveType()).isNull();
     }
 }

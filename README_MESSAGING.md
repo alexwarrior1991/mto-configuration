@@ -4,6 +4,25 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ El evento `disconnector` gana `normallyOpen` y `driveType`, y su `profile` puede llegar a `null`
+
+Dos cambios, los dos compatibles hacia atrás para quien consume:
+
+- **El seccionador lleva dos claves más**: `normallyOpen` (su estado normal: `true` normalmente
+  abierto, `false` normalmente cerrado) y `driveType` (`"MOTOR"` o `"MANUAL"`), las dos `null`
+  mientras no se sepan. También en sus copias reducidas dentro de los eventos `station` y
+  `profile`. **Solo añade claves**; el detalle está en «Cambios en el contrato del evento
+  `disconnector`», más abajo.
+- **El poste deja de ser obligatorio.** La clave `profile` ya podía viajar a `null`, pero la API
+  exigía `profileId`, así que en la práctica siempre llegaba. Desde `V25` hay seccionadores que no
+  están en un poste, y uno que lo está puede desvincularse con su `PUT`: entonces `profile` llega a
+  `null`, y `profileId` a `null` en la copia de `station`.
+
+`mto-maintenance` ya lo tolera: un seccionador sin poste se queda sin KP, sin vía y sin paquete
+(su `docs/06-messaging.md`), y las dos claves nuevas no las lee. `mto-notification` solo copia de
+`values` su lista blanca (`name`, `kp`…), en la que no están. `mto-stock` registra el evento sin
+tratarlo.
+
 ## ⚠️ El sobre gana `actor` y `correlationId`, nace `job.finished` y las cuatro colas desaparecen
 
 Tres cambios, todos compatibles hacia atrás para quien consume:
@@ -225,6 +244,25 @@ escalares (`kp`, `installationType`) y **no** las agujas: llevarlas ahí obligar
 colección en el grafo de mensajería de `Station` y multiplicaría las filas de ese evento por cada
 aguja de cada aislador, para un dato que el consumidor ya recibe entero en el evento
 `section-insulator`.
+
+#### Cambios en el contrato del evento `disconnector`
+
+El seccionador incorpora dos claves nuevas (`V25`). **El cambio es compatible hacia atrás**: sólo
+añade claves, no renombra ni quita ninguna.
+
+| Clave nueva | Tipo | Contenido |
+|---|---|---|
+| `normallyOpen` | `true` / `false` / `null` | Estado normal de explotación: `true` normalmente abierto, `false` normalmente cerrado. `null` es «sin dato» |
+| `driveType` | `"MOTOR"` / `"MANUAL"` / `null` | Accionamiento: con motor (el círculo del accionamiento en el plano de seccionamiento) o a mano |
+
+Las dos son columnas de la propia fila, así que, igual que `kp` e `installationType` del aislador,
+viajan también en las copias reducidas del seccionador dentro de `station` (`disconnectors[]`) y de
+`profile` (`disconnector`), sin una sentencia más.
+
+`profile` no cambia de forma (`{ "id", "profileId", "kp" }` o `null`), pero cambia lo que se puede
+esperar de él: desde `V25` el poste es opcional, y un seccionador que no está en un poste lo trae a
+`null`. Un consumidor que saque del poste el KP, la vía o el paquete del seccionador tiene que contar
+con que no los haya.
 
 ### 2.5. Republicado de lo que ya existe
 

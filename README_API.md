@@ -39,7 +39,13 @@ es una lista, es media base de datos. El detalle (`GET $BASE/{recurso}/{id}`) la
 **`disconnectors` lleva el perfil legible.** Además de `profileId`, cada seccionador sale con
 `profileCode` (el identificador del perfil del que cuelga) y `profileKp`, los dos **solo de
 salida**: una lista de seccionadores se lee sin ir perfil por perfil, y son miles. Al escribir se
-ignoran; el perfil se elige por `profileId`.
+ignoran; el perfil se elige por `profileId`, que es **opcional**: no todos los seccionadores están
+en un poste, y uno que no lo está guarda solo su estación (`stationId`, esa sí obligatoria).
+
+**Un seccionador lleva su estado normal y su accionamiento** (`V25`): `normallyOpen` (`true`
+normalmente abierto, `false` normalmente cerrado) y `driveType` (`MOTOR` o `MANUAL`). Los dos son
+opcionales, y como el resto de la fila, un `PUT` que no los lleva los deja sin dato: se devuelven
+como se leyeron (§4, «devuélvelo entero»).
 
 El borrado es **lógico**: marca la fila (`deleted = true`) y deja de aparecer en las consultas. No
 hay endpoint para restaurarla.
@@ -258,9 +264,9 @@ La relación 1:1 va aparte, y no funciona igual en los dos casos:
   seccionador. Al escribir un perfil se ignora: no se crea, no se modifica, no se desvincula y su
   versión no se comprueba, así que da igual devolverlo como lo leíste o no mandarlo. El vínculo y
   los datos son del seccionador, y se cambian con `PUT $BASE/disconnectors/{id}`: el perfil del que
-  cuelga es su `profileId`, que es obligatorio (sin él, 400). Un seccionador se mueve de perfil, no
-  se desvincula; si sobra, se borra. Un perfil admite un solo seccionador vivo: colgarle un segundo
-  da 409 `BUS-002`, pero uno borrado ya no lo ocupa (`V24`).
+  cuelga es su `profileId`. Se mueve de perfil cambiándolo y se desvincula mandándolo a `null`
+  (desde `V25` el poste es opcional: hay seccionadores que no están en uno). Un perfil admite un solo
+  seccionador vivo: colgarle un segundo da 409 `BUS-002`, pero uno borrado ya no lo ocupa (`V24`).
 
 Cada hijo que devuelves con su `id` lleva también su `versionNumber`, y se comprueba como el del
 padre (§9): si otro ha guardado esa ménsula, ese brazo o esa aguja desde tu lectura, la petición
@@ -643,7 +649,8 @@ cada campo (§4 bis: alturas en metros, `stagger` y `railPoleDistance` en milím
 ```
 
 Lo que va a `null` no viaja. El perfil no tiene estación en el modelo: las de la vía van en
-`stations` y la del seccionador o del aislador, en su marca. Una vía sin perfiles devuelve las
+`stations` y la del seccionador o del aislador, en su marca. Un seccionador que no está en un poste
+no sale: el esquema dibuja cada seccionador en su perfil. Una vía sin perfiles devuelve las
 listas vacías; una vía inexistente, `404 NOT-001`.
 
 Está **cacheado** en Redis (`normal:item`, clave `TrackSchematicService:getSchematic:{id}`, 6 h):

@@ -25,7 +25,12 @@ public class DisconnectorMasterDataPayloadMapper implements MasterDataEntityPayl
         values.put("id", disconnector.getId());
         values.put("name", disconnector.getName());
         values.put("onLoad", disconnector.getOnLoad());
+        values.put("normallyOpen", disconnector.getNormallyOpen());
+        values.put("driveType", disconnector.getDriveType() == null
+                ? null
+                : disconnector.getDriveType().name());
         values.put("station", toStationPayload(disconnector.getStation()));
+        // null en un seccionador que no esta en un poste: el poste es opcional (V25).
         values.put("profile", toProfilePayload(disconnector.getProfile()));
         values.put("disconnectorFunction", toDisconnectorFunctionPayload(disconnector.getDisconnectorFunction()));
 

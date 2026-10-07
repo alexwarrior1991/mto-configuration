@@ -18,7 +18,6 @@ public class DisconnectorValidator extends NormalEntityValidator<DisconnectorDTO
     private static final String FIELD_NAME = "name";
     private static final String FIELD_ON_LOAD = "onLoad";
     private static final String FIELD_STATION_ID = "stationId";
-    private static final String FIELD_PROFILE_ID = "profileId";
     private static final String FIELD_DISCONNECTOR_FUNCTION = "disconnectorFunction";
 
     @Override
@@ -36,10 +35,13 @@ public class DisconnectorValidator extends NormalEntityValidator<DisconnectorDTO
                         ErrorCodes.VALIDATION_OUT_OF_RANGE, FIELD_NAME);
     }
 
+    /**
+     * La estación es obligatoria; el poste ({@code profileId}), no: hay seccionadores que no están en
+     * un poste de la línea, y esos guardan solo su estación.
+     */
     @Override
     protected void validateParentReferences(DisconnectorDTO dto, List<Alert> alerts) {
         check(alerts)
-                .validateRequiredField(dto.getStationId(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_STATION_ID)
-                .validateRequiredField(dto.getProfileId(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_PROFILE_ID);
+                .validateRequiredField(dto.getStationId(), ErrorCodes.VALIDATION_REQUIRED_FIELD, FIELD_STATION_ID);
     }
 }

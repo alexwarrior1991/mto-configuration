@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.masterdata.messaging;
 import com.alejandro.mtoconfiguration.entity.commons.IEntity;
 import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
 import com.alejandro.mtoconfiguration.entity.infrastructure.*;
+import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
 import com.alejandro.mtoconfiguration.entity.lov.*;
 import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
@@ -128,6 +129,8 @@ class MasterDataPayloadContractIT {
         Map<String, Object> payload = payloadOfDetached(disconnectorRepository, ids.disconnector());
 
         assertThat(payload).containsKeys("station", "profile", "disconnectorFunction");
+        // V25: el estado normal y el accionamiento, el enum por su nombre.
+        assertThat(payload).containsEntry("normallyOpen", true).containsEntry("driveType", "MOTOR");
     }
 
     @Test
@@ -146,6 +149,8 @@ class MasterDataPayloadContractIT {
 
         assertThat(asList(payload, "cantilevers")).hasSize(2);
         assertThat(payload).containsKeys("track", "foundation", "poleType", "disconnector");
+        assertThat(asMap(payload, "disconnector"))
+                .containsEntry("normallyOpen", true).containsEntry("driveType", "MOTOR");
         // sectioningFeeding entra en el grafo como una LOV mas del perfil: si se cayera de
         // findByIdForMessaging, leer su codigo aqui reventaria con la entidad ya desatachada.
         assertThat(payload).containsKeys("span", "heightCantileverSupport", "poleGaugeLocation",
@@ -174,6 +179,14 @@ class MasterDataPayloadContractIT {
         assertThat(asList(payload, "tracks")).hasSize(2);
         assertThat(asList(payload, "disconnectors")).hasSize(2);
         assertThat(asList(payload, "sectionInsulators")).hasSize(2);
+        // La copia reducida del seccionador lleva sus dos escalares de V25; el segundo no esta en un
+        // poste y no tiene ni estado normal ni accionamiento.
+        assertThat(asList(payload, "disconnectors"))
+                .extracting(each -> each.get("name"), each -> each.get("normallyOpen"),
+                        each -> each.get("driveType"), each -> each.get("profileId") != null)
+                .containsExactlyInAnyOrder(
+                        tuple("Seccionador 1", true, "MOTOR", true),
+                        tuple("Seccionador 2", null, null, false));
     }
 
     @Test
@@ -315,7 +328,10 @@ class MasterDataPayloadContractIT {
             cantilever(profile, "6.500");
 
             Disconnector disconnector = disconnector("Seccionador 1", station);
+            disconnector.setNormallyOpen(true);
+            disconnector.setDriveType(DisconnectorDriveType.MOTOR);
             profile.addDisconnector(disconnector);
+            // Sin poste: desde V25 el poste es opcional.
             disconnector("Seccionador 2", station);
 
             SectionInsulator sectionInsulator = sectionInsulator("Aislador 1", station, track);

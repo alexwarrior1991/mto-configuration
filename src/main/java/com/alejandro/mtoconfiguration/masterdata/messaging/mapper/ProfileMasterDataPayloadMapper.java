@@ -222,6 +222,7 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         return values;
     }
 
+    /** Copia reducida del seccionador, con sus dos escalares de {@code V25} como en la de la estación. */
     private Map<String, Object> toDisconnectorPayload(Disconnector disconnector) {
         if (disconnector == null) {
             return null;
@@ -231,6 +232,10 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         values.put("id", disconnector.getId());
         values.put("name", disconnector.getName());
         values.put("onLoad", disconnector.getOnLoad());
+        values.put("normallyOpen", disconnector.getNormallyOpen());
+        values.put("driveType", disconnector.getDriveType() == null
+                ? null
+                : disconnector.getDriveType().name());
         values.put("disconnectorFunctionId", disconnector.getDisconnectorFunction() != null ? disconnector.getDisconnectorFunction().getId() : null);
         return values;
     }

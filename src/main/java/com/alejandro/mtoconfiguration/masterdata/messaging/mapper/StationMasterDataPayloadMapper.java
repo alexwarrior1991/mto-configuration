@@ -75,11 +75,20 @@ public class StationMasterDataPayloadMapper implements MasterDataEntityPayloadMa
                 .toList();
     }
 
+    /**
+     * Copia reducida del seccionador. Lleva sus dos escalares de {@code V25}, {@code normallyOpen} y
+     * {@code driveType}, por lo mismo que la del aislador lleva {@code kp} e
+     * {@code installationType}: son columnas de la propia fila, ya cargada.
+     */
     private Map<String, Object> toDisconnectorPayload(Disconnector disconnector) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", disconnector.getId());
         values.put("name", disconnector.getName());
         values.put("onLoad", disconnector.getOnLoad());
+        values.put("normallyOpen", disconnector.getNormallyOpen());
+        values.put("driveType", disconnector.getDriveType() == null
+                ? null
+                : disconnector.getDriveType().name());
         values.put("profileId", disconnector.getProfile() != null ? disconnector.getProfile().getId() : null);
         values.put("disconnectorFunctionId", disconnector.getDisconnectorFunction() != null ? disconnector.getDisconnectorFunction().getId() : null);
         return values;

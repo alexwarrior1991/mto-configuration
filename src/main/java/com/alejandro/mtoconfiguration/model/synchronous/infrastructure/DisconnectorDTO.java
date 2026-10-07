@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.model.synchronous.infrastructure;
 
+import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
 import lombok.Getter;
@@ -12,7 +13,18 @@ public class DisconnectorDTO extends BaseDTO {
     private String name;
     private Boolean onLoad;
 
+    /**
+     * Estado normal: {@code true} normalmente abierto, {@code false} normalmente cerrado y
+     * {@code null} sin dato.
+     */
+    private Boolean normallyOpen;
+
+    /** Accionamiento: {@code MOTOR}, {@code MANUAL} o {@code null} sin dato. */
+    private DisconnectorDriveType driveType;
+
     private Long stationId;
+
+    /** Poste del que cuelga. Opcional: un seccionador que no está en un poste lo deja a {@code null}. */
     private Long profileId;
 
     /**

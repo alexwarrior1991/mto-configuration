@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static com.alejandro.mtoconfiguration.validator.AlertAssert.assertError;
+import static com.alejandro.mtoconfiguration.validator.AlertAssert.assertNoError;
 import static com.alejandro.mtoconfiguration.validator.AlertAssert.assertNoErrors;
 
 class DisconnectorValidatorTest {
@@ -30,7 +31,20 @@ class DisconnectorValidatorTest {
         assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "onLoad");
         assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "disconnectorFunction");
         assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "stationId");
-        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "profileId");
+    }
+
+    @Test
+    @DisplayName("el poste, el estado normal y el accionamiento son opcionales: hay seccionadores que no están en un poste")
+    void noExigeElPosteNiElEstadoNormalNiElAccionamiento() {
+        DisconnectorDTO dto = ValidDtos.rootDisconnector();
+        dto.setProfileId(null);
+
+        assertNoErrors(validator.validateBeforeSave(dto));
+
+        List<Alert> alerts = validator.validateBeforeSave(new DisconnectorDTO());
+        assertNoError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "profileId");
+        assertNoError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "normallyOpen");
+        assertNoError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "driveType");
     }
 
     @Test
