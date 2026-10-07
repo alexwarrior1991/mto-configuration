@@ -862,7 +862,8 @@ El DXF no está en el repositorio: son 46 MB más de binarios (ver «El tamaño 
 |---|---|
 | Seccionador | Bloque dinámico `DISCONNECTOR` (1.168), más `Disc_open`/`Disc_closed`, `EARTHING DISCONNECTOR 2`, `OnLoad_Circuit_breaker_opened` y 33 dibujados explotados |
 | On-load / off-load | El círculo de accionamiento medio relleno (estado de visibilidad `ON-LOAD`) o vacío |
-| Abierto / cerrado | La cuchilla alineada con sus dos contactos, o inclinada |
+| Estado normal (`NORMALLY_OPEN`) | La cuchilla inclinada (abierto, `SI`) o alineada con sus dos contactos (cerrado, `NO`) |
+| Accionamiento (`DRIVE_TYPE`) | El círculo del accionamiento es el motor: `MOTOR`. Lo llevan todos los símbolos del plano de julio de 2025 |
 | Nombre y KP | El MTEXT de la capa `0_Disconnectors` (`TSA-BF06` / `KP93+451` = 93451 m) |
 | Vía | El rótulo `-N-` de la línea a la que se conectan las patas |
 | Lo que puentea | La lámina de aire (`Insu_Overlap`) o el aislador (`Section_insulator`) entre sus dos patas |
@@ -875,11 +876,19 @@ la línea de referencia, luego una asignación global de coste mínimo con el s�
 rótulo, y al final la misma asignación, más permisiva, con lo que haya sobrado. «El más cercano» no
 vale: con dos símbolos apilados, dos rótulos se quedaban el mismo y uno ninguno.
 
-## Qué no entra
+## Qué entra y qué no
 
-- **EP futuros**: el depósito de Haifa/Kishon (el recuadro rayado en verde), las capas
-  `0_FutureSectionEquip` y `0_NeutralSections_FutureStage` y lo dibujado en vía no electrificada. Y la
-  zona neutra de Holtz, dibujada como deshabilitada. Todo sale en el inventario con su estado.
+**Lo decide el EP, no la capa.** Entra todo lo que cae en un EP del maestro: lo dibujado en
+servicio, lo de las capas `0_FutureSectionEquip` y `0_NeutralSections_FutureStage`, lo de vía no
+electrificada y la zona neutra de Holtz, dibujada como deshabilitada. `ESTADO_DIBUJO` dice cuál es
+cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que no impide cargarlo.
+
+- **El EP sale del prefijo** del nombre, si es una estación del maestro; si no, de los seccionadores
+  ya situados alrededor cuyo EP cubre el KP. Sin KP (un rótulo `KP47+XXX` o un símbolo sin rótulo),
+  de los tres vecinos más cercanos si los tres dicen el mismo: así entra en EP4 la zona neutra
+  futura de Remez, entre Binyamina y Hadera.
+- **El depósito de Haifa/Kishon** (el recuadro rayado en verde) es de EP futuros que el maestro no
+  tiene: no recibe EP nunca y solo sale en el inventario, con su estado.
 - **Las líneas que el maestro no tiene** (prefijos BSD, OFA, GOR, NAN, LCH…): sin EP ni poste
   posibles, van a `SECCIONADORES_FUERA_MAESTRO` y `AISLADORES_FUERA_MAESTRO`.
 - **El color del rótulo** (verde o rojo, instalado o no): está desactualizado y se ignora.
@@ -891,6 +900,13 @@ vale: con dos símbolos apilados, dos rótulos se quedaban el mismo y uno ningun
   sobre el plano de julio de 2025: el 87 % de los casados está a menos de 10 m del KP del rótulo, y
   on-load coincide con `LoadB`/`Disc` en el 94 %. Sin poste con código, se propone el más cercano a
   menos de 30 m.
+- **Sin poste**: el poste es opcional en `Disconnector` (`V25`), porque hay seccionadores que no
+  están en uno. Pero el generador no distingue uno de esos de un poste que no ha sabido encontrar,
+  así que la fila sale con `ENABLED = NO` y el motivo lo dice: si no está en un poste, se deja
+  `PROFILE_ID` vacío y se pone `ENABLED = SI`.
+- **Vía**: la del plano solo desempata. Numera las vías de la estación y no las del maestro (`1`/`2`
+  donde el maestro dice `INT`/`EXT`), así que una vía distinta con el KP casado a 10 m o menos es
+  una nota («vía distinta»); con el KP más lejos, la fila espera a una persona.
 - **Estación**: el prefijo del nombre si es una estación del maestro. Las zonas neutras, túneles y
   subestaciones (`KAF`, `TN3`, `HSA`) no lo son: se propone la estación del plano más cercana y se
   decide **una vez por prefijo**, en la hoja `ESTACION_POR_PREFIJO`.
@@ -904,12 +920,17 @@ vale: con dos símbolos apilados, dos rótulos se quedaban el mismo y uno ningun
   cinco a más de 70 m).
 - **El KP de las agujas.**
 - **El número de vía en plena vía.** Solo se rotula en las estaciones. Donde el maestro tiene dos
-  postes con seccionador al mismo KP, uno por vía, la fila lo dice («vía sin comprobar»).
-- **Estado normal y accionamiento** se leen, pero `Disconnector` no tiene dónde guardarlos.
+  postes con seccionador al mismo KP, uno por vía, y la vía del plano no dice cuál es, la fila lo
+  dice («vía sin comprobar»).
+- **El KP y la vía de un seccionador sin poste.** El rótulo trae su KP (`KP_ROTULO_M`), pero
+  `Disconnector` solo guarda la estación de uno que no está en un poste: el KP y la vía los pone el
+  poste.
 
 ## Probar
 
 `tools/tests/test_build_sectioning_review.py` prueba las reglas que no necesitan el DXF: la lectura
 del KP, cuántos aparatos nombra un rótulo, qué es un rótulo de subestación, la columna de un rótulo
-girado y la elección de la vía del maestro. El módulo importa `ezdxf` y `scipy` solo dentro de las
+girado, la elección de la vía del maestro, y qué filas de `DISCONNECTORS` entran y cuáles salen
+listas para cargar (las de otra capa dentro de un EP, la de Haifa, la que no tiene poste, la vía
+distinta y los dos postes al mismo KP). El módulo importa `ezdxf` y `scipy` solo dentro de las
 funciones que los usan, así que corre en el mismo paso de CI que los demás, con `openpyxl` y `pyyaml`.

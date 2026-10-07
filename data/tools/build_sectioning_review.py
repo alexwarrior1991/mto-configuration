@@ -87,12 +87,13 @@ NOT_TRACK_LAYERS = {
 }
 
 # El recuadro rayado en verde abajo a la izquierda (deposito de Haifa/Kishon y Hutzot
-# Hamifratz) es de EP futuros. Lo que cae dentro no se carga.
+# Hamifratz) es de EP futuros que el maestro no tiene. Lo que cae dentro no recibe EP nunca.
 HAIFA_DEPOT_BOX = (-1000.0, -4300.0, 2400.0, -3600.0)
 
-# Estados de dibujo. Solo EN_SERVICE entra en las hojas del maestro: los futuros, los de via no
-# electrificada y el deposito de Haifa son de EP todavia no construidos, y la zona neutra de
-# Holtz esta dibujada como deshabilitada.
+# Estados de dibujo. NO deciden lo que entra en las hojas del maestro: entra todo lo que cae en
+# un EP del maestro, este dibujado en servicio, como futuro, en via no electrificada o en la zona
+# neutra deshabilitada de Holtz, y su estado sale en ESTADO_DIBUJO. Lo unico que queda fuera es lo
+# que no esta en esos EP, empezando por el deposito de Haifa.
 EN_SERVICE = "EN SERVICIO"
 STATUS_BY_LAYER = {
     "0_FutureSectionEquip": "FUTURO",
@@ -245,6 +246,21 @@ def function_proposal(kind, on_load, name_function, bridged):
     if bridged == "SI" and not on_load:
         return "Disc/SI"
     return ""
+
+
+def future_ep(status):
+    """El deposito de Haifa es de EP futuros que el maestro no tiene: nunca recibe EP."""
+    return status == HAIFA_STATUS
+
+
+def normally_open(state):
+    """La cuchilla dibujada en la columna NORMALLY_OPEN: ABIERTO = SI, CERRADO = NO."""
+    return {"ABIERTO": "SI", "CERRADO": "NO"}.get(state, "")
+
+
+def drive_type(has_drive):
+    """El circulo del accionamiento es el motor; sin el, el plano no dice como se acciona."""
+    return "MOTOR" if has_drive else ""
 
 
 # --------------------------------------------------------------------------------
@@ -1150,6 +1166,7 @@ def build_disconnectors(drawing, labels, tracks, plan_stations, master):
                 "confidence": confidence(m) if m else "",
                 "on_load": s["on_load"],
                 "state": s["state"],
+                "has_drive": "drive" in s,
                 "vd": s["vd"],
                 "ct": s["ct"],
                 "rtu_square": s["square"] and s["block"] != "DISCONNECTOR",
@@ -1165,13 +1182,14 @@ def build_disconnectors(drawing, labels, tracks, plan_stations, master):
         )
 
     # EP: por el prefijo, si es una estacion del maestro; si no, por los vecinos ya situados cuyo
-    # EP cubre el KP. Los de lineas que el maestro no tiene se quedan sin EP.
+    # EP cubre el KP. Los de lineas que el maestro no tiene se quedan sin EP, y los del deposito de
+    # Haifa tambien, aunque un vecino de fuera del recuadro cubra su KP.
     for r in records:
-        r["ep"] = master["station_ep"].get(r["prefix"])
+        r["ep"] = None if future_ep(r["status"]) else master["station_ep"].get(r["prefix"])
         r["ep_from"] = "prefijo" if r["ep"] else ""
     placed = [r for r in records if r["ep"]]
     for r in records:
-        if r["ep"] or r["kp_m"] is None or r["status"] != EN_SERVICE:
+        if r["ep"] or r["kp_m"] is None or future_ep(r["status"]):
             continue
         for d, ep in sorted(
             (math.hypot(o["x"] - r["x"], o["y"] - r["y"]), o["ep"])
@@ -1182,13 +1200,28 @@ def build_disconnectors(drawing, labels, tracks, plan_stations, master):
             if lo - 300 <= r["kp_m"] <= hi + 300:
                 r["ep"], r["ep_from"] = ep, "vecinos"
                 break
+    # Sin KP (un rotulo 'KP47+XXX', o un simbolo sin rotulo) no hay rango que comprobar: el EP es
+    # el de los tres vecinos situados mas cercanos, si los tres dicen el mismo y el primero esta
+    # cerca. Es lo que mete en su EP la zona neutra futura de Remez y la via no electrificada de
+    # al lado, entre Binyamina y Hadera.
+    placed = [r for r in records if r["ep"]]
+    for r in records:
+        if r["ep"] or r["kp_m"] is not None or future_ep(r["status"]):
+            continue
+        near = sorted(
+            (math.hypot(o["x"] - r["x"], o["y"] - r["y"]), o["ep"])
+            for o in placed
+            if abs(o["x"] - r["x"]) < 600 and abs(o["y"] - r["y"]) < 300
+        )[:3]
+        if len(near) == 3 and near[0][0] < 400 and len({ep for _, ep in near}) == 1:
+            r["ep"], r["ep_from"] = near[0][1], "vecinos sin KP"
 
     # Poste: asignacion 1:1 por EP contra los postes con codigo de seccionador. Coste = metros de
     # diferencia de KP, +60 si la via del plano no es la del poste, +25 si on-load no casa con
     # LoadB/Disc, +40 si es de puesta a tierra y el poste no tiene ED.
     by_ep = collections.defaultdict(list)
     for i, r in enumerate(records):
-        if r["ep"] and r["kp_m"] is not None and r["status"] == EN_SERVICE:
+        if r["ep"] and r["kp_m"] is not None:
             by_ep[r["ep"]].append(i)
     poles_by_ep = collections.defaultdict(list)
     for p in master["profiles"]:
@@ -1227,7 +1260,7 @@ def build_disconnectors(drawing, labels, tracks, plan_stations, master):
     for p in master["profiles"]:
         profiles_by_ep[p["ep"]].append(p)
     for r in records:
-        if r.get("pole") or not r["ep"] or r["kp_m"] is None or r["status"] != EN_SERVICE:
+        if r.get("pole") or not r["ep"] or r["kp_m"] is None:
             continue
         candidates = sorted(
             (
@@ -1300,7 +1333,7 @@ def build_insulators(drawing, tracks, switches, plan_stations, disconnectors, ma
             hist[round(seg_angle(s)) % 180] += math.hypot(s[2] - s[0], s[3] - s[1])
         return hist.most_common(1)[0][0] if hist else None
 
-    labelled = [r for r in disconnectors if r["kp_m"] is not None and r["status"] == EN_SERVICE]
+    labelled = [r for r in disconnectors if r["kp_m"] is not None and not future_ep(r["status"])]
     records = []
     for e in [e for e in drawing["equipment"] if e["block"] == SECTION_INSULATOR_BLOCK]:
         cx, cy = e["c"]
@@ -1376,7 +1409,7 @@ def build_insulators(drawing, tracks, switches, plan_stations, disconnectors, ma
                 kp_txt=b["kp_txt"],
                 kp_from="seccionador que lo puentea (%s)" % (b["name"] or b["handle"]),
                 bridged_by=", ".join(x["name"] or x["handle"] for x in bridges),
-                ep=b["ep"],
+                ep=None if future_ep(r["status"]) else b["ep"],
                 prefix=b["prefix"],
             )
         # EP y estacion por los seccionadores rotulados de alrededor; KP estimado entre los dos
@@ -1388,7 +1421,7 @@ def build_insulators(drawing, tracks, switches, plan_stations, disconnectors, ma
                 if abs(o["x"] - cx) < 400 and abs(o["y"] - cy) < 200
             )
         )
-        if not r.get("ep") and around:
+        if not r.get("ep") and around and not future_ep(r["status"]):
             # El del seccionador rotulado mas cercano, aunque no tenga EP: si ese esta en una linea
             # que el maestro no tiene, el aislador tambien. Saltar al siguiente con EP mezclaria
             # lineas.
@@ -1429,7 +1462,7 @@ def build_insulators(drawing, tracks, switches, plan_stations, disconnectors, ma
     poles = [p for p in master["profiles"] if p["scodes"]]
     by_ep = collections.defaultdict(list)
     for i, r in enumerate(records):
-        if r.get("kp_m") is not None and r.get("ep") and r["status"] == EN_SERVICE:
+        if r.get("kp_m") is not None and r.get("ep"):
             by_ep[r["ep"]].append(i)
     for ep, idx in by_ep.items():
         candidates = [p for p in poles if p["ep"] == ep]
@@ -1465,6 +1498,8 @@ DISCONNECTOR_COLUMNS = [
     "PROFILE_ID",
     "NOMBRE",
     "ON_LOAD",
+    "NORMALLY_OPEN",
+    "DRIVE_TYPE",
     "DISCONNECTOR_FUNCTION",
     "ENABLED",
 ]
@@ -1492,19 +1527,27 @@ BLOCKING = (
     "funcion propuesta",
     "simbolo sin rotulo",
     "via sin comprobar",
+    "sin poste",
 )
 
 
 def disconnector_rows(records, master):
     rows, outside = [], []
     for r in records:
-        if r["status"] != EN_SERVICE:
+        if future_ep(r["status"]):
             continue
         reasons, proposals = [], set()
         pole = r.get("pole")
         if not r["ep"]:
             outside.append(r)
             continue
+        if r["status"] != EN_SERVICE:
+            reasons.append(
+                "dibujado como %s (capa %s): entra porque esta en un EP del maestro"
+                % (r["status"], r["layer"])
+            )
+        if r["ep_from"] == "vecinos sin KP":
+            reasons.append("EP de los seccionadores de al lado: el rotulo no tiene KP")
         via = pole["via"] if pole else ""
         profile = pole["profile"] if pole else ""
         if not pole and r.get("nearest_pole") and r["nearest_pole_d"] <= POLE_PROPOSAL_MAX_M:
@@ -1522,7 +1565,12 @@ def disconnector_rows(records, master):
                 if r.get("nearest_pole")
                 else ""
             )
-            reasons.append("sin poste en el maestro cerca del KP" + far)
+            # El poste es opcional: hay seccionadores que no estan en uno. Pero el generador no
+            # distingue eso de un poste que no ha sabido encontrar, asi que lo decide una persona.
+            reasons.append(
+                "sin poste en el maestro cerca del KP%s: si no esta en un poste, deja PROFILE_ID "
+                "vacio y pon ENABLED = SI" % far
+            )
         station = r["station"]
         if r["station_from"] == "cercania":
             proposals.add("ESTACION")
@@ -1546,9 +1594,10 @@ def disconnector_rows(records, master):
         validated = pole is not None and abs(r["pole_dkp"]) <= 10
         if r["confidence"] == "C" and not validated:
             reasons.append("rotulo lejos del simbolo")
-        if pole and not r["tracks"]:
+        if pole and (not r["tracks"] or pole["track"] not in r["tracks"]):
             # El plano solo numera las vias en las estaciones. En plena via, con dos postes iguales
-            # al mismo KP (uno por via), la asignacion no tiene con que elegir: se dice.
+            # al mismo KP (uno por via), la asignacion no tiene con que elegir: se dice. Lo mismo
+            # cuando la via del plano no es la de ninguno de los dos.
             twins = [
                 p
                 for p in master["profiles"]
@@ -1559,13 +1608,33 @@ def disconnector_rows(records, master):
             ]
             if twins:
                 reasons.append(
-                    "via sin comprobar: el plano no numera la via aqui y el maestro tiene otro "
-                    "poste al mismo KP en %s"
-                    % ", ".join("%s (%s)" % (t["via"], t["profile"]) for t in twins[:3])
+                    "via sin comprobar: %s y el maestro tiene otro poste al mismo KP en %s"
+                    % (
+                        (
+                            "el plano dice via %s, que no es la del poste" % "/".join(r["tracks"])
+                            if r["tracks"]
+                            else "el plano no numera la via aqui"
+                        ),
+                        ", ".join("%s (%s)" % (t["via"], t["profile"]) for t in twins[:3]),
+                    )
                 )
         if pole:
             if abs(r["pole_dkp"]) > 30:
                 reasons.append("el poste esta a %.0f m del KP del rotulo" % r["pole_dkp"])
+            if r["tracks"] and pole["track"] and pole["track"] not in r["tracks"]:
+                # La asignacion lo penaliza pero no lo prohibe: sin otro poste cerca, casa igual. La
+                # via del plano falla mas que el KP (numera las vias de la estacion, no las del
+                # maestro), asi que con el KP casado a 10 m o menos es una nota y no un bloqueo.
+                via_dxf = "/".join(r["tracks"])
+                if validated:
+                    reasons.append(
+                        "via distinta: el DXF dice %s y el poste esta en la %s, con el KP a %.0f m"
+                        % (via_dxf, pole["track"], abs(r["pole_dkp"]))
+                    )
+                else:
+                    reasons.append(
+                        "el DXF dice via %s y el poste esta en la via %s" % (via_dxf, pole["track"])
+                    )
             load_break = any(x.startswith("LoadB") for x in pole["dcodes"])
             if r["type"] == "SECCIONADOR" and load_break != r["on_load"]:
                 reasons.append(
@@ -1576,7 +1645,14 @@ def disconnector_rows(records, master):
             reasons.append("estacion sin determinar")
         if not function:
             reasons.append("funcion sin determinar")
-        complete = all([r["ep"], station, profile, r["name"], function, r["kp_m"] is not None])
+        state = normally_open(r["state"])
+        if not state:
+            reasons.append("estado normal sin determinar: el plano no deja ver la cuchilla")
+        drive = drive_type(r["has_drive"])
+        if not drive:
+            reasons.append("accionamiento sin determinar: el simbolo no lleva el circulo del motor")
+        # Ni el poste ni el estado normal ni el accionamiento son obligatorios en Disconnector.
+        complete = all([r["ep"], station, r["name"], function])
         enabled = "SI" if complete and not any(x.startswith(BLOCKING) for x in reasons) else "NO"
         rows.append(
             {
@@ -1586,6 +1662,8 @@ def disconnector_rows(records, master):
                 "PROFILE_ID": profile,
                 "NOMBRE": r["name"],
                 "ON_LOAD": "SI" if r["on_load"] else "NO",
+                "NORMALLY_OPEN": state,
+                "DRIVE_TYPE": drive,
                 "DISCONNECTOR_FUNCTION": function,
                 "ENABLED": enabled,
                 "REVISAR": "SI" if reasons else "NO",
@@ -1596,7 +1674,7 @@ def disconnector_rows(records, master):
                 "DIF_KP_M": round(r["pole_dkp"], 1) if pole else "",
                 "CODIGO_POSTE": "|".join(pole["dcodes"]) if pole else "",
                 "TIPO_DXF": r["type"],
-                "ESTADO_NORMAL": r["state"],
+                "ESTADO_DIBUJO": r["status"],
                 "DETECTOR_TENSION": "SI" if r["vd"] else "NO",
                 "PUENTEA": r["bridged"],
                 "VIAS_DXF": ", ".join(r["tracks"]),
@@ -1653,6 +1731,7 @@ def disconnector_rows(records, master):
             "ON_LOAD": "SI" if r["on_load"] else "NO",
             "ESTADO_NORMAL": r["state"],
             "TIPO_DXF": r["type"],
+            "ESTADO_DIBUJO": r["status"],
             "VIAS_DXF": ", ".join(r["tracks"]),
             "X": round(r["x"], 2),
             "Y": round(r["y"], 2),
@@ -1668,7 +1747,7 @@ def insulator_rows(records, master):
     rows, switch_rows, outside = [], [], []
     used_names = collections.Counter()
     for r in records:
-        if r["status"] != EN_SERVICE:
+        if future_ep(r["status"]):
             continue
         if not r.get("ep"):
             outside.append(r)
@@ -1676,6 +1755,11 @@ def insulator_rows(records, master):
         ep, station, kind = r["ep"], r["station"], r["type"]
         tracks_of_ep = master["tracks"].get(ep, [])
         reasons = []
+        if r["status"] != EN_SERVICE:
+            reasons.append(
+                "dibujado como %s (capa %s): entra porque esta en un EP del maestro"
+                % (r["status"], r["layer"])
+            )
         sides = r["tracks"]
         via, why1 = master_track(tracks_of_ep, station, sides[0] if sides else None)
         connected, why2 = (
@@ -1764,6 +1848,7 @@ def insulator_rows(records, master):
                 "DIF_KP_POSTE_M": round(pole["kp"] - r["kp_m"], 1) if pole else "",
                 "SECCION_ALIMENTACION": r["section"],
                 "ESTACION_PLANO": r["plan_station"],
+                "ESTADO_DIBUJO": r["status"],
                 "X": round(r["x"], 2),
                 "Y": round(r["y"], 2),
                 "HANDLE": r["handle"],
@@ -1824,6 +1909,7 @@ def insulator_rows(records, master):
                 "%s 1:%s" % (s["code"], s["tangent"] or "?") if s else "?" for s in r["switches"]
             ),
             "ESTACION_PLANO": r["plan_station"],
+            "ESTADO_DIBUJO": r["status"],
             "X": round(r["x"], 2),
             "Y": round(r["y"], 2),
             "HANDLE": r["handle"],
@@ -1904,16 +1990,26 @@ def write_review(path, sheets_data, readme):
             '=COUNTIF(%s,"%s")' % (col("SECCIONADORES_DXF", "ESTADO_DIBUJO"), EN_SERVICE),
         ),
         (
-            "  de EP futuros, deshabilitados o en via no electrificada",
+            "  futuros, deshabilitados, en via no electrificada o del deposito de Haifa",
             "=COUNTA(%s)-1-B3" % col("SECCIONADORES_DXF", "HANDLE"),
         ),
         (
-            "En servicio en lineas del maestro (hoja DISCONNECTORS)",
+            "En los EP del maestro (hoja DISCONNECTORS)",
             "=COUNTA(%s)-1" % col("DISCONNECTORS", "HANDLE"),
+        ),
+        (
+            "  dibujados como futuros, deshabilitados o en via no electrificada",
+            '=COUNTA(%s)-1-COUNTIF(%s,"%s")'
+            % (col("DISCONNECTORS", "HANDLE"), col("DISCONNECTORS", "ESTADO_DIBUJO"), EN_SERVICE),
         ),
         (
             "  con poste casado o propuesto (PROFILE_ID)",
             '=COUNTIF(%s,"?*")-1' % col("DISCONNECTORS", "PROFILE_ID"),
+        ),
+        (
+            "  sin poste (a confirmar)",
+            '=COUNTA(%s)-COUNTIF(%s,"?*")'
+            % (col("DISCONNECTORS", "HANDLE"), col("DISCONNECTORS", "PROFILE_ID")),
         ),
         (
             "  listos para cargar (ENABLED = SI)",
@@ -1925,12 +2021,12 @@ def write_review(path, sheets_data, readme):
             "=COUNTA(%s)-1" % col("ESTACION_POR_PREFIJO", "PREFIJO"),
         ),
         (
-            "En servicio en lineas que el maestro no tiene",
+            "En lineas que el maestro no tiene (hoja SECCIONADORES_FUERA_MAESTRO)",
             "=COUNTA(%s)-1" % col("SECCIONADORES_FUERA_MAESTRO", "HANDLE"),
         ),
         ("Aisladores dibujados (todos)", "=COUNTA(%s)-1" % col("AISLADORES_DXF", "HANDLE")),
         (
-            "  en lineas del maestro (hoja SECTION_INSULATORS)",
+            "  en los EP del maestro (hoja SECTION_INSULATORS)",
             "=COUNTA(%s)-1" % col("SECTION_INSULATORS", "HANDLE"),
         ),
         ("    con KP", '=COUNTIF(%s,">0")' % col("SECTION_INSULATORS", "KP")),
@@ -1999,10 +2095,12 @@ README = [
     ),
     (
         "QUE ENTRA",
-        "Solo lo dibujado en servicio en lineas que el maestro tiene. Los EP futuros (deposito "
-        "de Haifa/Kishon, equipos futuros, via no electrificada) y la zona neutra deshabilitada "
-        "de Holtz no entran; las lineas que el maestro no tiene van a "
-        "SECCIONADORES_FUERA_MAESTRO y AISLADORES_FUERA_MAESTRO.",
+        "Todo lo que esta en un EP del maestro, sea cual sea su capa: en servicio, futuro, en via "
+        "no electrificada o la zona neutra deshabilitada de Holtz. ESTADO_DIBUJO dice cual, y lo "
+        "que no esta en servicio lleva una nota en MOTIVO_REVISAR. Lo de lineas que el maestro no "
+        "tiene va a SECCIONADORES_FUERA_MAESTRO y AISLADORES_FUERA_MAESTRO; el deposito de "
+        "Haifa/Kishon, de EP futuros, solo sale en SECCIONADORES_DXF y AISLADORES_DXF. El color "
+        "del rotulo (instalado o no) se ignora: esta desactualizado.",
     ),
     (
         "QUE EDITAR",
@@ -2020,15 +2118,27 @@ README = [
         "Del simbolo: circulo de accionamiento medio relleno = on-load, vacio = off-load.",
     ),
     (
-        "ESTADO_NORMAL",
-        "Cuchilla alineada con sus contactos = CERRADO; inclinada = ABIERTO. Informativo: "
-        "Disconnector no lo guarda.",
+        "NORMALLY_OPEN",
+        "Estado normal, de la cuchilla dibujada: inclinada = abierta = SI; alineada con sus "
+        "contactos = cerrada = NO.",
+    ),
+    (
+        "DRIVE_TYPE",
+        "MOTOR si el simbolo lleva el circulo del accionamiento (todos los del plano lo llevan); "
+        "MANUAL si no tiene motor. Vacio es valido: el dominio no lo exige.",
     ),
     (
         "PROFILE_ID",
         "Poste del maestro con seccionador en SECTIONING_FEEDING, mismo EP, a menos de 80 m del "
         "KP, preferente en la misma via y del mismo tipo. En naranja: el poste mas cercano (a "
-        "menos de 30 m) cuando ninguno lleva el codigo.",
+        "menos de 30 m) cuando ninguno lleva el codigo. Es opcional: un seccionador que no esta "
+        "en un poste lo lleva vacio, y entonces VIA no cuenta.",
+    ),
+    (
+        "SIN POSTE",
+        "El generador no distingue un seccionador que no esta en un poste de uno cuyo poste no ha "
+        "sabido encontrar, asi que la fila sale con ENABLED = NO. Si no esta en un poste, deja "
+        "PROFILE_ID vacio y pon ENABLED = SI; si lo esta, escribe su PROFILE_ID y su VIA.",
     ),
     (
         "ESTACION",
@@ -2038,9 +2148,16 @@ README = [
     ),
     (
         "VIA SIN COMPROBAR",
-        "El plano solo numera las vias en las estaciones. En plena via, si el maestro tiene dos "
-        "postes con seccionador al mismo KP (uno por via), hay que decir cual es: el motivo "
-        "nombra el otro.",
+        "El plano solo numera las vias en las estaciones, y con su numeracion, no con la del "
+        "maestro (1/2 donde el maestro dice INT/EXT, por ejemplo). Si el maestro tiene dos postes "
+        "con seccionador al mismo KP (uno por via) y la via del plano no dice cual es, hay que "
+        "decirlo: el motivo nombra el otro.",
+    ),
+    (
+        "VIA DISTINTA",
+        "El plano y el poste no dicen la misma via, pero el KP casa a 10 m o menos: es una nota, "
+        "no impide ENABLED = SI. Con el KP mas lejos, el motivo empieza por 'el DXF dice via' y "
+        "la fila espera a una persona.",
     ),
     (
         "DISCONNECTOR_FUNCTION",
@@ -2167,10 +2284,10 @@ def main():
                 )
     # Los seccionadores de una zona neutra, un tunel o una subestacion llevan el codigo de esa
     # instalacion (KAF, TN3, HSA), no el de una estacion. La estacion se decide una vez por
-    # prefijo, no fila a fila.
+    # prefijo, no fila a fila. Un simbolo sin rotulo no tiene prefijo: se decide en su fila.
     groups = collections.defaultdict(list)
     for r in disconnectors:
-        if r["status"] == EN_SERVICE and r["ep"] and r["station_from"] == "cercania":
+        if r["ep"] and r["prefix"] and r["station_from"] == "cercania":
             groups[(r["prefix"], r["ep"], r["station"])].append(r["name"])
     by_prefix = [
         {
@@ -2213,8 +2330,10 @@ def main():
     ]
     master_comments = {
         "PROFILE_ID": "Poste del maestro con seccionador a menos de 80 m del KP del rotulo; "
-        "en naranja, el mas cercano sin codigo.",
+        "en naranja, el mas cercano sin codigo. Vacio si el seccionador no esta en un poste.",
         "ON_LOAD": "SI: circulo medio relleno (on-load). NO: vacio (off-load).",
+        "NORMALLY_OPEN": "Estado normal. SI: cuchilla dibujada abierta. NO: cerrada.",
+        "DRIVE_TYPE": "MOTOR (circulo del accionamiento) o MANUAL.",
         "DISCONNECTOR_FUNCTION": "Codigo del catalogo DisconnectorFunction (Disc/IO, LoadB/NS...).",
         "ENABLED": "SI solo con la fila completa y sin dudas.",
     }
@@ -2223,7 +2342,7 @@ def main():
             "DISCONNECTORS",
             d_cols,
             len(DISCONNECTOR_COLUMNS),
-            {"EP", "ESTACION", "VIA", "PROFILE_ID", "NOMBRE", "DISCONNECTOR_FUNCTION"},
+            {"EP", "ESTACION", "NOMBRE", "DISCONNECTOR_FUNCTION"},
             d_rows,
             master_comments,
         ),

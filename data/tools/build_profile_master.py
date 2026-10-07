@@ -1028,7 +1028,7 @@ SHEETS = {
                     "ENABLED", "REVISAR", "FILA_ORIGEN"],
     # Las costuras para lo que falta: se escriben con cabecera y sin filas.
     "DISCONNECTORS": ["EP", "ESTACION", "VIA", "PROFILE_ID", "NOMBRE", "ON_LOAD",
-                      "DISCONNECTOR_FUNCTION", "ENABLED"],
+                      "NORMALLY_OPEN", "DRIVE_TYPE", "DISCONNECTOR_FUNCTION", "ENABLED"],
     "SECTION_INSULATORS": ["EP", "ESTACION", "NOMBRE", "KP", "TIPO_INSTALACION",
                            "VIA", "VIA_CONECTADA", "ENABLED"],
     # Las agujas del aislador, una fila por aguja. AISLADOR es el NOMBRE de la hoja anterior.
@@ -1062,6 +1062,14 @@ READ_ME = [
      "con su hoja y su fila; el resto del perfil se carga igual."),
     ("STEADY_ARM_TYPE / LENGTH",
      "La columna 'Arm Type' del origen trae los dos juntos ('PH-1150'). Sin longitud es normal."),
+    ("DISCONNECTORS",
+     "El seccionador. Hoy sale con cabecera y sin filas: lo trae el plano de seccionamiento, y "
+     "build_sectioning_review.py escribe un libro de revision con estas mismas columnas. "
+     "PROFILE_ID es opcional: un seccionador que no esta en un poste lo deja vacio (y VIA no "
+     "cuenta)."),
+    ("NORMALLY_OPEN / DRIVE_TYPE",
+     "Estado normal (SI = normalmente abierto, NO = normalmente cerrado) y accionamiento (MOTOR "
+     "o MANUAL). Vacio es valido: el dominio no los exige."),
     ("SECTION_INSULATORS / SECTION_INSULATOR_SWITCHES",
      "El aislador de seccion y sus agujas. Hoy salen con cabecera y sin filas: el origen "
      "todavia no trae el dato. El aislador se identifica por EP + ESTACION + NOMBRE, y cada "

@@ -200,5 +200,136 @@ class ConfidenceTest(unittest.TestCase):
         self.assertEqual(bsr.confidence({"how": "relaxed"}), "C")
 
 
+class DrawingFieldsTest(unittest.TestCase):
+
+    def test_the_drawn_blade_is_the_normal_state(self):
+        self.assertEqual(bsr.normally_open("ABIERTO"), "SI")
+        self.assertEqual(bsr.normally_open("CERRADO"), "NO")
+        self.assertEqual(bsr.normally_open(""), "")
+
+    def test_the_drive_circle_is_the_motor(self):
+        self.assertEqual(bsr.drive_type(True), "MOTOR")
+        self.assertEqual(bsr.drive_type(False), "")
+
+    def test_only_the_haifa_depot_is_out_of_every_master_ep(self):
+        self.assertTrue(bsr.future_ep(bsr.HAIFA_STATUS))
+        for status in [bsr.EN_SERVICE] + list(bsr.STATUS_BY_LAYER.values()):
+            self.assertFalse(bsr.future_ep(status), status)
+
+
+class DisconnectorRowsTest(unittest.TestCase):
+    """Lo que decide si una fila de DISCONNECTORS entra y si sale lista para cargar."""
+
+    POLE = {
+        "ep": "EP6",
+        "via": "TRACK 1 TLV SAVIDOR",
+        "profile": "93-1.05",
+        "kp": 93453.0,
+        "track": "1",
+        "dcodes": ["Disc/IO"],
+    }
+    MASTER = {
+        "tracks": {"EP6": [{"name": "TRACK 1 TLV SAVIDOR", "num": "1", "stations": ["TSA"]}]},
+        "profiles": [POLE],
+    }
+
+    def record(self, **overrides):
+        r = {
+            "handle": "H1",
+            "layer": "0_Disconnectors",
+            "status": bsr.EN_SERVICE,
+            "x": 0.0,
+            "y": 0.0,
+            "name": "TSA-06",
+            "label_text": "TSA-06 | KP93+451",
+            "kp_txt": "KP93+451",
+            "kp_m": 93451,
+            "names_in_label": 1,
+            "how": "leader",
+            "confidence": "A",
+            "type": "SECCIONADOR",
+            "on_load": False,
+            "state": "CERRADO",
+            "has_drive": True,
+            "vd": False,
+            "prefix": "TSA",
+            "plan_station": "",
+            "tracks": ["1"],
+            "sections": ["0_Has1"],
+            "bridged": "",
+            "name_function": "",
+            "ep": "EP6",
+            "ep_from": "prefijo",
+            "station": "TSA",
+            "station_from": "prefijo",
+            "pole": self.POLE,
+            "pole_dkp": 2.0,
+        }
+        r.update(overrides)
+        return r
+
+    def row(self, master=None, **overrides):
+        rows, outside = bsr.disconnector_rows([self.record(**overrides)], master or self.MASTER)
+        self.assertEqual(len(rows), 1, outside)
+        return rows[0]
+
+    def test_a_disconnector_on_its_pole_is_ready(self):
+        row = self.row()
+        self.assertEqual(
+            (row["PROFILE_ID"], row["DISCONNECTOR_FUNCTION"], row["ENABLED"], row["REVISAR"]),
+            ("93-1.05", "Disc/IO", "SI", "NO"),
+        )
+        self.assertEqual((row["NORMALLY_OPEN"], row["DRIVE_TYPE"]), ("NO", "MOTOR"))
+
+    def test_what_is_drawn_as_future_or_disabled_enters_if_it_is_in_a_master_ep(self):
+        # Holtz: la zona neutra esta dibujada como deshabilitada, pero esta en EP9A.
+        for status in ("FUTURO", "DESHABILITADO (NS)", "VIA NO ELECTRIFICADA"):
+            row = self.row(status=status)
+            self.assertEqual(row["ESTADO_DIBUJO"], status)
+            self.assertIn("dibujado como " + status, row["MOTIVO_REVISAR"])
+            self.assertEqual(row["ENABLED"], "SI", "el estado de dibujo es una nota")
+
+    def test_what_is_not_in_a_master_ep_goes_outside_and_haifa_nowhere(self):
+        rows, outside = bsr.disconnector_rows([self.record(ep=None, pole=None)], self.MASTER)
+        self.assertEqual((len(rows), len(outside)), (0, 1))
+        rows, outside = bsr.disconnector_rows(
+            [self.record(ep=None, pole=None, status=bsr.HAIFA_STATUS)], self.MASTER
+        )
+        self.assertEqual((rows, outside), ([], []))
+
+    def test_without_a_pole_the_row_waits_for_a_person(self):
+        # El poste es opcional, pero el generador no distingue un seccionador que no esta en un
+        # poste de un poste que no ha encontrado.
+        row = self.row(pole=None, bridged="IO")
+        self.assertEqual((row["PROFILE_ID"], row["ENABLED"]), ("", "NO"))
+        self.assertIn("deja PROFILE_ID vacio y pon ENABLED = SI", row["MOTIVO_REVISAR"])
+
+    def test_an_unknown_normal_state_is_a_note(self):
+        row = self.row(state="")
+        self.assertEqual((row["NORMALLY_OPEN"], row["ENABLED"]), ("", "SI"))
+        self.assertIn("estado normal sin determinar", row["MOTIVO_REVISAR"])
+
+    def test_another_track_is_a_note_only_while_the_kp_holds(self):
+        # El plano numera las vias de la estacion, no las del maestro: con el KP casado, una via
+        # distinta no impide cargar. Sin otro poste al mismo KP, que seria otra cosa (abajo).
+        other = dict(self.POLE, track="3", via="TRACK 3 TLV SAVIDOR")
+        master = dict(self.MASTER, profiles=[other])
+        close = self.row(master, pole=other, pole_dkp=2.0)
+        self.assertEqual(close["ENABLED"], "SI")
+        self.assertIn("via distinta", close["MOTIVO_REVISAR"])
+        far = self.row(master, pole=other, pole_dkp=20.0)
+        self.assertEqual(far["ENABLED"], "NO")
+        self.assertIn("el DXF dice via 1", far["MOTIVO_REVISAR"])
+
+    def test_twin_poles_the_plan_track_does_not_settle_are_doubtful(self):
+        int_pole = dict(self.POLE, via="TRACK INT SOUTH", profile="2-INT.13", track=None)
+        ext_pole = dict(self.POLE, via="TRACK EXT SOUTH", profile="2-EXT.13", track=None)
+        master = dict(self.MASTER, profiles=[int_pole, ext_pole])
+        rows, _ = bsr.disconnector_rows([self.record(pole=int_pole)], master)
+        self.assertEqual(rows[0]["ENABLED"], "NO")
+        self.assertIn("via sin comprobar", rows[0]["MOTIVO_REVISAR"])
+        self.assertIn("2-EXT.13", rows[0]["MOTIVO_REVISAR"])
+
+
 if __name__ == "__main__":
     unittest.main()
