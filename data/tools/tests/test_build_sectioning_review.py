@@ -391,6 +391,64 @@ class DisconnectorRowsTest(unittest.TestCase):
         self.assertEqual(far["ENABLED"], "NO")
         self.assertIn("el DXF dice via 1", far["MOTIVO_REVISAR"])
 
+    def test_the_poles_near_the_kp_are_the_options_of_profile_id_and_kp_poste(self):
+        # Los del EP a menos de 80 m del KP del rotulo, del mas cercano al mas lejano: el de 149 m
+        # y el de otro EP no se ofrecen.
+        near = dict(self.POLE, profile="93-1.04", kp=93430.0, dcodes=[])
+        far = dict(self.POLE, profile="93-1.08", kp=93600.0)
+        other_ep = dict(self.POLE, ep="EP5", profile="93-1.05", kp=93451.0)
+        master = dict(self.MASTER, profiles=[far, near, self.POLE, other_ep])
+
+        row = self.row(master=master)
+        self.assertEqual(row["_options"]["PROFILE_ID"], ["93-1.05", "93-1.04"])
+        self.assertEqual(row["_options"]["KP_POSTE"], [93453.0, 93430.0])
+        self.assertEqual(
+            row["POSTES_CERCANOS"],
+            "93-1.05 (TRACK 1 TLV SAVIDOR, kp 93453, a 2 m, Disc/IO) | "
+            "93-1.04 (TRACK 1 TLV SAVIDOR, kp 93430, a 21 m)",
+        )
+        # El poste de la fila va primero aunque no sea el mas cercano.
+        own = dict(near, dcodes=["Disc/IO"])
+        self.assertEqual(
+            self.row(master=master, pole=own)["_options"]["PROFILE_ID"], ["93-1.04", "93-1.05"]
+        )
+        # Sin KP en el rotulo no hay a que distancia medir.
+        self.assertEqual(self.row(master=master, kp_m=None)["_options"], {})
+
+    def test_the_pole_of_the_row_heads_both_lists_even_beyond_the_nearby_ones(self):
+        # El poste casado puede estar a mas de 80 m del KP del rotulo: su KP tambien va primero, o
+        # el KP_POSTE de la fila no estaria entre las opciones de su propia celda.
+        distant = dict(self.POLE, profile="93-1.20", kp=93600.0)
+        master = dict(self.MASTER, profiles=[self.POLE, distant])
+        row = self.row(master=master, pole=distant, pole_dkp=149.0)
+        self.assertEqual(row["_options"]["PROFILE_ID"], ["93-1.20", "93-1.05"])
+        self.assertEqual(row["_options"]["KP_POSTE"], [93600.0, 93453.0])
+
+    def test_a_proposed_pole_brings_its_kp_and_is_not_a_twin(self):
+        # Aceptar la propuesta no deja KP_POSTE a medias: en una via que repite el identificador
+        # es lo que dice cual de los dos es.
+        bare = dict(self.POLE, profile="93-1.04", kp=93440.0, dcodes=[], codes=[])
+        master = dict(self.MASTER, profiles=[self.POLE, bare])
+        proposed = self.row(master=master, pole=None, nearest_pole=bare, nearest_pole_d=11.0)
+        self.assertEqual((proposed["PROFILE_ID"], proposed["KP_POSTE"]), ("93-1.04", 93440.0))
+        self.assertEqual(proposed["_proposals"], {"VIA", "PROFILE_ID", "KP_POSTE"})
+        self.assertEqual(proposed["_options"]["KP_POSTE"][0], 93440.0)
+        # Un poste propuesto que coincide con uno casado no marca al casado: ya espera a alguien.
+        records = [
+            self.record(),
+            self.record(
+                handle="H2",
+                name="TSA-07",
+                pole=None,
+                nearest_pole=dict(self.POLE, codes=[]),
+                nearest_pole_d=2.0,
+            ),
+        ]
+        rows, _ = bsr.disconnector_rows(records, master)
+        ready = next(d for d in rows if d["HANDLE"] == "H1")
+        self.assertEqual(ready["ENABLED"], "SI")
+        self.assertNotIn("repite el poste", ready["MOTIVO_REVISAR"])
+
     def test_twin_poles_the_plan_track_does_not_settle_are_doubtful(self):
         int_pole = dict(self.POLE, via="TRACK INT SOUTH", profile="2-INT.13", track=None)
         ext_pole = dict(self.POLE, via="TRACK EXT SOUTH", profile="2-EXT.13", track=None)
@@ -399,6 +457,163 @@ class DisconnectorRowsTest(unittest.TestCase):
         self.assertEqual(rows[0]["ENABLED"], "NO")
         self.assertIn("via sin comprobar", rows[0]["MOTIVO_REVISAR"])
         self.assertIn("2-EXT.13", rows[0]["MOTIVO_REVISAR"])
+
+
+class DropDownTest(unittest.TestCase):
+    """Los desplegables del libro: las opciones de las celdas amarillas y naranjas."""
+
+    def test_the_own_options_of_a_row_skip_blanks_and_repeats(self):
+        row = {"_options": {"PROFILE_ID": ["93-1.05", "", "93-1.05", None], "NOMBRE": [""]}}
+        self.assertEqual(bsr.own_options(row), {"PROFILE_ID": ["93-1.05"]})
+        self.assertEqual(bsr.own_options({}), {})
+
+    def test_the_loose_labels_beside_an_unnamed_symbol_are_its_name_options(self):
+        rows = [
+            {"NOMBRE": "", "X": 100.0, "Y": 0.0},
+            {"NOMBRE": "LOD-03", "X": 100.0, "Y": 0.0},
+            {"NOMBRE": "", "X": 5000.0, "Y": 0.0},
+        ]
+        orphans = [
+            {"NOMBRE": "LOD-15", "X": 220.0, "Y": 0.0},
+            {"NOMBRE": "LOD-14", "X": 150.0, "Y": 0.0},
+            {"NOMBRE": "HFT-FP1.2", "X": 1600.0, "Y": 0.0},
+        ]
+        bsr.orphan_name_options(rows, orphans)
+        self.assertEqual(rows[0]["_options"]["NOMBRE"], ["LOD-14", "LOD-15"])
+        self.assertNotIn("_options", rows[1], "un simbolo con nombre no lo necesita")
+        self.assertNotIn("_options", rows[2], "ningun rotulo suelto cerca")
+
+    def test_the_function_catalogue_offers_the_disconnector_codes_first(self):
+        try:
+            import openpyxl
+        except ImportError:
+            raise unittest.SkipTest("openpyxl no instalado")
+        import tempfile
+
+        path = os.path.join(tempfile.mkdtemp(), "lov-master.xlsx")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "LOVS"
+        ws.append(["ENTIDAD", "CODIGO", "DESCRIPCION_ES", "ENABLED"])
+        for entity, code, enabled in (
+            ("DisconnectorFunction", "SurgeA", "SI"),
+            ("DisconnectorFunction", "LoadB/NS", "SI"),
+            ("DisconnectorFunction", "Disc/X", "NO"),
+            ("DisconnectorFunction", "ED", "SI"),
+            ("DisconnectorFunction", "Disc/IO", "SI"),
+            ("Sectioning", "A/S", "SI"),
+        ):
+            ws.append([entity, code, None, enabled])
+        wb.save(path)
+
+        self.assertEqual(
+            bsr.read_disconnector_functions(path), ["Disc/IO", "ED", "LoadB/NS", "SurgeA"]
+        )
+        # Sin el maestro de catalogos, los codigos que ya usan los postes.
+        profiles = [{"codes": ["FS-1", "Disc/IO"]}, {"codes": ["LoadB"]}]
+        self.assertEqual(
+            bsr.read_disconnector_functions(
+                os.path.join(os.path.dirname(path), "no.xlsx"), profiles
+            ),
+            ["Disc/IO", "LoadB", "FS-1"],
+        )
+
+    def test_the_workbook_carries_the_dropdowns(self):
+        try:
+            import openpyxl
+        except ImportError:
+            raise unittest.SkipTest("openpyxl no instalado")
+        import tempfile
+
+        master = {
+            "stations": {"EP6": {"TSA", "HER"}},
+            "tracks": {"EP6": [{"name": "TRACK 1 TLV SAVIDOR"}, {"name": "TRACK 2 TLV SAVIDOR"}]},
+        }
+        choices = {
+            "lists": bsr.review_lists(master, ["Disc/IO", "LoadB"]),
+            "columns": bsr.review_choices(),
+        }
+        disconnectors = [
+            {
+                "EP": "EP6",
+                "ESTACION": "TSA",
+                "PROFILE_ID": "93-1.05",
+                "KP_POSTE": 93453.41,
+                "ENABLED": "SI",
+                "HANDLE": "H1",
+                "_options": {"PROFILE_ID": ["93-1.05", "93-1.04"], "KP_POSTE": [93453.41, 93430]},
+            }
+        ]
+        path = os.path.join(tempfile.mkdtemp(), "review.xlsx")
+        bsr.write_review(path, self.sheets(disconnectors), [], choices)
+
+        wb = openpyxl.load_workbook(path)
+        options = wb["OPCIONES"]
+        header = [c.value for c in options[1]]
+        stations = header.index("ESTACIONES EP6") + 1
+        self.assertEqual(
+            [options.cell(row=i, column=stations).value for i in (2, 3)], ["HER", "TSA"]
+        )
+        validations = wb["DISCONNECTORS"].data_validations.dataValidation
+
+        def of(cell):
+            found = [dv for dv in validations if cell in dv.sqref]
+            self.assertEqual(len(found), 1, "una sola validacion por celda: %s" % cell)
+            return found[0]
+
+        letter = openpyxl.utils.get_column_letter(stations)
+        self.assertEqual(of("B2").formula1, "OPCIONES!$%s$2:$%s$3" % (letter, letter))
+        self.assertEqual(of("B2").errorStyle, "warning", "una estacion de otro EP, con aviso")
+        # Las opciones propias de la fila, en su fila de la hoja oculta y con su tipo: un KP
+        # escrito como texto no seria un numero en un Excel con coma decimal.
+        self.assertEqual(of("D2").formula1, "OPCIONES_FILA!$D$2:$E$2")
+        self.assertEqual(of("D2").errorStyle, "warning")
+        self.assertEqual(of("E2").formula1, "OPCIONES_FILA!$D$3:$E$3")
+        own = wb["OPCIONES_FILA"]
+        self.assertEqual(own.sheet_state, "hidden")
+        self.assertEqual(
+            [[c.value for c in row] for row in own.iter_rows(min_row=2)],
+            [
+                ["DISCONNECTORS", 2, "PROFILE_ID", "93-1.05", "93-1.04"],
+                ["DISCONNECTORS", 2, "KP_POSTE", 93453.41, 93430],
+            ],
+        )
+        self.assertIn("OPCIONES!$A$", of("F2").formula1, "ENABLED: SI_NO, la primera lista")
+        self.assertIn(of("F2").errorStyle, (None, "stop"))
+
+    @staticmethod
+    def sheets(disconnectors):
+        """Las hojas que RESUMEN cuenta, vacias salvo DISCONNECTORS."""
+
+        def sheet(title, columns, data=()):
+            return title, columns, 0, set(), list(data), None
+
+        return [
+            sheet(
+                "DISCONNECTORS",
+                [
+                    "EP",
+                    "ESTACION",
+                    "VIA",
+                    "PROFILE_ID",
+                    "KP_POSTE",
+                    "ENABLED",
+                    "REVISAR",
+                    "ESTADO_DIBUJO",
+                    "HANDLE",
+                ],
+                disconnectors,
+            ),
+            sheet("SECCIONADORES_DXF", ["HANDLE", "ESTADO_DIBUJO"]),
+            sheet("ESTACION_POR_PREFIJO", ["PREFIJO", "EP", "ESTACION_CORRECTA"]),
+            sheet("SECCIONADORES_FUERA_MAESTRO", ["HANDLE"]),
+            sheet("AISLADORES_DXF", ["HANDLE"]),
+            sheet("SECTION_INSULATORS", ["HANDLE", "KP", "ENABLED"]),
+            sheet("AISLADORES_FUERA_MAESTRO", ["HANDLE"]),
+            sheet("SECTION_INSULATOR_SWITCHES", ["HANDLE_AISLADOR", "TANGENTE"]),
+            sheet("ROTULOS_SIN_SIMBOLO", ["ROTULO"]),
+            sheet("POSTES_SIN_CASAR", ["PROFILE_ID"]),
+        ]
 
 
 if __name__ == "__main__":

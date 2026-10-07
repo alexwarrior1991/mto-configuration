@@ -117,6 +117,9 @@ CLOSED_BLADE_MAX_ANGLE = 8.0  # cuchilla a menos de 8 grados del eje de contacto
 LEADER_HIT = 2.0  # la punta de una linea de referencia toca el simbolo
 POLE_MATCH_MAX_M = 80.0  # poste con codigo de seccionador a menos de 80 m del KP
 POLE_PROPOSAL_MAX_M = 30.0  # poste sin codigo propuesto solo si esta a menos de 30 m
+POLE_OPTIONS_MAX = 8  # postes en el desplegable de PROFILE_ID, del mas cercano al mas lejano
+DISCONNECTOR_CODE_PREFIXES = ("Disc", "LoadB", "ED")  # los codigos de catalogo de un seccionador
+ORPHAN_LABEL_MAX_DIST = 300.0  # rotulo suelto que se ofrece como nombre de un simbolo sin rotulo
 SECT_I_MATCH_MAX_M = 120.0
 SWITCH_TIE = 3.0  # dos rotulos de aguja a menos de 3 unidades de diferencia: empate
 
@@ -1097,7 +1100,7 @@ def read_profile_master(path):
                 "kp": kp,
                 "track": track_number_of(r["VIA"]),
                 "codes": codes,
-                "dcodes": [c for c in codes if c.startswith(("Disc", "LoadB", "ED"))],
+                "dcodes": [c for c in codes if c.startswith(DISCONNECTOR_CODE_PREFIXES)],
                 "scodes": [c for c in codes if c.startswith("SECT-I")],
             }
         )
@@ -1111,6 +1114,37 @@ def read_profile_master(path):
         "profiles": profiles,
         "ep_range": ep_range,
     }
+
+
+def read_disconnector_functions(path, profiles=()):
+    """Los codigos del catalogo DisconnectorFunction habilitados, los de seccionador primero.
+
+    Son las opciones de DISCONNECTOR_FUNCTION: el importador rechaza un codigo que no este
+    habilitado en el catalogo. Primero Disc, LoadB y ED, que son los de un seccionador; detras, el
+    resto del catalogo. Sin data/lov-master.xlsx, los codigos que ya usan los postes del maestro.
+    """
+    codes = []
+    if path and os.path.exists(path):
+        import openpyxl
+
+        wb = openpyxl.load_workbook(path, read_only=True)
+        try:
+            it = wb["LOVS"].iter_rows(values_only=True)
+            header = {h: i for i, h in enumerate(next(it))}
+            for row in it:
+                if (
+                    row[header["ENTIDAD"]] == "DisconnectorFunction"
+                    and str(row[header["ENABLED"]] or "").strip().upper() == "SI"
+                    and row[header["CODIGO"]]
+                ):
+                    codes.append(str(row[header["CODIGO"]]).strip())
+        finally:
+            wb.close()
+    else:
+        codes = [c for p in profiles for c in p.get("codes", [])]
+    unique = sorted(set(codes), key=str.lower)
+    first = [c for c in unique if c.startswith(DISCONNECTOR_CODE_PREFIXES)]
+    return first + [c for c in unique if c not in first]
 
 
 # --------------------------------------------------------------------------------
@@ -1561,8 +1595,78 @@ BLOCKING = (
 )
 
 
+def nearby_poles(profiles_of_ep, r):
+    """Los postes del EP a menos de POLE_MATCH_MAX_M del KP del rotulo, del mas cercano al mas
+    lejano.
+
+    Son las opciones del desplegable de PROFILE_ID y de KP_POSTE, y lo que cuenta POSTES_CERCANOS:
+    sin ellos, cambiar el poste propuesto obligaba a buscarlo a mano en el maestro.
+    """
+    if r["kp_m"] is None:
+        return []
+    near = [p for p in profiles_of_ep if abs(p["kp"] - r["kp_m"]) <= POLE_MATCH_MAX_M]
+    near.sort(key=lambda p: (abs(p["kp"] - r["kp_m"]), str(p["via"] or ""), str(p["profile"])))
+    return near[:POLE_OPTIONS_MAX]
+
+
+def kp_text(kp):
+    """Un KP en metros como se escribe: sin ceros de mas (93453, 93453.41)."""
+    return ("%.3f" % kp).rstrip("0").rstrip(".")
+
+
+def pole_options(poles, current=None):
+    """Las opciones de PROFILE_ID y de KP_POSTE: el poste de la fila primero, y sin repetir.
+
+    El de la fila puede estar mas lejos que los cercanos: su KP no es siempre el del rotulo. Los
+    KP van como numeros, igual que en la columna: escritos como texto, un Excel con coma decimal
+    no leeria "93453.41" como un numero.
+    """
+    ids, kps = [], []
+    for p in ([current] if current else []) + list(poles):
+        if p["profile"] not in ids:
+            ids.append(p["profile"])
+        if p["kp"] not in kps:
+            kps.append(p["kp"])
+    return {"PROFILE_ID": ids, "KP_POSTE": kps}
+
+
+def describe_poles(poles, kp_m):
+    """POSTES_CERCANOS: cada poste con su via, su KP, la distancia al rotulo y sus codigos."""
+    return " | ".join(
+        "%s (%s, kp %s, a %.0f m%s)"
+        % (
+            p["profile"],
+            p["via"],
+            kp_text(p["kp"]),
+            abs(p["kp"] - kp_m),
+            ", " + "|".join(p.get("dcodes") or []) if p.get("dcodes") else "",
+        )
+        for p in poles
+    )
+
+
+def orphan_name_options(rows, orphans):
+    """El nombre de un simbolo sin rotulo: los rotulos sueltos de al lado, del mas cercano.
+
+    El plano deja rotulos sin simbolo (ROTULOS_SIN_SIMBOLO) y simbolos sin rotulo; cuando estan
+    cerca, lo normal es que sean el mismo seccionador, y el desplegable de NOMBRE los ofrece.
+    """
+    for row in rows:
+        if row["NOMBRE"]:
+            continue
+        near = sorted(
+            (math.hypot(o["X"] - row["X"], o["Y"] - row["Y"]), o["NOMBRE"]) for o in orphans
+        )
+        names = [name for d, name in near if d <= ORPHAN_LABEL_MAX_DIST and name]
+        if names:
+            row.setdefault("_options", {})["NOMBRE"] = names
+
+
 def disconnector_rows(records, master):
     rows, outside = [], []
+    profiles_by_ep = collections.defaultdict(list)
+    for p in master.get("profiles", []):
+        profiles_by_ep[p["ep"]].append(p)
     for r in records:
         if future_ep(r["status"]):
             continue
@@ -1580,10 +1684,13 @@ def disconnector_rows(records, master):
             reasons.append("EP de los seccionadores de al lado: el rotulo no tiene KP")
         via = pole["via"] if pole else ""
         profile = pole["profile"] if pole else ""
+        chosen = pole  # el poste de la fila: el casado o, sin el, el propuesto
         if not pole and r.get("nearest_pole") and r["nearest_pole_d"] <= POLE_PROPOSAL_MAX_M:
-            near = r["nearest_pole"]
+            near = chosen = r["nearest_pole"]
             via, profile = near["via"], near["profile"]
-            proposals.update({"VIA", "PROFILE_ID"})
+            # KP_POSTE va con PROFILE_ID: en una via que repite el identificador, es lo que dice
+            # cual de los dos es, y aceptar la propuesta no deberia dejarlo a medias.
+            proposals.update({"VIA", "PROFILE_ID", "KP_POSTE"})
             reasons.append(
                 "poste propuesto: el mas cercano por KP (a %.0f m), sin seccionador en "
                 "SECTIONING_FEEDING (%s)"
@@ -1692,6 +1799,7 @@ def disconnector_rows(records, master):
         # Ni el poste ni el estado normal ni el accionamiento son obligatorios en Disconnector.
         complete = all([r["ep"], station, r["name"], function])
         enabled = "SI" if complete and not any(x.startswith(BLOCKING) for x in reasons) else "NO"
+        nearby = nearby_poles(profiles_by_ep[r["ep"]], r)
         rows.append(
             {
                 "EP": r["ep"],
@@ -1700,7 +1808,7 @@ def disconnector_rows(records, master):
                 "PROFILE_ID": profile,
                 # El KP del poste: solo lo mira el importador cuando la via repite el PROFILE_ID
                 # (dos tramos concatenados, como EP9A), y entonces es lo unico que los distingue.
-                "KP_POSTE": (pole or {}).get("kp", ""),
+                "KP_POSTE": (chosen or {}).get("kp", ""),
                 "NOMBRE": r["name"],
                 # El KP propio, solo sin poste: con poste es el del perfil (V26).
                 "KP": "" if profile or r["kp_m"] is None else r["kp_m"],
@@ -1715,6 +1823,7 @@ def disconnector_rows(records, master):
                 "KP_ROTULO_M": r["kp_m"] if r["kp_m"] is not None else "",
                 "DIF_KP_M": round(r["pole_dkp"], 1) if pole else "",
                 "CODIGO_POSTE": "|".join(pole["dcodes"]) if pole else "",
+                "POSTES_CERCANOS": describe_poles(nearby, r["kp_m"]) if nearby else "",
                 "TIPO_DXF": r["type"],
                 "ESTADO_DIBUJO": r["status"],
                 "PREFIJO": r["prefix"],
@@ -1730,22 +1839,26 @@ def disconnector_rows(records, master):
                 "Y": round(r["y"], 2),
                 "HANDLE": r["handle"],
                 "_proposals": proposals,
+                "_options": pole_options(nearby, chosen) if nearby else {},
             }
         )
+
     # Un mismo poste fisico aparece en dos hojas de via del maestro (mismo PROFILE_ID y KP): los
     # dos seccionadores casados con el se señalan, porque uno de los dos sobra.
+    # Solo los casados: un poste propuesto ya espera a una persona.
+    def matched(d):
+        return d["PROFILE_ID"] and d["KP_POSTE"] != "" and "PROFILE_ID" not in d["_proposals"]
+
     twins = collections.Counter(
-        (d["EP"], d["PROFILE_ID"], d["KP_POSTE"])
-        for d in rows
-        if d["PROFILE_ID"] and d["KP_POSTE"] != ""
+        (d["EP"], d["PROFILE_ID"], d["KP_POSTE"]) for d in rows if matched(d)
     )
     for d in rows:
         key = (d["EP"], d["PROFILE_ID"], d["KP_POSTE"])
-        if d["PROFILE_ID"] and d["KP_POSTE"] != "" and twins[key] > 1:
+        if matched(d) and twins[key] > 1:
             others = [
                 o["NOMBRE"]
                 for o in rows
-                if o is not d and (o["EP"], o["PROFILE_ID"], o["KP_POSTE"]) == key
+                if o is not d and matched(o) and (o["EP"], o["PROFILE_ID"], o["KP_POSTE"]) == key
             ]
             d["MOTIVO_REVISAR"] = "; ".join(
                 x
@@ -1962,11 +2075,108 @@ def insulator_rows(records, master):
     return rows, switch_rows, outside_rows
 
 
-def write_review(path, sheets_data, readme):
+def own_options(row):
+    """Las opciones propias de una fila ("_options"), sin vacios ni repetidos."""
+    own = {}
+    for column, values in (row.get("_options") or {}).items():
+        kept = [v for v in dict.fromkeys(values) if v not in ("", None)]
+        if kept:
+            own[column] = kept
+    return own
+
+
+def review_choices():
+    """El desplegable de cada columna: f(fila) -> nombre de su lista en OPCIONES, y si es estricto.
+
+    Lo fijo (SI/NO, el accionamiento, el tipo de instalacion, el catalogo de funciones) no admite
+    otro valor. Una estacion o una via se ofrecen las del EP de la fila, pero admiten otra con un
+    aviso: si lo que esta mal es el EP, la lista sigue siendo la del EP de antes.
+    """
+
+    def fixed(name):
+        return lambda row: name
+
+    def of_ep(kind):
+        return lambda row: "%s %s" % (kind, row["EP"]) if row.get("EP") else None
+
+    stations = (of_ep("ESTACIONES"), False)
+    tracks = (of_ep("VIAS"), False)
+    yes_no = (fixed("SI_NO"), True)
+    return {
+        "DISCONNECTORS": {
+            "ESTACION": stations,
+            "VIA": tracks,
+            "ON_LOAD": yes_no,
+            "NORMALLY_OPEN": yes_no,
+            "DRIVE_TYPE": (fixed("ACCIONAMIENTO"), True),
+            "DISCONNECTOR_FUNCTION": (fixed("FUNCIONES"), True),
+            "ENABLED": yes_no,
+        },
+        "SECTION_INSULATORS": {
+            "ESTACION": stations,
+            "VIA": tracks,
+            "VIA_CONECTADA": tracks,
+            "TIPO_INSTALACION": (fixed("TIPO_INSTALACION"), True),
+            "ENABLED": yes_no,
+        },
+        "SECTION_INSULATOR_SWITCHES": {"ESTACION": stations, "VIA": tracks, "ENABLED": yes_no},
+        "ESTACION_POR_PREFIJO": {"ESTACION_CORRECTA": stations},
+    }
+
+
+def review_lists(master, functions):
+    """Las listas de la hoja OPCIONES: las fijas, y la estacion y la via de cada EP del maestro."""
+    lists = {
+        "SI_NO": ["SI", "NO"],
+        "ACCIONAMIENTO": ["MOTOR", "MANUAL"],
+        "TIPO_INSTALACION": ["TRACK_CONNECTION", "IN_TRACK"],
+        "FUNCIONES": list(functions),
+    }
+    for ep in sorted(set(master["stations"]) | set(master["tracks"])):
+        lists["ESTACIONES " + ep] = sorted(master["stations"].get(ep, ()))
+        lists["VIAS " + ep] = sorted(t["name"] for t in master["tracks"].get(ep, ()))
+    return lists
+
+
+def write_review(path, sheets_data, readme, choices=None):
+    """El libro de revision.
+
+    choices son los desplegables: {"lists": {nombre: [valores]}, "columns": {hoja: {columna:
+    (f(fila) -> nombre de la lista, estricto)}}} (review_lists y review_choices). Las listas van a
+    la hoja OPCIONES. Una fila puede traer ademas sus propias opciones en "_options" (el poste, el
+    nombre), que van a una fila de la hoja oculta OPCIONES_FILA y admiten otro valor con un aviso.
+    No van dentro de la validacion de la celda: ahi todo es texto, y Excel no admite mas de 255
+    caracteres ni una coma dentro de un valor.
+    """
     import openpyxl
     from openpyxl.comments import Comment
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    choices = choices or {}
+    lists = {name: list(values) for name, values in choices.get("lists", {}).items() if values}
+    per_row = []  # (hoja, fila, columna, valores): una fila de OPCIONES_FILA cada una
+    ranges = {}
+    for j, (name, values) in enumerate(lists.items(), 1):
+        letter = get_column_letter(j)
+        ranges[name] = "OPCIONES!$%s$2:$%s$%d" % (letter, letter, len(values) + 1)
+
+    def list_validation(formula, strict):
+        dv = DataValidation(
+            type="list",
+            formula1=formula,
+            allow_blank=True,
+            showErrorMessage=True,
+            errorStyle="stop" if strict else "warning",
+        )
+        dv.errorTitle = "Fuera de la lista"
+        dv.error = (
+            "Elige uno de la lista (hoja OPCIONES)."
+            if strict
+            else "No es una de las opciones. Si sabes que es correcto, acepta y se queda."
+        )
+        return dv
 
     arial = "Arial"
     header_font = Font(name=arial, bold=True, color="FFFFFF", size=10)
@@ -2006,6 +2216,31 @@ def write_review(path, sheets_data, readme):
                     c.fill = review
                 elif h == "ENABLED" and v == "SI":
                     c.fill = ready
+        # Los desplegables: los de la fila (el poste, el nombre), de la hoja oculta OPCIONES_FILA;
+        # los de la columna, de la hoja OPCIONES. Una celda solo admite uno, y gana el de la fila.
+        shared = {}
+        for column, (chooser, strict) in choices.get("columns", {}).get(title, {}).items():
+            if column not in columns:
+                continue
+            j = columns.index(column) + 1
+            for i, row in enumerate(data, 2):
+                name = chooser(row)
+                if name not in ranges or column in own_options(row):
+                    continue
+                if (column, name) not in shared:
+                    shared[(column, name)] = list_validation(ranges[name], strict)
+                    ws.add_data_validation(shared[(column, name)])
+                shared[(column, name)].add(ws.cell(row=i, column=j))
+        for i, row in enumerate(data, 2):
+            for column, values in own_options(row).items():
+                if column not in columns:
+                    continue
+                k = len(per_row) + 2
+                per_row.append((title, i, column, values))
+                last = get_column_letter(3 + len(values))
+                dv = list_validation("OPCIONES_FILA!$D$%d:$%s$%d" % (k, last, k), strict=False)
+                ws.add_data_validation(dv)
+                dv.add(ws.cell(row=i, column=columns.index(column) + 1))
         ws.freeze_panes = "A2"
         ws.auto_filter.ref = "A1:%s%d" % (get_column_letter(len(columns)), max(1, len(data) + 1))
         for j, h in enumerate(columns, 1):
@@ -2018,6 +2253,25 @@ def write_review(path, sheets_data, readme):
             )
             ws.column_dimensions[get_column_letter(j)].width = min(60, max(8, width + 2))
         ws.row_dimensions[1].height = 30
+
+    if lists:
+        options = wb.create_sheet("OPCIONES")
+        for j, (name, values) in enumerate(lists.items(), 1):
+            c = options.cell(row=1, column=j, value=name)
+            c.font, c.fill = header_font, master_fill
+            for i, value in enumerate(values, 2):
+                options.cell(row=i, column=j, value=value).font = body
+            width = max(len(str(v)) for v in [name] + values)
+            options.column_dimensions[get_column_letter(j)].width = min(40, max(10, width + 2))
+        options.freeze_panes = "A2"
+    if per_row:
+        # Cada valor con su tipo: un KP es un numero, y asi se elige como el resto de la columna.
+        own = wb.create_sheet("OPCIONES_FILA")
+        width = max(len(values) for *_, values in per_row)
+        own.append(["HOJA", "FILA", "COLUMNA"] + ["OPCION_%d" % n for n in range(1, width + 1)])
+        for title, i, column, values in per_row:
+            own.append([title, i, column] + list(values))
+        own.sheet_state = "hidden"
 
     # Recuentos con formula: se recalculan cuando se edita el libro. '?*' cuenta textos no
     # vacios, cabecera incluida, de ahi el -1.
@@ -2174,8 +2428,8 @@ README = [
         "PROFILE_ID",
         "Poste del maestro con seccionador en SECTIONING_FEEDING, mismo EP, a menos de 80 m del "
         "KP, preferente en la misma via y del mismo tipo. En naranja: el poste mas cercano (a "
-        "menos de 30 m) cuando ninguno lleva el codigo. Es opcional: un seccionador que no esta "
-        "en un poste lo lleva vacio, y entonces VIA no cuenta.",
+        "menos de 30 m) cuando ninguno lleva el codigo, con su VIA y su KP_POSTE. Es opcional: "
+        "un seccionador que no esta en un poste lo lleva vacio, y entonces VIA no cuenta.",
     ),
     (
         "KP_POSTE",
@@ -2189,6 +2443,21 @@ README = [
         "Un seccionador sin poste guarda su propio KP (en metros) y su VIA; uno en un poste, no: "
         "son los de su perfil, y KP va vacio. Si quitas el poste de una fila, copia KP_ROTULO_M "
         "en KP y comprueba la VIA; si se lo pones, vacia KP.",
+    ),
+    (
+        "DESPLEGABLES",
+        "Las columnas que se eligen llevan desplegable. ESTACION, VIA y VIA_CONECTADA, las del EP "
+        "de la fila (y ESTACION_CORRECTA, en ESTACION_POR_PREFIJO); DISCONNECTOR_FUNCTION, el "
+        "catalogo, los de seccionador primero; ON_LOAD, NORMALLY_OPEN y ENABLED, SI o NO; "
+        "DRIVE_TYPE, MOTOR o MANUAL; TIPO_INSTALACION, TRACK_CONNECTION o IN_TRACK. PROFILE_ID y "
+        "KP_POSTE, el poste de la fila primero y despues los del maestro a menos de 80 m del KP "
+        "del rotulo, del mas cercano al mas lejano; POSTES_CERCANOS dice de cada uno su via, su "
+        "KP, a cuantos metros esta y sus codigos: si cambias de poste, cambia tambien VIA y "
+        "KP_POSTE. NOMBRE, en un simbolo sin rotulo, los rotulos sueltos de al lado. Las listas "
+        "estan en la hoja OPCIONES, y las de cada fila, en la hoja oculta OPCIONES_FILA. En "
+        "estacion, via, poste y nombre, un valor que no esta en la lista se admite con un aviso; "
+        "en lo demas, no. KP, TANGENTE y el nombre de un aislador no llevan: son un numero o un "
+        "nombre que no sale de ninguna lista.",
     ),
     (
         "DESPUES DE REVISAR",
@@ -2256,6 +2525,12 @@ def main():
         "--master",
         default=os.path.join(DATA, "profile-master.xlsx"),
         help="maestro de perfiles (por defecto data/profile-master.xlsx)",
+    )
+    parser.add_argument(
+        "-l",
+        "--lovs",
+        default=os.path.join(DATA, "lov-master.xlsx"),
+        help="maestro de catalogos, para las funciones (por defecto data/lov-master.xlsx)",
     )
     parser.add_argument(
         "-o", "--output", default="sectioning-review.xlsx", help="libro de revision a escribir"
@@ -2348,6 +2623,7 @@ def main():
                         "Y": round(label["y"], 2),
                     }
                 )
+    orphan_name_options(d_rows, orphans)
     # Los seccionadores de una zona neutra, un tunel o una subestacion llevan el codigo de esa
     # instalacion (KAF, TN3, HSA), no el de una estacion. La estacion se decide una vez por
     # prefijo, no fila a fila. Un simbolo sin rotulo no tiene prefijo: se decide en su fila.
@@ -2383,20 +2659,26 @@ def main():
     ]
     poles_left.sort(key=lambda d: (d["QUE_FALTA"], d["EP"], str(d["VIA"]), d["KP"]))
 
+    # Las claves que empiezan por '_' (las propuestas y las opciones de cada fila) no son columnas.
     d_cols = DISCONNECTOR_COLUMNS + [
         k
         for k in (d_rows[0] if d_rows else {})
-        if k not in DISCONNECTOR_COLUMNS and k != "_proposals"
+        if k not in DISCONNECTOR_COLUMNS and not k.startswith("_")
     ]
     i_cols = INSULATOR_COLUMNS + [
-        k for k in (i_rows[0] if i_rows else {}) if k not in INSULATOR_COLUMNS and k != "_proposals"
+        k
+        for k in (i_rows[0] if i_rows else {})
+        if k not in INSULATOR_COLUMNS and not k.startswith("_")
     ]
     s_cols = SWITCH_COLUMNS + [
-        k for k in (s_rows[0] if s_rows else {}) if k not in SWITCH_COLUMNS and k != "_proposals"
+        k
+        for k in (s_rows[0] if s_rows else {})
+        if k not in SWITCH_COLUMNS and not k.startswith("_")
     ]
     master_comments = {
         "PROFILE_ID": "Poste del maestro con seccionador a menos de 80 m del KP del rotulo; "
-        "en naranja, el mas cercano sin codigo. Vacio si el seccionador no esta en un poste.",
+        "en naranja, el mas cercano sin codigo, con su KP en KP_POSTE. Vacio si el seccionador "
+        "no esta en un poste.",
         "KP_POSTE": "KP del poste, en metros. Solo cuenta si la via repite el PROFILE_ID (dos "
         "tramos concatenados): dice cual de los dos. Si cambias de poste, cambialo tambien.",
         "ON_LOAD": "SI: circulo medio relleno (on-load). NO: vacio (off-load).",
@@ -2404,6 +2686,8 @@ def main():
         "poste de una fila, copia aqui KP_ROTULO_M.",
         "NORMALLY_OPEN": "Estado normal. SI: cuchilla dibujada abierta. NO: cerrada.",
         "DRIVE_TYPE": "MOTOR (circulo del accionamiento) o MANUAL.",
+        "POSTES_CERCANOS": "Los postes del maestro a menos de 80 m del KP del rotulo: los del "
+        "desplegable de PROFILE_ID, con su via, su KP, la distancia y sus codigos.",
         "DISCONNECTOR_FUNCTION": "Codigo del catalogo DisconnectorFunction (Disc/IO, LoadB/NS...).",
         "ENABLED": "SI solo con la fila completa y sin dudas.",
     }
@@ -2500,7 +2784,9 @@ def main():
             None,
         ),
     ]
-    write_review(args.output, sheets, README)
+    functions = read_disconnector_functions(args.lovs, master["profiles"])
+    choices = {"lists": review_lists(master, functions), "columns": review_choices()}
+    write_review(args.output, sheets, README, choices)
 
     print("\n%-34s%8s%10s" % ("HOJA", "FILAS", "ENABLED"))
     print(

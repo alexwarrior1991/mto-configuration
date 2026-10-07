@@ -933,7 +933,7 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
   de puesta a tierra, solo con `ED`). Medido
   sobre el plano de julio de 2025: el 87 % de los casados está a menos de 10 m del KP del rótulo, y
   on-load coincide con `LoadB`/`Disc` en el 94 %. Sin poste con código, se propone el más cercano a
-  menos de 30 m.
+  menos de 30 m, con su KP en `KP_POSTE`: los dos van juntos y en naranja.
 - **Sin poste**: el poste es opcional en `Disconnector` (`V25`), porque hay seccionadores que no
   están en uno: los de los pórticos de subestación y los de puesta a tierra. Los de alimentación
   (`FP` en el nombre: `HSA-FP1.1`) no compiten por los postes, y uno de puesta a tierra solo casa
@@ -963,13 +963,36 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
   postes con seccionador al mismo KP, uno por vía, y la vía del plano no dice cuál es, la fila lo
   dice («vía sin comprobar»).
 
+## Los desplegables
+
+Lo que se elige lleva desplegable, así que revisar es elegir y no ir a buscar al maestro:
+
+| Columna | Opciones |
+|---|---|
+| `ESTACION`, `VIA`, `VIA_CONECTADA`, `ESTACION_CORRECTA` | Las del EP de la fila en el maestro. Otra se admite con un aviso: si lo que está mal es el EP, la lista sigue siendo la del EP de antes |
+| `PROFILE_ID`, `KP_POSTE` | El poste de la fila primero, y después los del EP a menos de 80 m del KP del rótulo, del más cercano al más lejano. `POSTES_CERCANOS` dice de cada uno su vía, su KP, a cuántos metros está y sus códigos: cambiar de poste es cambiar también `VIA` y `KP_POSTE`. Otro se admite con un aviso |
+| `NOMBRE` | En un símbolo sin rótulo, los rótulos sueltos de `ROTULOS_SIN_SIMBOLO` que tiene al lado. Otro se admite con un aviso |
+| `DISCONNECTOR_FUNCTION` | El catálogo `DisconnectorFunction` habilitado de `lov-master.xlsx` (`--lovs`), los de seccionador (`Disc`, `LoadB`, `ED`) primero |
+| `ON_LOAD`, `NORMALLY_OPEN`, `ENABLED` | `SI` o `NO` |
+| `DRIVE_TYPE` | `MOTOR` o `MANUAL` |
+| `TIPO_INSTALACION` | `TRACK_CONNECTION` o `IN_TRACK` |
+
+Las cuatro últimas no admiten otro valor, porque el importador lo rechazaría. Las listas van en la
+hoja `OPCIONES`, y las de cada fila en la hoja oculta `OPCIONES_FILA`, cada valor con su tipo. No
+van dentro de la validación de la celda: ahí todo es texto, y un Excel con coma decimal no leería
+`93453.41` como un número; además no caben más de 255 caracteres ni una coma dentro de un valor. El
+KP, la tangente y el nombre de un aislador no llevan desplegable: son un número o un nombre que no
+sale de ninguna lista.
+
 ## Probar
 
 `tools/tests/test_build_sectioning_review.py` prueba las reglas que no necesitan el DXF: la lectura
 del KP, cuántos aparatos nombra un rótulo, qué es un rótulo de subestación, la columna de un rótulo
 girado, la elección de la vía del maestro, y qué filas de `DISCONNECTORS` entran y cuáles salen
 listas para cargar (las de otra capa dentro de un EP, la de Haifa, la que no tiene poste, la vía
-distinta y los dos postes al mismo KP), y el KP propio solo sin poste. El módulo importa `ezdxf` y
+distinta y los dos postes al mismo KP), el KP propio solo sin poste, y los desplegables: los postes
+cercanos con el de la fila primero, el KP del poste propuesto, los rótulos sueltos como nombre, el
+orden del catálogo de funciones y el libro con sus listas. El módulo importa `ezdxf` y
 `scipy` solo dentro de las funciones que los usan, así que corre en el mismo paso de CI que los
 demás, con `openpyxl` y `pyyaml`. `tools/tests/test_build_profile_master.py` prueba el paso del
 libro revisado al maestro.
