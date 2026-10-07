@@ -896,14 +896,18 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
 ## El cruce con el maestro
 
 - **Poste**: asignación 1:1 por EP contra los postes con `Disc*`/`LoadB*`/`ED*` en
-  `SECTIONING_FEEDING`, a menos de 80 m del KP, preferente en la misma vía y del mismo tipo. Medido
+  `SECTIONING_FEEDING`, a menos de 80 m del KP, preferente en la misma vía y del mismo tipo (y uno
+  de puesta a tierra, solo con `ED`). Medido
   sobre el plano de julio de 2025: el 87 % de los casados está a menos de 10 m del KP del rótulo, y
   on-load coincide con `LoadB`/`Disc` en el 94 %. Sin poste con código, se propone el más cercano a
   menos de 30 m.
 - **Sin poste**: el poste es opcional en `Disconnector` (`V25`), porque hay seccionadores que no
-  están en uno. Pero el generador no distingue uno de esos de un poste que no ha sabido encontrar,
-  así que la fila sale con `ENABLED = NO` y el motivo lo dice: si no está en un poste, se deja
-  `PROFILE_ID` vacío y se pone `ENABLED = SI`.
+  están en uno: los de los pórticos de subestación y los de puesta a tierra. Los de alimentación
+  (`FP` en el nombre: `HSA-FP1.1`) no compiten por los postes, y uno de puesta a tierra solo casa
+  con un poste que el maestro marca con `ED`; sin él, los dos salen sin poste y con una nota. De
+  los demás, el generador no distingue uno que no está en un poste de un poste que no ha sabido
+  encontrar, así que la fila sale con `ENABLED = NO` y el motivo lo dice: si no está en un poste,
+  se deja `PROFILE_ID` vacío y se pone `ENABLED = SI`.
 - **Vía**: la del plano solo desempata. Numera las vías de la estación y no las del maestro (`1`/`2`
   donde el maestro dice `INT`/`EXT`), así que una vía distinta con el KP casado a 10 m o menos es
   una nota («vía distinta»); con el KP más lejos, la fila espera a una persona.

@@ -117,6 +117,9 @@ class FunctionTest(unittest.TestCase):
         self.assertEqual(bsr.function_proposal("SECCIONADOR", False, "", "IO"), "Disc/IO")
         self.assertEqual(bsr.function_proposal("SECCIONADOR", True, "NS", "IO"), "LoadB/NS")
         self.assertEqual(bsr.function_proposal("SECCIONADOR", False, "", "SI"), "Disc/SI")
+        # Los de alimentacion, del portico de la subestacion: el catalogo no tiene un FP.
+        self.assertEqual(bsr.function_proposal("SECCIONADOR", True, "FP", ""), "LoadB")
+        self.assertEqual(bsr.function_proposal("SECCIONADOR", False, "FP", ""), "Disc")
         self.assertEqual(
             bsr.function_proposal("SECCIONADOR DE PUESTA A TIERRA", False, "", ""), "ED"
         )
@@ -217,6 +220,48 @@ class DrawingFieldsTest(unittest.TestCase):
             self.assertFalse(bsr.future_ep(status), status)
 
 
+class PoleCostTest(unittest.TestCase):
+    """Que poste puede ser el de un seccionador, y cuanto cuesta casarlos."""
+
+    def device(self, **overrides):
+        r = {
+            "kp_m": 1000,
+            "tracks": ["1"],
+            "type": "SECCIONADOR",
+            "name_function": "",
+            "on_load": True,
+        }
+        r.update(overrides)
+        return r
+
+    def pole(self, *codes, kp=1002.0, track="1"):
+        return {"kp": kp, "track": track, "dcodes": list(codes)}
+
+    def test_the_kp_difference_with_penalties_for_track_and_load(self):
+        self.assertEqual(bsr.pole_cost(self.device(), self.pole("LoadB/IO")), 2.0)
+        self.assertEqual(bsr.pole_cost(self.device(), self.pole("LoadB/IO", track="2")), 62.0)
+        self.assertEqual(bsr.pole_cost(self.device(), self.pole("Disc/IO")), 27.0)
+        self.assertIsNone(bsr.pole_cost(self.device(), self.pole("LoadB/IO", kp=1081.0)))
+
+    def test_an_earthing_disconnector_only_goes_on_a_pole_marked_ed(self):
+        earthing = self.device(type="SECCIONADOR DE PUESTA A TIERRA", on_load=False)
+        self.assertEqual(bsr.pole_cost(earthing, self.pole("ED/T")), 2.0)
+        self.assertEqual(bsr.pole_cost(earthing, self.pole("LoadB/ED")), 2.0)
+        self.assertIsNone(bsr.pole_cost(earthing, self.pole("Disc/IO")))
+        # TE en el nombre cuenta igual que el bloque de puesta a tierra.
+        self.assertIsNone(bsr.pole_cost(self.device(name_function="TE"), self.pole("LoadB/NS")))
+
+    def test_a_line_disconnector_does_not_take_an_earthing_pole(self):
+        self.assertIsNone(bsr.pole_cost(self.device(), self.pole("ED")))
+        self.assertEqual(bsr.pole_cost(self.device(), self.pole("LoadB/ED")), 2.0)
+
+    def test_the_two_kinds_that_are_not_on_a_line_pole(self):
+        self.assertTrue(bsr.on_portal(self.device(name_function="FP")))
+        self.assertFalse(bsr.on_portal(self.device(name_function="NS")))
+        self.assertTrue(bsr.earthing(self.device(name_function="TE")))
+        self.assertTrue(bsr.earthing(self.device(type="SECCIONADOR DE PUESTA A TIERRA")))
+
+
 class DisconnectorRowsTest(unittest.TestCase):
     """Lo que decide si una fila de DISCONNECTORS entra y si sale lista para cargar."""
 
@@ -303,6 +348,22 @@ class DisconnectorRowsTest(unittest.TestCase):
         row = self.row(pole=None, bridged="IO")
         self.assertEqual((row["PROFILE_ID"], row["ENABLED"]), ("", "NO"))
         self.assertIn("deja PROFILE_ID vacio y pon ENABLED = SI", row["MOTIVO_REVISAR"])
+
+    def test_feeder_and_earthing_disconnectors_without_a_pole_are_a_note(self):
+        # Los de los porticos de subestacion y los de puesta a tierra no van en un poste: que no
+        # lo tengan no es lo que deja la fila esperando.
+        def blocking(row):
+            return [x for x in row["MOTIVO_REVISAR"].split("; ") if x.startswith(bsr.BLOCKING)]
+
+        feeder = self.row(pole=None, name="HSA-FP1.1", name_function="FP")
+        self.assertEqual((feeder["PROFILE_ID"], feeder["DISCONNECTOR_FUNCTION"]), ("", "Disc"))
+        self.assertIn("sin poste por ser de alimentacion", feeder["MOTIVO_REVISAR"])
+        self.assertEqual(blocking(feeder), ["funcion propuesta desde el plano (Disc)"])
+        earthing = self.row(
+            pole=None, name="TN3-TE3", type="SECCIONADOR DE PUESTA A TIERRA", name_function="TE"
+        )
+        self.assertIn("sin poste por ser de puesta a tierra", earthing["MOTIVO_REVISAR"])
+        self.assertEqual(blocking(earthing), ["funcion propuesta desde el plano (ED)"])
 
     def test_an_unknown_normal_state_is_a_note(self):
         row = self.row(state="")

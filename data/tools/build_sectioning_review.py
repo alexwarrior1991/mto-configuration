@@ -241,11 +241,46 @@ def function_proposal(kind, on_load, name_function, bridged):
         return "ED"
     if name_function == "NS":
         return "LoadB/NS" if on_load else "Disc/NS"
+    if name_function == "FP":
+        return "LoadB" if on_load else "Disc"
     if bridged == "IO":
         return "LoadB/IO" if on_load else "Disc/IO"
     if bridged == "SI" and not on_load:
         return "Disc/SI"
     return ""
+
+
+def earthing(r):
+    """De puesta a tierra: el bloque del plano, o TE en el nombre ('TN3-TE3')."""
+    return r["type"] == "SECCIONADOR DE PUESTA A TIERRA" or r["name_function"] == "TE"
+
+
+def on_portal(r):
+    """De alimentacion (FP en el nombre, 'HSA-FP1.1'): va en el portico de la subestacion."""
+    return r["name_function"] == "FP"
+
+
+def pole_cost(r, p):
+    """Coste de casar el seccionador r con el poste p, en metros; None si no puede ser el suyo.
+
+    La diferencia de KP, +60 si la via del plano no es la del poste y +25 si on-load no casa con
+    LoadB/Disc. Uno de puesta a tierra solo va en un poste que el maestro marca con ED (ED, ED/T,
+    LoadB/ED), y uno de linea no va en un poste que solo lleva ED o ED/T.
+    """
+    dk = abs(p["kp"] - r["kp_m"])
+    if dk > POLE_MATCH_MAX_M:
+        return None
+    if earthing(r) and not any("ED" in x for x in p["dcodes"]):
+        return None
+    if not earthing(r) and all(x.startswith("ED") for x in p["dcodes"]):
+        return None
+    c = dk
+    if r["tracks"] and p["track"] and p["track"] not in r["tracks"]:
+        c += 60
+    load_break = any(x.startswith("LoadB") for x in p["dcodes"])
+    if not earthing(r) and load_break != r["on_load"]:
+        c += 25
+    return c
 
 
 def future_ep(status):
@@ -1216,12 +1251,12 @@ def build_disconnectors(drawing, labels, tracks, plan_stations, master):
         if len(near) == 3 and near[0][0] < 400 and len({ep for _, ep in near}) == 1:
             r["ep"], r["ep_from"] = near[0][1], "vecinos sin KP"
 
-    # Poste: asignacion 1:1 por EP contra los postes con codigo de seccionador. Coste = metros de
-    # diferencia de KP, +60 si la via del plano no es la del poste, +25 si on-load no casa con
-    # LoadB/Disc, +40 si es de puesta a tierra y el poste no tiene ED.
+    # Poste: asignacion 1:1 por EP contra los postes con codigo de seccionador, con el coste de
+    # pole_cost. Los de alimentacion no compiten: van en el portico de la subestacion, y con el
+    # poste mas cercano le quitaban el suyo a uno de linea.
     by_ep = collections.defaultdict(list)
     for i, r in enumerate(records):
-        if r["ep"] and r["kp_m"] is not None:
+        if r["ep"] and r["kp_m"] is not None and not on_portal(r):
             by_ep[r["ep"]].append(i)
     poles_by_ep = collections.defaultdict(list)
     for p in master["profiles"]:
@@ -1235,18 +1270,9 @@ def build_disconnectors(drawing, labels, tracks, plan_stations, master):
         for a, i in enumerate(idx):
             r = records[i]
             for b, p in enumerate(poles):
-                dk = abs(p["kp"] - r["kp_m"])
-                if dk > POLE_MATCH_MAX_M:
-                    continue
-                c = dk
-                if r["tracks"] and p["track"] and p["track"] not in r["tracks"]:
-                    c += 60
-                load_break = any(x.startswith("LoadB") for x in p["dcodes"])
-                if r["type"] == "SECCIONADOR DE PUESTA A TIERRA":
-                    c += 0 if any("ED" in x for x in p["dcodes"]) else 40
-                elif load_break != r["on_load"]:
-                    c += 25
-                cost[a, b] = c
+                c = pole_cost(r, p)
+                if c is not None:
+                    cost[a, b] = c
         rows, cols = linear_sum_assignment(cost)
         for a, b in zip(rows, cols):
             if cost[a, b] < 1e6:
@@ -1256,11 +1282,13 @@ def build_disconnectors(drawing, labels, tracks, plan_stations, master):
 
     # Sin poste con codigo: el poste mas cercano de una via compatible, si esta a menos de 30 m.
     # El maestro trae el poste pero sin el seccionador en SECTIONING_FEEDING (lleva FS-1, o nada).
+    # No a los de puesta a tierra ni a los de alimentacion: sin un poste ED, o en el portico de la
+    # subestacion, lo normal es que no esten en un poste, y el mas cercano seria una pista falsa.
     profiles_by_ep = collections.defaultdict(list)
     for p in master["profiles"]:
         profiles_by_ep[p["ep"]].append(p)
     for r in records:
-        if r.get("pole") or not r["ep"] or r["kp_m"] is None:
+        if r.get("pole") or not r["ep"] or r["kp_m"] is None or earthing(r) or on_portal(r):
             continue
         candidates = sorted(
             (
@@ -1527,7 +1555,7 @@ BLOCKING = (
     "funcion propuesta",
     "simbolo sin rotulo",
     "via sin comprobar",
-    "sin poste",
+    "sin poste en el maestro",
 )
 
 
@@ -1558,6 +1586,14 @@ def disconnector_rows(records, master):
                 "poste propuesto: el mas cercano por KP (a %.0f m), sin seccionador en "
                 "SECTIONING_FEEDING (%s)"
                 % (r["nearest_pole_d"], "|".join(near["codes"]) or "vacio")
+            )
+        elif not pole and on_portal(r):
+            reasons.append(
+                "sin poste por ser de alimentacion (FP): va en el portico de la subestacion"
+            )
+        elif not pole and earthing(r):
+            reasons.append(
+                "sin poste por ser de puesta a tierra: el maestro no tiene un poste ED cerca"
             )
         elif not pole:
             far = (
@@ -2136,9 +2172,12 @@ README = [
     ),
     (
         "SIN POSTE",
-        "El generador no distingue un seccionador que no esta en un poste de uno cuyo poste no ha "
-        "sabido encontrar, asi que la fila sale con ENABLED = NO. Si no esta en un poste, deja "
-        "PROFILE_ID vacio y pon ENABLED = SI; si lo esta, escribe su PROFILE_ID y su VIA.",
+        "Los de alimentacion (FP en el nombre) van en el portico de la subestacion, y los de "
+        "puesta a tierra solo van en un poste que el maestro marca con ED: sin el, salen sin "
+        "poste y con una nota, no con el poste mas cercano. De los demas, el generador no "
+        "distingue uno que no esta en un poste de uno cuyo poste no ha sabido encontrar, asi que "
+        "la fila sale con ENABLED = NO: si no esta en un poste, deja PROFILE_ID vacio y pon "
+        "ENABLED = SI; si lo esta, escribe su PROFILE_ID y su VIA.",
     ),
     (
         "ESTACION",
@@ -2162,7 +2201,7 @@ README = [
     (
         "DISCONNECTOR_FUNCTION",
         "La del poste casado. En naranja, propuesta por lo que puentea en el plano (IO, SI), el "
-        "nombre (NS, TE) y on-load.",
+        "nombre (NS, TE, FP) y on-load.",
     ),
     (
         "AISLADORES",
