@@ -52,13 +52,15 @@ public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
     long countForRepublish(@Param("stationId") Long stationId);
 
     /**
-     * {@code profile.track} no entra: DisconnectorMasterDataPayloadMapper no lee nada
-     * de la via.
+     * {@code profile.track} no entra: DisconnectorMasterDataPayloadMapper no lee la via del
+     * perfil. {@code track} si: es la del propio seccionador cuando no esta en un poste (V26), y el
+     * payload lleva su nombre.
      */
     @Override
     @EntityGraph(attributePaths = {
             "station",
             "profile",
+            "track",
             "disconnectorFunction"
     })
     @Query("select d from Disconnector d where d.id = :id")

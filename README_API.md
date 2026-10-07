@@ -47,6 +47,11 @@ normalmente abierto, `false` normalmente cerrado) y `driveType` (`MOTOR` o `MANU
 opcionales, y como el resto de la fila, un `PUT` que no los lleva los deja sin dato: se devuelven
 como se leyeron (§4, «devuélvelo entero»).
 
+**Uno sin poste lleva su propio KP y su vía** (`V26`): `kp`, en metros y como texto (`"98375.5"`),
+igual que el del perfil, y `trackId`. Solo sin poste: en uno con `profileId` son los de su perfil, y
+mandarlos es un 400 `BUS-001` sobre `kp` o `trackId`. Al colgar de un poste un seccionador que no lo
+estaba, se mandan a `null`.
+
 El borrado es **lógico**: marca la fila (`deleted = true`) y deja de aparecer en las consultas. No
 hay endpoint para restaurarla.
 

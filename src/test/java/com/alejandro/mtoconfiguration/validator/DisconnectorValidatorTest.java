@@ -48,6 +48,35 @@ class DisconnectorValidatorTest {
     }
 
     @Test
+    @DisplayName("el KP y la vía propios son solo de un seccionador sin poste: en uno en un poste son los del perfil")
+    void kpYViaSoloSinPoste() {
+        DisconnectorDTO sinPoste = ValidDtos.rootDisconnector();
+        sinPoste.setProfileId(null);
+        sinPoste.setKp("98375.5");
+        sinPoste.setTrackId(3L);
+        assertNoErrors(validator.validateBeforeSave(sinPoste));
+
+        DisconnectorDTO enPoste = ValidDtos.rootDisconnector();
+        enPoste.setKp("98375.5");
+        enPoste.setTrackId(3L);
+        List<Alert> alerts = validator.validateBeforeSave(enPoste);
+        assertError(alerts, ErrorCodes.BUSINESS_RULE_VIOLATION, "kp");
+        assertError(alerts, ErrorCodes.BUSINESS_RULE_VIOLATION, "trackId");
+    }
+
+    @Test
+    @DisplayName("el KP es un número en metros, con punto decimal y la precisión de la columna")
+    void kpConFormato() {
+        DisconnectorDTO dto = ValidDtos.rootDisconnector();
+        dto.setProfileId(null);
+
+        dto.setKp("98+375");
+        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_INVALID_FORMAT, "kp");
+        dto.setKp("98375.1234");
+        assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_OUT_OF_RANGE, "kp");
+    }
+
+    @Test
     @DisplayName("una LOV sin id ni código no sirve para resolver la referencia")
     void rechazaLovVacia() {
         DisconnectorDTO dto = ValidDtos.rootDisconnector();

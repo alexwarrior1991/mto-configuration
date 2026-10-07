@@ -254,7 +254,7 @@ class DisconnectorLinkIT {
     }
 
     @Test
-    @DisplayName("se da de alta un seccionador sin poste, con su estado normal y su accionamiento (V25)")
+    @DisplayName("se da de alta un seccionador sin poste, con su estado normal, su accionamiento, su KP y su vía (V25, V26)")
     void altaSinPoste() {
         DisconnectorFunctionDTO function = new DisconnectorFunctionDTO();
         function.setCode(FUNCTION_CODE);
@@ -263,6 +263,8 @@ class DisconnectorLinkIT {
         nuevo.setOnLoad(false);
         nuevo.setNormallyOpen(true);
         nuevo.setDriveType(DisconnectorDriveType.MANUAL);
+        nuevo.setKp("98375.5");
+        nuevo.setTrackId(TRACK);
         nuevo.setStationId(STATION);
         nuevo.setDisconnectorFunction(function);
 
@@ -271,11 +273,17 @@ class DisconnectorLinkIT {
         assertThat(creado.getProfileId()).isNull();
         assertThat(creado.getNormallyOpen()).isTrue();
         assertThat(creado.getDriveType()).isEqualTo(DisconnectorDriveType.MANUAL);
-        assertThat(jdbcTemplate.queryForMap(
-                "select profile_id, normally_open, drive_type from disconnector where id = ?", creado.getId()))
+        assertThat(new BigDecimal(creado.getKp())).isEqualByComparingTo("98375.5");
+        assertThat(creado.getTrackId()).isEqualTo(TRACK);
+        Map<String, Object> fila = jdbcTemplate.queryForMap(
+                "select profile_id, normally_open, drive_type, kilometric_point, track_id from disconnector where id = ?",
+                creado.getId());
+        assertThat(fila)
                 .containsEntry("profile_id", null)
                 .containsEntry("normally_open", true)
-                .containsEntry("drive_type", "MANUAL");
+                .containsEntry("drive_type", "MANUAL")
+                .containsEntry("track_id", TRACK);
+        assertThat((BigDecimal) fila.get("kilometric_point")).isEqualByComparingTo("98375.5");
     }
 
     @Test

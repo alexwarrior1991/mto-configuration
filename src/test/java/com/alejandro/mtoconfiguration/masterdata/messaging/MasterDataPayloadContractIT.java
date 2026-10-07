@@ -131,6 +131,18 @@ class MasterDataPayloadContractIT {
         assertThat(payload).containsKeys("station", "profile", "disconnectorFunction");
         // V25: el estado normal y el accionamiento, el enum por su nombre.
         assertThat(payload).containsEntry("normallyOpen", true).containsEntry("driveType", "MOTOR");
+        // V26: en un poste, el KP y la via son los del perfil y los suyos van a null.
+        assertThat(payload).containsEntry("kp", null).containsEntry("track", null);
+    }
+
+    @Test
+    @DisplayName("Disconnector sin poste: su KP y su via salen del grafo, con el payload desatachado")
+    void disconnectorWithoutAPole() {
+        Map<String, Object> payload = payloadOfDetached(disconnectorRepository, ids.poleLessDisconnector());
+
+        assertThat(payload).containsEntry("profile", null);
+        assertThat((BigDecimal) payload.get("kp")).isEqualByComparingTo("98375.500");
+        assertThat(asMap(payload, "track")).containsEntry("name", "Via 1");
     }
 
     @Test
@@ -179,14 +191,15 @@ class MasterDataPayloadContractIT {
         assertThat(asList(payload, "tracks")).hasSize(2);
         assertThat(asList(payload, "disconnectors")).hasSize(2);
         assertThat(asList(payload, "sectionInsulators")).hasSize(2);
-        // La copia reducida del seccionador lleva sus dos escalares de V25; el segundo no esta en un
-        // poste y no tiene ni estado normal ni accionamiento.
+        // La copia reducida del seccionador lleva sus escalares de V25 y V26; el segundo no esta en
+        // un poste, no tiene ni estado normal ni accionamiento y lleva su propio KP.
         assertThat(asList(payload, "disconnectors"))
                 .extracting(each -> each.get("name"), each -> each.get("normallyOpen"),
-                        each -> each.get("driveType"), each -> each.get("profileId") != null)
+                        each -> each.get("driveType"), each -> each.get("profileId") != null,
+                        each -> each.get("kp") == null ? null : ((BigDecimal) each.get("kp")).toPlainString())
                 .containsExactlyInAnyOrder(
-                        tuple("Seccionador 1", true, "MOTOR", true),
-                        tuple("Seccionador 2", null, null, false));
+                        tuple("Seccionador 1", true, "MOTOR", true, null),
+                        tuple("Seccionador 2", null, null, false, "98375.500"));
     }
 
     @Test
@@ -236,6 +249,8 @@ class MasterDataPayloadContractIT {
         assertSoftly(softly -> {
             softly.assertThat(countStatements(() -> cantileverRepository.findByIdForMessaging(ids.cantilever())))
                     .as("cantilever").isEqualTo(1);
+            softly.assertThat(countStatements(() -> disconnectorRepository.findByIdForMessaging(ids.poleLessDisconnector())))
+                    .as("disconnector sin poste, con su via").isEqualTo(1);
             softly.assertThat(countStatements(() -> disconnectorRepository.findByIdForMessaging(ids.disconnector())))
                     .as("disconnector").isEqualTo(1);
             softly.assertThat(countStatements(() -> executionPackageRepository.findByIdForMessaging(ids.executionPackage())))
@@ -292,8 +307,8 @@ class MasterDataPayloadContractIT {
         return (Map<String, Object>) payload.get(key);
     }
 
-    private record Ids(Long cantilever, Long disconnector, Long executionPackage, Long profile,
-                       Long sectionInsulator, Long station, Long steadyArm, Long track) {
+    private record Ids(Long cantilever, Long disconnector, Long poleLessDisconnector, Long executionPackage,
+                       Long profile, Long sectionInsulator, Long station, Long steadyArm, Long track) {
     }
 
     /**
@@ -331,8 +346,10 @@ class MasterDataPayloadContractIT {
             disconnector.setNormallyOpen(true);
             disconnector.setDriveType(DisconnectorDriveType.MOTOR);
             profile.addDisconnector(disconnector);
-            // Sin poste: desde V25 el poste es opcional.
-            disconnector("Seccionador 2", station);
+            // Sin poste: desde V25 el poste es opcional, y desde V26 lleva su propio KP y su via.
+            Disconnector poleLess = disconnector("Seccionador 2", station);
+            poleLess.setKp(new BigDecimal("98375.500"));
+            poleLess.setTrack(track);
 
             SectionInsulator sectionInsulator = sectionInsulator("Aislador 1", station, track);
             sectionInsulator("Aislador 2", station, track);
@@ -343,6 +360,7 @@ class MasterDataPayloadContractIT {
             return new Ids(
                     cantilever.getId(),
                     disconnector.getId(),
+                    poleLess.getId(),
                     executionPackage.getId(),
                     profile.getId(),
                     sectionInsulator.getId(),

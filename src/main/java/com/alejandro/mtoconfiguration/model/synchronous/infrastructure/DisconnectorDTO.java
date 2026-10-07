@@ -28,6 +28,14 @@ public class DisconnectorDTO extends BaseDTO {
     private Long profileId;
 
     /**
+     * KP en metros y vía, <b>solo</b> de un seccionador sin poste: los de uno en un poste son los de
+     * su perfil (V26). El KP viaja como texto, como el del perfil, porque este DTO pasa por la caché,
+     * que no lee decimales.
+     */
+    private String kp;
+    private Long trackId;
+
+    /**
      * Identificador y KP del perfil al que cuelga, <b>solo de salida</b>: los rellena el mapper
      * para que una lista de seccionadores se lea sin ir perfil por perfil (son miles). Al
      * escribir se ignoran: el perfil se elige por {@code profileId}.

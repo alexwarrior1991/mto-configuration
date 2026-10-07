@@ -152,6 +152,8 @@ class RedisCacheValueSerializationTest {
         withoutPole.setName("SEC-41");
         withoutPole.setOnLoad(false);
         withoutPole.setStationId(2L);
+        withoutPole.setKp("98375.500");
+        withoutPole.setTrackId(3L);
 
         Object read = roundTrip(new ArrayList<>(List.of(onPole, withoutPole)));
 
@@ -165,6 +167,8 @@ class RedisCacheValueSerializationTest {
                     assertThat(cached.getNormallyOpen()).isNull();
                     assertThat(cached.getDriveType()).isNull();
                     assertThat(cached.getProfileId()).isNull();
+                    assertThat(cached.getKp()).isEqualTo("98375.500");
+                    assertThat(cached.getTrackId()).isEqualTo(3L);
                 }));
     }
 

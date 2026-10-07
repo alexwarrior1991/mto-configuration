@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.masterdata.messaging.mapper;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataEntityPayloadMapper;
 import org.springframework.stereotype.Component;
@@ -32,6 +33,9 @@ public class DisconnectorMasterDataPayloadMapper implements MasterDataEntityPayl
         values.put("station", toStationPayload(disconnector.getStation()));
         // null en un seccionador que no esta en un poste: el poste es opcional (V25).
         values.put("profile", toProfilePayload(disconnector.getProfile()));
+        // Los de un seccionador sin poste (V26); en uno en un poste, null: son los de su perfil.
+        values.put("kp", disconnector.getKp());
+        values.put("track", toTrackPayload(disconnector.getTrack()));
         values.put("disconnectorFunction", toDisconnectorFunctionPayload(disconnector.getDisconnectorFunction()));
 
         return values;
@@ -57,6 +61,17 @@ public class DisconnectorMasterDataPayloadMapper implements MasterDataEntityPayl
         values.put("id", profile.getId());
         values.put("profileId", profile.getProfileId());
         values.put("kp", profile.getKp());
+        return values;
+    }
+
+    private Map<String, Object> toTrackPayload(Track track) {
+        if (track == null) {
+            return null;
+        }
+
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("id", track.getId());
+        values.put("name", track.getName());
         return values;
     }
 

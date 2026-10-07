@@ -6,14 +6,19 @@ import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
 import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Setter;
 import org.hibernate.envers.Audited;
 
 import java.io.Serial;
+import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.Objects;
 
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_FRACTION_DIGITS;
+import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_INTEGER_DIGITS;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.NAME_MAX_LENGTH;
 import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
@@ -36,6 +41,8 @@ public class Disconnector extends CRUDEntity {
     private DisconnectorDriveType driveType;
     private Station station;
     private Profile profile;
+    private BigDecimal kp;
+    private Track track;
     private DisconnectorFunction disconnectorFunction;
 
     @Id
@@ -105,6 +112,29 @@ public class Disconnector extends CRUDEntity {
     @Audited(targetAuditMode = NOT_AUDITED)
     public Profile getProfile() {
         return profile;
+    }
+
+    /**
+     * KP en metros, <b>solo</b> de un seccionador sin poste: el de uno en un poste es el de su
+     * perfil, y guardarlo dos veces dejaría dos datos que pueden contradecirse (V26). Lo exige
+     * {@code DisconnectorValidator}.
+     */
+    @PositiveOrZero
+    @Digits(integer = KP_INTEGER_DIGITS, fraction = KP_FRACTION_DIGITS)
+    @Column(name = "KILOMETRIC_POINT",
+            precision = KP_INTEGER_DIGITS + KP_FRACTION_DIGITS,
+            scale = KP_FRACTION_DIGITS,
+            nullable = true)
+    public BigDecimal getKp() {
+        return kp;
+    }
+
+    /** Vía, <b>solo</b> de un seccionador sin poste, por lo mismo que {@link #getKp()}. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "TRACK_ID", nullable = true)
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Track getTrack() {
+        return track;
     }
 
     @Override

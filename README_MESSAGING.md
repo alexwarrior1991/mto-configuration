@@ -4,9 +4,9 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
-## ⚠️ El evento `disconnector` gana `normallyOpen` y `driveType`, y su `profile` puede llegar a `null`
+## ⚠️ El evento `disconnector` gana `normallyOpen`, `driveType`, `kp` y `track`, y su `profile` puede llegar a `null`
 
-Dos cambios, los dos compatibles hacia atrás para quien consume:
+Tres cambios, los tres compatibles hacia atrás para quien consume:
 
 - **El seccionador lleva dos claves más**: `normallyOpen` (su estado normal: `true` normalmente
   abierto, `false` normalmente cerrado) y `driveType` (`"MOTOR"` o `"MANUAL"`), las dos `null`
@@ -17,9 +17,13 @@ Dos cambios, los dos compatibles hacia atrás para quien consume:
   exigía `profileId`, así que en la práctica siempre llegaba. Desde `V25` hay seccionadores que no
   están en un poste, y uno que lo está puede desvincularse con su `PUT`: entonces `profile` llega a
   `null`, y `profileId` a `null` en la copia de `station`.
+- **Uno sin poste lleva su propio KP y su vía** (`V26`): `kp` (en metros) y `track` (`{id, name}`).
+  En uno en un poste van a `null`: son los de su perfil, que el consumidor ya sabe leer. La copia de
+  `station` lleva también `kp`.
 
-`mto-maintenance` ya lo tolera: un seccionador sin poste se queda sin KP, sin vía y sin paquete
-(su `docs/06-messaging.md`), y las dos claves nuevas no las lee. `mto-notification` solo copia de
+`mto-maintenance` toma de `kp` y `track` el KP y la vía de un seccionador sin poste, y el paquete de
+los perfiles de esa vía, como hace con un aislador (su `docs/06-messaging.md`). Antes de ese cambio
+se quedaba sin KP, sin vía y sin paquete, sin fallar. `mto-notification` solo copia de
 `values` su lista blanca (`name`, `kp`…), en la que no están. `mto-stock` registra el evento sin
 tratarlo.
 
@@ -247,22 +251,28 @@ aguja de cada aislador, para un dato que el consumidor ya recibe entero en el ev
 
 #### Cambios en el contrato del evento `disconnector`
 
-El seccionador incorpora dos claves nuevas (`V25`). **El cambio es compatible hacia atrás**: sólo
-añade claves, no renombra ni quita ninguna.
+El seccionador incorpora cuatro claves nuevas (`V25` y `V26`). **El cambio es compatible hacia
+atrás**: sólo añade claves, no renombra ni quita ninguna.
 
 | Clave nueva | Tipo | Contenido |
 |---|---|---|
 | `normallyOpen` | `true` / `false` / `null` | Estado normal de explotación: `true` normalmente abierto, `false` normalmente cerrado. `null` es «sin dato» |
 | `driveType` | `"MOTOR"` / `"MANUAL"` / `null` | Accionamiento: con motor (el círculo del accionamiento en el plano de seccionamiento) o a mano |
+| `kp` | número o `null` | KP en **metros** de un seccionador sin poste (`V26`). `null` en uno en un poste: es el de su perfil |
+| `track` | `{ "id", "name" }` o `null` | Vía de un seccionador sin poste (`V26`). `null` en uno en un poste: es la de su perfil |
 
-Las dos son columnas de la propia fila, así que, igual que `kp` e `installationType` del aislador,
-viajan también en las copias reducidas del seccionador dentro de `station` (`disconnectors[]`) y de
-`profile` (`disconnector`), sin una sentencia más.
+`normallyOpen`, `driveType` y `kp` son columnas de la propia fila, así que, igual que `kp` e
+`installationType` del aislador, viajan también en la copia reducida del seccionador dentro de
+`station` (`disconnectors[]`), sin una sentencia más; la de `profile` (`disconnector`) lleva las dos
+primeras, porque un seccionador colgado de un perfil nunca tiene KP propio. La vía no viaja en las
+copias, como la del aislador. Que el evento lleve su nombre obliga a cargarla: `track` entra en el
+`@EntityGraph` de `DisconnectorRepository.findByIdForMessaging`, y `MasterDataPayloadContractIT`
+sigue exigiendo **una** sentencia por evento.
 
 `profile` no cambia de forma (`{ "id", "profileId", "kp" }` o `null`), pero cambia lo que se puede
 esperar de él: desde `V25` el poste es opcional, y un seccionador que no está en un poste lo trae a
-`null`. Un consumidor que saque del poste el KP, la vía o el paquete del seccionador tiene que contar
-con que no los haya.
+`null`. Entonces el KP y la vía son los suyos, `kp` y `track`, que pueden faltar también; nunca vienen
+a la vez que un `profile`.
 
 ### 2.5. Republicado de lo que ya existe
 

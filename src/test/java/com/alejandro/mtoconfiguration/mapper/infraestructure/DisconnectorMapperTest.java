@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.mapper.infraestructure;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
@@ -141,5 +142,27 @@ class DisconnectorMapperTest {
         mapper.updateEntityFromDTO(sinDatos, entity);
         assertThat(entity.getNormallyOpen()).isNull();
         assertThat(entity.getDriveType()).isNull();
+    }
+
+    @Test
+    @DisplayName("un seccionador sin poste lleva su KP como texto y su via por id, en la salida y en el detalle")
+    void kpYViaDeUnSeccionadorSinPoste() {
+        Track track = new Track();
+        track.setId(3L);
+        Disconnector entity = seccionador();
+        entity.setProfile(null);
+        entity.setKp(new BigDecimal("98375.500"));
+        entity.setTrack(track);
+
+        DisconnectorDTO dto = mapper.toDTO(entity);
+        assertThat(dto.getKp()).isEqualTo("98375.500");
+        assertThat(dto.getTrackId()).isEqualTo(3L);
+        DisconnectorDTO detalle = new DisconnectorDTO();
+        mapper.updateDTOFromEntity(entity, detalle);
+        assertThat(detalle.getTrackId()).isEqualTo(3L);
+
+        dto.setKp("98400.5");
+        Disconnector escrito = mapper.toEntity(dto);
+        assertThat(escrito.getKp()).isEqualByComparingTo("98400.5");
     }
 }
