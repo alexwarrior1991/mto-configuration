@@ -275,20 +275,22 @@ class ProfileMasterParserTest {
     @DisplayName("la hoja DISCONNECTORS")
     class HojaDeSeccionadores {
 
-        private static final String[] HEADER = {"EP", "ESTACION", "VIA", "PROFILE_ID", "KP_POSTE", "NOMBRE",
-                "KP", "ON_LOAD", "NORMALLY_OPEN", "DRIVE_TYPE", "DISCONNECTOR_FUNCTION", "ENABLED", "REVISAR"};
+        private static final String[] HEADER = {"EP", "ESTACION", "VIA", "VIA_CONECTADA", "PROFILE_ID", "KP_POSTE",
+                "NOMBRE", "KP", "ON_LOAD", "NORMALLY_OPEN", "DRIVE_TYPE", "DISCONNECTOR_FUNCTION", "ENABLED",
+                "REVISAR"};
 
         @Test
         @DisplayName("lee el seccionador con su poste o con su KP propio, y los SI/NO tal cual vienen")
         void leeLosSeccionadores() throws IOException {
             ProfileMasterParser.ProfileMasterContent content = parser.parseAll(withDisconnectors(HEADER, List.of(
-                    new String[]{"EP9A", "LOD", "TRACK 1", "5-1.03", "5000.410", "LOD-03", "", "SI", "NO",
+                    new String[]{"EP9A", "LOD", "TRACK 1", "", "5-1.03", "5000.410", "LOD-03", "", "SI", "NO",
                             "MOTOR", "Disc/IO", "SI", "NO"},
-                    new String[]{"EP4", "BIN", "TRACK 2 BIN", "", "", "BIN-B01", "98375.5", "NO", "", "",
-                            "ED", "NO", "SI"})));
+                    new String[]{"EP4", "BIN", "TRACK 2 BIN", "TRACK 1", "", "", "BIN-B01", "98375.5", "NO", "", "",
+                            "Disc/PP", "NO", "SI"})));
 
             assertThat(content.disconnectors()).hasSize(2);
             DisconnectorMasterRow enPoste = content.disconnectors().getFirst();
+            assertThat(enPoste.connectedTrack()).isEmpty();
             assertThat(enPoste.profileId()).isEqualTo("5-1.03");
             assertThat(enPoste.profileKp()).isEqualByComparingTo("5000.41");
             assertThat(enPoste.kp()).isEmpty();
@@ -302,6 +304,7 @@ class ProfileMasterParserTest {
             DisconnectorMasterRow sinPoste = content.disconnectors().get(1);
             assertThat(sinPoste.station()).isEqualTo("BIN");
             assertThat(sinPoste.track()).isEqualTo("TRACK 2 BIN");
+            assertThat(sinPoste.connectedTrack()).isEqualTo("TRACK 1");
             assertThat(sinPoste.profileId()).isEmpty();
             assertThat(sinPoste.profileKp()).isNull();
             assertThat(sinPoste.kp()).isEqualTo("98375.5");
@@ -331,9 +334,12 @@ class ProfileMasterParserTest {
                     .hasMessageContaining(ProfileMasterParser.DISCONNECTORS_SHEET);
         }
 
-        /** KP y KP_POSTE llegaron con V26 y el estado y el accionamiento con V25: son opcionales. */
+        /**
+         * KP y KP_POSTE llegaron con V26, el estado y el accionamiento con V25 y la via conectada con
+         * V27: son opcionales.
+         */
         @Test
-        @DisplayName("KP, KP_POSTE, NORMALLY_OPEN y DRIVE_TYPE pueden faltar en la cabecera")
+        @DisplayName("KP, KP_POSTE, VIA_CONECTADA, NORMALLY_OPEN y DRIVE_TYPE pueden faltar en la cabecera")
         void columnasOpcionales() throws IOException {
             ProfileMasterParser.ProfileMasterContent content = parser.parseAll(withDisconnectors(
                     new String[]{"EP", "ESTACION", "VIA", "PROFILE_ID", "NOMBRE", "ON_LOAD", "DISCONNECTOR_FUNCTION",
@@ -343,6 +349,7 @@ class ProfileMasterParserTest {
             DisconnectorMasterRow row = content.disconnectors().getFirst();
             assertThat(row.kp()).isEmpty();
             assertThat(row.profileKp()).isNull();
+            assertThat(row.connectedTrack()).isEmpty();
             assertThat(row.normallyOpen()).isEmpty();
             assertThat(row.driveType()).isEmpty();
         }
@@ -351,9 +358,9 @@ class ProfileMasterParserTest {
         @DisplayName("una fila sin paquete, sin estacion o sin nombre se salta, como en las demas hojas")
         void filaSinClave() throws IOException {
             ProfileMasterParser.ProfileMasterContent content = parser.parseAll(withDisconnectors(HEADER, List.of(
-                    new String[]{"EP6", "HER", "TRACK 1", "", "", ""},
-                    new String[]{"EP6", "", "TRACK 1", "", "", "HER-02"},
-                    new String[]{"EP6", "HER", "TRACK 1", "", "", "HER-03"})));
+                    new String[]{"EP6", "HER", "TRACK 1", "", "", "", ""},
+                    new String[]{"EP6", "", "TRACK 1", "", "", "", "HER-02"},
+                    new String[]{"EP6", "HER", "TRACK 1", "", "", "", "HER-03"})));
 
             assertThat(content.disconnectors()).extracting(DisconnectorMasterRow::name).containsExactly("HER-03");
         }

@@ -58,8 +58,10 @@ Cada entidad se da de alta o se actualiza **por su clave natural** —`execution
 `station(paquete, name)`, `track(paquete, name)`, `profile(vía, profileId, kp)`,
 `section_insulator(estación, name)`, `disconnector(estación, name)`—, apoyándose en los índices
 únicos parciales que añaden `V12` y `V18`. El poste de un seccionador se busca en la hoja `PROFILES`
-por su vía y su identificador, y en una vía que lo repite, por `KP_POSTE`. Reimportar el mismo
-maestro no crea nada: eso es lo que hace que la carga se pueda repetir sin miedo.
+por su vía y su identificador, y en una vía que lo repite, por `KP_POSTE`. Su vía conectada
+(`VIA_CONECTADA`, `V27`) se busca entre las vías de su paquete que ha escrito la carga: si no está,
+o si es su propia vía, la fila sale en el informe. Reimportar el mismo maestro no crea nada: eso es
+lo que hace que la carga se pueda repetir sin miedo.
 
 Solo se cargan las filas marcadas `ENABLED=SI`. Con `dryRun=true` no se escribe nada y el informe
 sale con **los mismos recuentos** que la carga real, que es lo único que hace útil una simulación:

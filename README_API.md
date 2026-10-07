@@ -52,6 +52,12 @@ igual que el del perfil, y `trackId`. Solo sin poste: en uno con `profileId` son
 mandarlos es un 400 `BUS-001` sobre `kp` o `trackId`. Al colgar de un poste un seccionador que no lo
 estaba, se mandan a `null`.
 
+**Uno que pone dos vías en paralelo lleva la otra** (`V27`): `connectedTrackId`, con poste o sin él.
+Son los de puesta en paralelo (`Disc/PP`, `LoadB/PP`), que unen la catenaria de su vía con la de
+otra: su vía es la del poste, o su `trackId` sin poste, y esta es con la que la une. No puede ser la
+suya (400 `BUS-001` sobre `connectedTrackId`; con poste se compara con la vía del perfil). Es
+opcional y, como el resto de la fila, un `PUT` que no la lleva la quita.
+
 El borrado es **lógico**: marca la fila (`deleted = true`) y deja de aparecer en las consultas. No
 hay endpoint para restaurarla.
 
@@ -643,7 +649,8 @@ cada campo (§4 bis: alturas en metros, `stagger` y `railPoleDistance` en milím
       "sectionings": ["S1"],
       "cantilevers": [ { "id": 21, "type": "PT1", "stagger": "-200", "cwHeight": "5.300",
                          "catenaryHeight": "1.400", "steadyArmType": "SA1", "steadyArmLength": 1200 } ],
-      "disconnector": { "id": 40, "name": "SEC-40", "onLoad": true, "function": "FEED", "station": "ATOCHA" } }
+      "disconnector": { "id": 40, "name": "SEC-40", "onLoad": true, "function": "Disc/PP", "station": "ATOCHA",
+                        "connectedTrack": "VIA 2" } }
   ],
   "sectionInsulators": [
     { "id": 50, "name": "AIS-50", "kp": "15.000", "installationType": "TRACK_CONNECTION", "enabled": true,
@@ -655,8 +662,9 @@ cada campo (§4 bis: alturas en metros, `stagger` y `railPoleDistance` en milím
 
 Lo que va a `null` no viaja. El perfil no tiene estación en el modelo: las de la vía van en
 `stations` y la del seccionador o del aislador, en su marca. Un seccionador que no está en un poste
-no sale: el esquema dibuja cada seccionador en su perfil. Una vía sin perfiles devuelve las
-listas vacías; una vía inexistente, `404 NOT-001`.
+no sale: el esquema dibuja cada seccionador en su perfil. El que pone dos vías en paralelo lleva en
+`connectedTrack` la otra (`V27`), y sale en el esquema de la vía de su poste, no en el de esa otra.
+Una vía sin perfiles devuelve las listas vacías; una vía inexistente, `404 NOT-001`.
 
 Está **cacheado** en Redis (`normal:item`, clave `TrackSchematicService:getSchematic:{id}`, 6 h):
 la segunda petición de la misma vía no toca la base de datos. Cualquier escritura de

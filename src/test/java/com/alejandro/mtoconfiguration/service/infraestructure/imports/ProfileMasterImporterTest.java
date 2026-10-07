@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
@@ -79,7 +80,7 @@ class ProfileMasterImporterTest {
                 .thenReturn(UpsertResult.created(4L));
         when(upsertService.upsertSectionInsulator(any(), anyLong(), any(), any(), any(), any(), anyBoolean()))
                 .thenReturn(UpsertResult.created(5L));
-        when(upsertService.upsertDisconnector(any(), any(), any(), any(), anyBoolean()))
+        when(upsertService.upsertDisconnector(any(), any(), any(), any(), any(), anyBoolean()))
                 .thenReturn(UpsertResult.created(6L));
     }
 
@@ -537,7 +538,7 @@ class ProfileMasterImporterTest {
 
             assertThat(report.getFailed()).as("%s", report.getErrors()).isZero();
             assertThat(report.outcomeOf(ProfileImportReport.DISCONNECTOR).getCreated()).isEqualTo(1);
-            verify(upsertService).upsertDisconnector(eq(row), eq(2L), eq(1007L), isNull(), eq(false));
+            verify(upsertService).upsertDisconnector(eq(row), eq(2L), eq(1007L), isNull(), isNull(), eq(false));
         }
 
         /**
@@ -554,8 +555,9 @@ class ProfileMasterImporterTest {
             ProfileImportReport report = importer.importFrom(ANY_FILE, false);
 
             assertThat(report.getFailed()).as("%s", report.getErrors()).isZero();
-            verify(upsertService).upsertDisconnector(eq(conVia), eq(2L), isNull(), eq(3L), eq(false));
-            verify(upsertService).upsertDisconnector(eq(viaDesconocida), eq(2L), isNull(), isNull(), eq(false));
+            verify(upsertService).upsertDisconnector(eq(conVia), eq(2L), isNull(), eq(3L), isNull(), eq(false));
+            verify(upsertService)
+                    .upsertDisconnector(eq(viaDesconocida), eq(2L), isNull(), isNull(), isNull(), eq(false));
         }
 
         /**
@@ -572,7 +574,7 @@ class ProfileMasterImporterTest {
             ProfileImportReport report = importer.importFrom(ANY_FILE, false);
 
             assertThat(report.getFailed()).as("%s", report.getErrors()).isZero();
-            verify(upsertService).upsertDisconnector(eq(row), eq(2L), eq(1008L), isNull(), eq(false));
+            verify(upsertService).upsertDisconnector(eq(row), eq(2L), eq(1008L), isNull(), isNull(), eq(false));
         }
 
         @Test
@@ -588,7 +590,7 @@ class ProfileMasterImporterTest {
                     .containsExactly(tuple(ProfileImportReport.DISCONNECTOR, 11));
             assertThat(report.getErrors().getFirst().message())
                     .contains("2 postes '5-1.03'", "100, 5000", "KP_POSTE");
-            verify(upsertService, never()).upsertDisconnector(any(), any(), any(), any(), anyBoolean());
+            verify(upsertService, never()).upsertDisconnector(any(), any(), any(), any(), any(), anyBoolean());
         }
 
         @Test
@@ -617,7 +619,7 @@ class ProfileMasterImporterTest {
             ProfileImportReport report = importer.importFrom(ANY_FILE, false);
 
             assertThat(report.getFailed()).as("%s", report.getErrors()).isZero();
-            verify(upsertService).upsertDisconnector(eq(row), eq(2L), eq(1007L), isNull(), eq(false));
+            verify(upsertService).upsertDisconnector(eq(row), eq(2L), eq(1007L), isNull(), isNull(), eq(false));
         }
 
         @Test
@@ -648,14 +650,14 @@ class ProfileMasterImporterTest {
             assertThat(report.getErrors()).singleElement()
                     .extracting(ProfileImportReport.ItemError::message).asString()
                     .contains("'83-1.02'", "no se ha podido cargar");
-            verify(upsertService, never()).upsertDisconnector(any(), any(), any(), any(), anyBoolean());
+            verify(upsertService, never()).upsertDisconnector(any(), any(), any(), any(), any(), anyBoolean());
         }
 
         @Test
         @DisplayName("dos filas en el mismo poste: la segunda sale en el informe con el nombre de la primera")
         void dosEnElMismoPoste() {
             DisconnectorMasterRow primero = disconnector("HER-01", "TRACK 1", "83-1.02", null);
-            DisconnectorMasterRow segundo = new DisconnectorMasterRow("EP6", "HERZLIYA", "TRACK 1", "83-1.02",
+            DisconnectorMasterRow segundo = new DisconnectorMasterRow("EP6", "HERZLIYA", "TRACK 1", "", "83-1.02",
                     null, "HER-02", "", "SI", "NO", "MOTOR", "Disc/IO", true, 12);
             givenDisconnectors(List.of(pole("83-1.02", "83063.410", 1, 7, true)), primero, segundo);
 
@@ -665,14 +667,14 @@ class ProfileMasterImporterTest {
                     .extracting(ProfileImportReport.ItemError::row, ProfileImportReport.ItemError::message)
                     .containsExactly(tuple(12, "su poste '83-1.02' ya lo lleva 'HER-01' en esta misma hoja, "
                             + "y un poste admite un solo seccionador"));
-            verify(upsertService).upsertDisconnector(eq(primero), any(), any(), any(), anyBoolean());
-            verify(upsertService, never()).upsertDisconnector(eq(segundo), any(), any(), any(), anyBoolean());
+            verify(upsertService).upsertDisconnector(eq(primero), any(), any(), any(), any(), anyBoolean());
+            verify(upsertService, never()).upsertDisconnector(eq(segundo), any(), any(), any(), any(), anyBoolean());
         }
 
         @Test
         @DisplayName("sin su estacion no se intenta, y el motivo es la estacion")
         void sinEstacion() {
-            DisconnectorMasterRow row = new DisconnectorMasterRow("EP6", "HADERA", "TRACK 1", "",
+            DisconnectorMasterRow row = new DisconnectorMasterRow("EP6", "HADERA", "TRACK 1", "", "",
                     null, "HAD-01", "", "SI", "NO", "MOTOR", "Disc/IO", true, 11);
             givenDisconnectors(List.of(), row);
 
@@ -686,14 +688,14 @@ class ProfileMasterImporterTest {
         @Test
         @DisplayName("ENABLED=NO se salta y se cuenta, como en las demas hojas")
         void deshabilitado() {
-            DisconnectorMasterRow row = new DisconnectorMasterRow("EP6", "HERZLIYA", "TRACK 1", "",
+            DisconnectorMasterRow row = new DisconnectorMasterRow("EP6", "HERZLIYA", "TRACK 1", "", "",
                     null, "HER-01", "", "SI", "NO", "MOTOR", "Disc/IO", false, 11);
             givenDisconnectors(List.of(), row);
 
             ProfileImportReport report = importer.importFrom(ANY_FILE, false);
 
             assertThat(report.getSkippedDisabled()).isEqualTo(1);
-            verify(upsertService, never()).upsertDisconnector(any(), any(), any(), any(), anyBoolean());
+            verify(upsertService, never()).upsertDisconnector(any(), any(), any(), any(), any(), anyBoolean());
         }
 
         /**
@@ -712,13 +714,13 @@ class ProfileMasterImporterTest {
 
             assertThat(report.getFailed()).as("%s", report.getErrors()).isZero();
             assertThat(report.outcomeOf(ProfileImportReport.DISCONNECTOR).getCreated()).isEqualTo(1);
-            verify(upsertService).upsertDisconnector(eq(row), any(), isNull(), isNull(), eq(true));
+            verify(upsertService).upsertDisconnector(eq(row), any(), isNull(), isNull(), isNull(), eq(true));
         }
 
         @Test
         @DisplayName("el fallo del upsert llega al informe con la clave natural del seccionador")
         void falloDelUpsert() {
-            when(upsertService.upsertDisconnector(any(), any(), any(), any(), anyBoolean()))
+            when(upsertService.upsertDisconnector(any(), any(), any(), any(), any(), anyBoolean()))
                     .thenThrow(new ValidationException("DRIVE_TYPE 'DIESEL' no es MOTOR ni MANUAL"));
             givenDisconnectors(List.of(), poleLess("HER-T1", "TRACK 1"));
 
@@ -727,6 +729,69 @@ class ProfileMasterImporterTest {
             assertThat(report.getErrors())
                     .extracting(ProfileImportReport.ItemError::reference, ProfileImportReport.ItemError::message)
                     .containsExactly(tuple("EP6 / HERZLIYA / HER-T1", "DRIVE_TYPE 'DIESEL' no es MOTOR ni MANUAL"));
+        }
+
+        /**
+         * La via conectada se busca en su paquete, como la del aislador, y viaja igual con poste que
+         * sin el: es del propio seccionador, no de su poste.
+         */
+        @Test
+        @DisplayName("la via conectada se resuelve en su paquete y viaja con poste o sin el")
+        void viaConectada() {
+            when(upsertService.upsertTrack(argThat(track -> track != null && "TRACK 2".equals(track.name())),
+                    anyLong(), any(), anyBoolean())).thenReturn(UpsertResult.created(30L));
+            DisconnectorMasterRow enPoste = parallel("HER-B01", "83-1.02", "TRACK 2");
+            DisconnectorMasterRow sinPoste = parallel("HER-B02", "", "track 2");
+            givenDisconnectorsOnTwoTracks(List.of(pole("83-1.02", "83063.410", 1, 7, true)), enPoste, sinPoste);
+
+            ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+            assertThat(report.getFailed()).as("%s", report.getErrors()).isZero();
+            verify(upsertService).upsertDisconnector(eq(enPoste), eq(2L), eq(1007L), isNull(), eq(30L), eq(false));
+            verify(upsertService).upsertDisconnector(eq(sinPoste), eq(2L), isNull(), eq(3L), eq(30L), eq(false));
+        }
+
+        /**
+         * Perder en silencio la via conectada dejaria contada una fila que no dice lo que la hoja, al
+         * contrario que la via propia de uno sin poste. Y una fila que falla por ella no se queda con
+         * su poste: lo puede llevar la siguiente. Igual en la simulacion, que no tiene ids.
+         */
+        @Test
+        @DisplayName("una via conectada de otro paquete, o la propia, señala la fila y no le quita el poste a otra")
+        void viaConectadaQueNoVale() {
+            DisconnectorMasterRow desconocida = parallel("HER-B01", "83-1.02", "TRACK 9");
+            DisconnectorMasterRow propia = parallel("HER-B02", "", "Track 1");
+            DisconnectorMasterRow despues = disconnector("HER-01", "TRACK 1", "83-1.02", null);
+            givenDisconnectorsOnTwoTracks(List.of(pole("83-1.02", "83063.410", 1, 7, true)),
+                    desconocida, propia, despues);
+
+            ProfileImportReport report = importer.importFrom(ANY_FILE, true);
+
+            assertThat(report.getErrors())
+                    .extracting(ProfileImportReport.ItemError::reference, ProfileImportReport.ItemError::message)
+                    .containsExactly(
+                            tuple("EP6 / HERZLIYA / HER-B01",
+                                    "su VIA_CONECTADA 'TRACK 9' no esta entre las vias cargadas del "
+                                            + "paquete EP6"),
+                            tuple("EP6 / HERZLIYA / HER-B02", "su VIA_CONECTADA 'Track 1' es su propia via: "
+                                    + "tiene que ser la otra de las dos que pone en paralelo"));
+            verify(upsertService, never())
+                    .upsertDisconnector(eq(desconocida), any(), any(), any(), any(), anyBoolean());
+            verify(upsertService, never()).upsertDisconnector(eq(propia), any(), any(), any(), any(), anyBoolean());
+            verify(upsertService).upsertDisconnector(eq(despues), any(), eq(1007L), any(), isNull(), eq(true));
+        }
+
+        private void givenDisconnectorsOnTwoTracks(List<ProfileMasterRow> poles,
+                                                   DisconnectorMasterRow... disconnectors) {
+            givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                    List.of(track("EP6", "TRACK 1", "HERZLIYA"), track("EP6", "TRACK 2", "HERZLIYA")), poles,
+                    List.of(), List.of(), List.of(), List.of(disconnectors));
+        }
+
+        /** Uno de puesta en paralelo de TRACK 1 con su via conectada. Sin poste, KP en blanco. */
+        private static DisconnectorMasterRow parallel(String name, String profileId, String connectedTrack) {
+            return new DisconnectorMasterRow("EP6", "HERZLIYA", "TRACK 1", connectedTrack, profileId, null, name,
+                    "", "NO", "NO", "MOTOR", "Disc/PP", true, 13);
         }
 
         private void givenDisconnectors(List<ProfileMasterRow> poles, DisconnectorMasterRow... disconnectors) {
@@ -744,13 +809,13 @@ class ProfileMasterImporterTest {
 
         private static DisconnectorMasterRow disconnector(String name, String track, String profileId,
                                                           String profileKp) {
-            return new DisconnectorMasterRow("EP6", "HERZLIYA", track, profileId,
+            return new DisconnectorMasterRow("EP6", "HERZLIYA", track, "", profileId,
                     profileKp == null ? null : new BigDecimal(profileKp), name, "", "SI", "NO", "MOTOR",
                     "Disc/IO", true, 11);
         }
 
         private static DisconnectorMasterRow poleLess(String name, String track) {
-            return new DisconnectorMasterRow("EP6", "HERZLIYA", track, "", null, name, "98375.5", "SI",
+            return new DisconnectorMasterRow("EP6", "HERZLIYA", track, "", "", null, name, "98375.5", "SI",
                     "SI", "MANUAL", "Disc/IO", true, 11);
         }
     }

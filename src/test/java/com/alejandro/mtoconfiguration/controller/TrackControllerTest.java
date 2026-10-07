@@ -76,7 +76,7 @@ class TrackControllerTest {
 
     private static TrackSchematicDTO esquema() {
         var brazo = new TrackSchematicDTO.CantileverArm(21L, "PT1", "-200", "5.300", "1.400", "SA1", 1200L);
-        var seccionador = new TrackSchematicDTO.DisconnectorMark(40L, "SEC-40", true, "FEED", "ATOCHA");
+        var seccionador = new TrackSchematicDTO.DisconnectorMark(40L, "SEC-40", true, "Disc/PP", "ATOCHA", "VIA 2");
         var p1 = new TrackSchematicDTO.ProfileNode(1L, "P-001", "10.000", 1, "55.000", "HEB", null, "OK",
                 "-2500", new ArrayList<>(List.of("S1")), new ArrayList<>(List.of(brazo)), null);
         var p2 = new TrackSchematicDTO.ProfileNode(2L, "P-002", "20.000", 2, null, null, null, null,
@@ -112,6 +112,7 @@ class TrackControllerTest {
                     .andExpect(jsonPath("$.profiles[1].code").value("P-002"))
                     .andExpect(jsonPath("$.profiles[1].disconnector.name").value("SEC-40"))
                     .andExpect(jsonPath("$.profiles[1].disconnector.station").value("ATOCHA"))
+                    .andExpect(jsonPath("$.profiles[1].disconnector.connectedTrack").value("VIA 2"))
                     .andExpect(jsonPath("$.sectionInsulators[0].name").value("AIS-50"))
                     .andExpect(jsonPath("$.sectionInsulators[0].installationType").value("TRACK_CONNECTION"))
                     .andExpect(jsonPath("$.sectionInsulators[0].connectedTrack").value("VIA 2"))

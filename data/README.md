@@ -616,6 +616,10 @@ aislador. El resto de columnas:
   que propone.
 - **`KP`**: el del propio seccionador, en metros, **solo sin poste** (`V26`); con poste, el KP es el
   del perfil, y una fila con los dos sale en el informe.
+- **`VIA_CONECTADA`**: la otra vía de uno que pone dos en paralelo (`Disc/PP`, `LoadB/PP`; `V27`),
+  con poste o sin él, y vacía en los demás. Se busca por nombre entre las vías de su paquete, como
+  la del aislador. Al contrario que `VIA` sin poste, una que no existe **no** se queda vacía en
+  silencio: la fila sale en el informe, y lo mismo si es su propia `VIA`.
 - **`ON_LOAD`** (`SI`/`NO`, obligatorio), **`NORMALLY_OPEN`** (`SI` = normalmente abierto, `NO` =
   cerrado, vacío = sin dato) y **`DRIVE_TYPE`** (`MOTOR`, `MANUAL` o vacío). Un valor que no es
   ninguno de esos no se adivina: la fila sale en el informe con su columna.
@@ -951,6 +955,14 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
   subestaciones (`KAF`, `TN3`, `HSA`) no lo son: se propone la estación del plano más cercana y se
   decide **una vez por prefijo**, en la hoja `ESTACION_POR_PREFIJO`.
 - **Función**: el código del poste casado; si no hay, una propuesta por lo que puentea y el nombre.
+- **Vía conectada** (`V27`): un seccionador de puesta en paralelo une su vía con otra. Lo es si su
+  poste lleva `PP` en `SECTIONING_FEEDING` (`Disc/PP`, `LoadB/PP`), o si el nombre lleva la B del
+  by-pass (`HER-B02`, `THS-BF01`) y sus patas tocan dos vías del plano. Entonces `VIA_CONECTADA`
+  propone, en naranja, la vía del maestro para la otra del plano, si solo hay una candidata; si no,
+  la celda sale en amarillo y el motivo dice por qué. No bloquea `ENABLED`. A uno de la B con las
+  patas en dos vías y sin código en su poste se le propone `Disc/PP` o `LoadB/PP`, y no lo que
+  puentea: el aislador o la lámina que hay entre sus patas es lo que separa las dos vías, y el
+  maestro marca esos postes con `PP`.
 
 ## Lo que el plano no dice
 
@@ -992,7 +1004,8 @@ girado, la elección de la vía del maestro, y qué filas de `DISCONNECTORS` ent
 listas para cargar (las de otra capa dentro de un EP, la de Haifa, la que no tiene poste, la vía
 distinta y los dos postes al mismo KP), el KP propio solo sin poste, y los desplegables: los postes
 cercanos con el de la fila primero, el KP del poste propuesto, los rótulos sueltos como nombre, el
-orden del catálogo de funciones y el libro con sus listas. El módulo importa `ezdxf` y
-`scipy` solo dentro de las funciones que los usan, así que corre en el mismo paso de CI que los
-demás, con `openpyxl` y `pyyaml`. `tools/tests/test_build_profile_master.py` prueba el paso del
-libro revisado al maestro.
+orden del catálogo de funciones y el libro con sus listas; y la vía conectada: la propuesta, la
+ambigua, la que falta en amarillo y la función `PP` de uno de la B entre dos vías. El módulo importa
+`ezdxf` y `scipy` solo dentro de las funciones que los usan, así que corre en el mismo paso de CI
+que los demás, con `openpyxl` y `pyyaml`. `tools/tests/test_build_profile_master.py` prueba el
+paso del libro revisado al maestro.

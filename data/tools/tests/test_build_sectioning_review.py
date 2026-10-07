@@ -449,6 +449,85 @@ class DisconnectorRowsTest(unittest.TestCase):
         self.assertEqual(ready["ENABLED"], "SI")
         self.assertNotIn("repite el poste", ready["MOTIVO_REVISAR"])
 
+    TRACK_2 = {"name": "TRACK 2 TLV SAVIDOR", "num": "2", "stations": ["TSA"]}
+
+    def two_tracks(self):
+        return dict(self.MASTER, tracks={"EP6": self.MASTER["tracks"]["EP6"] + [self.TRACK_2]})
+
+    def test_a_bypass_across_two_tracks_proposes_the_other_one(self):
+        # La B del by-pass con las patas en las vias 1 y 2 del plano: pone las dos en paralelo, y la
+        # otra es la VIA_CONECTADA. No bloquea: la fila sigue lista.
+        row = self.row(
+            master=self.two_tracks(), name="TSA-B01", name_function="B", tracks=["1", "2"]
+        )
+        self.assertEqual(
+            (row["VIA"], row["VIA_CONECTADA"]), ("TRACK 1 TLV SAVIDOR", "TRACK 2 TLV SAVIDOR")
+        )
+        self.assertIn("VIA_CONECTADA", row["_proposals"])
+        self.assertIn("via conectada propuesta: el plano une las vias 1/2", row["MOTIVO_REVISAR"])
+        self.assertEqual(row["ENABLED"], "SI")
+        # Sin la B y con un poste que no es de puesta en paralelo, dos vias no dicen nada.
+        self.assertEqual(self.row(master=self.two_tracks(), tracks=["1", "2"])["VIA_CONECTADA"], "")
+
+    def test_a_parallel_pole_the_plan_does_not_settle_asks_for_the_track(self):
+        # El poste dice puesta en paralelo, pero el plano no numera la otra via: amarilla.
+        pole = dict(self.POLE, dcodes=["Disc/PP"])
+        row = self.row(master=dict(self.MASTER, profiles=[pole]), pole=pole)
+        self.assertEqual(row["VIA_CONECTADA"], "")
+        self.assertEqual(row["_missing"], {"VIA_CONECTADA"})
+        self.assertIn(
+            "pone dos vias en paralelo: escribe la otra en VIA_CONECTADA (el plano no dice con que "
+            "via)",
+            row["MOTIVO_REVISAR"],
+        )
+        self.assertEqual(row["ENABLED"], "SI", "una nota, no un bloqueo")
+
+    def test_two_plan_tracks_that_are_not_its_own_settle_nothing(self):
+        # La via del poste sin numero (INT, EXT): ninguna de las dos del plano es la suya, y no hay
+        # como saber cual es la otra.
+        pole = dict(self.POLE, via="TRACK INT SOUTH", track=None, dcodes=["Disc/PP"])
+        master = dict(self.two_tracks(), profiles=[pole])
+        row = self.row(master=master, pole=pole, tracks=["1", "2"])
+        self.assertEqual(row["VIA_CONECTADA"], "")
+        self.assertIn(
+            "el plano une las vias 1/2 y ninguna es la suya (TRACK INT SOUTH)",
+            row["MOTIVO_REVISAR"],
+        )
+
+    def test_the_other_plan_track_unknown_to_the_master_says_why(self):
+        pole = dict(self.POLE, dcodes=["Disc/PP"])
+        row = self.row(master=dict(self.MASTER, profiles=[pole]), pole=pole, tracks=["1", "9"])
+        self.assertEqual(row["VIA_CONECTADA"], "")
+        self.assertIn(
+            "el plano une las vias 1/9; la via 9 no existe en el maestro", row["MOTIVO_REVISAR"]
+        )
+
+    def test_a_bypass_across_two_tracks_without_a_code_is_proposed_pp(self):
+        # Lo que hay entre sus patas separa las dos vias: el maestro marca esos postes PP, no SI.
+        row = self.row(
+            master=self.two_tracks(),
+            pole=None,
+            name="TSA-B01",
+            name_function="B",
+            tracks=["1", "2"],
+            bridged="SI",
+        )
+        self.assertEqual(row["DISCONNECTOR_FUNCTION"], "Disc/PP")
+        self.assertEqual(row["VIA_CONECTADA"], "TRACK 2 TLV SAVIDOR")
+        on_load = self.row(
+            master=self.two_tracks(),
+            pole=None,
+            name="TSA-B01",
+            name_function="B",
+            tracks=["1", "2"],
+            on_load=True,
+        )
+        self.assertEqual(on_load["DISCONNECTOR_FUNCTION"], "LoadB/PP")
+        # Con una sola via en el plano, lo de siempre: lo que puentea.
+        self.assertEqual(
+            self.row(pole=None, name_function="B", bridged="SI")["DISCONNECTOR_FUNCTION"], "Disc/SI"
+        )
+
     def test_twin_poles_the_plan_track_does_not_settle_are_doubtful(self):
         int_pole = dict(self.POLE, via="TRACK INT SOUTH", profile="2-INT.13", track=None)
         ext_pole = dict(self.POLE, via="TRACK EXT SOUTH", profile="2-EXT.13", track=None)
@@ -541,6 +620,7 @@ class DropDownTest(unittest.TestCase):
                 "KP_POSTE": 93453.41,
                 "ENABLED": "SI",
                 "HANDLE": "H1",
+                "_missing": {"VIA_CONECTADA"},
                 "_options": {"PROFILE_ID": ["93-1.05", "93-1.04"], "KP_POSTE": [93453.41, 93430]},
             }
         ]
@@ -579,6 +659,10 @@ class DropDownTest(unittest.TestCase):
             ],
         )
         self.assertIn("OPCIONES!$A$", of("F2").formula1, "ENABLED: SI_NO, la primera lista")
+        # Lo que falta en esta fila y no en todas, en amarillo: la via conectada que pide.
+        self.assertEqual(wb["DISCONNECTORS"]["J2"].fill.fgColor.rgb, "00FFFF00")
+        tracks = openpyxl.utils.get_column_letter(header.index("VIAS EP6") + 1)
+        self.assertEqual(of("J2").formula1, "OPCIONES!$%s$2:$%s$3" % (tracks, tracks))
         self.assertIn(of("F2").errorStyle, (None, "stop"))
 
     @staticmethod
@@ -601,6 +685,7 @@ class DropDownTest(unittest.TestCase):
                     "REVISAR",
                     "ESTADO_DIBUJO",
                     "HANDLE",
+                    "VIA_CONECTADA",
                 ],
                 disconnectors,
             ),

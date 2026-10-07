@@ -42,6 +42,12 @@ paths:
   (`BaseMapper.checkVersion`): `mergeCollection` lo hace con cada hijo de la colección, y un 1:1 nuevo
   tiene que llamarlo en su `@AfterMapping`, como el brazo en `CantileverMapper`. Lo fijan
   `BaseMapperTest` («Version de los hijos»), `ProfileMapperTest` y `CantileverMapperTest`.
+- Una regla que solo se puede comprobar con la entidad, y que tiene que valer en todas las
+  escrituras, va en el `@AfterMapping` de su mapper, que es el único paso común: el alta en lote no
+  llama al `Business`, y los hijos que escribe su padre no pasan por el servicio del hijo. Hoy es
+  una: con poste, la vía conectada de un seccionador no puede ser la de su perfil (`V27`), con el
+  mismo 400 `BUS-001` que daría el validador. Lo fijan `DisconnectorMapperTest` y
+  `DisconnectorLinkIT`.
 - Tests: `MapperGraph` monta los mappers generados reales con sus dependencias
   (`new MapperGraph(masterDataService, referenceMapper).profile`); un `XMapperTest` por mapper, con un
   `@Nested` por aspecto.

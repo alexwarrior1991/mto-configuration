@@ -118,6 +118,8 @@ LEADER_HIT = 2.0  # la punta de una linea de referencia toca el simbolo
 POLE_MATCH_MAX_M = 80.0  # poste con codigo de seccionador a menos de 80 m del KP
 POLE_PROPOSAL_MAX_M = 30.0  # poste sin codigo propuesto solo si esta a menos de 30 m
 POLE_OPTIONS_MAX = 8  # postes en el desplegable de PROFILE_ID, del mas cercano al mas lejano
+BYPASS_NAME_FUNCTIONS = ("B", "BF")  # la B del by-pass en el nombre (HER-B02, THS-BF01)
+PARALLEL_FUNCTION = "/PP"  # Disc/PP, LoadB/PP y sus -pr: puesta en paralelo de dos vias
 DISCONNECTOR_CODE_PREFIXES = ("Disc", "LoadB", "ED")  # los codigos de catalogo de un seccionador
 ORPHAN_LABEL_MAX_DIST = 300.0  # rotulo suelto que se ofrece como nombre de un simbolo sin rotulo
 SECT_I_MATCH_MAX_M = 120.0
@@ -238,19 +240,51 @@ def function_from_name(name):
     return ""
 
 
-def function_proposal(kind, on_load, name_function, bridged):
-    """Codigo del catalogo DisconnectorFunction cuando no hay poste del que copiarlo."""
+def function_proposal(kind, on_load, name_function, bridged, parallel=False):
+    """Codigo del catalogo DisconnectorFunction cuando no hay poste del que copiarlo.
+
+    parallel: el seccionador pone dos vias en paralelo (la B del by-pass y las patas en dos vias
+    del plano). Gana a lo que puentea: el aislador o la lamina de aire que hay entre sus patas es
+    el que separa las dos vias, y el maestro marca esos postes con PP, no con SI ni con IO.
+    """
     if kind == "SECCIONADOR DE PUESTA A TIERRA" or name_function == "TE":
         return "ED"
     if name_function == "NS":
         return "LoadB/NS" if on_load else "Disc/NS"
     if name_function == "FP":
         return "LoadB" if on_load else "Disc"
+    if parallel:
+        return "LoadB/PP" if on_load else "Disc/PP"
     if bridged == "IO":
         return "LoadB/IO" if on_load else "Disc/IO"
     if bridged == "SI" and not on_load:
         return "Disc/SI"
     return ""
+
+
+def connected_track(r, via, tracks_of_ep, station):
+    """VIA_CONECTADA de uno que pone dos vias en paralelo: la del maestro para la OTRA del plano.
+
+    Devuelve (nombre, motivo si no se pudo). Solo se propone cuando una de las vias del plano es la
+    suya y queda una sola distinta: si ninguna es la suya (la del poste sin numero, INT o EXT, o un
+    plano que numera las vias de otra manera), no hay como saber cual de las dos es la otra.
+    """
+    resolved, problems = [], []
+    for number in dict.fromkeys(r["tracks"]):
+        name, why = master_track(tracks_of_ep, station, number)
+        if name:
+            resolved.append(name)
+        elif why:
+            problems.append(why)
+    plan = "el plano une las vias %s" % "/".join(r["tracks"])
+    if via not in resolved:
+        return "", "%s y ninguna es la suya (%s)" % (plan, via or "sin via")
+    others = [name for name in dict.fromkeys(resolved) if name != via]
+    if len(others) == 1:
+        return others[0], ""
+    if others:
+        return "", "%s: %s" % (plan, " o ".join(others))
+    return "", "%s; %s" % (plan, "; ".join(problems) or "la otra no es una via del maestro")
 
 
 def earthing(r):
@@ -1557,6 +1591,7 @@ DISCONNECTOR_COLUMNS = [
     "EP",
     "ESTACION",
     "VIA",
+    "VIA_CONECTADA",
     "PROFILE_ID",
     "KP_POSTE",
     "NOMBRE",
@@ -1725,11 +1760,34 @@ def disconnector_rows(records, master):
             if why:
                 reasons.append(why)
         function = pole["dcodes"][0] if pole else ""
+        # La B del by-pass con las patas en dos vias del plano: pone esas dos vias en paralelo.
+        two_tracks = len(set(r["tracks"])) >= 2
+        bypass_across = two_tracks and r["name_function"] in BYPASS_NAME_FUNCTIONS
         if not function:
-            function = function_proposal(r["type"], r["on_load"], r["name_function"], r["bridged"])
+            function = function_proposal(
+                r["type"], r["on_load"], r["name_function"], r["bridged"], parallel=bypass_across
+            )
             if function:
                 proposals.add("DISCONNECTOR_FUNCTION")
                 reasons.append("funcion propuesta desde el plano (%s)" % function)
+        # VIA_CONECTADA (V27): la otra via de uno que pone dos en paralelo. No bloquea ENABLED: la
+        # propuesta sale de las patas del plano, y si falta se pinta en amarillo para rellenarla.
+        connected, missing = "", set()
+        if bypass_across or PARALLEL_FUNCTION in function:
+            if two_tracks:
+                connected, why = connected_track(r, via, master["tracks"].get(r["ep"], []), station)
+            else:
+                why = "el plano no dice con que via"
+            if connected:
+                proposals.add("VIA_CONECTADA")
+                reasons.append(
+                    "via conectada propuesta: el plano une las vias %s" % "/".join(r["tracks"])
+                )
+            else:
+                missing.add("VIA_CONECTADA")
+                reasons.append(
+                    "pone dos vias en paralelo: escribe la otra en VIA_CONECTADA (%s)" % why
+                )
         if not r["name"]:
             reasons.append("simbolo sin rotulo: falta el nombre")
         if r["kp_m"] is None and r["name"]:
@@ -1805,6 +1863,7 @@ def disconnector_rows(records, master):
                 "EP": r["ep"],
                 "ESTACION": station,
                 "VIA": via,
+                "VIA_CONECTADA": connected,
                 "PROFILE_ID": profile,
                 # El KP del poste: solo lo mira el importador cuando la via repite el PROFILE_ID
                 # (dos tramos concatenados, como EP9A), y entonces es lo unico que los distingue.
@@ -1839,6 +1898,7 @@ def disconnector_rows(records, master):
                 "Y": round(r["y"], 2),
                 "HANDLE": r["handle"],
                 "_proposals": proposals,
+                "_missing": missing,
                 "_options": pole_options(nearby, chosen) if nearby else {},
             }
         )
@@ -2106,6 +2166,7 @@ def review_choices():
         "DISCONNECTORS": {
             "ESTACION": stations,
             "VIA": tracks,
+            "VIA_CONECTADA": tracks,
             "ON_LOAD": yes_no,
             "NORMALLY_OPEN": yes_no,
             "DRIVE_TYPE": (fixed("ACCIONAMIENTO"), True),
@@ -2204,13 +2265,15 @@ def write_review(path, sheets_data, readme, choices=None):
                 c.comment = Comment(comments[h], "build_sectioning_review.py")
         for i, row in enumerate(data, 2):
             proposals = row.get("_proposals", set())
+            # Lo que falta en esta fila y no en todas: la via conectada, solo en las que la piden.
+            row_required = required | row.get("_missing", set())
             for j, h in enumerate(columns, 1):
                 v = row.get(h, "")
                 c = ws.cell(row=i, column=j, value="" if v is None else v)
                 c.font = body
                 if h in proposals and v not in ("", None):
                     c.fill = proposal
-                elif h in required and v in ("", None):
+                elif h in row_required and v in ("", None):
                     c.fill = missing
                 elif h == "REVISAR" and v == "SI":
                     c.fill = review
@@ -2313,6 +2376,10 @@ def write_review(path, sheets_data, readme, choices=None):
             '=COUNTIF(%s,"SI")' % col("DISCONNECTORS", "ENABLED"),
         ),
         ("  a revisar (REVISAR = SI)", '=COUNTIF(%s,"SI")' % col("DISCONNECTORS", "REVISAR")),
+        (
+            "  que ponen dos vias en paralelo con su VIA_CONECTADA",
+            '=COUNTIF(%s,"?*")-1' % col("DISCONNECTORS", "VIA_CONECTADA"),
+        ),
         (
             "  prefijos con estacion propuesta (hoja ESTACION_POR_PREFIJO)",
             "=COUNTA(%s)-1" % col("ESTACION_POR_PREFIJO", "PREFIJO"),
@@ -2437,6 +2504,14 @@ README = [
         "importador cuando la via repite ese PROFILE_ID, que pasa en las vias de dos tramos "
         "concatenados (EP9A): entonces es lo unico que distingue un poste del otro. Si cambias "
         "de poste en una de esas vias, cambia tambien KP_POSTE; si no, el importador lo dice.",
+    ),
+    (
+        "VIA_CONECTADA",
+        "La otra via de un seccionador que pone dos en paralelo (Disc/PP, LoadB/PP; casi siempre "
+        "la B o BF del by-pass en el nombre), con poste o sin el. Su VIA es la de su poste, o la "
+        "suya sin poste, y esta es con la que la une, nunca la misma. En naranja, la que dice el "
+        "plano (las patas del simbolo tocan dos vias). En amarillo, una de puesta en paralelo de "
+        "la que el plano no dice cual: escribela tu. Vacia en los demas.",
     ),
     (
         "KP Y VIA SIN POSTE",
@@ -2681,6 +2756,8 @@ def main():
         "no esta en un poste.",
         "KP_POSTE": "KP del poste, en metros. Solo cuenta si la via repite el PROFILE_ID (dos "
         "tramos concatenados): dice cual de los dos. Si cambias de poste, cambialo tambien.",
+        "VIA_CONECTADA": "La otra via de uno que pone dos en paralelo (Disc/PP, LoadB/PP). En "
+        "naranja, la del plano; en amarillo, una de puesta en paralelo sin ella. Nunca la suya.",
         "ON_LOAD": "SI: circulo medio relleno (on-load). NO: vacio (off-load).",
         "KP": "En metros, solo sin poste: el de uno en un poste es el de su perfil. Si quitas el "
         "poste de una fila, copia aqui KP_ROTULO_M.",

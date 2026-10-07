@@ -15,6 +15,8 @@ import java.math.BigDecimal;
  * @param track                con poste, la vía del poste, que es donde se busca; sin poste, la vía
  *                             del propio seccionador (V26). Por nombre: el id lo resuelve el
  *                             importador
+ * @param connectedTrack       la otra vía de un seccionador que pone dos en paralelo (V27), por
+ *                             nombre y dentro de su paquete, o en blanco. Con poste o sin él
  * @param profileId            identificador del poste del que cuelga, o en blanco si no está en un
  *                             poste
  * @param profileKp            KP del poste, en metros. Solo decide cuál es el poste cuando la vía
@@ -30,6 +32,7 @@ public record DisconnectorMasterRow(
         String executionPackage,
         String station,
         String track,
+        String connectedTrack,
         String profileId,
         BigDecimal profileKp,
         String name,

@@ -7,6 +7,7 @@ import com.alejandro.mtoconfiguration.validator.commons.NormalEntityValidator;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Objects;
 
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_FRACTION_DIGITS;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_INTEGER_DIGITS;
@@ -22,6 +23,7 @@ public class DisconnectorValidator extends NormalEntityValidator<DisconnectorDTO
     private static final String FIELD_STATION_ID = "stationId";
     private static final String FIELD_KP = "kp";
     private static final String FIELD_TRACK_ID = "trackId";
+    private static final String FIELD_CONNECTED_TRACK_ID = "connectedTrackId";
     private static final String FIELD_DISCONNECTOR_FUNCTION = "disconnectorFunction";
 
     @Override
@@ -52,6 +54,7 @@ public class DisconnectorValidator extends NormalEntityValidator<DisconnectorDTO
      */
     private void validateOwnLocation(DisconnectorDTO dto, List<Alert> alerts) {
         if (dto.getProfileId() == null) {
+            validateConnectedTrack(dto, alerts);
             return;
         }
 
@@ -61,6 +64,17 @@ public class DisconnectorValidator extends NormalEntityValidator<DisconnectorDTO
 
         if (dto.getTrackId() != null) {
             alerts.add(Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, FIELD_TRACK_ID));
+        }
+    }
+
+    /**
+     * La vía conectada (V27) es la otra de las dos que el seccionador pone en paralelo: la suya no
+     * puede serlo. Sin poste, la suya es {@code trackId}, y se compara aquí; con poste es la de su
+     * perfil, que el DTO no trae, y la compara {@code DisconnectorMapper} con la entidad.
+     */
+    private void validateConnectedTrack(DisconnectorDTO dto, List<Alert> alerts) {
+        if (dto.getConnectedTrackId() != null && Objects.equals(dto.getConnectedTrackId(), dto.getTrackId())) {
+            alerts.add(Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, FIELD_CONNECTED_TRACK_ID));
         }
     }
 
