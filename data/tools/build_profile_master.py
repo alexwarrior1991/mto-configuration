@@ -148,6 +148,8 @@ class Master:
         self.unmapped = []
         self.discarded = []
         self.unknown = {}
+        # Las tres hojas del seccionamiento, del libro de revision del plano: ver load_sectioning.
+        self.sectioning = {name: [] for name in SECTIONING_SHEETS}
 
     def discard(self, *, motivo, ep, hoja, fila, detalle=""):
         self.discarded.append({"motivo": motivo, "ep": ep, "hoja": hoja,
@@ -1027,7 +1029,7 @@ SHEETS = {
                     "ARM_ANGLE", "STEADY_ARM_TYPE", "STEADY_ARM_LENGTH",
                     "ENABLED", "REVISAR", "FILA_ORIGEN"],
     # Las costuras para lo que falta: se escriben con cabecera y sin filas.
-    "DISCONNECTORS": ["EP", "ESTACION", "VIA", "PROFILE_ID", "NOMBRE", "ON_LOAD",
+    "DISCONNECTORS": ["EP", "ESTACION", "VIA", "PROFILE_ID", "NOMBRE", "KP", "ON_LOAD",
                       "NORMALLY_OPEN", "DRIVE_TYPE", "DISCONNECTOR_FUNCTION", "ENABLED"],
     "SECTION_INSULATORS": ["EP", "ESTACION", "NOMBRE", "KP", "TIPO_INSTALACION",
                            "VIA", "VIA_CONECTADA", "ENABLED"],
@@ -1062,11 +1064,15 @@ READ_ME = [
      "con su hoja y su fila; el resto del perfil se carga igual."),
     ("STEADY_ARM_TYPE / LENGTH",
      "La columna 'Arm Type' del origen trae los dos juntos ('PH-1150'). Sin longitud es normal."),
-    ("DISCONNECTORS",
-     "El seccionador. Hoy sale con cabecera y sin filas: lo trae el plano de seccionamiento, y "
-     "build_sectioning_review.py escribe un libro de revision con estas mismas columnas. "
-     "PROFILE_ID es opcional: un seccionador que no esta en un poste lo deja vacio (y VIA no "
-     "cuenta)."),
+    ("DISCONNECTORS / SECTION_INSULATORS / SECTION_INSULATOR_SWITCHES",
+     "El seccionamiento. Lo trae el plano, no los workbooks: build_sectioning_review.py escribe "
+     "un libro de revision con estas mismas columnas, y una vez revisado se guarda como "
+     "data/sectioning-review.xlsx, de donde este generador copia sus filas. Sin ese fichero, las "
+     "tres hojas salen con cabecera y sin filas."),
+    ("PROFILE_ID / VIA / KP del seccionador",
+     "Con PROFILE_ID, VIA es la del poste y sirve para encontrarlo (un PROFILE_ID se repite en "
+     "vias distintas), y KP va vacio: el KP y la via son los del poste. Sin PROFILE_ID (un "
+     "seccionador que no esta en un poste), VIA y KP son los suyos, KP en metros."),
     ("NORMALLY_OPEN / DRIVE_TYPE",
      "Estado normal (SI = normalmente abierto, NO = normalmente cerrado) y accionamiento (MOTOR "
      "o MANUAL). Vacio es valido: el dominio no los exige."),
@@ -1119,6 +1125,50 @@ def write_sheet(wb, name, headers, rows, review_key=None):
     return ws
 
 
+SECTIONING_SHEETS = ("DISCONNECTORS", "SECTION_INSULATORS", "SECTION_INSULATOR_SWITCHES")
+
+
+def load_sectioning(path):
+    """Las tres hojas del seccionamiento, del libro de revision del plano ya revisado.
+
+    El libro lo escribe build_sectioning_review.py con las columnas de estas hojas primero y las
+    de ayuda a la revision despues; de el solo se copian las de la costura (SHEETS), tal cual: lo
+    que se carga lo decide ENABLED, que es de quien revisa. ESTACION_CORRECTA de la hoja
+    ESTACION_POR_PREFIJO se aplica a los seccionadores de ese prefijo en ese EP, porque la
+    estacion de una zona neutra o de una subestacion se decide una vez por prefijo, no fila a fila.
+
+    Sin fichero, las tres hojas salen vacias, como antes de que hubiera plano.
+    """
+    sheets = {name: [] for name in SECTIONING_SHEETS}
+    if not path or not os.path.exists(path):
+        return sheets
+
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        def rows(name):
+            if name not in wb.sheetnames:
+                return []
+            iterator = wb[name].iter_rows(values_only=True)
+            header = [str(h).strip() if h is not None else "" for h in next(iterator, [])]
+            return [dict(zip(header, row)) for row in iterator
+                    if row and any(v not in (None, "") for v in row)]
+
+        corrections = {(r.get("PREFIJO"), r.get("EP")): str(r["ESTACION_CORRECTA"]).strip()
+                       for r in rows("ESTACION_POR_PREFIJO")
+                       if r.get("ESTACION_CORRECTA") not in (None, "")}
+        for name in SECTIONING_SHEETS:
+            for row in rows(name):
+                copied = {column: row.get(column) for column in SHEETS[name]}
+                if name == "DISCONNECTORS":
+                    fixed = corrections.get((row.get("PREFIJO"), row.get("EP")))
+                    if fixed:
+                        copied["ESTACION"] = fixed
+                sheets[name].append(copied)
+    finally:
+        wb.close()
+    return sheets
+
+
 def write_master(path, master: Master):
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
@@ -1137,9 +1187,8 @@ def write_master(path, master: Master):
     write_sheet(wb, "TRACKS", SHEETS["TRACKS"], master.tracks)
     write_sheet(wb, "PROFILES", SHEETS["PROFILES"], master.profiles, review_key="REVISAR")
     write_sheet(wb, "CANTILEVERS", SHEETS["CANTILEVERS"], master.cantilevers, review_key="REVISAR")
-    write_sheet(wb, "DISCONNECTORS", SHEETS["DISCONNECTORS"], [])
-    write_sheet(wb, "SECTION_INSULATORS", SHEETS["SECTION_INSULATORS"], [])
-    write_sheet(wb, "SECTION_INSULATOR_SWITCHES", SHEETS["SECTION_INSULATOR_SWITCHES"], [])
+    for name in SECTIONING_SHEETS:
+        write_sheet(wb, name, SHEETS[name], master.sectioning[name])
     write_sheet(wb, "NO_MAPEADO", SHEETS["NO_MAPEADO"], master.unmapped)
     write_sheet(wb, "DESCARTADOS", SHEETS["DESCARTADOS"],
                 [{"MOTIVO": d["motivo"], "EP": d["ep"], "HOJA": d["hoja"],
@@ -1245,6 +1294,9 @@ def main():
     parser.add_argument("--aliases", default=os.path.join(os.path.dirname(__file__), "aliases.yml"))
     parser.add_argument("--topology", default=os.path.join(os.path.dirname(__file__), "topology.yml"))
     parser.add_argument("--lov-master", default="data/lov-master.xlsx")
+    parser.add_argument("--sectioning", default="data/sectioning-review.xlsx",
+                        help="libro de revision del seccionamiento ya revisado "
+                             "(build_sectioning_review.py); sin el, sus tres hojas salen vacias")
     parser.add_argument("--seed-topology", action="store_true",
                         help="escribe un topology.yml inicial y termina")
     args = parser.parse_args()
@@ -1348,6 +1400,7 @@ def main():
         totals["cantilevers"] += cantilevers
         print(f"  {ep:8} hojas={sheets:<3} perfiles={profiles:<6} mensulas={cantilevers}")
 
+    master.sectioning = load_sectioning(args.sectioning)
     write_master(args.output, master)
 
     enabled_profiles = sum(1 for p in master.profiles if p["ENABLED"] == "SI")
@@ -1358,6 +1411,9 @@ def main():
     print(f"{'TRACKS':22}{len(master.tracks):>9}{len(master.tracks):>9}")
     print(f"{'PROFILES':22}{len(master.profiles):>9}{enabled_profiles:>9}")
     print(f"{'CANTILEVERS':22}{len(master.cantilevers):>9}{enabled_cantilevers:>9}")
+    for name in SECTIONING_SHEETS:
+        rows = master.sectioning[name]
+        print(f"{name:22}{len(rows):>9}{sum(1 for r in rows if r.get('ENABLED') == 'SI'):>9}")
     print(f"{'NO_MAPEADO':22}{len(master.unmapped):>9}")
     print(f"\nDescartados: {len(master.discarded)}")
     print(f"Escrito: {args.output}")

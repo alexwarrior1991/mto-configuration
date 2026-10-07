@@ -1525,6 +1525,7 @@ DISCONNECTOR_COLUMNS = [
     "VIA",
     "PROFILE_ID",
     "NOMBRE",
+    "KP",
     "ON_LOAD",
     "NORMALLY_OPEN",
     "DRIVE_TYPE",
@@ -1697,6 +1698,8 @@ def disconnector_rows(records, master):
                 "VIA": via,
                 "PROFILE_ID": profile,
                 "NOMBRE": r["name"],
+                # El KP propio, solo sin poste: con poste es el del perfil (V26).
+                "KP": "" if profile or r["kp_m"] is None else r["kp_m"],
                 "ON_LOAD": "SI" if r["on_load"] else "NO",
                 "NORMALLY_OPEN": state,
                 "DRIVE_TYPE": drive,
@@ -1711,6 +1714,7 @@ def disconnector_rows(records, master):
                 "CODIGO_POSTE": "|".join(pole["dcodes"]) if pole else "",
                 "TIPO_DXF": r["type"],
                 "ESTADO_DIBUJO": r["status"],
+                "PREFIJO": r["prefix"],
                 "DETECTOR_TENSION": "SI" if r["vd"] else "NO",
                 "PUENTEA": r["bridged"],
                 "VIAS_DXF": ", ".join(r["tracks"]),
@@ -2171,6 +2175,19 @@ README = [
         "en un poste lo lleva vacio, y entonces VIA no cuenta.",
     ),
     (
+        "KP Y VIA SIN POSTE",
+        "Un seccionador sin poste guarda su propio KP (en metros) y su VIA; uno en un poste, no: "
+        "son los de su perfil, y KP va vacio. Si quitas el poste de una fila, copia KP_ROTULO_M "
+        "en KP y comprueba la VIA; si se lo pones, vacia KP.",
+    ),
+    (
+        "DESPUES DE REVISAR",
+        "Guarda el libro como data/sectioning-review.xlsx: build_profile_master.py copia sus "
+        "tres primeras hojas (solo las columnas de cabecera azul) a profile-master.xlsx, y "
+        "aplica ESTACION_CORRECTA a los seccionadores de su prefijo. Solo se carga lo que "
+        "tenga ENABLED = SI.",
+    ),
+    (
         "SIN POSTE",
         "Los de alimentacion (FP en el nombre) van en el portico de la subestacion, y los de "
         "puesta a tierra solo van en un poste que el maestro marca con ED: sin el, salen sin "
@@ -2371,6 +2388,8 @@ def main():
         "PROFILE_ID": "Poste del maestro con seccionador a menos de 80 m del KP del rotulo; "
         "en naranja, el mas cercano sin codigo. Vacio si el seccionador no esta en un poste.",
         "ON_LOAD": "SI: circulo medio relleno (on-load). NO: vacio (off-load).",
+        "KP": "En metros, solo sin poste: el de uno en un poste es el de su perfil. Si quitas el "
+        "poste de una fila, copia aqui KP_ROTULO_M.",
         "NORMALLY_OPEN": "Estado normal. SI: cuchilla dibujada abierta. NO: cerrada.",
         "DRIVE_TYPE": "MOTOR (circulo del accionamiento) o MANUAL.",
         "DISCONNECTOR_FUNCTION": "Codigo del catalogo DisconnectorFunction (Disc/IO, LoadB/NS...).",

@@ -478,6 +478,57 @@ class PrimitivasCompartidas(unittest.TestCase):
 
 
 @unittest.skipUnless(os.path.exists(MASTER), "data/profile-master.xlsx no generado")
+class SeccionamientoDesdeElLibroRevisado(unittest.TestCase):
+    """Las tres hojas del seccionamiento salen del libro de revision del plano, ya revisado."""
+
+    def setUp(self):
+        try:
+            import openpyxl
+        except ImportError:
+            raise unittest.SkipTest("openpyxl no instalado")
+        import tempfile
+        self.folder = tempfile.mkdtemp()
+        self.path = os.path.join(self.folder, "sectioning-review.xlsx")
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+        disconnectors = wb.create_sheet("DISCONNECTORS")
+        disconnectors.append(bpm.SHEETS["DISCONNECTORS"] + ["REVISAR", "MOTIVO_REVISAR", "PREFIJO"])
+        disconnectors.append(["EP9A", "TSO", "TRACK 1", "98-1.05", "TSO-11", None, "SI", "NO",
+                              "MOTOR", "LoadB/IO", "SI", "NO", "", "TSO"])
+        disconnectors.append(["EP6", "TSA", "TRACK 2", None, "HSA-FP1.1", 9316, "SI", "SI",
+                              "MOTOR", "LoadB", "NO", "SI", "estacion propuesta", "HSA"])
+        prefixes = wb.create_sheet("ESTACION_POR_PREFIJO")
+        prefixes.append(["PREFIJO", "EP", "ESTACION_PROPUESTA", "SECCIONADORES", "NOMBRES",
+                         "ESTACION_CORRECTA", "ESTACIONES_DEL_EP"])
+        prefixes.append(["HSA", "EP6", "TSA", 5, "HSA-FP1.1", "THA", "TSA | THA"])
+        insulators = wb.create_sheet("SECTION_INSULATORS")
+        insulators.append(bpm.SHEETS["SECTION_INSULATORS"] + ["REVISAR"])
+        insulators.append(["EP4", "BIN", "SI W31-W33", None, "TRACK_CONNECTION", "TRACK 1",
+                           "TRACK 3 BIN", "NO", "SI"])
+        wb.save(self.path)
+
+    def test_solo_las_columnas_de_la_costura_y_tal_cual(self):
+        sheets = bpm.load_sectioning(self.path)
+
+        self.assertEqual([list(r) for r in sheets["DISCONNECTORS"]], [bpm.SHEETS["DISCONNECTORS"]] * 2)
+        first = sheets["DISCONNECTORS"][0]
+        self.assertEqual((first["PROFILE_ID"], first["KP"], first["ENABLED"]), ("98-1.05", None, "SI"))
+        self.assertEqual(sheets["SECTION_INSULATORS"][0]["NOMBRE"], "SI W31-W33")
+        self.assertEqual(sheets["SECTION_INSULATOR_SWITCHES"], [])
+
+    def test_la_estacion_se_corrige_una_vez_por_prefijo(self):
+        sheets = bpm.load_sectioning(self.path)
+
+        self.assertEqual(sheets["DISCONNECTORS"][1]["ESTACION"], "THA")
+        self.assertEqual(sheets["DISCONNECTORS"][1]["KP"], 9316)
+        self.assertEqual(sheets["DISCONNECTORS"][0]["ESTACION"], "TSO", "otro prefijo, sin tocar")
+
+    def test_sin_libro_las_tres_hojas_salen_vacias(self):
+        sheets = bpm.load_sectioning(os.path.join(self.folder, "no-esta.xlsx"))
+
+        self.assertEqual(sheets, {name: [] for name in bpm.SECTIONING_SHEETS})
+
+
 class MaestroDePerfilesGenerado(unittest.TestCase):
     """Contraste sobre el fichero real, que es el que importara la aplicacion."""
 

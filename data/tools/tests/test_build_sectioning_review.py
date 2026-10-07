@@ -365,6 +365,12 @@ class DisconnectorRowsTest(unittest.TestCase):
         self.assertIn("sin poste por ser de puesta a tierra", earthing["MOTIVO_REVISAR"])
         self.assertEqual(blocking(earthing), ["funcion propuesta desde el plano (ED)"])
 
+    def test_the_own_kp_only_without_a_pole(self):
+        # El KP propio es solo de un seccionador sin poste: con poste, es el del perfil (V26).
+        self.assertEqual(self.row()["KP"], "")
+        self.assertEqual(self.row(pole=None, name_function="FP")["KP"], 93451)
+        self.assertEqual(self.row(pole=None, name_function="FP", kp_m=None, kp_txt=None)["KP"], "")
+
     def test_an_unknown_normal_state_is_a_note(self):
         row = self.row(state="")
         self.assertEqual((row["NORMALLY_OPEN"], row["ENABLED"]), ("", "SI"))
