@@ -43,6 +43,7 @@ public class Disconnector extends CRUDEntity {
     private Profile profile;
     private BigDecimal kp;
     private Track track;
+    private Track connectedTrack;
     private DisconnectorFunction disconnectorFunction;
 
     @Id
@@ -135,6 +136,18 @@ public class Disconnector extends CRUDEntity {
     @Audited(targetAuditMode = NOT_AUDITED)
     public Track getTrack() {
         return track;
+    }
+
+    /**
+     * La otra vía de un seccionador que pone dos en paralelo (V27): la suya es la de su poste, o la
+     * propia sin poste, y esta es con la que la une. Tiene que ser otra: lo exigen
+     * {@code DisconnectorValidator} y {@code DisconnectorMapper}.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "CONNECTED_TRACK_ID", nullable = true)
+    @Audited(targetAuditMode = NOT_AUDITED)
+    public Track getConnectedTrack() {
+        return connectedTrack;
     }
 
     @Override

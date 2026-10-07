@@ -1029,8 +1029,8 @@ SHEETS = {
                     "ARM_ANGLE", "STEADY_ARM_TYPE", "STEADY_ARM_LENGTH",
                     "ENABLED", "REVISAR", "FILA_ORIGEN"],
     # Las costuras para lo que falta: se escriben con cabecera y sin filas.
-    "DISCONNECTORS": ["EP", "ESTACION", "VIA", "PROFILE_ID", "KP_POSTE", "NOMBRE", "KP",
-                      "ON_LOAD", "NORMALLY_OPEN", "DRIVE_TYPE", "DISCONNECTOR_FUNCTION",
+    "DISCONNECTORS": ["EP", "ESTACION", "VIA", "VIA_CONECTADA", "PROFILE_ID", "KP_POSTE", "NOMBRE",
+                      "KP", "ON_LOAD", "NORMALLY_OPEN", "DRIVE_TYPE", "DISCONNECTOR_FUNCTION",
                       "ENABLED"],
     "SECTION_INSULATORS": ["EP", "ESTACION", "NOMBRE", "KP", "TIPO_INSTALACION",
                            "VIA", "VIA_CONECTADA", "ENABLED"],
@@ -1078,6 +1078,10 @@ READ_ME = [
      "El KP del poste, en metros. Una via de dos tramos concatenados (EP9A) repite el "
      "PROFILE_ID dentro de la misma via, y entonces KP_POSTE dice cual de los dos es; con un "
      "solo poste con ese PROFILE_ID no se mira."),
+    ("VIA_CONECTADA del seccionador",
+     "La otra via de uno que pone dos en paralelo (Disc/PP, LoadB/PP), con poste o sin el; vacia "
+     "en los demas. Es una via de su paquete y nunca su propia VIA: la fila que nombre una que no "
+     "existe, o la suya, sale en el informe de la importacion."),
     ("NORMALLY_OPEN / DRIVE_TYPE",
      "Estado normal (SI = normalmente abierto, NO = normalmente cerrado) y accionamiento (MOTOR "
      "o MANUAL). Vacio es valido: el dominio no los exige."),

@@ -130,14 +130,18 @@ public record TrackSchematicDTO(
         }
     }
 
-    /** El seccionador que cuelga de un poste. */
+    /**
+     * El seccionador que cuelga de un poste. {@code connectedTrack} es la otra via de uno que pone
+     * dos en paralelo (V27): la suya es la del esquema.
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record DisconnectorMark(
             Long id,
             String name,
             Boolean onLoad,
             String function,
-            String station
+            String station,
+            String connectedTrack
     ) {
 
         public static DisconnectorMark of(Disconnector disconnector) {
@@ -146,7 +150,8 @@ public record TrackSchematicDTO(
                     disconnector.getName(),
                     disconnector.getOnLoad(),
                     codeOf(disconnector.getDisconnectorFunction()),
-                    nameOf(disconnector.getStation()));
+                    nameOf(disconnector.getStation()),
+                    nameOf(disconnector.getConnectedTrack()));
         }
     }
 

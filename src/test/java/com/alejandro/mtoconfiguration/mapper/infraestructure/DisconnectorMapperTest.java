@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.mapper.infraestructure;
 
+import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
@@ -8,6 +9,7 @@ import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType
 import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
+import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,11 @@ import org.mockito.quality.Strictness;
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * El seccionador sale con su perfil legible.
@@ -164,5 +171,82 @@ class DisconnectorMapperTest {
         dto.setKp("98400.5");
         Disconnector escrito = mapper.toEntity(dto);
         assertThat(escrito.getKp()).isEqualByComparingTo("98400.5");
+    }
+
+    @Test
+    @DisplayName("la via conectada va y vuelve por id, tambien con poste, y un PUT sin ella la quita")
+    void viaConectada() {
+        Track connected = new Track();
+        connected.setId(4L);
+        Disconnector entity = seccionador();
+        entity.setConnectedTrack(connected);
+
+        DisconnectorDTO dto = mapper.toDTO(entity);
+        assertThat(dto.getProfileId()).isEqualTo(7L);
+        assertThat(dto.getConnectedTrackId()).isEqualTo(4L);
+        DisconnectorDTO detalle = new DisconnectorDTO();
+        mapper.updateDTOFromEntity(entity, detalle);
+        assertThat(detalle.getConnectedTrackId()).isEqualTo(4L);
+
+        when(referenceMapper.resolve(4L, Track.class)).thenReturn(connected);
+        assertThat(mapper.toEntity(dto).getConnectedTrack()).isSameAs(connected);
+
+        // El PUT sustituye la fila entera (README_API.md §4): sin via conectada, deja de tenerla.
+        DisconnectorDTO sinConectada = new DisconnectorDTO();
+        sinConectada.setName("SEC-1");
+        sinConectada.setOnLoad(true);
+        mapper.updateEntityFromDTO(sinConectada, entity);
+        assertThat(entity.getConnectedTrack()).isNull();
+    }
+
+    /**
+     * Con poste, la via del seccionador es la del perfil, que el DTO no trae: la compara el mapper,
+     * que es el paso de todas las escrituras (tambien el alta en lote y las anidadas en su estacion).
+     */
+    @Test
+    @DisplayName("con poste, la via conectada no puede ser la del perfil, ni al dar de alta ni al modificar")
+    void laViaConectadaNoEsLaDelPoste() {
+        Track own = new Track();
+        own.setId(3L);
+        Track other = new Track();
+        other.setId(4L);
+        Profile pole = new Profile();
+        pole.setId(7L);
+        pole.setTrack(own);
+        when(referenceMapper.resolve(7L, Profile.class)).thenReturn(pole);
+        when(referenceMapper.resolve(3L, Track.class)).thenReturn(own);
+        when(referenceMapper.resolve(4L, Track.class)).thenReturn(other);
+        DisconnectorDTO dto = new DisconnectorDTO();
+        dto.setName("SEC-B01");
+        dto.setOnLoad(false);
+        dto.setProfileId(7L);
+        dto.setConnectedTrackId(3L);
+
+        assertThatThrownBy(() -> mapper.toEntity(dto))
+                .isInstanceOfSatisfying(ValidationException.class, e -> assertThat(e.getErrors())
+                        .singleElement()
+                        .satisfies(alert -> {
+                            assertThat(alert.getMessage()).isEqualTo(ErrorCodes.BUSINESS_RULE_VIOLATION);
+                            assertThat(alert.getFields()).containsExactly("connectedTrackId");
+                        }));
+        assertThatThrownBy(() -> mapper.updateEntityFromDTO(dto, seccionador()))
+                .isInstanceOf(ValidationException.class);
+
+        dto.setConnectedTrackId(4L);
+        assertThat(mapper.toEntity(dto).getConnectedTrack()).isSameAs(other);
+    }
+
+    @Test
+    @DisplayName("sin via conectada no se lee la via del poste: el perfil no se carga por ella")
+    void sinViaConectadaNoSeCargaElPerfil() {
+        Profile pole = mock(Profile.class);
+        when(referenceMapper.resolve(7L, Profile.class)).thenReturn(pole);
+        DisconnectorDTO dto = new DisconnectorDTO();
+        dto.setName("SEC-1");
+        dto.setOnLoad(true);
+        dto.setProfileId(7L);
+
+        assertThat(mapper.toEntity(dto).getProfile()).isSameAs(pole);
+        verify(pole, never()).getTrack();
     }
 }

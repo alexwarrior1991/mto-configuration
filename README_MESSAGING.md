@@ -4,6 +4,22 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ El evento `disconnector` gana `connectedTrack`
+
+Un cambio, compatible hacia atrás para quien consume: **solo añade una clave**.
+
+- **El seccionador que pone dos vías en paralelo lleva la otra** (`V27`): `connectedTrack`
+  (`{id, name}`), con poste o sin él, y `null` en los demás. Son los de puesta en paralelo
+  (`Disc/PP`, `LoadB/PP`): su vía es la de su poste, o su `track` sin poste, y esta es con la que la
+  une, así que nunca es la misma. No viaja en las copias reducidas de `station` y `profile`, como la
+  vía del aislador. El detalle, en «Cambios en el contrato del evento `disconnector`», más abajo.
+
+`mto-maintenance` la guarda en `connected_track_id`, la misma columna que la vía conectada de un
+aislador: sus informes por vía ya miran las dos, así que el seccionador sale en las dos vías que
+une, y su búsqueda de activos la filtra con `connectedTrackId` (su `docs/06-messaging.md`). Antes de
+ese cambio la ignoraba, sin fallar. `mto-notification` solo copia de `values` su lista blanca
+(`name`, `kp`…), en la que no está. `mto-stock` registra el evento sin tratarlo.
+
 ## ⚠️ El evento `disconnector` gana `normallyOpen`, `driveType`, `kp` y `track`, y su `profile` puede llegar a `null`
 
 Tres cambios, los tres compatibles hacia atrás para quien consume:
@@ -251,7 +267,7 @@ aguja de cada aislador, para un dato que el consumidor ya recibe entero en el ev
 
 #### Cambios en el contrato del evento `disconnector`
 
-El seccionador incorpora cuatro claves nuevas (`V25` y `V26`). **El cambio es compatible hacia
+El seccionador incorpora cinco claves nuevas (`V25`, `V26` y `V27`). **El cambio es compatible hacia
 atrás**: sólo añade claves, no renombra ni quita ninguna.
 
 | Clave nueva | Tipo | Contenido |
@@ -260,14 +276,16 @@ atrás**: sólo añade claves, no renombra ni quita ninguna.
 | `driveType` | `"MOTOR"` / `"MANUAL"` / `null` | Accionamiento: con motor (el círculo del accionamiento en el plano de seccionamiento) o a mano |
 | `kp` | número o `null` | KP en **metros** de un seccionador sin poste (`V26`). `null` en uno en un poste: es el de su perfil |
 | `track` | `{ "id", "name" }` o `null` | Vía de un seccionador sin poste (`V26`). `null` en uno en un poste: es la de su perfil |
+| `connectedTrack` | `{ "id", "name" }` o `null` | La otra vía de uno que pone dos en paralelo (`V27`), con poste o sin él. Nunca es la suya (la de su perfil, o `track` sin poste). `null` en los demás |
 
 `normallyOpen`, `driveType` y `kp` son columnas de la propia fila, así que, igual que `kp` e
 `installationType` del aislador, viajan también en la copia reducida del seccionador dentro de
 `station` (`disconnectors[]`), sin una sentencia más; la de `profile` (`disconnector`) lleva las dos
 primeras, porque un seccionador colgado de un perfil nunca tiene KP propio. La vía no viaja en las
-copias, como la del aislador. Que el evento lleve su nombre obliga a cargarla: `track` entra en el
-`@EntityGraph` de `DisconnectorRepository.findByIdForMessaging`, y `MasterDataPayloadContractIT`
-sigue exigiendo **una** sentencia por evento.
+copias, como la del aislador, ni tampoco la conectada. Que el evento lleve sus nombres obliga a
+cargarlas: `track` y `connectedTrack` entran en el `@EntityGraph` de
+`DisconnectorRepository.findByIdForMessaging`, y `MasterDataPayloadContractIT` sigue exigiendo
+**una** sentencia por evento.
 
 `profile` no cambia de forma (`{ "id", "profileId", "kp" }` o `null`), pero cambia lo que se puede
 esperar de él: desde `V25` el poste es opcional, y un seccionador que no está en un poste lo trae a

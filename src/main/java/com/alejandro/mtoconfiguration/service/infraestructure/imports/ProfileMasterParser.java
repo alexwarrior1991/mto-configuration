@@ -57,6 +57,7 @@ public class ProfileMasterParser {
     private static final String COL_EP = "EP";
     private static final String COL_NAME = "NOMBRE";
     private static final String COL_TRACK = "VIA";
+    private static final String COL_CONNECTED_TRACK = "VIA_CONECTADA";
     /**
      * Las estaciones de la via, separadas por barra vertical. No por espacios: hay nombres de
      * estacion con espacio dentro ({@code TLV SAVIDOR}), asi que partir por espacios habria
@@ -224,7 +225,7 @@ public class ProfileMasterParser {
                             decimal(row, columns.get(COL_KP)),
                             text(row, columns.get("TIPO_INSTALACION")),
                             text(row, columns.get(COL_TRACK)),
-                            text(row, columns.get("VIA_CONECTADA")),
+                            text(row, columns.get(COL_CONNECTED_TRACK)),
                             flag(text(row, columns.get(COL_ENABLED))),
                             index + 1);
                 });
@@ -270,6 +271,7 @@ public class ProfileMasterParser {
                     }
                     return new DisconnectorMasterRow(ep, station,
                             text(row, columns.get(COL_TRACK)),
+                            text(row, columns.get(COL_CONNECTED_TRACK)),
                             text(row, columns.get(COL_PROFILE_ID)),
                             decimal(row, columns.get("KP_POSTE")),
                             name,

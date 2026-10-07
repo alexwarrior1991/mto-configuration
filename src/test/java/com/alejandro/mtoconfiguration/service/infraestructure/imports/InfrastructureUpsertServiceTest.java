@@ -1170,6 +1170,7 @@ class InfrastructureUpsertServiceTest {
         private static final long STATION_ID = 9L;
         private static final long PROFILE_ID = 70L;
         private static final long TRACK_ID = 3L;
+        private static final long CONNECTED_TRACK_ID = 4L;
         private static final long FUNCTION_ID = 40L;
 
         @BeforeEach
@@ -1190,7 +1191,7 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("uno en un poste se crea con su poste, sus SI/NO leidos y sin KP ni via propios")
         void enUnPoste() {
-            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, false);
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, null, false);
 
             assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.CREATED);
             assertThat(result.id()).isEqualTo(88L);
@@ -1210,7 +1211,7 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("uno sin poste lleva su KP y su via, y una celda vacia es 'sin dato'")
         void sinPoste() {
             service.upsertDisconnector(row("", "98375.5", "SI", "", "", "Disc/IO"),
-                    STATION_ID, null, TRACK_ID, false);
+                    STATION_ID, null, TRACK_ID, null, false);
 
             DisconnectorDTO dto = captureCreated();
             assertThat(dto.getProfileId()).isNull();
@@ -1223,7 +1224,7 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("los SI/NO admiten la misma manga ancha que ENABLED, y su espejo")
         void siNoConMangaAncha() {
-            service.upsertDisconnector(row("", "", "x", "n", "manual", "Disc/IO"), STATION_ID, null, null, false);
+            service.upsertDisconnector(row("", "", "x", "n", "manual", "Disc/IO"), STATION_ID, null, null, null, false);
 
             DisconnectorDTO dto = captureCreated();
             assertThat(dto.getOnLoad()).isTrue();
@@ -1239,7 +1240,7 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("un SI/NO que no se entiende señala la fila con su columna, y no se escribe")
         void siNoQueNoSeEntiende() {
             assertThatThrownBy(() -> service.upsertDisconnector(row("83-1.02", "", "SI", "QUIZA", "MOTOR", "Disc/IO"),
-                    STATION_ID, PROFILE_ID, null, false))
+                    STATION_ID, PROFILE_ID, null, null, false))
                     .isInstanceOf(ValidationException.class)
                     .hasMessage("NORMALLY_OPEN 'QUIZA' no es SI ni NO");
             verifyNoInteractions(disconnectorService);
@@ -1249,7 +1250,7 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("un accionamiento que no es MOTOR ni MANUAL señala la fila")
         void accionamientoDesconocido() {
             assertThatThrownBy(() -> service.upsertDisconnector(row("83-1.02", "", "SI", "NO", "DIESEL", "Disc/IO"),
-                    STATION_ID, PROFILE_ID, null, false))
+                    STATION_ID, PROFILE_ID, null, null, false))
                     .isInstanceOf(ValidationException.class)
                     .hasMessage("DRIVE_TYPE 'DIESEL' no es MOTOR ni MANUAL");
             verifyNoInteractions(disconnectorService);
@@ -1263,7 +1264,7 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("con poste Y con KP, la fila se señala con las dos columnas")
         void posteYKp() {
             assertThatThrownBy(() -> service.upsertDisconnector(row("83-1.02", "98375.5", "SI", "NO", "MOTOR", "Disc/IO"),
-                    STATION_ID, PROFILE_ID, null, false))
+                    STATION_ID, PROFILE_ID, null, null, false))
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("KP")
                     .hasMessageContaining("PROFILE_ID");
@@ -1278,7 +1279,7 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("una funcion que no esta en el catalogo impide cargarlo y sale nombrada")
         void funcionDesconocida() {
             assertThatThrownBy(() -> service.upsertDisconnector(row("83-1.02", "", "SI", "NO", "MOTOR", "Disc/XX"),
-                    STATION_ID, PROFILE_ID, null, false))
+                    STATION_ID, PROFILE_ID, null, null, false))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessageContaining("DISCONNECTOR_FUNCTION='Disc/XX'");
             verifyNoInteractions(disconnectorService);
@@ -1289,7 +1290,7 @@ class InfrastructureUpsertServiceTest {
         void posteOcupado() {
             when(disconnectorRepository.findPoleHolder(PROFILE_ID)).thenReturn(Optional.of(holder(55L, "HER-VIEJO")));
 
-            assertThatThrownBy(() -> service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, false))
+            assertThatThrownBy(() -> service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, null, false))
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("'HER-VIEJO' (id 55)");
             verifyNoInteractions(disconnectorService);
@@ -1304,7 +1305,7 @@ class InfrastructureUpsertServiceTest {
             when(disconnectorRepository.findLinkIdsById(55L))
                     .thenReturn(Optional.of(links(PROFILE_ID, null, FUNCTION_ID)));
 
-            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, false);
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, null, false);
 
             assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UNCHANGED);
             assertThat(result.id()).isEqualTo(55L);
@@ -1321,10 +1322,40 @@ class InfrastructureUpsertServiceTest {
                     .thenReturn(Optional.of(links(null, TRACK_ID, FUNCTION_ID)));
 
             UpsertResult result = service.upsertDisconnector(row("", "98375.5", "SI", "NO", "MOTOR", "Disc/IO"),
-                    STATION_ID, null, TRACK_ID, false);
+                    STATION_ID, null, TRACK_ID, null, false);
 
             assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UNCHANGED);
             verify(disconnectorService, never()).update(any());
+        }
+
+        @Test
+        @DisplayName("la via conectada viaja tal cual, tambien con poste")
+        void viaConectada() {
+            service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, CONNECTED_TRACK_ID, false);
+
+            DisconnectorDTO dto = captureCreated();
+            assertThat(dto.getProfileId()).isEqualTo(PROFILE_ID);
+            assertThat(dto.getTrackId()).isNull();
+            assertThat(dto.getConnectedTrackId()).isEqualTo(CONNECTED_TRACK_ID);
+        }
+
+        @Test
+        @DisplayName("la misma via conectada no lo reescribe; quitarla, si")
+        void cambioDeViaConectada() {
+            when(disconnectorRepository.findByNameIgnoreCaseAndStationId("HER-01", STATION_ID))
+                    .thenReturn(Optional.of(existente(55L, null)));
+            when(disconnectorRepository.findPoleHolder(PROFILE_ID)).thenReturn(Optional.of(holder(55L, "HER-01")));
+            when(disconnectorRepository.findLinkIdsById(55L))
+                    .thenReturn(Optional.of(links(PROFILE_ID, null, CONNECTED_TRACK_ID, FUNCTION_ID)));
+
+            assertThat(service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, CONNECTED_TRACK_ID, false)
+                    .outcome()).isEqualTo(UpsertResult.Outcome.UNCHANGED);
+            assertThat(service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, null, false)
+                    .outcome()).isEqualTo(UpsertResult.Outcome.UPDATED);
+
+            ArgumentCaptor<DisconnectorDTO> captor = ArgumentCaptor.forClass(DisconnectorDTO.class);
+            verify(disconnectorService).update(captor.capture());
+            assertThat(captor.getValue().getConnectedTrackId()).isNull();
         }
 
         @Test
@@ -1335,7 +1366,7 @@ class InfrastructureUpsertServiceTest {
             when(disconnectorRepository.findLinkIdsById(55L))
                     .thenReturn(Optional.of(links(71L, null, FUNCTION_ID)));
 
-            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, false);
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, null, false);
 
             assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UPDATED);
             ArgumentCaptor<DisconnectorDTO> captor = ArgumentCaptor.forClass(DisconnectorDTO.class);
@@ -1357,7 +1388,7 @@ class InfrastructureUpsertServiceTest {
                     .thenReturn(Optional.of(links(null, TRACK_ID, FUNCTION_ID)));
 
             UpsertResult result = service.upsertDisconnector(row("", "98+375", "SI", "NO", "MOTOR", "Disc/IO"),
-                    STATION_ID, null, TRACK_ID, false);
+                    STATION_ID, null, TRACK_ID, null, false);
 
             assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UPDATED);
             ArgumentCaptor<DisconnectorDTO> captor = ArgumentCaptor.forClass(DisconnectorDTO.class);
@@ -1368,7 +1399,7 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("la simulacion no escribe nada, ni el alta")
         void simulacion() {
-            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, true);
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, null, true);
 
             assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.CREATED);
             assertThat(result.id()).isNull();
@@ -1387,7 +1418,7 @@ class InfrastructureUpsertServiceTest {
 
         private static DisconnectorMasterRow row(String profileId, String kp, String onLoad, String normallyOpen,
                                                  String driveType, String function) {
-            return new DisconnectorMasterRow("EP6", "HERZLIYA", "TRACK 1", profileId, null, "HER-01", kp,
+            return new DisconnectorMasterRow("EP6", "HERZLIYA", "TRACK 1", "", profileId, null, "HER-01", kp,
                     onLoad, normallyOpen, driveType, function, true, 11);
         }
 
@@ -1404,6 +1435,11 @@ class InfrastructureUpsertServiceTest {
         }
 
         private static DisconnectorRepository.LinkIds links(Long profileId, Long trackId, Long functionId) {
+            return links(profileId, trackId, null, functionId);
+        }
+
+        private static DisconnectorRepository.LinkIds links(Long profileId, Long trackId, Long connectedTrackId,
+                                                            Long functionId) {
             return new DisconnectorRepository.LinkIds() {
                 @Override
                 public Long getProfileId() {
@@ -1413,6 +1449,11 @@ class InfrastructureUpsertServiceTest {
                 @Override
                 public Long getTrackId() {
                     return trackId;
+                }
+
+                @Override
+                public Long getConnectedTrackId() {
+                    return connectedTrackId;
                 }
 
                 @Override

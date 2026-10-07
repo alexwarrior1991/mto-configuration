@@ -298,10 +298,15 @@ public class InfrastructureUpsertService {
      * <b>y</b> con KP se señala aqui con las columnas de la hoja, y no con el {@code BUS-001 [kp]}
      * del validador, que no dice que es lo que sobra.
      *
-     * @param trackId la via propia de un seccionador sin poste; null con poste
+     * <p>La via conectada (V27) llega resuelta por el importador, que ya ha comprobado que es de su
+     * paquete y que no es la propia; con poste o sin el, viaja tal cual.
+     *
+     * @param trackId          la via propia de un seccionador sin poste; null con poste
+     * @param connectedTrackId la otra via de uno que pone dos en paralelo; null en los demas, y en la
+     *                         simulacion si esa via se da de alta en la misma carga
      */
     public UpsertResult upsertDisconnector(DisconnectorMasterRow row, Long stationId, Long profileId,
-                                           Long trackId, boolean dryRun) {
+                                           Long trackId, Long connectedTrackId, boolean dryRun) {
         boolean onAPole = !StringUtils.isBlank(row.profileId());
         if (onAPole && !StringUtils.isBlank(row.kp())) {
             throw new ValidationException("KP es el del seccionador sin poste, y este va en el poste "
@@ -317,6 +322,7 @@ public class InfrastructureUpsertService {
         dto.setProfileId(profileId);
         dto.setKp(onAPole || StringUtils.isBlank(row.kp()) ? null : row.kp().trim());
         dto.setTrackId(onAPole ? null : trackId);
+        dto.setConnectedTrackId(connectedTrackId);
         dto.setOnLoad(yesNo(row.onLoad(), "ON_LOAD"));
         dto.setNormallyOpen(yesNo(row.normallyOpen(), "NORMALLY_OPEN"));
         dto.setDriveType(driveType(row.driveType()));
@@ -809,6 +815,7 @@ public class InfrastructureUpsertService {
         Optional<LinkIds> links = disconnectorRepository.findLinkIdsById(entity.getId());
         return Objects.equals(links.map(LinkIds::getProfileId).orElse(null), dto.getProfileId())
                 && Objects.equals(links.map(LinkIds::getTrackId).orElse(null), dto.getTrackId())
+                && Objects.equals(links.map(LinkIds::getConnectedTrackId).orElse(null), dto.getConnectedTrackId())
                 && Objects.equals(links.map(LinkIds::getDisconnectorFunctionId).orElse(null), function.getId());
     }
 

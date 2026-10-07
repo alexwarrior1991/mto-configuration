@@ -36,6 +36,12 @@ public class DisconnectorDTO extends BaseDTO {
     private Long trackId;
 
     /**
+     * La otra vía de un seccionador que pone dos en paralelo (V27), con poste o sin él. Opcional, y
+     * distinta de la suya.
+     */
+    private Long connectedTrackId;
+
+    /**
      * Identificador y KP del perfil al que cuelga, <b>solo de salida</b>: los rellena el mapper
      * para que una lista de seccionadores se lea sin ir perfil por perfil (son miles). Al
      * escribir se ignoran: el perfil se elige por {@code profileId}.

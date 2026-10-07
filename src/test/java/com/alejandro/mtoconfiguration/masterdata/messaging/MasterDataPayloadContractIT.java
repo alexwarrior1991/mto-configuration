@@ -133,6 +133,8 @@ class MasterDataPayloadContractIT {
         assertThat(payload).containsEntry("normallyOpen", true).containsEntry("driveType", "MOTOR");
         // V26: en un poste, el KP y la via son los del perfil y los suyos van a null.
         assertThat(payload).containsEntry("kp", null).containsEntry("track", null);
+        // V27: la via conectada, tambien en uno en un poste: es del seccionador, no del perfil.
+        assertThat(asMap(payload, "connectedTrack")).containsKeys("id").containsEntry("name", "Via 2");
     }
 
     @Test
@@ -143,6 +145,7 @@ class MasterDataPayloadContractIT {
         assertThat(payload).containsEntry("profile", null);
         assertThat((BigDecimal) payload.get("kp")).isEqualByComparingTo("98375.500");
         assertThat(asMap(payload, "track")).containsEntry("name", "Via 1");
+        assertThat(payload).containsEntry("connectedTrack", null);
     }
 
     @Test
@@ -334,7 +337,7 @@ class MasterDataPayloadContractIT {
             station("Estacion secundaria", executionPackage);
 
             Track track = track("Via 1", executionPackage, station);
-            track("Via 2", executionPackage, station);
+            Track otherTrack = track("Via 2", executionPackage, station);
 
             Profile profile = profile("P-001", "1.5", track);
             profile("P-002", "2.5", track);
@@ -345,6 +348,8 @@ class MasterDataPayloadContractIT {
             Disconnector disconnector = disconnector("Seccionador 1", station);
             disconnector.setNormallyOpen(true);
             disconnector.setDriveType(DisconnectorDriveType.MOTOR);
+            // V27: pone su via, la de su poste, en paralelo con la otra.
+            disconnector.setConnectedTrack(otherTrack);
             profile.addDisconnector(disconnector);
             // Sin poste: desde V25 el poste es opcional, y desde V26 lleva su propio KP y su via.
             Disconnector poleLess = disconnector("Seccionador 2", station);

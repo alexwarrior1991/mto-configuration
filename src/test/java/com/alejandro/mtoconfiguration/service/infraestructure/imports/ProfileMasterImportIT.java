@@ -308,8 +308,9 @@ class ProfileMasterImportIT {
      *
      * <p>El maestro real la trae vacia mientras no se revise el plano de seccionamiento, asi que
      * aqui se construye uno minimo: un paquete, una estacion, una via de dos tramos que repite un
-     * poste y tres seccionadores, uno en un poste, otro en el poste repetido y otro sin poste. Es lo
-     * que ningun doble ve: que KP_POSTE elige el poste bueno de los dos, que el KP y la via propios
+     * poste y tres seccionadores, uno en un poste, otro en el poste repetido y otro sin poste; el
+     * primero y el tercero ponen su via en paralelo con la otra de la estacion. Es lo que ningun doble
+     * ve: que KP_POSTE elige el poste bueno de los dos, que el KP y la via propios y la via conectada
      * llegan a sus columnas, que la segunda pasada compara sobre una entidad detached sin reventar y
      * dice "sin cambios", y que un poste ocupado se dice con el nombre de quien lo ocupa.
      */
@@ -326,7 +327,11 @@ class ProfileMasterImportIT {
                 .as("%s", desglose(first))
                 .isEqualTo(3);
 
+        Long via1 = viaDelMaestroMinimo("TRACK 1");
+        Long via2 = viaDelMaestroMinimo("TRACK 2");
         SoftAssertions carga = new SoftAssertions();
+        carga.assertThat(seccionador("STA-01").get("conectada"))
+                .as("la via conectada de uno en un poste: es suya, no del poste").isEqualTo(via2);
         Map<String, Object> enElPosteRepetido = seccionador("STA-02");
         carga.assertThat(enElPosteRepetido.get("poste")).isEqualTo("1-1.01");
         carga.assertThat((BigDecimal) enElPosteRepetido.get("kp_poste"))
@@ -338,14 +343,13 @@ class ProfileMasterImportIT {
         carga.assertThat(enElPosteRepetido.get("abierto")).isEqualTo(true);
         carga.assertThat(enElPosteRepetido.get("accionamiento")).isEqualTo("MANUAL");
         carga.assertThat(enElPosteRepetido.get("funcion")).isEqualTo("ED");
+        carga.assertThat(enElPosteRepetido.get("conectada")).isNull();
 
         Map<String, Object> sinPoste = seccionador("STA-03");
         carga.assertThat(sinPoste.get("poste")).isNull();
         carga.assertThat((BigDecimal) sinPoste.get("kp")).isEqualByComparingTo("98375.5");
-        carga.assertThat(sinPoste.get("via")).isEqualTo(jdbcTemplate.queryForObject("""
-                select t.id from track t join execution_package e on e.id = t.execution_package_id
-                where e.name = 'EP IT SECCIONADORES' and t.name = 'TRACK 1'
-                """, Long.class));
+        carga.assertThat(sinPoste.get("via")).isEqualTo(via1);
+        carga.assertThat(sinPoste.get("conectada")).isEqualTo(via2);
         carga.assertThat(sinPoste.get("abierto")).as("NORMALLY_OPEN vacia es 'sin dato'").isNull();
         carga.assertThat(sinPoste.get("accionamiento")).isNull();
         carga.assertAll();
@@ -359,7 +363,7 @@ class ProfileMasterImportIT {
 
         // Renombrar en la hoja uno ya cargado es, para la clave natural, otro seccionador: el de
         // antes sigue en su poste, y el informe tiene que decir cual es.
-        hojas.get(ProfileMasterParser.DISCONNECTORS_SHEET).get(1)[5] = "STA-01B";
+        hojas.get(ProfileMasterParser.DISCONNECTORS_SHEET).get(1)[6] = "STA-01B";
         ProfileImportReport renamed = importer.importFrom(workbook(hojas), false);
 
         assertThat(renamed.getErrors())
@@ -576,7 +580,8 @@ class ProfileMasterImportIT {
                 new String[]{"EPIT", "STA IT"}));
         hojas.put(ProfileMasterParser.TRACKS_SHEET, List.of(
                 new String[]{"EP", "NOMBRE", "ESTACIONES", "ENABLED"},
-                new String[]{"EPIT", "TRACK 1", "STA IT", "SI"}));
+                new String[]{"EPIT", "TRACK 1", "STA IT", "SI"},
+                new String[]{"EPIT", "TRACK 2", "STA IT", "SI"}));
         hojas.put(ProfileMasterParser.PROFILES_SHEET, List.of(
                 new String[]{"EP", "VIA", "PROFILE_ID", "KP", "ORDEN", "PROFILE_STATUS", "ENABLED"},
                 new String[]{"EPIT", "TRACK 1", "1-1.01", "100", "1", "DEFINITIVE", "SI"},
@@ -585,13 +590,13 @@ class ProfileMasterImportIT {
         hojas.put(ProfileMasterParser.CANTILEVERS_SHEET, List.<String[]>of(
                 new String[]{"EP", "VIA", "PROFILE_ID", "SLOT", "ENABLED"}));
         hojas.put(ProfileMasterParser.DISCONNECTORS_SHEET, List.of(
-                new String[]{"EP", "ESTACION", "VIA", "PROFILE_ID", "KP_POSTE", "NOMBRE", "KP", "ON_LOAD",
-                        "NORMALLY_OPEN", "DRIVE_TYPE", "DISCONNECTOR_FUNCTION", "ENABLED"},
-                new String[]{"EPIT", "STA IT", "TRACK 1", "1-1.02", "", "STA-01", "", "SI", "NO", "MOTOR",
-                        "Disc/IO", "SI"},
-                new String[]{"EPIT", "STA IT", "TRACK 1", "1-1.01", "5000", "STA-02", "", "NO", "SI", "MANUAL",
-                        "ED", "SI"},
-                new String[]{"EPIT", "STA IT", "TRACK 1", "", "", "STA-03", "98375.5", "SI", "", "",
+                new String[]{"EP", "ESTACION", "VIA", "VIA_CONECTADA", "PROFILE_ID", "KP_POSTE", "NOMBRE", "KP",
+                        "ON_LOAD", "NORMALLY_OPEN", "DRIVE_TYPE", "DISCONNECTOR_FUNCTION", "ENABLED"},
+                new String[]{"EPIT", "STA IT", "TRACK 1", "TRACK 2", "1-1.02", "", "STA-01", "", "SI", "NO",
+                        "MOTOR", "Disc/IO", "SI"},
+                new String[]{"EPIT", "STA IT", "TRACK 1", "", "1-1.01", "5000", "STA-02", "", "NO", "SI",
+                        "MANUAL", "ED", "SI"},
+                new String[]{"EPIT", "STA IT", "TRACK 1", "Track 2", "", "", "STA-03", "98375.5", "SI", "", "",
                         "Disc/IO", "SI"}));
         return hojas;
     }
@@ -619,7 +624,8 @@ class ProfileMasterImportIT {
     private Map<String, Object> seccionador(String nombre) {
         return jdbcTemplate.queryForMap("""
                 select p.profile_id as poste, p.kilometric_point as kp_poste, d.kilometric_point as kp,
-                       d.track_id as via, d.onload as en_carga, d.normally_open as abierto,
+                       d.track_id as via, d.connected_track_id as conectada, d.onload as en_carga,
+                       d.normally_open as abierto,
                        d.drive_type as accionamiento, f.code as funcion
                 from disconnector d
                 join station s on s.id = d.station_id
@@ -627,6 +633,14 @@ class ProfileMasterImportIT {
                 left join disconnector_function f on f.id = d.disconnector_function_id
                 where s.name = 'STA IT' and d.name = ?
                 """, nombre);
+    }
+
+    /** Una via del maestro minimo de {@link #maestroConSeccionadores()}, por su nombre. */
+    private Long viaDelMaestroMinimo(String nombre) {
+        return jdbcTemplate.queryForObject("""
+                select t.id from track t join execution_package e on e.id = t.execution_package_id
+                where e.name = 'EP IT SECCIONADORES' and t.name = ?
+                """, Long.class, nombre);
     }
 
     private ProfileImportReport importMaster(boolean dryRun) throws IOException {

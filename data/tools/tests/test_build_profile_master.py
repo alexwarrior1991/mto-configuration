@@ -493,9 +493,9 @@ class SeccionamientoDesdeElLibroRevisado(unittest.TestCase):
         wb.remove(wb.active)
         disconnectors = wb.create_sheet("DISCONNECTORS")
         disconnectors.append(bpm.SHEETS["DISCONNECTORS"] + ["REVISAR", "MOTIVO_REVISAR", "PREFIJO"])
-        disconnectors.append(["EP9A", "TSO", "TRACK 1", "98-1.05", 98375.5, "TSO-11", None, "SI",
-                              "NO", "MOTOR", "LoadB/IO", "SI", "NO", "", "TSO"])
-        disconnectors.append(["EP6", "TSA", "TRACK 2", None, None, "HSA-FP1.1", 9316, "SI", "SI",
+        disconnectors.append(["EP9A", "TSO", "TRACK 1", "TRACK 2", "98-1.05", 98375.5, "TSO-B01", None,
+                              "SI", "NO", "MOTOR", "LoadB/PP", "SI", "NO", "", "TSO"])
+        disconnectors.append(["EP6", "TSA", "TRACK 2", None, None, None, "HSA-FP1.1", 9316, "SI", "SI",
                               "MOTOR", "LoadB", "NO", "SI", "estacion propuesta", "HSA"])
         prefixes = wb.create_sheet("ESTACION_POR_PREFIJO")
         prefixes.append(["PREFIJO", "EP", "ESTACION_PROPUESTA", "SECCIONADORES", "NOMBRES",
@@ -514,6 +514,7 @@ class SeccionamientoDesdeElLibroRevisado(unittest.TestCase):
         first = sheets["DISCONNECTORS"][0]
         self.assertEqual((first["PROFILE_ID"], first["KP_POSTE"], first["KP"], first["ENABLED"]),
                          ("98-1.05", 98375.5, None, "SI"))
+        self.assertEqual(first["VIA_CONECTADA"], "TRACK 2")
         self.assertEqual(sheets["SECTION_INSULATORS"][0]["NOMBRE"], "SI W31-W33")
         self.assertEqual(sheets["SECTION_INSULATOR_SWITCHES"], [])
 
@@ -523,6 +524,18 @@ class SeccionamientoDesdeElLibroRevisado(unittest.TestCase):
         self.assertEqual(sheets["DISCONNECTORS"][1]["ESTACION"], "THA")
         self.assertEqual(sheets["DISCONNECTORS"][1]["KP"], 9316)
         self.assertEqual(sheets["DISCONNECTORS"][0]["ESTACION"], "TSO", "otro prefijo, sin tocar")
+
+    def test_un_libro_sin_via_conectada_se_lee_igual(self):
+        # Los libros revisados antes de V27 no la traen: se copian con la columna vacia.
+        import openpyxl
+        wb = openpyxl.load_workbook(self.path)
+        ws = wb["DISCONNECTORS"]
+        ws.delete_cols(bpm.SHEETS["DISCONNECTORS"].index("VIA_CONECTADA") + 1)
+        wb.save(self.path)
+
+        first = bpm.load_sectioning(self.path)["DISCONNECTORS"][0]
+        self.assertEqual((first["NOMBRE"], first["PROFILE_ID"], first["VIA_CONECTADA"]),
+                         ("TSO-B01", "98-1.05", None))
 
     def test_sin_libro_las_tres_hojas_salen_vacias(self):
         sheets = bpm.load_sectioning(os.path.join(self.folder, "no-esta.xlsx"))

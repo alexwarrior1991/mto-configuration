@@ -26,16 +26,18 @@ public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
     Optional<Disconnector> findByNameIgnoreCaseAndStationId(String name, Long stationId);
 
     /**
-     * El poste, la vía propia y la función del seccionador, sin inicializar nada.
+     * El poste, la vía propia, la vía conectada y la función del seccionador, sin inicializar nada.
      *
      * <p>Por la misma trampa que {@code SectionInsulatorRepository.findTrackIdsById}: el importador
      * no abre transacción, la entidad que devuelve la búsqueda por clave natural llega
      * <b>detached</b> y tocar ahí un {@code LAZY} revienta con {@code LazyInitializationException}.
-     * Con {@code left join}, porque los tres son opcionales: con poste no hay vía propia, y sin él no
-     * hay poste.
+     * Con {@code left join}, porque todos son opcionales: con poste no hay vía propia, sin él no hay
+     * poste, y solo uno que pone dos vías en paralelo tiene vía conectada.
      */
-    @Query("select p.id as profileId, t.id as trackId, f.id as disconnectorFunctionId "
+    @Query("select p.id as profileId, t.id as trackId, ct.id as connectedTrackId, "
+            + "f.id as disconnectorFunctionId "
             + "from Disconnector d left join d.profile p left join d.track t "
+            + "left join d.connectedTrack ct "
             + "left join d.disconnectorFunction f where d.id = :id")
     Optional<LinkIds> findLinkIdsById(@Param("id") Long id);
 
@@ -44,6 +46,8 @@ public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
         Long getProfileId();
 
         Long getTrackId();
+
+        Long getConnectedTrackId();
 
         Long getDisconnectorFunctionId();
     }
@@ -99,13 +103,14 @@ public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
     /**
      * {@code profile.track} no entra: DisconnectorMasterDataPayloadMapper no lee la via del
      * perfil. {@code track} si: es la del propio seccionador cuando no esta en un poste (V26), y el
-     * payload lleva su nombre.
+     * payload lleva su nombre. {@code connectedTrack} tambien, por lo mismo (V27).
      */
     @Override
     @EntityGraph(attributePaths = {
             "station",
             "profile",
             "track",
+            "connectedTrack",
             "disconnectorFunction"
     })
     @Query("select d from Disconnector d where d.id = :id")

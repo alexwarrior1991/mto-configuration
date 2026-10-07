@@ -312,10 +312,7 @@ public class ProfileMasterImporter {
         }
 
         // Las vias del paquete, por nombre, para resolver las que nombran el aislador y sus agujas.
-        Map<String, Map<String, Long>> tracksByPackage = new HashMap<>();
-        tracksByKey.forEach((trackKey, trackId) -> tracksByPackage
-                .computeIfAbsent(trackKey.executionPackage(), ignored -> new HashMap<>())
-                .put(trackKey.name(), trackId));
+        Map<String, Map<String, Long>> tracksByPackage = tracksByPackage(tracksByKey);
 
         for (SectionInsulatorMasterRow row : content.sectionInsulators()) {
             if (!row.enabled()) {
@@ -398,6 +395,11 @@ public class ProfileMasterImporter {
      * <p>Sin poste, la via que la fila nombra y no existe se deja a null, como la de un aislador: la
      * columna es anulable y el seccionador sigue siendo de su estacion.
      *
+     * <p>La via conectada (VIA_CONECTADA, V27) no: es lo unico que dice que el seccionador pone dos
+     * vias en paralelo, y perderla en silencio dejaria la carga contando una fila que no dice lo que
+     * la hoja. Una que no es de su paquete, o que es la propia via de la fila, la señala en el
+     * informe, igual en la simulacion que en la carga real ({@link #connectedTrack}).
+     *
      * @param profileIdsByRow lo que devuelve {@link #importProfiles}
      */
     private void importDisconnectors(ProfileMasterParser.ProfileMasterContent content,
@@ -416,6 +418,7 @@ public class ProfileMasterImporter {
         // dos filas en el mismo se señalan aqui, con el nombre de la otra, antes de que el indice
         // unico conteste por ellas.
         Map<Integer, String> claimedBy = new HashMap<>();
+        Map<String, Map<String, Long>> tracksByPackage = tracksByPackage(tracksByKey);
 
         for (DisconnectorMasterRow row : content.disconnectors()) {
             if (!row.enabled()) {
@@ -428,6 +431,14 @@ public class ProfileMasterImporter {
             if (!stationsByKey.containsKey(stationKey)) {
                 fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
                         "su estacion '" + row.station() + "' no se ha podido cargar", progress);
+                continue;
+            }
+
+            // Antes que el poste: una fila que falla aqui no puede quedarse con el poste de otra.
+            ConnectedTrack connected = connectedTrack(row, tracksByPackage.getOrDefault(code, Map.of()));
+            if (connected.problem() != null) {
+                fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
+                        connected.problem(), progress);
                 continue;
             }
 
@@ -463,7 +474,7 @@ public class ProfileMasterImporter {
 
             try {
                 var result = upsertService.upsertDisconnector(row, stationsByKey.get(stationKey),
-                        profileId, trackId, dryRun);
+                        profileId, trackId, connected.id(), dryRun);
                 count(report, ProfileImportReport.DISCONNECTOR, result.outcome());
                 progress.accept(true);
             } catch (Exception e) {
@@ -501,6 +512,39 @@ public class ProfileMasterImporter {
                 .orElseGet(() -> PoleMatch.notFound("ninguno de los " + candidates.size() + " postes '"
                         + row.profileId() + "' de la via '" + row.track() + "' esta en el KP_POSTE "
                         + row.profileKp().toPlainString() + ": estan en los KP " + kps));
+    }
+
+    /**
+     * La via conectada de la fila, dentro de su paquete, como la del aislador.
+     *
+     * <p>En blanco no hay ninguna. Una que no esta entre las vias que esta carga ha escrito de su
+     * paquete (no existe, o su fila de TRACKS esta deshabilitada o ha fallado), o que es la VIA de la
+     * fila (la del poste, o la propia sin el), es un problema de la fila: se compara por nombre, que
+     * es lo que hay en la simulacion, donde una via que se da de alta en esta misma carga no tiene id.
+     */
+    private ConnectedTrack connectedTrack(DisconnectorMasterRow row, Map<String, Long> tracksOfPackage) {
+        String name = key(row.connectedTrack());
+        if (name.isEmpty()) {
+            return ConnectedTrack.NONE;
+        }
+        if (!tracksOfPackage.containsKey(name)) {
+            return ConnectedTrack.problem("su VIA_CONECTADA '" + row.connectedTrack().trim()
+                    + "' no esta entre las vias cargadas del paquete " + row.executionPackage());
+        }
+        if (name.equals(key(row.track()))) {
+            return ConnectedTrack.problem("su VIA_CONECTADA '" + row.connectedTrack().trim()
+                    + "' es su propia via: tiene que ser la otra de las dos que pone en paralelo");
+        }
+        return new ConnectedTrack(tracksOfPackage.get(name), null);
+    }
+
+    /** Las vias de cada paquete, por nombre: con ellas se resuelven las que nombra una fila. */
+    private static Map<String, Map<String, Long>> tracksByPackage(Map<TrackKey, Long> tracksByKey) {
+        Map<String, Map<String, Long>> tracksByPackage = new HashMap<>();
+        tracksByKey.forEach((trackKey, trackId) -> tracksByPackage
+                .computeIfAbsent(trackKey.executionPackage(), ignored -> new HashMap<>())
+                .put(trackKey.name(), trackId));
+        return tracksByPackage;
     }
 
     /** {@code 98375.5} y {@code 98375.500} son el mismo KP; uno que no es un numero no casa con nada. */
@@ -598,6 +642,19 @@ public class ProfileMasterImporter {
 
     /** Un poste por su via y su identificador: lo que nombra una fila de DISCONNECTORS. */
     private record PoleKey(String executionPackage, String track, String profileId) {
+    }
+
+    /**
+     * La via conectada de una fila, o por que no vale. El id es null sin via conectada, y tambien en
+     * la simulacion cuando la via se da de alta en esta misma carga.
+     */
+    private record ConnectedTrack(Long id, String problem) {
+
+        static final ConnectedTrack NONE = new ConnectedTrack(null, null);
+
+        static ConnectedTrack problem(String problem) {
+            return new ConnectedTrack(null, problem);
+        }
     }
 
     /** El poste encontrado, o por que no. */

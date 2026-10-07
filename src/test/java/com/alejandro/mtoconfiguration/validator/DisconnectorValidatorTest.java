@@ -64,6 +64,32 @@ class DisconnectorValidatorTest {
         assertError(alerts, ErrorCodes.BUSINESS_RULE_VIOLATION, "trackId");
     }
 
+    /**
+     * La vía conectada (V27) es la otra de las dos que pone en paralelo. Sin poste se compara aquí con
+     * la propia; con poste, la del perfil no viaja en el DTO y la compara DisconnectorMapper.
+     */
+    @Test
+    @DisplayName("la vía conectada es opcional y, sin poste, no puede ser su propia vía")
+    void viaConectadaDistintaDeLaPropia() {
+        DisconnectorDTO enPoste = ValidDtos.rootDisconnector();
+        enPoste.setConnectedTrackId(4L);
+        assertNoErrors(validator.validateBeforeSave(enPoste));
+
+        DisconnectorDTO sinPoste = ValidDtos.rootDisconnector();
+        sinPoste.setProfileId(null);
+        sinPoste.setTrackId(3L);
+        sinPoste.setConnectedTrackId(4L);
+        assertNoErrors(validator.validateBeforeSave(sinPoste));
+
+        DisconnectorDTO sinViaPropia = ValidDtos.rootDisconnector();
+        sinViaPropia.setProfileId(null);
+        sinViaPropia.setConnectedTrackId(4L);
+        assertNoErrors(validator.validateBeforeSave(sinViaPropia));
+
+        sinPoste.setConnectedTrackId(3L);
+        assertError(validator.validateBeforeSave(sinPoste), ErrorCodes.BUSINESS_RULE_VIOLATION, "connectedTrackId");
+    }
+
     @Test
     @DisplayName("el KP es un número en metros, con punto decimal y la precisión de la columna")
     void kpConFormato() {

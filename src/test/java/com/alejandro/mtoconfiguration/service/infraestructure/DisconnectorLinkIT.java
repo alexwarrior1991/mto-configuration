@@ -1,15 +1,18 @@
 package com.alejandro.mtoconfiguration.service.infraestructure;
 
+import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.ProfileMasterDataPayloadMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO.ProfileNode;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.support.PostgresTestDatabase;
+import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,6 +27,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,6 +57,7 @@ class DisconnectorLinkIT {
     private static final long PACKAGE = -92L;
     private static final long STATION = -93L;
     private static final long TRACK = -94L;
+    private static final long OTHER_TRACK = -90L;
     private static final long PROFILE_A = -95L;
     private static final long PROFILE_B = -96L;
     private static final long PROFILE_FREE = -97L;
@@ -73,6 +78,8 @@ class DisconnectorLinkIT {
     private ProfileService profileService;
     @Autowired
     private DisconnectorService disconnectorService;
+    @Autowired
+    private StationService stationService;
     @Autowired
     private TrackSchematicService trackSchematicService;
     @Autowired
@@ -108,6 +115,11 @@ class DisconnectorLinkIT {
                 values (?, 'IT-LINK-TRACK', true, false, ?, now(), 'test', now(), 'test', 1)
                 """, TRACK, PACKAGE);
         jdbcTemplate.update("insert into track_station (track_id, station_id) values (?, ?)", TRACK, STATION);
+        jdbcTemplate.update("""
+                insert into track (id, name, status, deleted, execution_package_id, create_date,
+                        create_user, version_date, version_user, version_number)
+                values (?, 'IT-LINK-TRACK-2', true, false, ?, now(), 'test', now(), 'test', 1)
+                """, OTHER_TRACK, PACKAGE);
         perfil(PROFILE_A, "IT-LINK-A", "1.000");
         perfil(PROFILE_B, "IT-LINK-B", "2.000");
         perfil(PROFILE_FREE, "IT-LINK-LIBRE", "3.000");
@@ -147,7 +159,7 @@ class DisconnectorLinkIT {
         jdbcTemplate.update("delete from profile_aud where id in (select id from profile where profile_id like 'IT-LINK%')");
         jdbcTemplate.update("delete from profile where profile_id like 'IT-LINK%'");
         jdbcTemplate.update("delete from track_station where track_id = ?", TRACK);
-        jdbcTemplate.update("delete from track where id = ?", TRACK);
+        jdbcTemplate.update("delete from track where id in (?, ?)", TRACK, OTHER_TRACK);
         jdbcTemplate.update("delete from station where id = ?", STATION);
         jdbcTemplate.update("delete from execution_package where id = ?", PACKAGE);
         jdbcTemplate.update("delete from disconnector_function_aud where id = ?", FUNCTION);
@@ -284,6 +296,94 @@ class DisconnectorLinkIT {
                 .containsEntry("drive_type", "MANUAL")
                 .containsEntry("track_id", TRACK);
         assertThat((BigDecimal) fila.get("kilometric_point")).isEqualByComparingTo("98375.5");
+    }
+
+    /**
+     * La vía conectada (V27) es la otra de las dos que el seccionador pone en paralelo. Con poste, la
+     * suya es la del perfil, que el DTO no trae: la mira DisconnectorMapper con la entidad mapeada,
+     * y lo que rechaza no llega a la base. Sin poste, la suya va en el DTO y la mira el validador.
+     */
+    @Test
+    @DisplayName("la vía conectada se guarda también en uno en un poste, y nunca puede ser la suya (V27)")
+    void viaConectada() {
+        DisconnectorDTO enPoste = disconnectorService.getById(DISCONNECTOR_A);
+        enPoste.setConnectedTrackId(OTHER_TRACK);
+
+        assertThat(disconnectorService.update(enPoste).getConnectedTrackId()).isEqualTo(OTHER_TRACK);
+        assertThat(conectada(DISCONNECTOR_A)).isEqualTo(OTHER_TRACK);
+        assertThat(disconnectorService.getById(DISCONNECTOR_A).getConnectedTrackId()).isEqualTo(OTHER_TRACK);
+
+        DisconnectorDTO laDeSuPoste = disconnectorService.getById(DISCONNECTOR_A);
+        laDeSuPoste.setConnectedTrackId(TRACK);
+        assertThatThrownBy(() -> disconnectorService.update(laDeSuPoste))
+                .isInstanceOfSatisfying(ValidationException.class, e -> assertThat(e.getErrors())
+                        .singleElement()
+                        .satisfies(alert -> {
+                            assertThat(alert.getMessage()).isEqualTo(ErrorCodes.BUSINESS_RULE_VIOLATION);
+                            assertThat(alert.getFields()).containsExactly("connectedTrackId");
+                        }));
+        assertThat(conectada(DISCONNECTOR_A)).isEqualTo(OTHER_TRACK);
+
+        DisconnectorFunctionDTO function = new DisconnectorFunctionDTO();
+        function.setCode(FUNCTION_CODE);
+        DisconnectorDTO sinPoste = new DisconnectorDTO();
+        sinPoste.setName("IT-LINK-PARALELO");
+        sinPoste.setOnLoad(false);
+        sinPoste.setStationId(STATION);
+        sinPoste.setTrackId(TRACK);
+        sinPoste.setConnectedTrackId(TRACK);
+        sinPoste.setDisconnectorFunction(function);
+        assertThatThrownBy(() -> disconnectorService.create(sinPoste)).isInstanceOf(ValidationException.class);
+
+        sinPoste.setConnectedTrackId(OTHER_TRACK);
+        DisconnectorDTO creado = disconnectorService.create(sinPoste);
+        assertThat(conectada(creado.getId())).isEqualTo(OTHER_TRACK);
+    }
+
+    /**
+     * El alta en lote no pasa por el {@code Business}, y una estación escribe sus seccionadores con
+     * su propio mapper: los dos pasan por el de seccionador, que es donde se mira la vía del poste.
+     */
+    @Test
+    @DisplayName("la vía de su poste tampoco entra en un lote ni escrita desde su estación (V27)")
+    void viaConectadaPorTodosLosCaminos() {
+        DisconnectorFunctionDTO function = new DisconnectorFunctionDTO();
+        function.setCode(FUNCTION_CODE);
+        DisconnectorDTO nuevo = new DisconnectorDTO();
+        nuevo.setName("IT-LINK-LOTE");
+        nuevo.setOnLoad(false);
+        nuevo.setStationId(STATION);
+        nuevo.setProfileId(PROFILE_FREE);
+        nuevo.setConnectedTrackId(TRACK);
+        nuevo.setDisconnectorFunction(function);
+        assertThatThrownBy(() -> disconnectorService.bulkCreate(List.of(nuevo)))
+                .isInstanceOf(ValidationException.class);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from disconnector where name = 'IT-LINK-LOTE'",
+                Integer.class)).isZero();
+
+        DisconnectorDTO enLote = disconnectorService.getById(DISCONNECTOR_A);
+        enLote.setConnectedTrackId(TRACK);
+        assertThatThrownBy(() -> disconnectorService.bulkUpdate(List.of(enLote)))
+                .isInstanceOf(ValidationException.class);
+
+        StationDTO estacion = stationService.getById(STATION);
+        estacion.setTracks(null);
+        estacion.setSectionInsulators(null);
+        estacion.getDisconnectors().stream()
+                .filter(disconnector -> disconnector.getId() == DISCONNECTOR_A)
+                .findFirst().orElseThrow()
+                .setConnectedTrackId(TRACK);
+        assertThatThrownBy(() -> stationService.update(estacion)).isInstanceOf(ValidationException.class);
+        assertThat(conectada(DISCONNECTOR_A)).isNull();
+
+        nuevo.setConnectedTrackId(OTHER_TRACK);
+        DisconnectorDTO creado = disconnectorService.bulkCreate(List.of(nuevo)).getFirst();
+        assertThat(conectada(creado.getId())).isEqualTo(OTHER_TRACK);
+    }
+
+    private Long conectada(long disconnectorId) {
+        return jdbcTemplate.queryForObject("select connected_track_id from disconnector where id = ?", Long.class,
+                disconnectorId);
     }
 
     @Test

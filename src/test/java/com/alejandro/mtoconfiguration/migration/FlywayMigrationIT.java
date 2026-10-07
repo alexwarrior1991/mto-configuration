@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27");
     }
 
     /**
@@ -752,6 +752,23 @@ class FlywayMigrationIT {
         assertThat(existeColumna("profile_aud", "order_in_track"))
                 .as("sin la columna en la gemela, la primera revision de un perfil revienta")
                 .isTrue();
+    }
+
+    /** V27: la via conectada del seccionador, con su gemela de auditoria y su clave ajena. */
+    @Test
+    void elSeccionadorYSuGemelaTienenLaViaConectada() {
+        assertThat(existeColumna("disconnector", "connected_track_id")).isTrue();
+        assertThat(existeColumna("disconnector_aud", "connected_track_id"))
+                .as("sin la columna en la gemela, la primera revision de un seccionador revienta")
+                .isTrue();
+        Integer claves = jdbc().queryForObject("""
+                select count(*) from pg_constraint c
+                join pg_class t on t.oid = c.conrelid
+                join pg_namespace n on n.oid = t.relnamespace
+                where n.nspname = ? and t.relname = 'disconnector'
+                  and c.conname = 'fk_disconnector_connected_track' and c.contype = 'f'
+                """, Integer.class, SCHEMA);
+        assertThat(claves).isEqualTo(1);
     }
 
     private boolean existeTabla(String tabla) {
