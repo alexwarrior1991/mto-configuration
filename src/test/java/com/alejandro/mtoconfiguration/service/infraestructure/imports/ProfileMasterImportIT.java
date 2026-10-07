@@ -308,11 +308,13 @@ class ProfileMasterImportIT {
      *
      * <p>El maestro real la trae vacia mientras no se revise el plano de seccionamiento, asi que
      * aqui se construye uno minimo: un paquete, una estacion, una via de dos tramos que repite un
-     * poste y tres seccionadores, uno en un poste, otro en el poste repetido y otro sin poste; el
-     * primero y el tercero ponen su via en paralelo con la otra de la estacion. Es lo que ningun doble
-     * ve: que KP_POSTE elige el poste bueno de los dos, que el KP y la via propios y la via conectada
-     * llegan a sus columnas, que la segunda pasada compara sobre una entidad detached sin reventar y
-     * dice "sin cambios", y que un poste ocupado se dice con el nombre de quien lo ocupa.
+     * poste y cuatro seccionadores, uno en un poste, otro en el poste repetido, otro sin poste y otro
+     * sin poste y sin estacion ({@code SIN ESTACION}); el primero y el tercero ponen su via en
+     * paralelo con la otra de la estacion. Es lo que ningun doble ve: que KP_POSTE elige el poste
+     * bueno de los dos, que el KP y la via propios y la via conectada llegan a sus columnas, que la
+     * segunda pasada compara sobre una entidad detached sin reventar y dice "sin cambios", que la
+     * clave es el paquete y el nombre (quitarle la estacion en la hoja modifica el mismo seccionador),
+     * y que un poste ocupado se dice con el nombre de quien lo ocupa.
      */
     @Test
     @DisplayName("carga los seccionadores de la hoja DISCONNECTORS, y reimportarlos no cambia nada")
@@ -325,7 +327,7 @@ class ProfileMasterImportIT {
         assertThat(first.getFailed()).as("%s", desglose(first)).isZero();
         assertThat(first.outcomeOf(ProfileImportReport.DISCONNECTOR).getCreated())
                 .as("%s", desglose(first))
-                .isEqualTo(3);
+                .isEqualTo(4);
 
         Long via1 = viaDelMaestroMinimo("TRACK 1");
         Long via2 = viaDelMaestroMinimo("TRACK 2");
@@ -352,6 +354,13 @@ class ProfileMasterImportIT {
         carga.assertThat(sinPoste.get("conectada")).isEqualTo(via2);
         carga.assertThat(sinPoste.get("abierto")).as("NORMALLY_OPEN vacia es 'sin dato'").isNull();
         carga.assertThat(sinPoste.get("accionamiento")).isNull();
+        carga.assertThat(sinPoste.get("estacion")).isEqualTo("STA IT");
+
+        Map<String, Object> sinEstacion = seccionador("STA-04");
+        carga.assertThat(sinEstacion.get("estacion")).as("SIN ESTACION no es de ninguna").isNull();
+        carga.assertThat(sinEstacion.get("poste")).isNull();
+        carga.assertThat(sinEstacion.get("via")).as("su via es lo que lo situa").isEqualTo(via2);
+        carga.assertThat((BigDecimal) sinEstacion.get("kp")).isEqualByComparingTo("98400");
         carga.assertAll();
 
         ProfileImportReport second = importer.importFrom(workbook(hojas), false);
@@ -359,7 +368,19 @@ class ProfileMasterImportIT {
         assertThat(second.getFailed()).as("%s", desglose(second)).isZero();
         assertThat(second.outcomeOf(ProfileImportReport.DISCONNECTOR).getUnchanged())
                 .as("reimportar la misma hoja no puede reescribir ningun seccionador: %s", desglose(second))
-                .isEqualTo(3);
+                .isEqualTo(4);
+
+        // La clave es el paquete y el nombre: quitarle la estacion en la hoja modifica el mismo
+        // seccionador, en vez de dar de alta otro con su nombre.
+        Object idSinPoste = sinPoste.get("id");
+        hojas.get(ProfileMasterParser.DISCONNECTORS_SHEET).get(3)[1] = "SIN ESTACION";
+        ProfileImportReport withoutStation = importer.importFrom(workbook(hojas), false);
+
+        assertThat(withoutStation.getFailed()).as("%s", desglose(withoutStation)).isZero();
+        assertThat(withoutStation.outcomeOf(ProfileImportReport.DISCONNECTOR).getUpdated())
+                .as("%s", desglose(withoutStation))
+                .isEqualTo(1);
+        assertThat(seccionador("STA-03")).containsEntry("id", idSinPoste).containsEntry("estacion", null);
 
         // Renombrar en la hoja uno ya cargado es, para la clave natural, otro seccionador: el de
         // antes sigue en su poste, y el informe tiene que decir cual es.
@@ -368,12 +389,10 @@ class ProfileMasterImportIT {
 
         assertThat(renamed.getErrors())
                 .extracting(ProfileImportReport.ItemError::reference)
-                .containsExactly("EPIT / STA IT / STA-01B");
+                .containsExactly("EPIT / STA-01B");
         assertThat(renamed.getErrors().getFirst().message()).contains("'STA-01'");
-        assertThat(jdbcTemplate.queryForObject("""
-                select count(*) from disconnector d join station s on s.id = d.station_id
-                where s.name = 'STA IT'
-                """, Integer.class)).isEqualTo(3);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from disconnector where deleted = false",
+                Integer.class)).isEqualTo(4);
     }
 
     /**
@@ -597,7 +616,9 @@ class ProfileMasterImportIT {
                 new String[]{"EPIT", "STA IT", "TRACK 1", "", "1-1.01", "5000", "STA-02", "", "NO", "SI",
                         "MANUAL", "ED", "SI"},
                 new String[]{"EPIT", "STA IT", "TRACK 1", "Track 2", "", "", "STA-03", "98375.5", "SI", "", "",
-                        "Disc/IO", "SI"}));
+                        "Disc/IO", "SI"},
+                new String[]{"EPIT", "SIN ESTACION", "TRACK 2", "", "", "", "STA-04", "98400", "NO", "NO",
+                        "MANUAL", "Disc/IO", "SI"}));
         return hojas;
     }
 
@@ -620,18 +641,25 @@ class ProfileMasterImportIT {
         return new ByteArrayInputStream(out.toByteArray());
     }
 
-    /** Un seccionador de la estacion del maestro minimo, con su poste y su funcion por codigo. */
+    /**
+     * Un seccionador del paquete del maestro minimo, por su nombre, con su estacion, su poste y su
+     * funcion por codigo. Por el paquete y no por la estacion, que es opcional.
+     */
     private Map<String, Object> seccionador(String nombre) {
         return jdbcTemplate.queryForMap("""
-                select p.profile_id as poste, p.kilometric_point as kp_poste, d.kilometric_point as kp,
-                       d.track_id as via, d.connected_track_id as conectada, d.onload as en_carga,
-                       d.normally_open as abierto,
+                select d.id, s.name as estacion, p.profile_id as poste, p.kilometric_point as kp_poste,
+                       d.kilometric_point as kp, d.track_id as via, d.connected_track_id as conectada,
+                       d.onload as en_carga, d.normally_open as abierto,
                        d.drive_type as accionamiento, f.code as funcion
                 from disconnector d
-                join station s on s.id = d.station_id
+                left join station s on s.id = d.station_id
                 left join profile p on p.id = d.profile_id
+                left join track pt on pt.id = p.track_id
+                left join track t on t.id = d.track_id
                 left join disconnector_function f on f.id = d.disconnector_function_id
-                where s.name = 'STA IT' and d.name = ?
+                join execution_package e
+                     on e.id = coalesce(s.execution_package_id, pt.execution_package_id, t.execution_package_id)
+                where e.name = 'EP IT SECCIONADORES' and d.name = ? and d.deleted = false
                 """, nombre);
     }
 

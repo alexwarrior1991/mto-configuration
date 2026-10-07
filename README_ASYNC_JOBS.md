@@ -56,12 +56,21 @@ seccionadores, **en ese orden**, porque cada nivel necesita el identificador del
 
 Cada entidad se da de alta o se actualiza **por su clave natural** —`execution_package(name)`,
 `station(paquete, name)`, `track(paquete, name)`, `profile(vía, profileId, kp)`,
-`section_insulator(estación, name)`, `disconnector(estación, name)`—, apoyándose en los índices
-únicos parciales que añaden `V12` y `V18`. El poste de un seccionador se busca en la hoja `PROFILES`
-por su vía y su identificador, y en una vía que lo repite, por `KP_POSTE`. Su vía conectada
-(`VIA_CONECTADA`, `V27`) se busca entre las vías de su paquete que ha escrito la carga: si no está,
-o si es su propia vía, la fila sale en el informe. Reimportar el mismo maestro no crea nada: eso es
-lo que hace que la carga se pueda repetir sin miedo.
+`section_insulator(estación, name)`, `disconnector(paquete, name)`—, apoyándose en los índices
+únicos parciales que añaden `V12` y `V18`. Reimportar el mismo maestro no crea nada: eso es lo que
+hace que la carga se pueda repetir sin miedo.
+
+El seccionador va por su paquete y no por su estación porque la estación es opcional: uno en plena
+vía, en una zona neutra o en una subestación no es de ninguna, y la hoja lo dice escribiendo
+`SIN ESTACION` (con tilde o sin ella) en `ESTACION`. En blanco no vale: sería un olvido, y la fila sale
+en el informe. Así, cambiar en la hoja la estación de un seccionador, o quitársela, lo modifica en vez
+de dar de alta otro. Dos filas con el mismo nombre en el mismo paquete se señalan, la segunda con la
+primera, y un nombre que la base ya tiene dos veces en el paquete también: la carga no elige uno. Sin
+estación y sin poste, su `VIA` es lo único que lo sitúa y tiene que estar entre las de su paquete.
+
+El poste de un seccionador se busca en la hoja `PROFILES` por su vía y su identificador, y en una vía
+que lo repite, por `KP_POSTE`. Su vía conectada (`VIA_CONECTADA`, `V27`) se busca entre las vías de su
+paquete que ha escrito la carga: si no está, o si es su propia vía, la fila sale en el informe.
 
 Solo se cargan las filas marcadas `ENABLED=SI`. Con `dryRun=true` no se escribe nada y el informe
 sale con **los mismos recuentos** que la carga real, que es lo único que hace útil una simulación:
@@ -133,7 +142,8 @@ Prefijo propio: `ConfigurationApiPaths.BASE_PATH + "/master-data/republish"` →
 | GET | `/{jobId}` | `CONFIG_READ` | 200 · 404 |
 
 `entity`: `profile`, `disconnector`, `section-insulator` o `all`. `trackId` acota **solo** perfiles;
-`stationId` **solo** seccionadores y aisladores; `all` no admite filtros. Cualquier otra combinación
+`stationId` **solo** seccionadores y aisladores (un seccionador sin estación va sin filtro, nunca con
+uno); `all` no admite filtros. Cualquier otra combinación
 es un 400, igual que una selección vacía o una que supere `app.jobs.republish.max-items`.
 
 **El problema que resuelve.** Los eventos de datos maestros solo nacen al pasar por la capa de

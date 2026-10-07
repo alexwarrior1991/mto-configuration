@@ -120,7 +120,7 @@ class MasterDataRepublishIT {
         PostgresTestDatabase.registerProperties(registry);
     }
 
-    private record Ids(Long trackId, Long stationId, Long profileId) {
+    private record Ids(Long trackId, Long stationId, Long profileId, Long stationLessDisconnectorId) {
     }
 
     @BeforeEach
@@ -198,7 +198,7 @@ class MasterDataRepublishIT {
     }
 
     @Test
-    @DisplayName("el filtro por estacion acota seccionadores y aisladores")
+    @DisplayName("el filtro por estacion acota seccionadores y aisladores, y deja fuera al que no tiene")
     void elFiltroPorEstacionAcota() {
         republish(MasterDataRepublishTarget.DISCONNECTOR, null, ids.stationId());
         republish(MasterDataRepublishTarget.SECTION_INSULATOR, null, ids.stationId());
@@ -207,13 +207,19 @@ class MasterDataRepublishIT {
         assertThat(outboxOf("section-insulator")).hasSize(1);
     }
 
+    /**
+     * Sin filtro van todos, tambien el seccionador que no es de ninguna estacion: mantenimiento
+     * reconstruye sus activos con este republicado, y uno que se quedara fuera no le llegaria nunca.
+     */
     @Test
-    @DisplayName("all republica los tres tipos con su nombre de agregado")
+    @DisplayName("all republica los tres tipos con su nombre de agregado, tambien el seccionador sin estacion")
     void allRepublicaLosTresTipos() {
         republish(MasterDataRepublishTarget.ALL, null, null);
 
         assertThat(outboxOf("profile")).hasSize(3);
-        assertThat(outboxOf("disconnector")).hasSize(2);
+        assertThat(outboxOf("disconnector")).hasSize(3)
+                .extracting(OutboxMessage::getAggregateId)
+                .contains(String.valueOf(ids.stationLessDisconnectorId()));
         assertThat(outboxOf("section-insulator")).hasSize(2);
     }
 
@@ -342,9 +348,18 @@ class MasterDataRepublishIT {
             sectionInsulator("Aislador B", otherStation);
 
             em.persist(executionPackage);
+
+            // Sin estacion ni poste, con su via: nada lo persiste en cascada.
+            Disconnector stationLess = new Disconnector();
+            stationLess.setName("Seccionador C");
+            stationLess.setOnLoad(Boolean.FALSE);
+            stationLess.setDisconnectorFunction(lov(new DisconnectorFunction(), "FRC"));
+            stationLess.setKp(new BigDecimal("500.000"));
+            stationLess.setTrack(track);
+            em.persist(stationLess);
             em.flush();
 
-            return new Ids(track.getId(), station.getId(), profile.getId());
+            return new Ids(track.getId(), station.getId(), profile.getId(), stationLess.getId());
         }
 
         private BusinessEntity company() {

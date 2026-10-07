@@ -22,6 +22,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * Comportamiento del lector del maestro de perfiles.
@@ -355,14 +356,30 @@ class ProfileMasterParserTest {
         }
 
         @Test
-        @DisplayName("una fila sin paquete, sin estacion o sin nombre se salta, como en las demas hojas")
+        @DisplayName("una fila sin paquete o sin nombre se salta, como en las demas hojas")
         void filaSinClave() throws IOException {
             ProfileMasterParser.ProfileMasterContent content = parser.parseAll(withDisconnectors(HEADER, List.of(
                     new String[]{"EP6", "HER", "TRACK 1", "", "", "", ""},
-                    new String[]{"EP6", "", "TRACK 1", "", "", "", "HER-02"},
+                    new String[]{"", "HER", "TRACK 1", "", "", "", "HER-02"},
                     new String[]{"EP6", "HER", "TRACK 1", "", "", "", "HER-03"})));
 
             assertThat(content.disconnectors()).extracting(DisconnectorMasterRow::name).containsExactly("HER-03");
+        }
+
+        /**
+         * La estacion es opcional y se dice con SIN ESTACION: una celda vacia es un olvido, y saltar la
+         * fila la perderia sin decir nada. Llega al importador, que la señala en su fila.
+         */
+        @Test
+        @DisplayName("una fila sin estacion se lee, para que el importador la señale, y SIN ESTACION llega tal cual")
+        void filaSinEstacion() throws IOException {
+            ProfileMasterParser.ProfileMasterContent content = parser.parseAll(withDisconnectors(HEADER, List.of(
+                    new String[]{"EP6", "", "TRACK 1", "", "", "", "HER-02"},
+                    new String[]{"EP6", "SIN ESTACION", "TRACK 1", "", "", "", "HER-03"})));
+
+            assertThat(content.disconnectors())
+                    .extracting(DisconnectorMasterRow::name, DisconnectorMasterRow::station)
+                    .containsExactly(tuple("HER-02", ""), tuple("HER-03", "SIN ESTACION"));
         }
 
         private InputStream withDisconnectors(String[] header, List<String[]> rows) throws IOException {

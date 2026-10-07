@@ -79,6 +79,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -1168,6 +1169,7 @@ class InfrastructureUpsertServiceTest {
     class Seccionador {
 
         private static final long STATION_ID = 9L;
+        private static final long PACKAGE_ID = 6L;
         private static final long PROFILE_ID = 70L;
         private static final long TRACK_ID = 3L;
         private static final long CONNECTED_TRACK_ID = 4L;
@@ -1178,7 +1180,7 @@ class InfrastructureUpsertServiceTest {
             DisconnectorFunction function = new DisconnectorFunction();
             function.setId(FUNCTION_ID);
             when(masterDataService.getDisconnectorFunctionByCode("Disc/IO")).thenReturn(function);
-            when(disconnectorRepository.findByNameIgnoreCaseAndStationId(any(), any())).thenReturn(Optional.empty());
+            when(disconnectorRepository.findByNameInPackage(any(), any())).thenReturn(List.of());
             when(disconnectorRepository.findPoleHolder(any())).thenReturn(Optional.empty());
             when(disconnectorService.create(any())).thenAnswer(invocation -> {
                 DisconnectorDTO created = invocation.getArgument(0);
@@ -1191,7 +1193,8 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("uno en un poste se crea con su poste, sus SI/NO leidos y sin KP ni via propios")
         void enUnPoste() {
-            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, null, false);
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PACKAGE_ID, PROFILE_ID, null,
+                    null, false);
 
             assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.CREATED);
             assertThat(result.id()).isEqualTo(88L);
@@ -1211,7 +1214,7 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("uno sin poste lleva su KP y su via, y una celda vacia es 'sin dato'")
         void sinPoste() {
             service.upsertDisconnector(row("", "98375.5", "SI", "", "", "Disc/IO"),
-                    STATION_ID, null, TRACK_ID, null, false);
+                    STATION_ID, PACKAGE_ID, null, TRACK_ID, null, false);
 
             DisconnectorDTO dto = captureCreated();
             assertThat(dto.getProfileId()).isNull();
@@ -1224,7 +1227,8 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("los SI/NO admiten la misma manga ancha que ENABLED, y su espejo")
         void siNoConMangaAncha() {
-            service.upsertDisconnector(row("", "", "x", "n", "manual", "Disc/IO"), STATION_ID, null, null, null, false);
+            service.upsertDisconnector(row("", "", "x", "n", "manual", "Disc/IO"), STATION_ID, PACKAGE_ID, null, null,
+                    null, false);
 
             DisconnectorDTO dto = captureCreated();
             assertThat(dto.getOnLoad()).isTrue();
@@ -1240,7 +1244,7 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("un SI/NO que no se entiende señala la fila con su columna, y no se escribe")
         void siNoQueNoSeEntiende() {
             assertThatThrownBy(() -> service.upsertDisconnector(row("83-1.02", "", "SI", "QUIZA", "MOTOR", "Disc/IO"),
-                    STATION_ID, PROFILE_ID, null, null, false))
+                    STATION_ID, PACKAGE_ID, PROFILE_ID, null, null, false))
                     .isInstanceOf(ValidationException.class)
                     .hasMessage("NORMALLY_OPEN 'QUIZA' no es SI ni NO");
             verifyNoInteractions(disconnectorService);
@@ -1250,7 +1254,7 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("un accionamiento que no es MOTOR ni MANUAL señala la fila")
         void accionamientoDesconocido() {
             assertThatThrownBy(() -> service.upsertDisconnector(row("83-1.02", "", "SI", "NO", "DIESEL", "Disc/IO"),
-                    STATION_ID, PROFILE_ID, null, null, false))
+                    STATION_ID, PACKAGE_ID, PROFILE_ID, null, null, false))
                     .isInstanceOf(ValidationException.class)
                     .hasMessage("DRIVE_TYPE 'DIESEL' no es MOTOR ni MANUAL");
             verifyNoInteractions(disconnectorService);
@@ -1263,8 +1267,9 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("con poste Y con KP, la fila se señala con las dos columnas")
         void posteYKp() {
-            assertThatThrownBy(() -> service.upsertDisconnector(row("83-1.02", "98375.5", "SI", "NO", "MOTOR", "Disc/IO"),
-                    STATION_ID, PROFILE_ID, null, null, false))
+            assertThatThrownBy(() -> service.upsertDisconnector(
+                    row("83-1.02", "98375.5", "SI", "NO", "MOTOR", "Disc/IO"),
+                    STATION_ID, PACKAGE_ID, PROFILE_ID, null, null, false))
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("KP")
                     .hasMessageContaining("PROFILE_ID");
@@ -1279,7 +1284,7 @@ class InfrastructureUpsertServiceTest {
         @DisplayName("una funcion que no esta en el catalogo impide cargarlo y sale nombrada")
         void funcionDesconocida() {
             assertThatThrownBy(() -> service.upsertDisconnector(row("83-1.02", "", "SI", "NO", "MOTOR", "Disc/XX"),
-                    STATION_ID, PROFILE_ID, null, null, false))
+                    STATION_ID, PACKAGE_ID, PROFILE_ID, null, null, false))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessageContaining("DISCONNECTOR_FUNCTION='Disc/XX'");
             verifyNoInteractions(disconnectorService);
@@ -1290,7 +1295,8 @@ class InfrastructureUpsertServiceTest {
         void posteOcupado() {
             when(disconnectorRepository.findPoleHolder(PROFILE_ID)).thenReturn(Optional.of(holder(55L, "HER-VIEJO")));
 
-            assertThatThrownBy(() -> service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, null, false))
+            assertThatThrownBy(() -> service.upsertDisconnector(onAPole(), STATION_ID, PACKAGE_ID, PROFILE_ID, null,
+                    null, false))
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("'HER-VIEJO' (id 55)");
             verifyNoInteractions(disconnectorService);
@@ -1299,13 +1305,14 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("el poste que ya lleva el propio seccionador no es un conflicto, y sin cambios no se reescribe")
         void posteDelPropioSinCambios() {
-            when(disconnectorRepository.findByNameIgnoreCaseAndStationId("HER-01", STATION_ID))
-                    .thenReturn(Optional.of(existente(55L, null)));
+            when(disconnectorRepository.findByNameInPackage("HER-01", PACKAGE_ID))
+                    .thenReturn(List.of(existente(55L, null)));
             when(disconnectorRepository.findPoleHolder(PROFILE_ID)).thenReturn(Optional.of(holder(55L, "HER-01")));
             when(disconnectorRepository.findLinkIdsById(55L))
                     .thenReturn(Optional.of(links(PROFILE_ID, null, FUNCTION_ID)));
 
-            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, null, false);
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PACKAGE_ID, PROFILE_ID, null,
+                    null, false);
 
             assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UNCHANGED);
             assertThat(result.id()).isEqualTo(55L);
@@ -1316,13 +1323,13 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("sin poste y sin cambios tampoco se reescribe, aunque el KP llegue con otra escala")
         void sinPosteSinCambios() {
-            when(disconnectorRepository.findByNameIgnoreCaseAndStationId("HER-01", STATION_ID))
-                    .thenReturn(Optional.of(existente(55L, new BigDecimal("98375.500"))));
+            when(disconnectorRepository.findByNameInPackage("HER-01", PACKAGE_ID))
+                    .thenReturn(List.of(existente(55L, new BigDecimal("98375.500"))));
             when(disconnectorRepository.findLinkIdsById(55L))
                     .thenReturn(Optional.of(links(null, TRACK_ID, FUNCTION_ID)));
 
             UpsertResult result = service.upsertDisconnector(row("", "98375.5", "SI", "NO", "MOTOR", "Disc/IO"),
-                    STATION_ID, null, TRACK_ID, null, false);
+                    STATION_ID, PACKAGE_ID, null, TRACK_ID, null, false);
 
             assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UNCHANGED);
             verify(disconnectorService, never()).update(any());
@@ -1331,7 +1338,7 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("la via conectada viaja tal cual, tambien con poste")
         void viaConectada() {
-            service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, CONNECTED_TRACK_ID, false);
+            service.upsertDisconnector(onAPole(), STATION_ID, PACKAGE_ID, PROFILE_ID, null, CONNECTED_TRACK_ID, false);
 
             DisconnectorDTO dto = captureCreated();
             assertThat(dto.getProfileId()).isEqualTo(PROFILE_ID);
@@ -1342,15 +1349,16 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("la misma via conectada no lo reescribe; quitarla, si")
         void cambioDeViaConectada() {
-            when(disconnectorRepository.findByNameIgnoreCaseAndStationId("HER-01", STATION_ID))
-                    .thenReturn(Optional.of(existente(55L, null)));
+            when(disconnectorRepository.findByNameInPackage("HER-01", PACKAGE_ID))
+                    .thenReturn(List.of(existente(55L, null)));
             when(disconnectorRepository.findPoleHolder(PROFILE_ID)).thenReturn(Optional.of(holder(55L, "HER-01")));
             when(disconnectorRepository.findLinkIdsById(55L))
                     .thenReturn(Optional.of(links(PROFILE_ID, null, CONNECTED_TRACK_ID, FUNCTION_ID)));
 
-            assertThat(service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, CONNECTED_TRACK_ID, false)
+            assertThat(service.upsertDisconnector(onAPole(), STATION_ID, PACKAGE_ID, PROFILE_ID, null,
+                    CONNECTED_TRACK_ID, false)
                     .outcome()).isEqualTo(UpsertResult.Outcome.UNCHANGED);
-            assertThat(service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, null, false)
+            assertThat(service.upsertDisconnector(onAPole(), STATION_ID, PACKAGE_ID, PROFILE_ID, null, null, false)
                     .outcome()).isEqualTo(UpsertResult.Outcome.UPDATED);
 
             ArgumentCaptor<DisconnectorDTO> captor = ArgumentCaptor.forClass(DisconnectorDTO.class);
@@ -1361,12 +1369,13 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("cambiar de poste si lo reescribe, sobre su id")
         void cambioDePoste() {
-            when(disconnectorRepository.findByNameIgnoreCaseAndStationId("HER-01", STATION_ID))
-                    .thenReturn(Optional.of(existente(55L, null)));
+            when(disconnectorRepository.findByNameInPackage("HER-01", PACKAGE_ID))
+                    .thenReturn(List.of(existente(55L, null)));
             when(disconnectorRepository.findLinkIdsById(55L))
                     .thenReturn(Optional.of(links(71L, null, FUNCTION_ID)));
 
-            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, null, false);
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PACKAGE_ID, PROFILE_ID, null,
+                    null, false);
 
             assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UPDATED);
             ArgumentCaptor<DisconnectorDTO> captor = ArgumentCaptor.forClass(DisconnectorDTO.class);
@@ -1382,13 +1391,13 @@ class InfrastructureUpsertServiceTest {
         @Test
         @DisplayName("un KP que no es un numero no pasa por igual a un hueco: llega al validador")
         void kpQueNoEsUnNumero() {
-            when(disconnectorRepository.findByNameIgnoreCaseAndStationId("HER-01", STATION_ID))
-                    .thenReturn(Optional.of(existente(55L, null)));
+            when(disconnectorRepository.findByNameInPackage("HER-01", PACKAGE_ID))
+                    .thenReturn(List.of(existente(55L, null)));
             when(disconnectorRepository.findLinkIdsById(55L))
                     .thenReturn(Optional.of(links(null, TRACK_ID, FUNCTION_ID)));
 
             UpsertResult result = service.upsertDisconnector(row("", "98+375", "SI", "NO", "MOTOR", "Disc/IO"),
-                    STATION_ID, null, TRACK_ID, null, false);
+                    STATION_ID, PACKAGE_ID, null, TRACK_ID, null, false);
 
             assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UPDATED);
             ArgumentCaptor<DisconnectorDTO> captor = ArgumentCaptor.forClass(DisconnectorDTO.class);
@@ -1396,10 +1405,97 @@ class InfrastructureUpsertServiceTest {
             assertThat(captor.getValue().getKp()).isEqualTo("98+375");
         }
 
+        /**
+         * Un seccionador en plena via, en una zona neutra o en una subestacion no es de ninguna
+         * estacion: se busca y se escribe igual, por su paquete y su nombre.
+         */
+        @Test
+        @DisplayName("uno sin estacion se crea sin estacion, y se busca por su paquete y su nombre")
+        void sinEstacion() {
+            service.upsertDisconnector(row("", "98375.5", "SI", "", "", "Disc/IO"), null, PACKAGE_ID, null,
+                    TRACK_ID, null, false);
+
+            DisconnectorDTO dto = captureCreated();
+            assertThat(dto.getStationId()).isNull();
+            assertThat(dto.getTrackId()).isEqualTo(TRACK_ID);
+            verify(disconnectorRepository).findByNameInPackage("HER-01", PACKAGE_ID);
+        }
+
+        /**
+         * La estacion ya no es parte de la clave: cambiarla en la hoja, o decir que no es de ninguna,
+         * modifica el mismo seccionador en vez de dar de alta otro con su nombre.
+         */
+        @Test
+        @DisplayName("cambiar de estacion, o quitarla, lo reescribe sobre su id")
+        void cambioDeEstacion() {
+            when(disconnectorRepository.findByNameInPackage("HER-01", PACKAGE_ID))
+                    .thenReturn(List.of(existente(55L, null)));
+            when(disconnectorRepository.findPoleHolder(PROFILE_ID)).thenReturn(Optional.of(holder(55L, "HER-01")));
+            when(disconnectorRepository.findLinkIdsById(55L))
+                    .thenReturn(Optional.of(links(PROFILE_ID, null, FUNCTION_ID)));
+
+            UpsertResult sinEstacion = service.upsertDisconnector(onAPole(), null, PACKAGE_ID, PROFILE_ID, null,
+                    null, false);
+            UpsertResult otraEstacion = service.upsertDisconnector(onAPole(), 10L, PACKAGE_ID, PROFILE_ID, null,
+                    null, false);
+
+            assertThat(sinEstacion.outcome()).isEqualTo(UpsertResult.Outcome.UPDATED);
+            assertThat(otraEstacion.outcome()).isEqualTo(UpsertResult.Outcome.UPDATED);
+            ArgumentCaptor<DisconnectorDTO> captor = ArgumentCaptor.forClass(DisconnectorDTO.class);
+            verify(disconnectorService, times(2)).update(captor.capture());
+            assertThat(captor.getAllValues()).extracting(DisconnectorDTO::getId, DisconnectorDTO::getStationId)
+                    .containsExactly(tuple(55L, null), tuple(55L, 10L));
+            verify(disconnectorService, never()).create(any());
+        }
+
+        @Test
+        @DisplayName("sin estacion y sin cambios no se reescribe")
+        void sinEstacionSinCambios() {
+            when(disconnectorRepository.findByNameInPackage("HER-01", PACKAGE_ID))
+                    .thenReturn(List.of(existente(55L, new BigDecimal("98375.5"))));
+            when(disconnectorRepository.findLinkIdsById(55L))
+                    .thenReturn(Optional.of(links(null, null, TRACK_ID, null, FUNCTION_ID)));
+
+            UpsertResult result = service.upsertDisconnector(row("", "98375.5", "SI", "NO", "MOTOR", "Disc/IO"),
+                    null, PACKAGE_ID, null, TRACK_ID, null, false);
+
+            assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.UNCHANGED);
+            verify(disconnectorService, never()).update(any());
+        }
+
+        @Test
+        @DisplayName("un nombre que el paquete ya tiene dos veces no elige uno: la fila se señala")
+        void nombreRepetidoEnElPaquete() {
+            when(disconnectorRepository.findByNameInPackage("HER-01", PACKAGE_ID))
+                    .thenReturn(List.of(existente(55L, null), existente(56L, null)));
+
+            assertThatThrownBy(() -> service.upsertDisconnector(onAPole(), STATION_ID, PACKAGE_ID, PROFILE_ID, null,
+                    null, false))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessage("el nombre 'HER-01' ya esta 2 veces en el paquete EP6, y el maestro identifica "
+                            + "cada seccionador por su paquete y su nombre");
+            verifyNoInteractions(disconnectorService);
+        }
+
+        /**
+         * En simulacion, un paquete que se da de alta en la misma carga no tiene id: nada suyo existe
+         * todavia, asi que el seccionador es un alta y no se busca.
+         */
+        @Test
+        @DisplayName("en simulacion, sin el id de su paquete es un alta y no se busca")
+        void simulacionConPaqueteNuevo() {
+            UpsertResult result = service.upsertDisconnector(onAPole(), null, null, null, null, null, true);
+
+            assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.CREATED);
+            verify(disconnectorRepository, never()).findByNameInPackage(any(), any());
+            verifyNoInteractions(disconnectorService);
+        }
+
         @Test
         @DisplayName("la simulacion no escribe nada, ni el alta")
         void simulacion() {
-            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PROFILE_ID, null, null, true);
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PACKAGE_ID, PROFILE_ID, null,
+                    null, true);
 
             assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.CREATED);
             assertThat(result.id()).isNull();
@@ -1434,13 +1530,24 @@ class InfrastructureUpsertServiceTest {
             return entity;
         }
 
+        /** Como los deja una carga anterior: de {@link #STATION_ID}, salvo que se diga otra. */
         private static DisconnectorRepository.LinkIds links(Long profileId, Long trackId, Long functionId) {
             return links(profileId, trackId, null, functionId);
         }
 
         private static DisconnectorRepository.LinkIds links(Long profileId, Long trackId, Long connectedTrackId,
                                                             Long functionId) {
+            return links(STATION_ID, profileId, trackId, connectedTrackId, functionId);
+        }
+
+        private static DisconnectorRepository.LinkIds links(Long stationId, Long profileId, Long trackId,
+                                                            Long connectedTrackId, Long functionId) {
             return new DisconnectorRepository.LinkIds() {
+                @Override
+                public Long getStationId() {
+                    return stationId;
+                }
+
                 @Override
                 public Long getProfileId() {
                     return profileId;

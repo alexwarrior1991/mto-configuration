@@ -6,6 +6,7 @@ import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.ProfileMasterD
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.DisconnectorFilter;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO.ProfileNode;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
@@ -20,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -379,6 +382,65 @@ class DisconnectorLinkIT {
         nuevo.setConnectedTrackId(OTHER_TRACK);
         DisconnectorDTO creado = disconnectorService.bulkCreate(List.of(nuevo)).getFirst();
         assertThat(conectada(creado.getId())).isEqualTo(OTHER_TRACK);
+    }
+
+    /**
+     * Un seccionador en plena vía, en una zona neutra o en una subestación no es de ninguna estación.
+     * Se da de alta sin ella si está en algún sitio (en un poste o con su vía propia), y sale en la
+     * lista como los demás: buscado por su nombre, filtrado por {@code onLoad} y con la lista ordenada
+     * por estación o por poste, donde va al final. La búsqueda y el orden pasan por la estación y el
+     * poste, y con QueryDSL eran joins internos que lo dejaban fuera.
+     */
+    @Test
+    @DisplayName("un seccionador sin estación se da de alta si está en algún sitio, y sale en la lista")
+    void sinEstacion() {
+        DisconnectorDTO enNingunSitio = sinEstacion("IT-LINK-SIN-ESTACION");
+        assertThatThrownBy(() -> disconnectorService.create(enNingunSitio))
+                .isInstanceOfSatisfying(ValidationException.class, e -> assertThat(e.getErrors())
+                        .singleElement()
+                        .satisfies(alert -> {
+                            assertThat(alert.getMessage()).isEqualTo(ErrorCodes.BUSINESS_RULE_VIOLATION);
+                            assertThat(alert.getFields()).containsExactly("stationId");
+                        }));
+
+        DisconnectorDTO conViaPropia = sinEstacion("IT-LINK-SIN-ESTACION");
+        conViaPropia.setKp("98375.5");
+        conViaPropia.setTrackId(TRACK);
+        long id = disconnectorService.create(conViaPropia).getId();
+        assertThat(jdbcTemplate.queryForMap("select station_id, track_id from disconnector where id = ?", id))
+                .containsEntry("station_id", null)
+                .containsEntry("track_id", TRACK);
+        assertThat(disconnectorService.getById(id).getStationId()).isNull();
+
+        assertThat(lista(new DisconnectorFilter(null, null, null, "IT-LINK-SIN", null), Sort.unsorted()))
+                .containsExactly(id);
+        // A y B comparten estación: su orden entre ellos no está fijado, el del que no tiene sí.
+        assertThat(lista(new DisconnectorFilter("IT-LINK", null, null, null, null), Sort.by("station.name")))
+                .containsExactlyInAnyOrder(DISCONNECTOR_A, DISCONNECTOR_B, id)
+                .last().isEqualTo(id);
+        assertThat(lista(new DisconnectorFilter("IT-LINK", null, null, null, null), Sort.by("profile.profileId")))
+                .containsExactly(DISCONNECTOR_A, DISCONNECTOR_B, id);
+        assertThat(lista(new DisconnectorFilter("IT-LINK", null, null, null, false), Sort.unsorted()))
+                .containsExactly(id);
+        assertThat(lista(new DisconnectorFilter("IT-LINK", null, null, null, true), Sort.by("name")))
+                .containsExactly(DISCONNECTOR_A, DISCONNECTOR_B);
+    }
+
+    private List<Long> lista(DisconnectorFilter filter, Sort sort) {
+        return disconnectorService.getDisconnectors(PageRequest.of(0, 50, sort), filter).getContent().stream()
+                .map(DisconnectorDTO::getId)
+                .toList();
+    }
+
+    /** Un seccionador nuevo sin estación ni poste: dónde está lo pone cada caso. */
+    private static DisconnectorDTO sinEstacion(String name) {
+        DisconnectorFunctionDTO function = new DisconnectorFunctionDTO();
+        function.setCode(FUNCTION_CODE);
+        DisconnectorDTO dto = new DisconnectorDTO();
+        dto.setName(name);
+        dto.setOnLoad(false);
+        dto.setDisconnectorFunction(function);
+        return dto;
     }
 
     private Long conectada(long disconnectorId) {

@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.repository.jpa.commons.CRUDRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.MessagingEntityGraphRepository;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -14,35 +15,57 @@ import java.util.Optional;
 
 @Repository
 public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
-        MessagingEntityGraphRepository<Disconnector> {
+        MessagingEntityGraphRepository<Disconnector>, JpaSpecificationExecutor<Disconnector> {
     List<Disconnector> findByStationId(Long stationId);
     List<Disconnector> findByStationNameContainingIgnoreCase(String stationName);
 
     /**
-     * Clave natural del seccionador dentro de su estación, para el importador del maestro: la misma
-     * que la del aislador ({@code SectionInsulatorRepository}), porque el maestro tampoco trae aquí
-     * identificadores técnicos y sin ella cada carga duplicaría todos los seccionadores.
+     * Clave natural del seccionador para el importador del maestro: su nombre dentro de su paquete.
+     * El maestro no trae identificadores técnicos, y sin ella cada carga duplicaría todos los
+     * seccionadores.
+     *
+     * <p>No es la estación y el nombre, como la del aislador ({@code SectionInsulatorRepository}),
+     * porque la estación de un seccionador es opcional: uno en plena vía, en una zona neutra o en una
+     * subestación no es de ninguna. El paquete sale de la estación, de la vía del poste o de la vía
+     * propia (V26), lo que tenga. Devuelve una lista: si el nombre se repite en el paquete, el
+     * importador no elige uno y lo dice.
      */
-    Optional<Disconnector> findByNameIgnoreCaseAndStationId(String name, Long stationId);
+    @Query("""
+            select d from Disconnector d
+            left join d.station s
+            left join d.profile p
+            left join p.track pt
+            left join d.track t
+            where upper(d.name) = upper(:name)
+              and (s.executionPackage.id = :packageId
+                   or pt.executionPackage.id = :packageId
+                   or t.executionPackage.id = :packageId)
+            order by d.id
+            """)
+    List<Disconnector> findByNameInPackage(@Param("name") String name, @Param("packageId") Long packageId);
 
     /**
-     * El poste, la vía propia, la vía conectada y la función del seccionador, sin inicializar nada.
+     * La estación, el poste, la vía propia, la vía conectada y la función del seccionador, sin
+     * inicializar nada.
      *
      * <p>Por la misma trampa que {@code SectionInsulatorRepository.findTrackIdsById}: el importador
      * no abre transacción, la entidad que devuelve la búsqueda por clave natural llega
      * <b>detached</b> y tocar ahí un {@code LAZY} revienta con {@code LazyInitializationException}.
-     * Con {@code left join}, porque todos son opcionales: con poste no hay vía propia, sin él no hay
-     * poste, y solo uno que pone dos vías en paralelo tiene vía conectada.
+     * Con {@code left join}, porque todos son opcionales: hay seccionadores sin estación, con poste
+     * no hay vía propia, sin él no hay poste, y solo uno que pone dos vías en paralelo tiene vía
+     * conectada.
      */
-    @Query("select p.id as profileId, t.id as trackId, ct.id as connectedTrackId, "
+    @Query("select s.id as stationId, p.id as profileId, t.id as trackId, ct.id as connectedTrackId, "
             + "f.id as disconnectorFunctionId "
-            + "from Disconnector d left join d.profile p left join d.track t "
+            + "from Disconnector d left join d.station s left join d.profile p left join d.track t "
             + "left join d.connectedTrack ct "
             + "left join d.disconnectorFunction f where d.id = :id")
     Optional<LinkIds> findLinkIdsById(@Param("id") Long id);
 
     /** Proyección de {@link #findLinkIdsById(Long)}. */
     interface LinkIds {
+        Long getStationId();
+
         Long getProfileId();
 
         Long getTrackId();

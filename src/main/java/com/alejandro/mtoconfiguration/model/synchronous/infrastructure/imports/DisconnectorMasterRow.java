@@ -3,15 +3,18 @@ package com.alejandro.mtoconfiguration.model.synchronous.infrastructure.imports;
 import java.math.BigDecimal;
 
 /**
- * Una fila de la hoja DISCONNECTORS: un seccionador de una estación, en un poste o sin él.
+ * Una fila de la hoja DISCONNECTORS: un seccionador, de una estación o de ninguna, en un poste o
+ * sin él.
  *
- * <p>La clave natural es {@code (paquete, estación, nombre)}, la misma que la del aislador de
- * sección: el maestro no trae identificadores técnicos.
+ * <p>La clave natural es {@code (paquete, nombre)}: el maestro no trae identificadores técnicos, y
+ * la estación no puede serlo porque es opcional y puede cambiar.
  *
  * <p>Los SI/NO y el accionamiento llegan tal cual se escribieron en la celda. Los interpreta el
  * upsert, que es donde una celda que no se entiende puede señalar su fila en el informe; el
  * parser solo podría tumbar el fichero entero o callarse.
  *
+ * @param station              nombre de su estación dentro del paquete, o {@code SIN ESTACION} si no es
+ *                             de ninguna. En blanco es un olvido, que el importador señala
  * @param track                con poste, la vía del poste, que es donde se busca; sin poste, la vía
  *                             del propio seccionador (V26). Por nombre: el id lo resuelve el
  *                             importador

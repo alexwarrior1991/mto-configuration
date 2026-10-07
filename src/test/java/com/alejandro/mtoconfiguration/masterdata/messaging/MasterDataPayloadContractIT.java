@@ -148,6 +148,20 @@ class MasterDataPayloadContractIT {
         assertThat(payload).containsEntry("connectedTrack", null);
     }
 
+    /**
+     * Uno en plena via, en una zona neutra o en una subestacion no es de ninguna estacion:
+     * {@code station} viaja a null, como {@code profile} en uno sin poste, y su via lo situa.
+     */
+    @Test
+    @DisplayName("Disconnector sin estacion: station a null, y su via sale del grafo")
+    void disconnectorWithoutAStation() {
+        Map<String, Object> payload = payloadOfDetached(disconnectorRepository, ids.stationLessDisconnector());
+
+        assertThat(payload).containsEntry("station", null).containsEntry("profile", null);
+        assertThat(asMap(payload, "track")).containsEntry("name", "Via 1");
+        assertThat(asMap(payload, "disconnectorFunction")).containsKeys("code");
+    }
+
     @Test
     @DisplayName("ExecutionPackage: el grafo basta para construir el payload desatachado")
     void executionPackage() {
@@ -256,6 +270,9 @@ class MasterDataPayloadContractIT {
                     .as("disconnector sin poste, con su via").isEqualTo(1);
             softly.assertThat(countStatements(() -> disconnectorRepository.findByIdForMessaging(ids.disconnector())))
                     .as("disconnector").isEqualTo(1);
+            softly.assertThat(countStatements(
+                            () -> disconnectorRepository.findByIdForMessaging(ids.stationLessDisconnector())))
+                    .as("disconnector sin estacion").isEqualTo(1);
             softly.assertThat(countStatements(() -> executionPackageRepository.findByIdForMessaging(ids.executionPackage())))
                     .as("executionPackage: una consulta por coleccion, sin cartesiano").isEqualTo(2);
             softly.assertThat(countStatements(() -> profileRepository.findByIdForMessaging(ids.profile())))
@@ -310,8 +327,9 @@ class MasterDataPayloadContractIT {
         return (Map<String, Object>) payload.get(key);
     }
 
-    private record Ids(Long cantilever, Long disconnector, Long poleLessDisconnector, Long executionPackage,
-                       Long profile, Long sectionInsulator, Long station, Long steadyArm, Long track) {
+    private record Ids(Long cantilever, Long disconnector, Long poleLessDisconnector,
+                       Long stationLessDisconnector, Long executionPackage, Long profile, Long sectionInsulator,
+                       Long station, Long steadyArm, Long track) {
     }
 
     /**
@@ -360,12 +378,22 @@ class MasterDataPayloadContractIT {
             sectionInsulator("Aislador 2", station, track);
 
             em.persist(executionPackage);
+
+            // Sin estacion ni poste: no cuelga de nada que lo persista en cascada, y su via lo situa.
+            Disconnector stationLess = new Disconnector();
+            stationLess.setName("Seccionador 3");
+            stationLess.setOnLoad(Boolean.FALSE);
+            stationLess.setDisconnectorFunction(lov(new DisconnectorFunction(), "FUN3"));
+            stationLess.setKp(new BigDecimal("98500.000"));
+            stationLess.setTrack(track);
+            em.persist(stationLess);
             em.flush();
 
             return new Ids(
                     cantilever.getId(),
                     disconnector.getId(),
                     poleLess.getId(),
+                    stationLess.getId(),
                     executionPackage.getId(),
                     profile.getId(),
                     sectionInsulator.getId(),

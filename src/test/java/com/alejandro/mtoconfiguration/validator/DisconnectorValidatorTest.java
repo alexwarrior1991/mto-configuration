@@ -24,13 +24,46 @@ class DisconnectorValidatorTest {
     }
 
     @Test
-    void exigeLosCamposPropiosYLasClavesAjenas() {
+    void exigeLosCamposPropiosYQueEsteEnAlgunSitio() {
         List<Alert> alerts = validator.validateBeforeSave(new DisconnectorDTO());
 
         assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "name");
         assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "onLoad");
         assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "disconnectorFunction");
-        assertError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "stationId");
+        assertError(alerts, ErrorCodes.BUSINESS_RULE_VIOLATION, "stationId");
+        assertNoError(alerts, ErrorCodes.VALIDATION_REQUIRED_FIELD, "stationId");
+    }
+
+    /**
+     * Un seccionador en plena vía, en una zona neutra o en una subestación no es de ninguna estación.
+     * Pero tiene que estar en algún sitio: en un poste o con su vía propia, y si no, el 400 va sobre la
+     * estación, que es lo primero que se puede elegir para situarlo.
+     */
+    @Test
+    @DisplayName("la estación es opcional, pero sin ella el seccionador va en un poste o con su vía propia")
+    void estacionOpcionalSiEstaEnAlgunSitio() {
+        DisconnectorDTO enPoste = ValidDtos.rootDisconnector();
+        enPoste.setStationId(null);
+        assertNoErrors(validator.validateBeforeSave(enPoste));
+
+        DisconnectorDTO conViaPropia = ValidDtos.rootDisconnector();
+        conViaPropia.setStationId(null);
+        conViaPropia.setProfileId(null);
+        conViaPropia.setKp("98375.5");
+        conViaPropia.setTrackId(3L);
+        assertNoErrors(validator.validateBeforeSave(conViaPropia));
+
+        DisconnectorDTO soloEstacion = ValidDtos.rootDisconnector();
+        soloEstacion.setProfileId(null);
+        assertNoErrors(validator.validateBeforeSave(soloEstacion));
+
+        DisconnectorDTO enNingunSitio = ValidDtos.rootDisconnector();
+        enNingunSitio.setStationId(null);
+        enNingunSitio.setProfileId(null);
+        enNingunSitio.setKp("98375.5");
+        List<Alert> alerts = validator.validateBeforeSave(enNingunSitio);
+        assertError(alerts, ErrorCodes.BUSINESS_RULE_VIOLATION, "stationId");
+        assertNoError(alerts, ErrorCodes.BUSINESS_RULE_VIOLATION, "trackId");
     }
 
     @Test

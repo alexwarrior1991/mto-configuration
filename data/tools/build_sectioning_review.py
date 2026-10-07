@@ -121,6 +121,9 @@ POLE_OPTIONS_MAX = 8  # postes en el desplegable de PROFILE_ID, del mas cercano 
 BYPASS_NAME_FUNCTIONS = ("B", "BF")  # la B del by-pass en el nombre (HER-B02, THS-BF01)
 PARALLEL_FUNCTION = "/PP"  # Disc/PP, LoadB/PP y sus -pr: puesta en paralelo de dos vias
 DISCONNECTOR_CODE_PREFIXES = ("Disc", "LoadB", "ED")  # los codigos de catalogo de un seccionador
+# ESTACION de un seccionador que no es de ninguna (en plena via, una zona neutra, una subestacion).
+# Se escribe: en blanco seria un olvido, y el importador lo rechaza.
+WITHOUT_STATION = "SIN ESTACION"
 ORPHAN_LABEL_MAX_DIST = 300.0  # rotulo suelto que se ofrece como nombre de un simbolo sin rotulo
 SECT_I_MATCH_MAX_M = 120.0
 SWITCH_TIE = 3.0  # dos rotulos de aguja a menos de 3 unidades de diferencia: empate
@@ -1930,6 +1933,27 @@ def disconnector_rows(records, master):
                 if x
             )
             d["REVISAR"], d["ENABLED"] = "SI", "NO"
+
+    # El importador identifica cada seccionador por su EP y su nombre, sin mayusculas: de dos filas
+    # con el mismo nombre en el mismo EP solo cargaria la primera. Se señalan las dos, porque no se
+    # sabe cual sobra, o si a una le falta algo en el nombre.
+    def name_key(d):
+        name = str(d["NOMBRE"] or "").strip().upper()
+        return (d["EP"], name) if d["EP"] and name else None
+
+    names = collections.Counter(name_key(d) for d in rows if name_key(d))
+    for d in rows:
+        if name_key(d) and names[name_key(d)] > 1:
+            d["MOTIVO_REVISAR"] = "; ".join(
+                x
+                for x in [
+                    d["MOTIVO_REVISAR"],
+                    "el nombre %s se repite en %s, y el seccionador se identifica por su EP y su "
+                    "nombre" % (d["NOMBRE"], d["EP"]),
+                ]
+                if x
+            )
+            d["REVISAR"], d["ENABLED"] = "SI", "NO"
     rows.sort(
         key=lambda d: (
             d["EP"],
@@ -2150,7 +2174,8 @@ def review_choices():
 
     Lo fijo (SI/NO, el accionamiento, el tipo de instalacion, el catalogo de funciones) no admite
     otro valor. Una estacion o una via se ofrecen las del EP de la fila, pero admiten otra con un
-    aviso: si lo que esta mal es el EP, la lista sigue siendo la del EP de antes.
+    aviso: si lo que esta mal es el EP, la lista sigue siendo la del EP de antes. La estacion de un
+    seccionador lleva ademas SIN ESTACION, al final: puede no ser de ninguna, y un aislador no.
     """
 
     def fixed(name):
@@ -2160,11 +2185,12 @@ def review_choices():
         return lambda row: "%s %s" % (kind, row["EP"]) if row.get("EP") else None
 
     stations = (of_ep("ESTACIONES"), False)
+    disconnector_stations = (of_ep("ESTACIONES_SECCIONADOR"), False)
     tracks = (of_ep("VIAS"), False)
     yes_no = (fixed("SI_NO"), True)
     return {
         "DISCONNECTORS": {
-            "ESTACION": stations,
+            "ESTACION": disconnector_stations,
             "VIA": tracks,
             "VIA_CONECTADA": tracks,
             "ON_LOAD": yes_no,
@@ -2181,12 +2207,16 @@ def review_choices():
             "ENABLED": yes_no,
         },
         "SECTION_INSULATOR_SWITCHES": {"ESTACION": stations, "VIA": tracks, "ENABLED": yes_no},
-        "ESTACION_POR_PREFIJO": {"ESTACION_CORRECTA": stations},
+        "ESTACION_POR_PREFIJO": {"ESTACION_CORRECTA": disconnector_stations},
     }
 
 
 def review_lists(master, functions):
-    """Las listas de la hoja OPCIONES: las fijas, y la estacion y la via de cada EP del maestro."""
+    """Las listas de la hoja OPCIONES: las fijas, y la estacion y la via de cada EP del maestro.
+
+    La de estaciones va dos veces: tal cual para los aisladores y sus agujas, y con SIN ESTACION al
+    final para los seccionadores.
+    """
     lists = {
         "SI_NO": ["SI", "NO"],
         "ACCIONAMIENTO": ["MOTOR", "MANUAL"],
@@ -2195,6 +2225,7 @@ def review_lists(master, functions):
     }
     for ep in sorted(set(master["stations"]) | set(master["tracks"])):
         lists["ESTACIONES " + ep] = sorted(master["stations"].get(ep, ()))
+        lists["ESTACIONES_SECCIONADOR " + ep] = lists["ESTACIONES " + ep] + [WITHOUT_STATION]
         lists["VIAS " + ep] = sorted(t["name"] for t in master["tracks"].get(ep, ()))
     return lists
 
@@ -2522,7 +2553,8 @@ README = [
     (
         "DESPLEGABLES",
         "Las columnas que se eligen llevan desplegable. ESTACION, VIA y VIA_CONECTADA, las del EP "
-        "de la fila (y ESTACION_CORRECTA, en ESTACION_POR_PREFIJO); DISCONNECTOR_FUNCTION, el "
+        "de la fila (y ESTACION_CORRECTA, en ESTACION_POR_PREFIJO), con SIN ESTACION al final en "
+        "la estacion de un seccionador; DISCONNECTOR_FUNCTION, el "
         "catalogo, los de seccionador primero; ON_LOAD, NORMALLY_OPEN y ENABLED, SI o NO; "
         "DRIVE_TYPE, MOTOR o MANUAL; TIPO_INSTALACION, TRACK_CONNECTION o IN_TRACK. PROFILE_ID y "
         "KP_POSTE, el poste de la fila primero y despues los del maestro a menos de 80 m del KP "
@@ -2554,7 +2586,12 @@ README = [
         "ESTACION",
         "El prefijo del nombre si es una estacion del maestro. Las zonas neutras, tuneles y "
         "subestaciones (KAF, TN3, HSA...) no lo son: en naranja va la estacion del plano mas "
-        "cercana, y se corrige una vez por prefijo en ESTACION_POR_PREFIJO, no fila a fila.",
+        "cercana, y se corrige una vez por prefijo en ESTACION_POR_PREFIJO, no fila a fila. Un "
+        "seccionador no tiene por que ser de una estacion: si no es de ninguna, escribe SIN "
+        "ESTACION (esta al final del desplegable), aqui o en ESTACION_CORRECTA. En blanco no se "
+        "carga: seria un olvido. Sin estacion y sin poste, su VIA es lo unico que lo situa, y "
+        "tiene que ser una del EP. El seccionador se identifica por su EP y su NOMBRE: dos filas "
+        "con el mismo nombre en el mismo EP salen con REVISAR = SI.",
     ),
     (
         "VIA SIN COMPROBAR",
@@ -2758,6 +2795,8 @@ def main():
         "tramos concatenados): dice cual de los dos. Si cambias de poste, cambialo tambien.",
         "VIA_CONECTADA": "La otra via de uno que pone dos en paralelo (Disc/PP, LoadB/PP). En "
         "naranja, la del plano; en amarillo, una de puesta en paralelo sin ella. Nunca la suya.",
+        "ESTACION": "La del EP, o SIN ESTACION si no es de ninguna (en plena via, una zona "
+        "neutra, una subestacion). En blanco no se carga.",
         "ON_LOAD": "SI: circulo medio relleno (on-load). NO: vacio (off-load).",
         "KP": "En metros, solo sin poste: el de uno en un poste es el de su perfil. Si quitas el "
         "poste de una fila, copia aqui KP_ROTULO_M.",
@@ -2816,7 +2855,8 @@ def main():
             by_prefix,
             {
                 "ESTACION_CORRECTA": "Solo si la propuesta no vale: el codigo de estacion del "
-                "maestro (columna ESTACIONES_DEL_EP)."
+                "maestro (columna ESTACIONES_DEL_EP), o SIN ESTACION si los de este prefijo no son "
+                "de ninguna."
             },
         ),
         (

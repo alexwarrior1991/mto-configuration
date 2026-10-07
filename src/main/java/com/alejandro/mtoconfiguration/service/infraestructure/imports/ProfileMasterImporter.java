@@ -75,7 +75,8 @@ public class ProfileMasterImporter {
                 report, progress);
         Map<Integer, Long> profileIdsByRow = importProfiles(content, tracksByKey, dryRun, report, progress);
         importSectionInsulators(content, stationsByKey, tracksByKey, dryRun, report, progress);
-        importDisconnectors(content, stationsByKey, tracksByKey, profileIdsByRow, dryRun, report, progress);
+        importDisconnectors(content, packagesByCode, stationsByKey, tracksByKey, profileIdsByRow, dryRun,
+                report, progress);
 
         log.info("Importacion del maestro de perfiles terminada dryRun={} altas={} modificaciones={} "
                         + "mensulas={} agujas={} errores={} omitidos={}",
@@ -392,8 +393,15 @@ public class ProfileMasterImporter {
      * identificadores —el caso de EP9A que obliga a casar las mensulas por ORDEN—, y ahi decide
      * KP_POSTE ({@link #findPole}).
      *
+     * <p>La estacion es opcional: {@code SIN ESTACION} en ESTACION dice que no es de ninguna (uno en
+     * plena via, en una zona neutra o en una subestacion). En blanco no vale, porque un olvido se
+     * cargaria sin estacion. Por eso el seccionador se identifica por su paquete y su nombre
+     * ({@code InfrastructureUpsertService.upsertDisconnector}), y dos filas con el mismo nombre en el
+     * mismo paquete se señalan aqui, como dos en el mismo poste.
+     *
      * <p>Sin poste, la via que la fila nombra y no existe se deja a null, como la de un aislador: la
-     * columna es anulable y el seccionador sigue siendo de su estacion.
+     * columna es anulable y el seccionador sigue siendo de su estacion. Sin estacion no: su via es lo
+     * unico que lo situa, y tiene que estar entre las cargadas de su paquete.
      *
      * <p>La via conectada (VIA_CONECTADA, V27) no: es lo unico que dice que el seccionador pone dos
      * vias en paralelo, y perderla en silencio dejaria la carga contando una fila que no dice lo que
@@ -403,6 +411,7 @@ public class ProfileMasterImporter {
      * @param profileIdsByRow lo que devuelve {@link #importProfiles}
      */
     private void importDisconnectors(ProfileMasterParser.ProfileMasterContent content,
+                                     Map<String, Long> packagesByCode,
                                      Map<StationKey, Long> stationsByKey,
                                      Map<TrackKey, Long> tracksByKey,
                                      Map<Integer, Long> profileIdsByRow, boolean dryRun,
@@ -418,6 +427,9 @@ public class ProfileMasterImporter {
         // dos filas en el mismo se señalan aqui, con el nombre de la otra, antes de que el indice
         // unico conteste por ellas.
         Map<Integer, String> claimedBy = new HashMap<>();
+        // Que fila se ha llevado ya cada nombre de cada paquete, que es la clave del seccionador: la
+        // segunda se señala con la primera, en vez de pisarla.
+        Map<String, Integer> rowOfName = new HashMap<>();
         Map<String, Map<String, Long>> tracksByPackage = tracksByPackage(tracksByKey);
 
         for (DisconnectorMasterRow row : content.disconnectors()) {
@@ -427,11 +439,36 @@ public class ProfileMasterImporter {
             }
 
             String code = key(row.executionPackage());
-            StationKey stationKey = new StationKey(code, key(row.station()));
-            if (!stationsByKey.containsKey(stationKey)) {
+            if (!packagesByCode.containsKey(code)) {
+                fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
+                        "su paquete '" + row.executionPackage() + "' no se ha podido cargar", progress);
+                continue;
+            }
+
+            String station = key(row.station());
+            if (station.isEmpty()) {
+                fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
+                        "ESTACION en blanco: escribe su estacion, o " + WITHOUT_STATION
+                                + " si no es de ninguna", progress);
+                continue;
+            }
+            boolean withoutStation = isWithoutStation(station);
+            StationKey stationKey = new StationKey(code, station);
+            if (!withoutStation && !stationsByKey.containsKey(stationKey)) {
                 fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
                         "su estacion '" + row.station() + "' no se ha podido cargar", progress);
                 continue;
+            }
+
+            if (!key(row.name()).isEmpty()) {
+                Integer first = rowOfName.putIfAbsent(code + "|" + key(row.name()), row.sourceRow());
+                if (first != null) {
+                    fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
+                            "su nombre ya lo lleva la fila " + first + " del paquete "
+                                    + row.executionPackage() + ", y el seccionador se identifica por su "
+                                    + "paquete y su nombre", progress);
+                    continue;
+                }
             }
 
             // Antes que el poste: una fila que falla aqui no puede quedarse con el poste de otra.
@@ -445,7 +482,19 @@ public class ProfileMasterImporter {
             Long profileId = null;
             Long trackId = null;
             if (key(row.profileId()).isEmpty()) {
-                trackId = tracksByKey.get(new TrackKey(code, key(row.track())));
+                TrackKey ownTrack = new TrackKey(code, key(row.track()));
+                if (withoutStation && !tracksByKey.containsKey(ownTrack)) {
+                    fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
+                            key(row.track()).isEmpty()
+                                    ? "no es de ninguna estacion, no esta en un poste y no dice su VIA: "
+                                    + "no quedaria en ningun sitio"
+                                    : "no es de ninguna estacion ni esta en un poste, y su VIA '" + row.track()
+                                    + "' no esta entre las vias cargadas del paquete "
+                                    + row.executionPackage() + ": no quedaria en ningun sitio",
+                            progress);
+                    continue;
+                }
+                trackId = tracksByKey.get(ownTrack);
             } else {
                 PoleMatch match = findPole(row, poles.getOrDefault(
                         new PoleKey(code, key(row.track()), key(row.profileId())), List.of()));
@@ -473,7 +522,8 @@ public class ProfileMasterImporter {
             }
 
             try {
-                var result = upsertService.upsertDisconnector(row, stationsByKey.get(stationKey),
+                var result = upsertService.upsertDisconnector(row,
+                        withoutStation ? null : stationsByKey.get(stationKey), packagesByCode.get(code),
                         profileId, trackId, connected.id(), dryRun);
                 count(report, ProfileImportReport.DISCONNECTOR, result.outcome());
                 progress.accept(true);
@@ -616,8 +666,19 @@ public class ProfileMasterImporter {
         return row.executionPackage() + " / " + row.station() + " / " + row.name();
     }
 
+    /** Su clave natural, paquete y nombre: la estacion es opcional y no lo identifica. */
     private String reference(DisconnectorMasterRow row) {
-        return row.executionPackage() + " / " + row.station() + " / " + row.name();
+        return row.executionPackage() + " / " + row.name();
+    }
+
+    /**
+     * Lo que dice en ESTACION que un seccionador no es de ninguna estacion, con o sin tilde. Va
+     * escrito, y no en blanco, para que un olvido no se cargue como «sin estacion».
+     */
+    static final String WITHOUT_STATION = "SIN ESTACION";
+
+    private boolean isWithoutStation(String stationKey) {
+        return WITHOUT_STATION.equals(stationKey) || "SIN ESTACIÓN".equals(stationKey);
     }
 
     /**

@@ -40,7 +40,15 @@ es una lista, es media base de datos. El detalle (`GET $BASE/{recurso}/{id}`) la
 `profileCode` (el identificador del perfil del que cuelga) y `profileKp`, los dos **solo de
 salida**: una lista de seccionadores se lee sin ir perfil por perfil, y son miles. Al escribir se
 ignoran; el perfil se elige por `profileId`, que es **opcional**: no todos los seccionadores están
-en un poste, y uno que no lo está guarda solo su estación (`stationId`, esa sí obligatoria).
+en un poste.
+
+**La estación también es opcional** (`stationId`): uno en plena vía, en una zona neutra o en una
+subestación no es de ninguna. Pero tiene que estar en algún sitio: con su estación, en un poste o
+con su vía propia (`trackId`, abajo). Sin ninguno de los tres, 400 `BUS-001` sobre `stationId`. Dentro
+de su estación (`PUT /stations/{id}` con sus `disconnectors`) la estación es la del padre y no se
+mira. El que no tiene estación sale en las listas como los demás, también ordenadas por estación (en
+orden ascendente, después de los que la tienen); y `GET /disconnectors/station/{id}` solo devuelve los
+de esa estación.
 
 **Un seccionador lleva su estado normal y su accionamiento** (`V25`): `normallyOpen` (`true`
 normalmente abierto, `false` normalmente cerrado) y `driveType` (`MOTOR` o `MANUAL`). Los dos son
@@ -723,8 +731,8 @@ curl "$BASE/master-data/republish/{jobId}"   # 200: estado y contadores
 ```
 
 `entity` es `profile`, `disconnector`, `section-insulator` o `all`; `trackId` acota solo perfiles,
-`stationId` solo seccionadores y aisladores, y `all` no admite filtros. No produce fichero, así que
-aquí no hay `/file`. Repetirlo es inocuo: el consumidor lo absorbe por su upsert idempotente.
+`stationId` solo seccionadores y aisladores (un seccionador sin estación sale sin filtro, nunca con
+uno), y `all` no admite filtros. No produce fichero, así que aquí no hay `/file`. Repetirlo es inocuo: el consumidor lo absorbe por su upsert idempotente.
 
 Códigos de la descarga, que distinguen casos que un 404 mezclaría:
 
