@@ -493,9 +493,9 @@ class SeccionamientoDesdeElLibroRevisado(unittest.TestCase):
         wb.remove(wb.active)
         disconnectors = wb.create_sheet("DISCONNECTORS")
         disconnectors.append(bpm.SHEETS["DISCONNECTORS"] + ["REVISAR", "MOTIVO_REVISAR", "PREFIJO"])
-        disconnectors.append(["EP9A", "TSO", "TRACK 1", "98-1.05", "TSO-11", None, "SI", "NO",
-                              "MOTOR", "LoadB/IO", "SI", "NO", "", "TSO"])
-        disconnectors.append(["EP6", "TSA", "TRACK 2", None, "HSA-FP1.1", 9316, "SI", "SI",
+        disconnectors.append(["EP9A", "TSO", "TRACK 1", "98-1.05", 98375.5, "TSO-11", None, "SI",
+                              "NO", "MOTOR", "LoadB/IO", "SI", "NO", "", "TSO"])
+        disconnectors.append(["EP6", "TSA", "TRACK 2", None, None, "HSA-FP1.1", 9316, "SI", "SI",
                               "MOTOR", "LoadB", "NO", "SI", "estacion propuesta", "HSA"])
         prefixes = wb.create_sheet("ESTACION_POR_PREFIJO")
         prefixes.append(["PREFIJO", "EP", "ESTACION_PROPUESTA", "SECCIONADORES", "NOMBRES",
@@ -512,7 +512,8 @@ class SeccionamientoDesdeElLibroRevisado(unittest.TestCase):
 
         self.assertEqual([list(r) for r in sheets["DISCONNECTORS"]], [bpm.SHEETS["DISCONNECTORS"]] * 2)
         first = sheets["DISCONNECTORS"][0]
-        self.assertEqual((first["PROFILE_ID"], first["KP"], first["ENABLED"]), ("98-1.05", None, "SI"))
+        self.assertEqual((first["PROFILE_ID"], first["KP_POSTE"], first["KP"], first["ENABLED"]),
+                         ("98-1.05", 98375.5, None, "SI"))
         self.assertEqual(sheets["SECTION_INSULATORS"][0]["NOMBRE"], "SI W31-W33")
         self.assertEqual(sheets["SECTION_INSULATOR_SWITCHES"], [])
 

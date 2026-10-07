@@ -1029,8 +1029,9 @@ SHEETS = {
                     "ARM_ANGLE", "STEADY_ARM_TYPE", "STEADY_ARM_LENGTH",
                     "ENABLED", "REVISAR", "FILA_ORIGEN"],
     # Las costuras para lo que falta: se escriben con cabecera y sin filas.
-    "DISCONNECTORS": ["EP", "ESTACION", "VIA", "PROFILE_ID", "NOMBRE", "KP", "ON_LOAD",
-                      "NORMALLY_OPEN", "DRIVE_TYPE", "DISCONNECTOR_FUNCTION", "ENABLED"],
+    "DISCONNECTORS": ["EP", "ESTACION", "VIA", "PROFILE_ID", "KP_POSTE", "NOMBRE", "KP",
+                      "ON_LOAD", "NORMALLY_OPEN", "DRIVE_TYPE", "DISCONNECTOR_FUNCTION",
+                      "ENABLED"],
     "SECTION_INSULATORS": ["EP", "ESTACION", "NOMBRE", "KP", "TIPO_INSTALACION",
                            "VIA", "VIA_CONECTADA", "ENABLED"],
     # Las agujas del aislador, una fila por aguja. AISLADOR es el NOMBRE de la hoja anterior.
@@ -1073,6 +1074,10 @@ READ_ME = [
      "Con PROFILE_ID, VIA es la del poste y sirve para encontrarlo (un PROFILE_ID se repite en "
      "vias distintas), y KP va vacio: el KP y la via son los del poste. Sin PROFILE_ID (un "
      "seccionador que no esta en un poste), VIA y KP son los suyos, KP en metros."),
+    ("KP_POSTE",
+     "El KP del poste, en metros. Una via de dos tramos concatenados (EP9A) repite el "
+     "PROFILE_ID dentro de la misma via, y entonces KP_POSTE dice cual de los dos es; con un "
+     "solo poste con ese PROFILE_ID no se mira."),
     ("NORMALLY_OPEN / DRIVE_TYPE",
      "Estado normal (SI = normalmente abierto, NO = normalmente cerrado) y accionamiento (MOTOR "
      "o MANUAL). Vacio es valido: el dominio no los exige."),

@@ -368,6 +368,9 @@ class DisconnectorRowsTest(unittest.TestCase):
     def test_the_own_kp_only_without_a_pole(self):
         # El KP propio es solo de un seccionador sin poste: con poste, es el del perfil (V26).
         self.assertEqual(self.row()["KP"], "")
+        # KP_POSTE es el del poste, que distingue los dos de una via que repite su PROFILE_ID.
+        self.assertEqual(self.row()["KP_POSTE"], self.POLE["kp"])
+        self.assertEqual(self.row(pole=None, name_function="FP")["KP_POSTE"], "")
         self.assertEqual(self.row(pole=None, name_function="FP")["KP"], 93451)
         self.assertEqual(self.row(pole=None, name_function="FP", kp_m=None, kp_txt=None)["KP"], "")
 

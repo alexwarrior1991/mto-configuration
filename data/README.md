@@ -591,7 +591,7 @@ mapear**: una hoja sin declarar o una cabecera desconocida van a `NO_RECONOCIDO`
 | `EPS` / `STATIONS` / `TRACKS` | Lo declarado en `topology.yml`, ya resuelto |
 | `PROFILES` | Una fila por perfil: identificador, KP, las 9 LOV (con `ASSEMBLY_CONFIGURATION` desde `V21`, que solo trae RUBI) y los 4 campos técnicos |
 | `CANTILEVERS` | Una fila por ménsula, con su `SLOT` (1..3) y el brazo ya partido en tipo y longitud |
-| `DISCONNECTORS` / `SECTION_INSULATORS` / `SECTION_INSULATOR_SWITCHES` | Cabeceras y **ninguna fila**: la costura para cuando lleguen esos datos |
+| `DISCONNECTORS` / `SECTION_INSULATORS` / `SECTION_INSULATOR_SWITCHES` | El seccionamiento, copiado del libro de revisión del plano ya revisado (`data/sectioning-review.xlsx`, ver «El seccionamiento desde el plano DXF»). Sin ese fichero, cabeceras y **ninguna fila** |
 | `NO_MAPEADO` | Columnas reales del origen que hoy no tienen campo en el dominio |
 | `DESCARTADOS` | Todo lo rechazado, con motivo y celda de origen |
 | `NO_RECONOCIDO` | Lo que no se supo mapear. **Si tiene filas, el maestro está incompleto** |
@@ -599,10 +599,36 @@ mapear**: una hoja sin declarar o una cabecera desconocida van a `NO_RECONOCIDO`
 `ENABLED` (`SI`/`NO`) decide si la fila se carga; `REVISAR` resalta lo que necesita ojo
 humano.
 
+### La hoja de seccionadores
+
+`DISCONNECTORS` identifica cada seccionador por `EP + ESTACION + NOMBRE`, su clave natural, como el
+aislador. El resto de columnas:
+
+- **`PROFILE_ID` y `VIA`**: el poste del que cuelga y la vía de ese poste, que es donde el
+  importador lo busca, entre los perfiles de la hoja `PROFILES`. Un poste admite **un solo**
+  seccionador: dos filas en el mismo poste, o un poste que ya lleva otro seccionador en la base, salen
+  en el informe con el nombre del otro. Sin `PROFILE_ID`, el seccionador no está en un poste (los
+  de los pórticos de subestación, los de puesta a tierra) y `VIA` es la suya; una vía que no existe
+  se queda vacía, como la de un aislador.
+- **`KP_POSTE`**: el KP del poste, en metros. Una vía de dos tramos concatenados (EP9A) repite el
+  `PROFILE_ID` dentro de la misma vía, y entonces es lo único que distingue un poste del otro; con
+  un solo poste con ese `PROFILE_ID` no se mira. El libro de revisión lo rellena con el del poste
+  que propone.
+- **`KP`**: el del propio seccionador, en metros, **solo sin poste** (`V26`); con poste, el KP es el
+  del perfil, y una fila con los dos sale en el informe.
+- **`ON_LOAD`** (`SI`/`NO`, obligatorio), **`NORMALLY_OPEN`** (`SI` = normalmente abierto, `NO` =
+  cerrado, vacío = sin dato) y **`DRIVE_TYPE`** (`MOTOR`, `MANUAL` o vacío). Un valor que no es
+  ninguno de esos no se adivina: la fila sale en el informe con su columna.
+- **`DISCONNECTOR_FUNCTION`**: el código del catálogo `DisconnectorFunction`. Obligatorio, y
+  tiene que existir habilitado.
+
+Como en el resto de hojas, `ENABLED` decide si la fila se carga. La hoja es **opcional al leer**,
+pero si está, sus columnas `PROFILE_ID` y `VIA` tienen que estar aunque la celda vaya vacía: sin
+ellas, todos los seccionadores se cargarían sin poste sin una sola queja.
+
 ### Las dos hojas del aislador de sección
 
-Salen vacías, pero el camino de importación está entero: el día que el origen traiga el dato
-basta con rellenarlas.
+Salen vacías hasta que se revisa el plano, pero el camino de importación está entero.
 
 `SECTION_INSULATORS` identifica cada aislador por `EP + ESTACION + NOMBRE`, que es su clave
 natural. `TIPO_INSTALACION` es `TRACK_CONNECTION` (el aislador separa las catenarias de **dos**
@@ -854,6 +880,13 @@ pip install ezdxf scipy openpyxl
 python3 data/tools/build_sectioning_review.py plano.dxf -o sectioning-review.xlsx
 ```
 
+**Del libro revisado al maestro.** Una vez revisado, el libro se guarda como
+`data/sectioning-review.xlsx` y `build_profile_master.py` copia de él las tres hojas al maestro
+(`--sectioning` para otra ruta): solo las columnas de la costura y tal cual, porque lo que se carga
+lo decide `ENABLED`, que es de quien revisa. `ESTACION_CORRECTA` de `ESTACION_POR_PREFIJO` se aplica
+a los seccionadores de ese prefijo y ese EP, porque la estación de una zona neutra o de una
+subestación se decide una vez por prefijo. Sin el fichero, las tres hojas salen vacías.
+
 El DXF no está en el repositorio: son 46 MB más de binarios (ver «El tamaño de `workbook/`»).
 
 ## Qué lee del plano
@@ -908,6 +941,9 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
   los demás, el generador no distingue uno que no está en un poste de un poste que no ha sabido
   encontrar, así que la fila sale con `ENABLED = NO` y el motivo lo dice: si no está en un poste,
   se deja `PROFILE_ID` vacío y se pone `ENABLED = SI`.
+- **KP y vía sin poste**: uno que no está en un poste guarda su propio KP y su vía (`V26`), y el
+  libro rellena `KP` con el del rótulo (`KP_ROTULO_M`) solo en esas filas. Con poste, `KP` va vacío
+  y `KP_POSTE` lleva el del poste, que es lo que lo distingue en una vía que repite su `PROFILE_ID`.
 - **Vía**: la del plano solo desempata. Numera las vías de la estación y no las del maestro (`1`/`2`
   donde el maestro dice `INT`/`EXT`), así que una vía distinta con el KP casado a 10 m o menos es
   una nota («vía distinta»); con el KP más lejos, la fila espera a una persona.
@@ -926,9 +962,6 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
 - **El número de vía en plena vía.** Solo se rotula en las estaciones. Donde el maestro tiene dos
   postes con seccionador al mismo KP, uno por vía, y la vía del plano no dice cuál es, la fila lo
   dice («vía sin comprobar»).
-- **El KP y la vía de un seccionador sin poste.** El rótulo trae su KP (`KP_ROTULO_M`), pero
-  `Disconnector` solo guarda la estación de uno que no está en un poste: el KP y la vía los pone el
-  poste.
 
 ## Probar
 
@@ -936,5 +969,7 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
 del KP, cuántos aparatos nombra un rótulo, qué es un rótulo de subestación, la columna de un rótulo
 girado, la elección de la vía del maestro, y qué filas de `DISCONNECTORS` entran y cuáles salen
 listas para cargar (las de otra capa dentro de un EP, la de Haifa, la que no tiene poste, la vía
-distinta y los dos postes al mismo KP). El módulo importa `ezdxf` y `scipy` solo dentro de las
-funciones que los usan, así que corre en el mismo paso de CI que los demás, con `openpyxl` y `pyyaml`.
+distinta y los dos postes al mismo KP), y el KP propio solo sin poste. El módulo importa `ezdxf` y
+`scipy` solo dentro de las funciones que los usan, así que corre en el mismo paso de CI que los
+demás, con `openpyxl` y `pyyaml`. `tools/tests/test_build_profile_master.py` prueba el paso del
+libro revisado al maestro.

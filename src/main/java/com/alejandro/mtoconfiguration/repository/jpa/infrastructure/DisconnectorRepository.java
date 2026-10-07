@@ -18,6 +18,51 @@ public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
     List<Disconnector> findByStationId(Long stationId);
     List<Disconnector> findByStationNameContainingIgnoreCase(String stationName);
 
+    /**
+     * Clave natural del seccionador dentro de su estación, para el importador del maestro: la misma
+     * que la del aislador ({@code SectionInsulatorRepository}), porque el maestro tampoco trae aquí
+     * identificadores técnicos y sin ella cada carga duplicaría todos los seccionadores.
+     */
+    Optional<Disconnector> findByNameIgnoreCaseAndStationId(String name, Long stationId);
+
+    /**
+     * El poste, la vía propia y la función del seccionador, sin inicializar nada.
+     *
+     * <p>Por la misma trampa que {@code SectionInsulatorRepository.findTrackIdsById}: el importador
+     * no abre transacción, la entidad que devuelve la búsqueda por clave natural llega
+     * <b>detached</b> y tocar ahí un {@code LAZY} revienta con {@code LazyInitializationException}.
+     * Con {@code left join}, porque los tres son opcionales: con poste no hay vía propia, y sin él no
+     * hay poste.
+     */
+    @Query("select p.id as profileId, t.id as trackId, f.id as disconnectorFunctionId "
+            + "from Disconnector d left join d.profile p left join d.track t "
+            + "left join d.disconnectorFunction f where d.id = :id")
+    Optional<LinkIds> findLinkIdsById(@Param("id") Long id);
+
+    /** Proyección de {@link #findLinkIdsById(Long)}. */
+    interface LinkIds {
+        Long getProfileId();
+
+        Long getTrackId();
+
+        Long getDisconnectorFunctionId();
+    }
+
+    /**
+     * El seccionador vivo que ya cuelga de un poste, si lo hay: un poste admite uno solo
+     * ({@code ux_disconnector_profile_id}, V24). El importador lo mira antes de escribir para poder
+     * decir cuál es, en vez de dejar que el índice conteste con un valor único repetido.
+     */
+    @Query("select d.id as id, d.name as name from Disconnector d where d.profile.id = :profileId")
+    Optional<PoleHolder> findPoleHolder(@Param("profileId") Long profileId);
+
+    /** Proyección de {@link #findPoleHolder(Long)}. */
+    interface PoleHolder {
+        Long getId();
+
+        String getName();
+    }
+
 
     /**
      * Pagina de identificadores para el republicado de datos maestros, por clave.

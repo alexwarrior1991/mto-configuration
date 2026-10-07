@@ -24,6 +24,7 @@ public class ProfileImportReport {
     public static final String TRACK = "Track";
     public static final String PROFILE = "Profile";
     public static final String SECTION_INSULATOR = "SectionInsulator";
+    public static final String DISCONNECTOR = "Disconnector";
 
     private final boolean dryRun;
     private final Map<String, EntityOutcome> byEntity = new LinkedHashMap<>();

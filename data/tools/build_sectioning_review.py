@@ -1524,6 +1524,7 @@ DISCONNECTOR_COLUMNS = [
     "ESTACION",
     "VIA",
     "PROFILE_ID",
+    "KP_POSTE",
     "NOMBRE",
     "KP",
     "ON_LOAD",
@@ -1697,6 +1698,9 @@ def disconnector_rows(records, master):
                 "ESTACION": station,
                 "VIA": via,
                 "PROFILE_ID": profile,
+                # El KP del poste: solo lo mira el importador cuando la via repite el PROFILE_ID
+                # (dos tramos concatenados, como EP9A), y entonces es lo unico que los distingue.
+                "KP_POSTE": (pole or {}).get("kp", ""),
                 "NOMBRE": r["name"],
                 # El KP propio, solo sin poste: con poste es el del perfil (V26).
                 "KP": "" if profile or r["kp_m"] is None else r["kp_m"],
@@ -1709,7 +1713,6 @@ def disconnector_rows(records, master):
                 "MOTIVO_REVISAR": "; ".join(reasons),
                 "KP_ROTULO": r["kp_txt"] or "",
                 "KP_ROTULO_M": r["kp_m"] if r["kp_m"] is not None else "",
-                "KP_POSTE_M": (pole or {}).get("kp", ""),
                 "DIF_KP_M": round(r["pole_dkp"], 1) if pole else "",
                 "CODIGO_POSTE": "|".join(pole["dcodes"]) if pole else "",
                 "TIPO_DXF": r["type"],
@@ -1732,17 +1735,17 @@ def disconnector_rows(records, master):
     # Un mismo poste fisico aparece en dos hojas de via del maestro (mismo PROFILE_ID y KP): los
     # dos seccionadores casados con el se señalan, porque uno de los dos sobra.
     twins = collections.Counter(
-        (d["EP"], d["PROFILE_ID"], d["KP_POSTE_M"])
+        (d["EP"], d["PROFILE_ID"], d["KP_POSTE"])
         for d in rows
-        if d["PROFILE_ID"] and d["KP_POSTE_M"] != ""
+        if d["PROFILE_ID"] and d["KP_POSTE"] != ""
     )
     for d in rows:
-        key = (d["EP"], d["PROFILE_ID"], d["KP_POSTE_M"])
-        if d["PROFILE_ID"] and d["KP_POSTE_M"] != "" and twins[key] > 1:
+        key = (d["EP"], d["PROFILE_ID"], d["KP_POSTE"])
+        if d["PROFILE_ID"] and d["KP_POSTE"] != "" and twins[key] > 1:
             others = [
                 o["NOMBRE"]
                 for o in rows
-                if o is not d and (o["EP"], o["PROFILE_ID"], o["KP_POSTE_M"]) == key
+                if o is not d and (o["EP"], o["PROFILE_ID"], o["KP_POSTE"]) == key
             ]
             d["MOTIVO_REVISAR"] = "; ".join(
                 x
@@ -2175,6 +2178,13 @@ README = [
         "en un poste lo lleva vacio, y entonces VIA no cuenta.",
     ),
     (
+        "KP_POSTE",
+        "El KP del poste de PROFILE_ID, en metros, copiado del maestro. Solo lo mira el "
+        "importador cuando la via repite ese PROFILE_ID, que pasa en las vias de dos tramos "
+        "concatenados (EP9A): entonces es lo unico que distingue un poste del otro. Si cambias "
+        "de poste en una de esas vias, cambia tambien KP_POSTE; si no, el importador lo dice.",
+    ),
+    (
         "KP Y VIA SIN POSTE",
         "Un seccionador sin poste guarda su propio KP (en metros) y su VIA; uno en un poste, no: "
         "son los de su perfil, y KP va vacio. Si quitas el poste de una fila, copia KP_ROTULO_M "
@@ -2387,6 +2397,8 @@ def main():
     master_comments = {
         "PROFILE_ID": "Poste del maestro con seccionador a menos de 80 m del KP del rotulo; "
         "en naranja, el mas cercano sin codigo. Vacio si el seccionador no esta en un poste.",
+        "KP_POSTE": "KP del poste, en metros. Solo cuenta si la via repite el PROFILE_ID (dos "
+        "tramos concatenados): dice cual de los dos. Si cambias de poste, cambialo tambien.",
         "ON_LOAD": "SI: circulo medio relleno (on-load). NO: vacio (off-load).",
         "KP": "En metros, solo sin poste: el de uno en un poste es el de su perfil. Si quitas el "
         "poste de una fila, copia aqui KP_ROTULO_M.",

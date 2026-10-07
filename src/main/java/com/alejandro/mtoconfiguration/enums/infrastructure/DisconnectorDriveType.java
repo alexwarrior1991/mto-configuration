@@ -17,5 +17,27 @@ public enum DisconnectorDriveType implements Serializable {
     MOTOR,
 
     /** Sin motor: se maniobra a mano en el propio seccionador. */
-    MANUAL
+    MANUAL;
+
+    /**
+     * Lectura tolerante, como {@link SectionInsulatorInstallationType#fromCode(String)}: lo que no se
+     * reconoce es {@code null}, no una excepción.
+     *
+     * <p>La usa el importador del maestro, que recibe el valor como texto de la hoja DISCONNECTORS y
+     * es quien decide qué hacer con una celda que no dice ni {@code MOTOR} ni {@code MANUAL}:
+     * señalar esa fila en el informe, no tumbar la importación entera.
+     */
+    public static DisconnectorDriveType fromCode(String code) {
+        if (code == null || code.isBlank()) {
+            return null;
+        }
+
+        for (DisconnectorDriveType value : values()) {
+            if (value.name().equalsIgnoreCase(code.trim())) {
+                return value;
+            }
+        }
+
+        return null;
+    }
 }
