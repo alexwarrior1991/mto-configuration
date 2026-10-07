@@ -37,7 +37,7 @@ Tests en `src/test/java`, misma raíz de paquete.
 - `README_MESSAGING.md` — RabbitMQ / eventos; `docs/messaging/examples/` trae un JSON por evento publicado, comprobado por `MessagingContractExamplesTest`
 - `keycloak/README.md` — qué aporta este repo al realm (`mto-configuration-partial-import.json` y `mto-configuration-dev.json`); el realm base y el orden de ensamblado son de `mto-platform`
 - `README_ASYNC_JOBS.md` — trabajos en segundo plano (202 Accepted + jobId), capa paralela a `/async`
-- `data/README.md` — los dos maestros generados desde los workbooks (`lov-master.xlsx` y `profile-master.xlsx`), sus generadores en Python y `topology.yml`, que es donde se declara lo que no está en los ficheros
+- `data/README.md` — los dos maestros generados desde los workbooks (`lov-master.xlsx` y `profile-master.xlsx`), sus generadores en Python y `topology.yml`, que es donde se declara lo que no está en los ficheros, y el libro de revisión de seccionadores y aisladores que sale del plano DXF (`build_sectioning_review.py`)
 
 ## Reglas específicas
 Las reglas por capa viven en `.claude/rules/`, una capa por fichero, y no aquí. Claude Code carga cada una al tocar los ficheros de su capa (campo `paths:` de su cabecera), y cada regla dice qué test o qué mecanismo la hace cumplir.

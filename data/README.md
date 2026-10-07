@@ -12,6 +12,7 @@ data/
 │   ├── synoptic.py             # Lector del formato sinóptico (RUBI), también compartido
 │   ├── build_lov_master.py     # Generador del catálogo de LOVs
 │   ├── build_profile_master.py # Generador de los datos de infraestructura
+│   ├── build_sectioning_review.py # Seccionadores y aisladores desde el plano DXF (libro de revisión)
 │   ├── aliases.yml             # Tablas de mapeo — se amplía aquí, no en los scripts
 │   ├── topology.yml            # Lo que solo puede decir una persona (ver más abajo)
 │   └── tests/                  # Pruebas de las reglas de mapeo (unittest, sin dependencias)
@@ -23,7 +24,7 @@ Los dos maestros son lo único que lee la aplicación: los workbooks no los abre
 El de LOVs va **primero**, porque los perfiles referencian sus códigos.
 
 El resto de este documento describe el catálogo de LOVs. El maestro de perfiles tiene
-su propia sección al final.
+su propia sección más abajo, y el seccionamiento sacado del plano DXF, la suya al final.
 
 ## Por qué hay dos pasos
 
@@ -836,3 +837,79 @@ Cuanto antes se haga, más barato sale: hoy solo hay un commit implicado.
 Alternativa a considerar en ese punto: los workbooks son **entrada** del generador y la
 aplicación no los abre nunca —solo necesita `lov-master.xlsx`, que son 124 KB—, así que
 podrían vivir fuera del repo con su ubicación documentada aquí.
+
+---
+
+# El seccionamiento desde el plano DXF
+
+Las hojas `DISCONNECTORS`, `SECTION_INSULATORS` y `SECTION_INSULATOR_SWITCHES` del maestro de
+perfiles salen vacías porque los workbooks no traen esos datos. Los trae el **plano de operación de
+seccionadores** («Operational disconnectors 28.07.25 (based on OCS-SCADA_PD_R38)»), exportado a DXF.
+`tools/build_sectioning_review.py` lo lee y escribe un **libro de revisión**, no un maestro: las tres
+hojas con exactamente sus columnas, cruzadas con los postes de `profile-master.xlsx`, y cada dato
+dudoso señalado para que lo complete una persona.
+
+```bash
+pip install ezdxf scipy openpyxl
+python3 data/tools/build_sectioning_review.py plano.dxf -o sectioning-review.xlsx
+```
+
+El DXF no está en el repositorio: son 46 MB más de binarios (ver «El tamaño de `workbook/`»).
+
+## Qué lee del plano
+
+| Dato | De dónde sale |
+|---|---|
+| Seccionador | Bloque dinámico `DISCONNECTOR` (1.168), más `Disc_open`/`Disc_closed`, `EARTHING DISCONNECTOR 2`, `OnLoad_Circuit_breaker_opened` y 33 dibujados explotados |
+| On-load / off-load | El círculo de accionamiento medio relleno (estado de visibilidad `ON-LOAD`) o vacío |
+| Abierto / cerrado | La cuchilla alineada con sus dos contactos, o inclinada |
+| Nombre y KP | El MTEXT de la capa `0_Disconnectors` (`TSA-BF06` / `KP93+451` = 93451 m) |
+| Vía | El rótulo `-N-` de la línea a la que se conectan las patas |
+| Lo que puentea | La lámina de aire (`Insu_Overlap`) o el aislador (`Section_insulator`) entre sus dos patas |
+| Aislador de sección | Bloque `Section_insulator`: en un escape entre dos vías o en una sola vía |
+| Agujas | El rótulo `W31` y su `1:9` junto a cada extremo del escape |
+
+**El rótulo y el símbolo no están unidos en el DXF.** El nombre es un MTEXT suelto encima o debajo del
+símbolo, a veces con una línea de referencia y a veces solo en su columna. Se asocian en tres pasos:
+la línea de referencia, luego una asignación global de coste mínimo con el símbolo en la columna del
+rótulo, y al final la misma asignación, más permisiva, con lo que haya sobrado. «El más cercano» no
+vale: con dos símbolos apilados, dos rótulos se quedaban el mismo y uno ninguno.
+
+## Qué no entra
+
+- **EP futuros**: el depósito de Haifa/Kishon (el recuadro rayado en verde), las capas
+  `0_FutureSectionEquip` y `0_NeutralSections_FutureStage` y lo dibujado en vía no electrificada. Y la
+  zona neutra de Holtz, dibujada como deshabilitada. Todo sale en el inventario con su estado.
+- **Las líneas que el maestro no tiene** (prefijos BSD, OFA, GOR, NAN, LCH…): sin EP ni poste
+  posibles, van a `SECCIONADORES_FUERA_MAESTRO` y `AISLADORES_FUERA_MAESTRO`.
+- **El color del rótulo** (verde o rojo, instalado o no): está desactualizado y se ignora.
+
+## El cruce con el maestro
+
+- **Poste**: asignación 1:1 por EP contra los postes con `Disc*`/`LoadB*`/`ED*` en
+  `SECTIONING_FEEDING`, a menos de 80 m del KP, preferente en la misma vía y del mismo tipo. Medido
+  sobre el plano de julio de 2025: el 87 % de los casados está a menos de 10 m del KP del rótulo, y
+  on-load coincide con `LoadB`/`Disc` en el 94 %. Sin poste con código, se propone el más cercano a
+  menos de 30 m.
+- **Estación**: el prefijo del nombre si es una estación del maestro. Las zonas neutras, túneles y
+  subestaciones (`KAF`, `TN3`, `HSA`) no lo son: se propone la estación del plano más cercana y se
+  decide **una vez por prefijo**, en la hoja `ESTACION_POR_PREFIJO`.
+- **Función**: el código del poste casado; si no hay, una propuesta por lo que puentea y el nombre.
+
+## Lo que el plano no dice
+
+- **El nombre y el KP de los aisladores.** El nombre que sale es una propuesta (las agujas del
+  escape); el KP, solo cuando un seccionador rotulado lo puentea. `KP_ESTIMADO_M` interpola entre
+  los vecinos y es solo una pista: el plano no está a escala (mediana de error ~20 m, uno de cada
+  cinco a más de 70 m).
+- **El KP de las agujas.**
+- **El número de vía en plena vía.** Solo se rotula en las estaciones. Donde el maestro tiene dos
+  postes con seccionador al mismo KP, uno por vía, la fila lo dice («vía sin comprobar»).
+- **Estado normal y accionamiento** se leen, pero `Disconnector` no tiene dónde guardarlos.
+
+## Probar
+
+`tools/tests/test_build_sectioning_review.py` prueba las reglas que no necesitan el DXF: la lectura
+del KP, cuántos aparatos nombra un rótulo, qué es un rótulo de subestación, la columna de un rótulo
+girado y la elección de la vía del maestro. El módulo importa `ezdxf` y `scipy` solo dentro de las
+funciones que los usan, así que corre en el mismo paso de CI que los demás, con `openpyxl` y `pyyaml`.
