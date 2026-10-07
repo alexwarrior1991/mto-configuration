@@ -155,7 +155,8 @@ public class SectionInsulatorController extends CRUDController<SectionInsulatorD
     @PostMapping("/filter")
     @Operation(
             summary = "Filter section insulators",
-            description = "Retrieves a page of section insulators applying specific filters using QueryDSL."
+            description = "Retrieves a page of section insulators applying specific filters. The track is "
+                    + "optional: an insulator without it is listed too, also when searching by text or sorting by it."
     )
     @ApiResponse(
             responseCode = ApiConstants.CODE_200,

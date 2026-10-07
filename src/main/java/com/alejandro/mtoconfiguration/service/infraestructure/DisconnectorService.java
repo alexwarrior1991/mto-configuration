@@ -88,12 +88,11 @@ public class DisconnectorService extends CRUDService<DisconnectorDTO, Disconnect
 
     /**
      * La lista de seccionadores con sus filtros, como {@link Specification} y no como predicado de
-     * QueryDSL: la estación y el poste son opcionales, y QueryDSL solo llega a ellos con joins
-     * implícitos, que son internos. Un seccionador sin estación desaparecía de la búsqueda por texto
-     * aunque casara por su nombre, y de la lista ordenada por estación; uno sin poste, de la ordenada
-     * por poste. Aquí la estación y la función van con join externo, y Spring Data ordena por una
-     * asociación opcional ({@code station.name}, {@code profile.profileId}) con otro join externo,
-     * que reutiliza estos. Un filtro en blanco no filtra, y {@code onLoad} solo si viene.
+     * QueryDSL: la estación es opcional, y QueryDSL llegaba a ella en el {@code WHERE} con un join
+     * implícito, que es interno. Un seccionador sin estación desaparecía de la búsqueda por texto
+     * aunque casara por su nombre. Aquí la estación y la función van con join externo, y Spring Data
+     * ordena por una asociación opcional ({@code station.name}, {@code profile.profileId}) con otro
+     * join externo, que reutiliza estos. Un filtro en blanco no filtra, y {@code onLoad} solo si viene.
      */
     @Override
     @Transactional(readOnly = true)

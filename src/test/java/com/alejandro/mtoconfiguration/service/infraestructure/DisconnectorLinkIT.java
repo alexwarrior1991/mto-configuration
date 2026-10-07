@@ -388,8 +388,8 @@ class DisconnectorLinkIT {
      * Un seccionador en plena vía, en una zona neutra o en una subestación no es de ninguna estación.
      * Se da de alta sin ella si está en algún sitio (en un poste o con su vía propia), y sale en la
      * lista como los demás: buscado por su nombre, filtrado por {@code onLoad} y con la lista ordenada
-     * por estación o por poste, donde va al final. La búsqueda y el orden pasan por la estación y el
-     * poste, y con QueryDSL eran joins internos que lo dejaban fuera.
+     * por estación o por poste, donde va al final. La búsqueda pasa por la estación, y con QueryDSL era
+     * un join interno que lo dejaba fuera; el orden ya iba con uno externo, y se comprueba igual.
      */
     @Test
     @DisplayName("un seccionador sin estación se da de alta si está en algún sitio, y sale en la lista")
