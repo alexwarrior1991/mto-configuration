@@ -410,6 +410,11 @@ medio de una sola vía. Eso es lo que declara `installationType`:
 exigirlo habría convertido el despliegue en una migración de datos. Las dos reglas de arriba solo
 se aplican cuando el campo viene.
 
+Por lo mismo, **la vía (`trackId`) solo es obligatoria en `TRACK_CONNECTION`**. El aislador que no
+la tiene sale en las listas como los demás: lo encuentra `searchText` por su nombre, su estación o
+sus agujas, y en la lista ordenada por vía (`track.name`) va, en orden ascendente, después de los que
+la tienen.
+
 Cada conexión con la vía se identifica por una **aguja**, que en el plano se rotula `W` y un
 número, en un punto kilométrico, con la tangente de su desvío al lado: `W31 1:9`, `W35 1:12`,
 `W57 1:8`. Van en la colección `switches`:
@@ -577,7 +582,7 @@ La respuesta paginada tiene siempre esta forma, la de `PagedModel` de Spring Dat
 En `execution-packages`, `stations` y `tracks` cada elemento de `content` va **sin sus colecciones
 de hijos** (`null`, ver §1); el resto de recursos devuelve la fila completa.
 
-### Filtro funcional (QueryDSL)
+### Filtro funcional
 
 Campos concretos, combinados con AND. Los vacíos no filtran.
 
@@ -589,6 +594,12 @@ curl -X POST "$BASE/profiles/filter?page=0&size=20" \
 
 `searchText` busca a la vez en varias columnas, incluidas las de tablas asociadas (en perfiles:
 identificador, nombre de vía y nombre de estación).
+
+Una referencia opcional vacía **no saca la fila de la lista**: `searchText` encuentra el aislador
+sin vía o el seccionador sin estación si casa por otra columna, y ordenar por una columna de la
+tabla asociada (`track.name`, `station.name`, `poleType.code`) deja esas filas al final en orden
+ascendente y al principio en descendente. Filtrar por un campo de esa referencia (`trackName`,
+`stationName`, `poleTypeCode`) sí las deja fuera, porque no tienen con qué casar.
 
 ### Búsqueda por criteria
 
