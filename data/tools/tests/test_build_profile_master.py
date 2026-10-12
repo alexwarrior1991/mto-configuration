@@ -746,12 +746,13 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         fallara ni un test. Si estas cifras cambian, cambialas A PROPOSITO y explica por
         que en el commit: son las que se cargan en base de datos.
         """
-        # 14.618 / 14.608 de los once workbooks ferroviarios, mas las 969 del sinoptico de
+        # 14.653 / 14.643 de los once workbooks ferroviarios, mas las 969 del sinoptico de
         # RUBI (566 de catenaria rigida deducidas del soporte, como en EP6). 157 de las
         # ferroviarias vienen del libro de EP13: el principio de las vias 12 y 22 de EP14B y
-        # sus dos vias de Pleshet.
-        self.assertEqual(len(self.cantilevers), 15587)
-        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15577)
+        # sus dos vias de Pleshet. Otras 35, de Add_Tracks_EP14_A: el final de las vias 1 y 2
+        # de EP14A, hasta la zona neutra de Ashkelon.
+        self.assertEqual(len(self.cantilevers), 15622)
+        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15612)
 
     def test_el_sinoptico_de_rubi_entra_con_sus_dos_vias(self):
         """Una hoja, dos vias, ocho estaciones y codigos solo en ingles."""
