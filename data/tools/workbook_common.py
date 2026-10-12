@@ -36,8 +36,10 @@ STEADY_ARM_LENGTH_MIN, STEADY_ARM_LENGTH_MAX = 1, 2000
 
 # Valores que aparecen en las celdas de las hojas Track y que no son datos: marcas de
 # columna vacia, subcabeceras de la fila siguiente a la cabecera y errores de formula.
+# El punto suelto es una marca a mano en una fila intermedia (EP14B / HR Track 12 y 22, en
+# el tramo que viene de EP13): leido como identificador, entraba un perfil '.' sin KP.
 TRACK_NOISE = {
-    "0", "-", "TRUE", "FALSE", "P", "Ü",
+    "0", "-", ".", "TRUE", "FALSE", "P", "Ü",
     "M1", "M2", "M3", "D1", "D2", "D3", "H1", "H2", "H3",
     "E1", "E2", "E3", "B1", "B2", "B3", "W1", "W2", "W3", "A1", "A2", "A3",
 }

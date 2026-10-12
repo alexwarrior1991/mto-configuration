@@ -69,7 +69,7 @@ Las tres fuentes son complementarias y ninguna basta por sí sola:
 |---|---|---|
 | **BOQ** | `Recuento Conjuntos` | Volumen, número de plano y descripción |
 | **Legend** | `Legend` (solo en 5 de los 11) | Semántica, y las entidades que el BOQ ignora |
-| **Track** | `HR Track *` (176 hojas) | Uso real: cuántas veces se usa cada código |
+| **Track** | `HR Track *` (178 hojas) | Uso real: cuántas veces se usa cada código |
 
 El caso que lo justifica: el BOQ no contiene **ni una sola** fila de `Sectioning`,
 que es una de las 8 relaciones de `Profile`. Los códigos que la app necesita
@@ -570,8 +570,72 @@ Para arrancar:
 python3 data/tools/build_profile_master.py --seed-topology
 ```
 
-Recorre las 177 hojas y escribe un `topology.yml` inicial con el nombre tomado de A1 y
+Recorre las 179 hojas y escribe un `topology.yml` inicial con el nombre tomado de A1 y
 todo marcado `# REVISAR`. Se corrige a mano y queda versionado, diffable en el PR.
+
+## Lo que EP14B trae del libro de EP13
+
+Las vías 12 y 22 de EP14B empezaban en `131-12.15` y `131-22.15` (KP 131.711,1): les faltaba el
+tramo de Pleshet que hay antes, y que está en el libro de EP13 (`Add_Tracks_EP13.xlsm`, que no
+vive en el repositorio). De él salen tres cambios en `EP14B.XLSM`:
+
+- **`HR Track 12` y `HR Track 22` empiezan ahora con ese tramo**: las filas 5 a 38 y 5 a 40 de
+  EP13, insertadas al principio. Van desde el poste de enlace con la vía 1 o la 2 (`130-1.22`,
+  `130-2.23`, como en el resto de hojas, que repiten el poste donde se cruzan) hasta el anterior
+  al primero que ya estaba. Las filas que había bajan con sus fórmulas, su autofiltro y los
+  nombres definidos, como al insertar filas en Excel; el solape que traen los dos libros
+  (`131-12.15` a `132-12.10`) se queda como estaba en EP14B.
+- **Dos hojas nuevas, `HR Track 1 Pleshet` y `HR Track 2 Pleshet`**, vías de `PST`. Están hechas
+  sobre `HR Track 12` de EP14B —su cabecera, su formato y su leyenda— con los datos de EP13.
+- **De EP13 se copian valores, no fórmulas.** Las suyas apuntan a hojas que EP14B no tiene
+  (`Foundation_Calc`) y a una macro que tampoco (`FL_2`), así que lo copiado es el valor que EP13
+  tenía calculado, con su formato. Las columnas de EP13 que EP14B no tiene (la aprobación del
+  anclaje y de la solución única, las marcas de revisión y las fechas de producción) se quedan
+  fuera, y la referencia del cálculo del poste pasa de la columna 56 a la 54.
+
+Dos cosas del origen que conviene revisar en el workbook:
+
+- `HR Track 22` trae un `131-12.07-Bis` en el KP 131.360, entre `131-22.07` y `131-22.08`:
+  por el nombre, parece `131-22.07-Bis`. Se carga como viene.
+- Las dos hojas traen un `.` tecleado en la columna del perfil de una fila intermedia. Ya no es un
+  perfil: el punto suelto es ruido, como el `0` (`TRACK_NOISE`).
+
+## Lo que EP14A trae de `Add_Tracks_EP14_A.xlsm`
+
+Las vías 1 y 2 de EP14A acababan en `154-1.18` y `154-2.18` (KP 154.592,3), justo antes de la zona
+neutra de Ashkelon, así que sus seccionadores (`ASK-NS1` a `ASK-NS6`, `ASK-B02` y `ASK-B03`) no
+encontraban poste en el maestro. El tramo que falta está en `Add_Tracks_EP14_A.xlsm`, que no vive en
+el repositorio y cuyas `HR Track 1` y `HR Track 2` siguen hasta el 173+905. De él entra solo hasta
+el final de la zona neutra: la fila que ese libro marca `Neutral Section` detrás de `155-1.04` y
+`155-2.04`, la del anclaje del KP 155.130,63. Son 14 postes por vía, de `154-x.19` a `155-x.04`.
+
+- **Las filas van a las que EP14A ya tenía preparadas** debajo de sus datos (de la 114 a la 142 en
+  la vía 1 y de la 113 a la 141 en la 2): vacías, con el formato de fila de poste y de fila
+  intermedia alternado. Cada celda se queda con el formato de EP14A, y como nada se desplaza, las
+  fórmulas, el autofiltro y el formato condicional siguen como estaban.
+- **Se copian valores, no fórmulas**, por lo mismo que en EP14B: las del libro nuevo apuntan a
+  hojas que EP14A no tiene (`Foundation_Calc`, `ALIGNMENT TRACK 1`).
+- **EP14A tiene una sola columna de aprobación**, la 53, donde el libro nuevo tiene tres (poste,
+  anclaje y solución única). En ella va la de la fila, como en las filas de anclaje de EP14A. La
+  referencia del cálculo del poste pasa de la columna 56 a la 54, y la marca de revisión (`R`) se
+  queda fuera.
+- **Los nombres que acotan los datos de las dos vías llegan hasta la última fila nueva**: el área
+  de impresión y las áreas que cuentan `Recuento Conjuntos`, `Recuento Especiales` y `Arms`. Esas
+  hojas guardan la cuenta que hizo Excel la última vez; la que incluye el tramo nuevo sale al
+  recalcular en Excel.
+- El solape entre los dos libros (de `154-x.11` a `154-x.18`) se queda como estaba en EP14A.
+
+Para revisar en el workbook:
+
+- En el solape, el libro nuevo trae otra revisión de algunos postes: `HEB-260` frente a
+  `HEB-260 (CP)`, el descentramiento de `154-1.11` y de `154-2.12` a `154-2.17`, el orden de las
+  ménsulas de `154-1.16` y el poste y la cimentación de `154-2.11`. También trae el tipo y el ángulo
+  del brazo de `154-1.18` y `154-2.18`, que en EP14A faltan porque eran el último poste de la vía.
+- En siete postes sin ménsula de la zona neutra, el desvío por viento (columna 43) cae en la fila
+  del poste en vez de en la intermedia: tres señales `T-SIGN` y los cuatro `HEB-300L` de
+  `154-x.25` y `155-x.02`. El generador lo toma como un hueco de ménsula y supone `UNKNOWN`, y lo
+  apunta en `DESCARTADOS` como «tipo de mensula supuesto».
+- `154-1.24` dice `AS-NS1` en la columna `Survey`, pero el seccionador del plano es `ASK-NS1`.
 
 ## Generar
 
@@ -670,7 +734,7 @@ importa igual.
 
 ## Las tres trampas del origen
 
-1. **Las columnas se resuelven por nombre, nunca por índice.** Las 177 hojas escriben
+1. **Las columnas se resuelven por nombre, nunca por índice.** Las 179 hojas escriben
    las mismas ~36 columnas lógicas de 66 formas distintas, y `EP6 / HR Track 1 HER` no
    tiene columna `Sectionning`: todo lo posterior queda desplazado una posición. Leer
    por índice corrompería esa hoja **en silencio**.
@@ -688,8 +752,8 @@ catálogo `SteadyArmType` solo tiene el tipo base. La regla es «sufijo numéric
 longitud», y necesita la lista `steady_arm_types` de `aliases.yml` porque `PH-C` y
 `PH-Q` son tipos que **también** llevan guion.
 
-De las 14.461 ménsulas del maestro: 4.087 traen tipo y longitud, 5.691 solo el tipo y
-4.683 no traen brazo. **Que falte la longitud no es un error**: no se conoce, y por eso
+De las 14.653 ménsulas del maestro: 4.087 traen tipo y longitud, 5.838 solo el tipo y
+4.728 no traen brazo. **Que falte la longitud no es un error**: no se conoce, y por eso
 `steady_arm.length` es opcional.
 
 ## Qué se importa y qué no
@@ -839,9 +903,12 @@ de `test_build_profile_master.py` incluyen ya las dos vías y las ménsulas de R
 
 ## El tamaño de `workbook/`
 
-Son ~60 MB de binarios en el árbol y **29,1 de los 32 MB del `.git`**, todos en un
-único commit (`af82953`). **Decisión tomada: no se toca de momento.** Esta sección
-existe para que se pueda reconsiderar con datos en lugar de por intuición.
+Son ~55 MB de binarios en el árbol. Cuando se escribió esta sección eran **29,1 de los 32 MB
+del `.git`**, todos en un único commit (`af82953`), y de entonces son las cifras de la tabla de
+abajo. Desde que se completaron EP14A y EP14B, que llevan ya dos versiones cada uno, un clon nuevo
+pesa ~69 MB: ~34 son workbooks y ~31, las 23 versiones de `profile-master.xlsx`, que se regenera
+entero con cada cambio de datos. **Decisión tomada: no se toca de momento.** Esta sección existe
+para que se pueda reconsiderar con datos en lugar de por intuición.
 
 El malentendido a evitar: **activar Git LFS «solo hacia adelante» no recupera nada**.
 Los blobs ya están en el historial y LFS solo intercepta lo que se añade después.
@@ -869,7 +936,7 @@ git push --force-with-lease origin master
 
 Coste de esa vía, que hay que coordinar con el equipo: cambia el SHA de los commits
 afectados, obliga a todo el mundo a re-clonar, y rompe la base de cualquier PR abierto.
-Cuanto antes se haga, más barato sale: hoy solo hay un commit implicado.
+Cuanto antes se haga, más barato sale: cada re-subida es un commit más que reescribir.
 
 Alternativa a considerar en ese punto: los workbooks son **entrada** del generador y la
 aplicación no los abre nunca —solo necesita `lov-master.xlsx`, que son 124 KB—, así que
