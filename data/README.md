@@ -69,7 +69,7 @@ Las tres fuentes son complementarias y ninguna basta por sí sola:
 |---|---|---|
 | **BOQ** | `Recuento Conjuntos` | Volumen, número de plano y descripción |
 | **Legend** | `Legend` (solo en 5 de los 11) | Semántica, y las entidades que el BOQ ignora |
-| **Track** | `HR Track *` (176 hojas) | Uso real: cuántas veces se usa cada código |
+| **Track** | `HR Track *` (178 hojas) | Uso real: cuántas veces se usa cada código |
 
 El caso que lo justifica: el BOQ no contiene **ni una sola** fila de `Sectioning`,
 que es una de las 8 relaciones de `Profile`. Los códigos que la app necesita
@@ -570,8 +570,35 @@ Para arrancar:
 python3 data/tools/build_profile_master.py --seed-topology
 ```
 
-Recorre las 177 hojas y escribe un `topology.yml` inicial con el nombre tomado de A1 y
+Recorre las 179 hojas y escribe un `topology.yml` inicial con el nombre tomado de A1 y
 todo marcado `# REVISAR`. Se corrige a mano y queda versionado, diffable en el PR.
+
+## Lo que EP14B trae del libro de EP13
+
+Las vías 12 y 22 de EP14B empezaban en `131-12.15` y `131-22.15` (KP 131.711,1): les faltaba el
+tramo de Pleshet que hay antes, y que está en el libro de EP13 (`Add_Tracks_EP13.xlsm`, que no
+vive en el repositorio). De él salen tres cambios en `EP14B.XLSM`:
+
+- **`HR Track 12` y `HR Track 22` empiezan ahora con ese tramo**: las filas 5 a 38 y 5 a 40 de
+  EP13, insertadas al principio. Van desde el poste de enlace con la vía 1 o la 2 (`130-1.22`,
+  `130-2.23`, como en el resto de hojas, que repiten el poste donde se cruzan) hasta el anterior
+  al primero que ya estaba. Las filas que había bajan con sus fórmulas, su autofiltro y los
+  nombres definidos, como al insertar filas en Excel; el solape que traen los dos libros
+  (`131-12.15` a `132-12.10`) se queda como estaba en EP14B.
+- **Dos hojas nuevas, `HR Track 1 Pleshet` y `HR Track 2 Pleshet`**, vías de `PST`. Están hechas
+  sobre `HR Track 12` de EP14B —su cabecera, su formato y su leyenda— con los datos de EP13.
+- **De EP13 se copian valores, no fórmulas.** Las suyas apuntan a hojas que EP14B no tiene
+  (`Foundation_Calc`) y a una macro que tampoco (`FL_2`), así que lo copiado es el valor que EP13
+  tenía calculado, con su formato. Las columnas de EP13 que EP14B no tiene (la aprobación del
+  anclaje y de la solución única, las marcas de revisión y las fechas de producción) se quedan
+  fuera, y la referencia del cálculo del poste pasa de la columna 56 a la 54.
+
+Dos cosas del origen que conviene revisar en el workbook:
+
+- `HR Track 22` trae un `131-12.07-Bis` en el KP 131.360, entre `131-22.07` y `131-22.08`:
+  por el nombre, parece `131-22.07-Bis`. Se carga como viene.
+- Las dos hojas traen un `.` tecleado en la columna del perfil de una fila intermedia. Ya no es un
+  perfil: el punto suelto es ruido, como el `0` (`TRACK_NOISE`).
 
 ## Generar
 
@@ -670,7 +697,7 @@ importa igual.
 
 ## Las tres trampas del origen
 
-1. **Las columnas se resuelven por nombre, nunca por índice.** Las 177 hojas escriben
+1. **Las columnas se resuelven por nombre, nunca por índice.** Las 179 hojas escriben
    las mismas ~36 columnas lógicas de 66 formas distintas, y `EP6 / HR Track 1 HER` no
    tiene columna `Sectionning`: todo lo posterior queda desplazado una posición. Leer
    por índice corrompería esa hoja **en silencio**.
@@ -688,8 +715,8 @@ catálogo `SteadyArmType` solo tiene el tipo base. La regla es «sufijo numéric
 longitud», y necesita la lista `steady_arm_types` de `aliases.yml` porque `PH-C` y
 `PH-Q` son tipos que **también** llevan guion.
 
-De las 14.461 ménsulas del maestro: 4.087 traen tipo y longitud, 5.691 solo el tipo y
-4.683 no traen brazo. **Que falte la longitud no es un error**: no se conoce, y por eso
+De las 14.618 ménsulas del maestro: 4.087 traen tipo y longitud, 5.818 solo el tipo y
+4.713 no traen brazo. **Que falte la longitud no es un error**: no se conoce, y por eso
 `steady_arm.length` es opcional.
 
 ## Qué se importa y qué no

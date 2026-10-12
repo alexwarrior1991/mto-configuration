@@ -253,6 +253,16 @@ class LecturaDeUnaHojaDeTrazado(unittest.TestCase):
         self.assertEqual(profiles, 2)
         self.assertNotIn("0", [p["PROFILE_ID"] for p in master.profiles])
 
+    def test_un_punto_en_la_fila_intermedia_no_es_un_perfil(self):
+        # EP14B / HR Track 12 y 22 traen, en el tramo que viene de EP13, un '.' tecleado en la
+        # columna del perfil de una fila intermedia. Leido como identificador, era un perfil
+        # '.' sin KP.
+        rows = self.sheet_rows()
+        rows.insert(5, [None, "."])
+        master, profiles, _ = self.read(rows)
+        self.assertEqual(profiles, 2)
+        self.assertNotIn(".", [p["PROFILE_ID"] for p in master.profiles])
+
     def test_un_perfil_puede_traer_varias_mensulas(self):
         master, _, cantilevers = self.read(self.sheet_rows())
         self.assertEqual(cantilevers, 3)
@@ -637,11 +647,12 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         aparecidos = {(r["TIPO"], r["VALOR"]) for r in self.unknown}
         self.assertEqual(self.HUECOS_CONOCIDOS - aparecidos, set())
 
-    def test_estan_las_176_vias_declaradas(self):
-        # 177 hojas menos las 3 vacias, que se declaran con 'skip'. Las dos de EP9A que
+    def test_estan_las_178_vias_declaradas(self):
+        # 179 hojas menos las 3 vacias, que se declaran con 'skip'. Las dos de EP9A que
         # llevan dos tramos concatenados cuentan como UNA via cada una desde V18. Mas las
-        # dos vias del sinoptico de RUBI, que salen de una sola hoja.
-        self.assertEqual(len(self.tracks), 176)
+        # dos vias del sinoptico de RUBI, que salen de una sola hoja. Las dos de Pleshet
+        # (EP14B / HR Track 1 Pleshet y HR Track 2 Pleshet) vienen del libro de EP13.
+        self.assertEqual(len(self.tracks), 178)
 
     def test_la_hoja_con_dos_tramos_sale_como_UNA_via(self):
         # Era al reves hasta V18: se partia en dos porque el identificador de perfil se
@@ -735,10 +746,12 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         fallara ni un test. Si estas cifras cambian, cambialas A PROPOSITO y explica por
         que en el commit: son las que se cargan en base de datos.
         """
-        # 14.461 / 14.451 de los once workbooks ferroviarios, mas las 969 del sinoptico de
-        # RUBI (566 de catenaria rigida deducidas del soporte, como en EP6).
-        self.assertEqual(len(self.cantilevers), 15430)
-        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15420)
+        # 14.618 / 14.608 de los once workbooks ferroviarios, mas las 969 del sinoptico de
+        # RUBI (566 de catenaria rigida deducidas del soporte, como en EP6). 157 de las
+        # ferroviarias vienen del libro de EP13: el principio de las vias 12 y 22 de EP14B y
+        # sus dos vias de Pleshet.
+        self.assertEqual(len(self.cantilevers), 15587)
+        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15577)
 
     def test_el_sinoptico_de_rubi_entra_con_sus_dos_vias(self):
         """Una hoja, dos vias, ocho estaciones y codigos solo en ingles."""

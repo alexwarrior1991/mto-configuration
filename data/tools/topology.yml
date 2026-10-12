@@ -199,6 +199,12 @@ execution_packages:
       - sheet: "HR Track 2"
         name: "TRACK 2 Pleshet - Ashodod - Nizanim - Ashkelon"          # REVISAR: derivado de A1
         station: [PST, ASH]            # REVISAR
+      - sheet: "HR Track 1 Pleshet"      # viene del libro de EP13 (Add_Tracks_EP13.xlsm)
+        name: "TRACK 1 Pleshet"
+        station: PST
+      - sheet: "HR Track 2 Pleshet"      # viene del libro de EP13 (Add_Tracks_EP13.xlsm)
+        name: "TRACK 2 Pleshet"
+        station: PST
       - sheet: "HR Track 12"
         name: "TRACK 12 Pleshet"          # REVISAR: derivado de A1
         station: PST            # REVISAR
