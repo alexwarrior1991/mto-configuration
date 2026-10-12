@@ -294,9 +294,10 @@ public class InfrastructureUpsertService {
      * que es donde sabe si la via repite su identificador. En simulacion llega a null si el poste es
      * un alta de esta misma carga; no se escribe nada, y la fila se cuenta igual que en la real.
      *
-     * <p>Con poste, el KP y la via propios no viajan: son los del perfil (V26). Una fila con poste
-     * <b>y</b> con KP se señala aqui con las columnas de la hoja, y no con el {@code BUS-001 [kp]}
-     * del validador, que no dice que es lo que sobra.
+     * <p>Con poste, el KP propio no viaja: es el del perfil (V26). Una fila con poste <b>y</b> con KP
+     * se señala aqui con las columnas de la hoja, y no con el {@code BUS-001 [kp]} del validador, que
+     * no dice que es lo que sobra. La via propia si puede ir con poste: es la que maniobra cuando no
+     * es la del poste, y la resuelve el importador.
      *
      * <p>La via conectada (V27) llega resuelta por el importador, que ya ha comprobado que es de su
      * paquete y que no es la propia; con poste o sin el, viaja tal cual.
@@ -311,7 +312,9 @@ public class InfrastructureUpsertService {
      * @param packageId        su paquete, donde se busca por nombre; null en la simulacion si el
      *                         paquete se da de alta en la misma carga, y entonces el seccionador
      *                         tambien es nuevo
-     * @param trackId          la via propia de un seccionador sin poste; null con poste
+     * @param trackId          la via propia: la de uno sin poste, o la que maniobra uno en un poste
+     *                         cuando no es la del poste; null en los demas, y en la simulacion si
+     *                         esa via se da de alta en la misma carga
      * @param connectedTrackId la otra via de uno que pone dos en paralelo; null en los demas, y en la
      *                         simulacion si esa via se da de alta en la misma carga
      */
@@ -338,7 +341,7 @@ public class InfrastructureUpsertService {
         dto.setStationId(stationId);
         dto.setProfileId(profileId);
         dto.setKp(onAPole || StringUtils.isBlank(row.kp()) ? null : row.kp().trim());
-        dto.setTrackId(onAPole ? null : trackId);
+        dto.setTrackId(trackId);
         dto.setConnectedTrackId(connectedTrackId);
         dto.setOnLoad(yesNo(row.onLoad(), "ON_LOAD"));
         dto.setNormallyOpen(yesNo(row.normallyOpen(), "NORMALLY_OPEN"));

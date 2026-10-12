@@ -22,7 +22,6 @@ public class DisconnectorValidator extends NormalEntityValidator<DisconnectorDTO
     private static final String FIELD_ON_LOAD = "onLoad";
     private static final String FIELD_STATION_ID = "stationId";
     private static final String FIELD_KP = "kp";
-    private static final String FIELD_TRACK_ID = "trackId";
     private static final String FIELD_CONNECTED_TRACK_ID = "connectedTrackId";
     private static final String FIELD_DISCONNECTOR_FUNCTION = "disconnectorFunction";
 
@@ -47,30 +46,31 @@ public class DisconnectorValidator extends NormalEntityValidator<DisconnectorDTO
     }
 
     /**
-     * El KP y la vía propios son solo de un seccionador sin poste (V26): los de uno en un poste son
-     * los de su perfil, y guardarlos dos veces dejaría dos datos que pueden contradecirse. Va aquí y
-     * no en {@link #validateParentReferences}, porque vale también cuando el seccionador viaja
-     * dentro de su estación.
+     * El KP propio es solo de un seccionador sin poste (V26): el de uno en un poste es el de su
+     * perfil, y guardarlo dos veces dejaría dos datos que pueden contradecirse.
+     *
+     * <p>La vía propia ({@code trackId}) no: sin poste es la suya, y con poste es la que maniobra
+     * cuando no es la del poste. En un haz de vías (talleres, cocheras) un seccionador cuelga a veces
+     * del poste de una vía y maniobra otra, o une dos que no son la del poste; sin ella, su vía sería
+     * la del poste, y no la que aísla. Con poste es opcional, y la del propio poste no se guarda dos
+     * veces: la deja a null {@code DisconnectorMapper}, que es quien conoce la vía del perfil.
+     *
+     * <p>Va aquí y no en {@link #validateParentReferences}, porque vale también cuando el seccionador
+     * viaja dentro de su estación.
      */
     private void validateOwnLocation(DisconnectorDTO dto, List<Alert> alerts) {
-        if (dto.getProfileId() == null) {
-            validateConnectedTrack(dto, alerts);
-            return;
-        }
-
-        if (dto.getKp() != null) {
+        if (dto.getProfileId() != null && dto.getKp() != null) {
             alerts.add(Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, FIELD_KP));
         }
 
-        if (dto.getTrackId() != null) {
-            alerts.add(Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, FIELD_TRACK_ID));
-        }
+        validateConnectedTrack(dto, alerts);
     }
 
     /**
      * La vía conectada (V27) es la otra de las dos que el seccionador pone en paralelo: la suya no
-     * puede serlo. Sin poste, la suya es {@code trackId}, y se compara aquí; con poste es la de su
-     * perfil, que el DTO no trae, y la compara {@code DisconnectorMapper} con la entidad.
+     * puede serlo. Cuando trae {@code trackId}, con poste o sin él, la suya es esa, y se compara
+     * aquí; con poste y sin {@code trackId} es la de su perfil, que el DTO no trae, y la compara
+     * {@code DisconnectorMapper} con la entidad.
      */
     private void validateConnectedTrack(DisconnectorDTO dto, List<Alert> alerts) {
         if (dto.getConnectedTrackId() != null && Objects.equals(dto.getConnectedTrackId(), dto.getTrackId())) {

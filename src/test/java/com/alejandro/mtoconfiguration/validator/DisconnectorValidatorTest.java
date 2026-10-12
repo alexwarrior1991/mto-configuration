@@ -81,8 +81,8 @@ class DisconnectorValidatorTest {
     }
 
     @Test
-    @DisplayName("el KP y la vía propios son solo de un seccionador sin poste: en uno en un poste son los del perfil")
-    void kpYViaSoloSinPoste() {
+    @DisplayName("el KP propio es solo de un seccionador sin poste: en uno en un poste es el del perfil")
+    void kpSoloSinPoste() {
         DisconnectorDTO sinPoste = ValidDtos.rootDisconnector();
         sinPoste.setProfileId(null);
         sinPoste.setKp("98375.5");
@@ -91,18 +91,33 @@ class DisconnectorValidatorTest {
 
         DisconnectorDTO enPoste = ValidDtos.rootDisconnector();
         enPoste.setKp("98375.5");
-        enPoste.setTrackId(3L);
-        List<Alert> alerts = validator.validateBeforeSave(enPoste);
-        assertError(alerts, ErrorCodes.BUSINESS_RULE_VIOLATION, "kp");
-        assertError(alerts, ErrorCodes.BUSINESS_RULE_VIOLATION, "trackId");
+        assertError(validator.validateBeforeSave(enPoste), ErrorCodes.BUSINESS_RULE_VIOLATION, "kp");
     }
 
     /**
-     * La vía conectada (V27) es la otra de las dos que pone en paralelo. Sin poste se compara aquí con
-     * la propia; con poste, la del perfil no viaja en el DTO y la compara DisconnectorMapper.
+     * En un haz de vías (talleres, cocheras) un seccionador cuelga a veces del poste de una vía y
+     * maniobra otra: con poste, {@code trackId} es esa. Que no sea la del propio poste no lo puede ver
+     * el validador, porque la del perfil no viaja en el DTO: la deja a null DisconnectorMapper.
      */
     @Test
-    @DisplayName("la vía conectada es opcional y, sin poste, no puede ser su propia vía")
+    @DisplayName("con poste, la vía propia es la que maniobra cuando no es la del poste, y se acepta")
+    void viaPropiaConPoste() {
+        DisconnectorDTO enPoste = ValidDtos.rootDisconnector();
+        enPoste.setTrackId(3L);
+
+        List<Alert> alerts = validator.validateBeforeSave(enPoste);
+
+        assertNoErrors(alerts);
+        assertNoError(alerts, ErrorCodes.BUSINESS_RULE_VIOLATION, "trackId");
+    }
+
+    /**
+     * La vía conectada (V27) es la otra de las dos que pone en paralelo. Con {@code trackId}, con poste o
+     * sin él, la suya es esa, y se compara aquí; con poste y sin {@code trackId}, la del perfil no viaja
+     * en el DTO y la compara DisconnectorMapper.
+     */
+    @Test
+    @DisplayName("la vía conectada es opcional y no puede ser su vía propia, con poste o sin él")
     void viaConectadaDistintaDeLaPropia() {
         DisconnectorDTO enPoste = ValidDtos.rootDisconnector();
         enPoste.setConnectedTrackId(4L);
@@ -121,6 +136,14 @@ class DisconnectorValidatorTest {
 
         sinPoste.setConnectedTrackId(3L);
         assertError(validator.validateBeforeSave(sinPoste), ErrorCodes.BUSINESS_RULE_VIOLATION, "connectedTrackId");
+
+        DisconnectorDTO enPosteConViaPropia = ValidDtos.rootDisconnector();
+        enPosteConViaPropia.setTrackId(3L);
+        enPosteConViaPropia.setConnectedTrackId(4L);
+        assertNoErrors(validator.validateBeforeSave(enPosteConViaPropia));
+        enPosteConViaPropia.setConnectedTrackId(3L);
+        assertError(validator.validateBeforeSave(enPosteConViaPropia),
+                ErrorCodes.BUSINESS_RULE_VIOLATION, "connectedTrackId");
     }
 
     @Test

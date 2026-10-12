@@ -23,6 +23,7 @@ import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
 import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO.CantileverArm;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO.DisconnectorMark;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO.InsulatorMark;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO.ProfileNode;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.CantileverRepository;
@@ -260,6 +261,26 @@ class TrackSchematicServiceTest {
             assertThat(perfiles.get(1).disconnector().onLoad()).isTrue();
             assertThat(perfiles.get(1).disconnector().function()).isEqualTo("FEED");
             assertThat(perfiles.get(1).disconnector().station()).isEqualTo("ATOCHA");
+            assertThat(perfiles.get(1).disconnector().track())
+                    .as("sin via propia maniobra la del esquema, y no se repite").isNull();
+            assertThat(perfiles.get(1).disconnector().connectedTrack()).isNull();
+        }
+
+        /**
+         * En un haz de vias, un seccionador cuelga del poste de una via y maniobra otra: se dibuja en
+         * su poste, en el esquema de la via del poste, y la marca dice cuales maniobra.
+         */
+        @Test
+        @DisplayName("el que cuelga del poste de esta via y maniobra otras lleva sus dos vias por nombre")
+        void seccionadorQueManiobraOtraVia() {
+            Disconnector seccionador = p2.getDisconnector();
+            seccionador.setTrack(track(5L, "VIA 5"));
+            seccionador.setConnectedTrack(via2);
+
+            DisconnectorMark marca = service.getSchematic(3L).profiles().get(1).disconnector();
+
+            assertThat(marca.track()).isEqualTo("VIA 5");
+            assertThat(marca.connectedTrack()).isEqualTo("VIA 2");
         }
 
         @Test

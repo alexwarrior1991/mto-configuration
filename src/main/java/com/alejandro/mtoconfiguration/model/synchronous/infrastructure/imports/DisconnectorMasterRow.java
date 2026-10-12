@@ -15,15 +15,17 @@ import java.math.BigDecimal;
  *
  * @param station              nombre de su estación dentro del paquete, o {@code SIN ESTACION} si no es
  *                             de ninguna. En blanco es un olvido, que el importador señala
- * @param track                con poste, la vía del poste, que es donde se busca; sin poste, la vía
- *                             del propio seccionador (V26). Por nombre: el id lo resuelve el
- *                             importador
+ * @param track                con poste, la vía que maniobra: la del poste, que es donde se busca
+ *                             primero, u otra si cuelga del poste de otra vía (un haz de vías), y
+ *                             entonces el poste se busca en todo su paquete; sin poste, la vía del
+ *                             propio seccionador (V26). Por nombre: el id lo resuelve el importador
  * @param connectedTrack       la otra vía de un seccionador que pone dos en paralelo (V27), por
  *                             nombre y dentro de su paquete, o en blanco. Con poste o sin él
  * @param profileId            identificador del poste del que cuelga, o en blanco si no está en un
  *                             poste
- * @param profileKp            KP del poste, en metros. Solo decide cuál es el poste cuando la vía
- *                             repite su identificador (una vía de dos tramos concatenados)
+ * @param profileKp            KP del poste, en metros. Solo decide cuál es el poste cuando su
+ *                             identificador se repite: en una vía de dos tramos concatenados, o en
+ *                             las dos vías de un poste de enlace
  * @param kp                   KP propio, en metros, solo sin poste. Como texto, igual que en el
  *                             DTO, para que el validador lo compruebe y señale el campo
  * @param onLoad               SI (en carga) o NO

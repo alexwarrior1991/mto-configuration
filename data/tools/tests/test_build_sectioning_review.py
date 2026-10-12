@@ -504,13 +504,18 @@ class DisconnectorRowsTest(unittest.TestCase):
 
     def test_two_plan_tracks_that_are_not_its_own_settle_nothing(self):
         # La via del poste sin numero (INT, EXT): ninguna de las dos del plano es la suya, y no hay
-        # como saber cual es la otra.
+        # como saber cual es la otra. Puede tambien colgar del poste de otra via y unir dos que no
+        # son la del poste: el motivo dice como escribirlo y cuales serian, pero no lo cambia solo,
+        # porque el plano numera las vias de la estacion y no las del maestro.
         pole = dict(self.POLE, via="TRACK INT SOUTH", track=None, dcodes=["Disc/PP"])
         master = dict(self.two_tracks(), profiles=[pole])
         row = self.row(master=master, pole=pole, tracks=["1", "2"])
-        self.assertEqual(row["VIA_CONECTADA"], "")
+        self.assertEqual((row["VIA"], row["VIA_CONECTADA"]), ("TRACK INT SOUTH", ""))
+        self.assertEqual(row["PROFILE_ID"], pole["profile"])
         self.assertIn(
-            "el plano une las vias 1/2 y ninguna es la suya (TRACK INT SOUTH)",
+            "el plano une las vias 1/2 y ninguna es la suya (TRACK INT SOUTH); si cuelga de ese "
+            "poste y maniobra otras, pon en VIA la que maniobra y en VIA_CONECTADA la otra (segun "
+            "el plano, TRACK 1 TLV SAVIDOR y TRACK 2 TLV SAVIDOR), y deja el poste",
             row["MOTIVO_REVISAR"],
         )
 

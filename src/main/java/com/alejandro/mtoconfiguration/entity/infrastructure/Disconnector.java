@@ -130,7 +130,12 @@ public class Disconnector extends CRUDEntity {
         return kp;
     }
 
-    /** Vía, <b>solo</b> de un seccionador sin poste, por lo mismo que {@link #getKp()}. */
+    /**
+     * Vía del seccionador. Sin poste, la suya (V26). Con poste, la que maniobra cuando <b>no</b> es la
+     * del poste: en un haz de vías (talleres, cocheras) cuelga a veces del poste de una vía y aísla
+     * otra, o une dos que no son la del poste. {@code null} con poste es «la de su poste», que no se
+     * guarda dos veces: la deja a {@code null} {@code DisconnectorMapper}.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "TRACK_ID", nullable = true)
     @Audited(targetAuditMode = NOT_AUDITED)
@@ -139,8 +144,8 @@ public class Disconnector extends CRUDEntity {
     }
 
     /**
-     * La otra vía de un seccionador que pone dos en paralelo (V27): la suya es la de su poste, o la
-     * propia sin poste, y esta es con la que la une. Tiene que ser otra: lo exigen
+     * La otra vía de un seccionador que pone dos en paralelo (V27): la suya es {@link #getTrack()}
+     * si la tiene, y si no la de su poste, y esta es con la que la une. Tiene que ser otra: lo exigen
      * {@code DisconnectorValidator} y {@code DisconnectorMapper}.
      */
     @ManyToOne(fetch = FetchType.LAZY)

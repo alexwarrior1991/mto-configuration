@@ -52,8 +52,8 @@ public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
      * no abre transacción, la entidad que devuelve la búsqueda por clave natural llega
      * <b>detached</b> y tocar ahí un {@code LAZY} revienta con {@code LazyInitializationException}.
      * Con {@code left join}, porque todos son opcionales: hay seccionadores sin estación, con poste
-     * no hay vía propia, sin él no hay poste, y solo uno que pone dos vías en paralelo tiene vía
-     * conectada.
+     * solo hay vía propia si maniobra otra vía que la del poste, sin él no hay poste, y solo uno que
+     * pone dos vías en paralelo tiene vía conectada.
      */
     @Query("select s.id as stationId, p.id as profileId, t.id as trackId, ct.id as connectedTrackId, "
             + "f.id as disconnectorFunctionId "

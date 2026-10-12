@@ -4,6 +4,24 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ El evento `disconnector` puede traer `track` también con `profile`
+
+Un cambio compatible hacia atrás para quien consume: **ninguna clave nueva, renombrada ni quitada**.
+Cambia lo que se puede esperar de una que ya estaba:
+
+- **`track` ya no es solo de un seccionador sin poste.** En un haz de vías (talleres, cocheras) un
+  seccionador cuelga a veces del poste de una vía y maniobra otra, o une dos que no son la del poste.
+  Desde ahora `track` (`{id, name}`) es la vía que maniobra cuando no es la de su poste, y llega a la
+  vez que `profile`. Con poste y `track` a `null`, su vía es la del poste, como hasta ahora; `track`
+  nunca es la del propio poste. `kp` sigue llegando a `null` con poste: es el del perfil.
+- **`connectedTrack` se compara con esa.** Nunca es la suya: `track` si llega, y si no la del poste.
+  Con `track`, la del poste puede ser la conectada: el que une la vía del poste con la que maniobra.
+
+`mto-maintenance` toma de `track` la vía del activo cuando llega, también con poste, y si no la del
+perfil, como hasta ahora; el paquete sigue saliendo del perfil (su `docs/06-messaging.md`). Un
+consumidor que no lo sepa se queda con la vía del poste, sin fallar. `mto-notification` solo copia de
+`values` su lista blanca de escalares, en la que no está. `mto-stock` registra el evento sin tratarlo.
+
 ## ⚠️ El evento `disconnector` puede llegar con `station` a `null`
 
 Un cambio compatible hacia atrás para quien consume: **ninguna clave nueva, renombrada ni quitada**.
@@ -293,8 +311,8 @@ atrás**: sólo añade claves, no renombra ni quita ninguna.
 | `normallyOpen` | `true` / `false` / `null` | Estado normal de explotación: `true` normalmente abierto, `false` normalmente cerrado. `null` es «sin dato» |
 | `driveType` | `"MOTOR"` / `"MANUAL"` / `null` | Accionamiento: con motor (el círculo del accionamiento en el plano de seccionamiento) o a mano |
 | `kp` | número o `null` | KP en **metros** de un seccionador sin poste (`V26`). `null` en uno en un poste: es el de su perfil |
-| `track` | `{ "id", "name" }` o `null` | Vía de un seccionador sin poste (`V26`). `null` en uno en un poste: es la de su perfil |
-| `connectedTrack` | `{ "id", "name" }` o `null` | La otra vía de uno que pone dos en paralelo (`V27`), con poste o sin él. Nunca es la suya (la de su perfil, o `track` sin poste). `null` en los demás |
+| `track` | `{ "id", "name" }` o `null` | Vía de un seccionador sin poste (`V26`). En uno en un poste, la que maniobra cuando no es la del poste, y `null` si es la del poste |
+| `connectedTrack` | `{ "id", "name" }` o `null` | La otra vía de uno que pone dos en paralelo (`V27`), con poste o sin él. Nunca es la suya (`track` si llega, y si no la de su perfil). `null` en los demás |
 
 `normallyOpen`, `driveType` y `kp` son columnas de la propia fila, así que, igual que `kp` e
 `installationType` del aislador, viajan también en la copia reducida del seccionador dentro de
@@ -307,8 +325,9 @@ cargarlas: `track` y `connectedTrack` entran en el `@EntityGraph` de
 
 `profile` no cambia de forma (`{ "id", "profileId", "kp" }` o `null`), pero cambia lo que se puede
 esperar de él: desde `V25` el poste es opcional, y un seccionador que no está en un poste lo trae a
-`null`. Entonces el KP y la vía son los suyos, `kp` y `track`, que pueden faltar también; nunca vienen
-a la vez que un `profile`.
+`null`. Entonces el KP y la vía son los suyos, `kp` y `track`, que pueden faltar también. `kp` nunca
+viene a la vez que un `profile`; `track` sí, cuando el seccionador maniobra otra vía que la de su poste
+(un haz de vías: cuelga del poste de una y aísla otra).
 
 `station` tampoco cambia de forma (`{ "id", "name" }` o `null`), y también es opcional: un
 seccionador en plena vía, en una zona neutra o en una subestación no es de ninguna estación y la trae

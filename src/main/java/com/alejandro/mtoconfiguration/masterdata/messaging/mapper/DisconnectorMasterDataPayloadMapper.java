@@ -33,8 +33,10 @@ public class DisconnectorMasterDataPayloadMapper implements MasterDataEntityPayl
         values.put("station", toStationPayload(disconnector.getStation()));
         // null en un seccionador que no esta en un poste: el poste es opcional (V25).
         values.put("profile", toProfilePayload(disconnector.getProfile()));
-        // Los de un seccionador sin poste (V26); en uno en un poste, null: son los de su perfil.
+        // El KP, solo de un seccionador sin poste (V26); en uno en un poste, null: es el de su perfil.
         values.put("kp", disconnector.getKp());
+        // La via: sin poste, la suya (V26); con poste, la que maniobra cuando no es la del poste (en
+        // un haz de vias cuelga a veces del poste de una y aisla otra), y si no, null: la de su perfil.
         values.put("track", toTrackPayload(disconnector.getTrack()));
         // La otra via de uno que pone dos en paralelo (V27), con poste o sin el; null en los demas.
         values.put("connectedTrack", toTrackPayload(disconnector.getConnectedTrack()));

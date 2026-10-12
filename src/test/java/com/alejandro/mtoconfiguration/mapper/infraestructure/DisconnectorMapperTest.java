@@ -12,6 +12,7 @@ import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -234,6 +235,90 @@ class DisconnectorMapperTest {
 
         dto.setConnectedTrackId(4L);
         assertThat(mapper.toEntity(dto).getConnectedTrack()).isSameAs(other);
+    }
+
+    /**
+     * En un haz de vias (talleres, cocheras) un seccionador cuelga a veces del poste de una via y
+     * maniobra otra: con poste, la via propia es esa, y va y vuelve como sin poste.
+     */
+    @Nested
+    @DisplayName("La via propia de un seccionador en un poste")
+    class ViaPropiaConPoste {
+
+        private Track viaDelPoste;
+        private Track otraVia;
+        private Track terceraVia;
+
+        @BeforeEach
+        void poste() {
+            viaDelPoste = new Track();
+            viaDelPoste.setId(3L);
+            otraVia = new Track();
+            otraVia.setId(5L);
+            terceraVia = new Track();
+            terceraVia.setId(6L);
+            Profile pole = new Profile();
+            pole.setId(7L);
+            pole.setTrack(viaDelPoste);
+            when(referenceMapper.resolve(7L, Profile.class)).thenReturn(pole);
+            when(referenceMapper.resolve(3L, Track.class)).thenReturn(viaDelPoste);
+            when(referenceMapper.resolve(5L, Track.class)).thenReturn(otraVia);
+            when(referenceMapper.resolve(6L, Track.class)).thenReturn(terceraVia);
+        }
+
+        private DisconnectorDTO enElPoste(Long trackId, Long connectedTrackId) {
+            DisconnectorDTO dto = new DisconnectorDTO();
+            dto.setName("ASK-08");
+            dto.setOnLoad(false);
+            dto.setProfileId(7L);
+            dto.setTrackId(trackId);
+            dto.setConnectedTrackId(connectedTrackId);
+            return dto;
+        }
+
+        @Test
+        @DisplayName("la que maniobra, si no es la del poste, se guarda y sale por id con su poste")
+        void otraViaQueLaDelPoste() {
+            Disconnector entity = mapper.toEntity(enElPoste(5L, null));
+            assertThat(entity.getProfile().getId()).isEqualTo(7L);
+            assertThat(entity.getTrack()).isSameAs(otraVia);
+
+            DisconnectorDTO dto = mapper.toDTO(entity);
+            assertThat(dto.getProfileId()).isEqualTo(7L);
+            assertThat(dto.getTrackId()).isEqualTo(5L);
+            DisconnectorDTO detalle = new DisconnectorDTO();
+            mapper.updateDTOFromEntity(entity, detalle);
+            assertThat(detalle.getTrackId()).isEqualTo(5L);
+        }
+
+        @Test
+        @DisplayName("la del propio poste no se guarda dos veces: se queda a null, al dar de alta y al modificar")
+        void laDelPosteSeQuedaANull() {
+            assertThat(mapper.toEntity(enElPoste(3L, null)).getTrack()).isNull();
+
+            Disconnector guardado = mapper.toEntity(enElPoste(5L, null));
+            mapper.updateEntityFromDTO(enElPoste(3L, null), guardado);
+            assertThat(guardado.getTrack()).isNull();
+        }
+
+        @Test
+        @DisplayName("la conectada no puede ser la que maniobra, pero si la del poste: el que une las dos")
+        void conectadaContraLaPropia() {
+            Disconnector uneDosQueNoSonLaDelPoste = mapper.toEntity(enElPoste(5L, 6L));
+            assertThat(uneDosQueNoSonLaDelPoste.getTrack()).isSameAs(otraVia);
+            assertThat(uneDosQueNoSonLaDelPoste.getConnectedTrack()).isSameAs(terceraVia);
+
+            Disconnector uneLaDelPosteConOtra = mapper.toEntity(enElPoste(5L, 3L));
+            assertThat(uneLaDelPosteConOtra.getConnectedTrack()).isSameAs(viaDelPoste);
+
+            assertThatThrownBy(() -> mapper.toEntity(enElPoste(5L, 5L)))
+                    .isInstanceOfSatisfying(ValidationException.class, e -> assertThat(e.getErrors())
+                            .singleElement()
+                            .satisfies(alert -> assertThat(alert.getFields()).containsExactly("connectedTrackId")));
+            // La del poste como propia es la del poste: la conectada tampoco puede ser esa.
+            assertThatThrownBy(() -> mapper.toEntity(enElPoste(3L, 3L)))
+                    .isInstanceOf(ValidationException.class);
+        }
     }
 
     @Test
