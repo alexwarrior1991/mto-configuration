@@ -1077,17 +1077,21 @@ READ_ME = [
      "seria un olvido. Sin estacion y sin poste, su VIA es lo unico que lo situa, y tiene que ser "
      "una del EP."),
     ("PROFILE_ID / VIA / KP del seccionador",
-     "Con PROFILE_ID, VIA es la del poste y sirve para encontrarlo (un PROFILE_ID se repite en "
-     "vias distintas), y KP va vacio: el KP y la via son los del poste. Sin PROFILE_ID (un "
-     "seccionador que no esta en un poste), VIA y KP son los suyos, KP en metros."),
+     "Con PROFILE_ID, VIA es la via que maniobra: casi siempre la del poste, donde se busca "
+     "primero (un PROFILE_ID se repite en vias distintas), y KP va vacio, porque el KP es el del "
+     "poste. En un haz de vias (talleres, cocheras) cuelga a veces del poste de una via y "
+     "maniobra otra, o une dos que no son la del poste: VIA es entonces la que maniobra, y el "
+     "poste se busca en todo su EP. Sin PROFILE_ID (un seccionador que no esta en un poste), VIA "
+     "y KP son los suyos, KP en metros."),
     ("KP_POSTE",
      "El KP del poste, en metros. Una via de dos tramos concatenados (EP9A) repite el "
-     "PROFILE_ID dentro de la misma via, y entonces KP_POSTE dice cual de los dos es; con un "
-     "solo poste con ese PROFILE_ID no se mira."),
+     "PROFILE_ID dentro de la misma via, y un poste de enlace esta en las dos vias que se "
+     "cruzan: entonces KP_POSTE dice cual es; con un solo poste con ese PROFILE_ID no se mira."),
     ("VIA_CONECTADA del seccionador",
      "La otra via de uno que pone dos en paralelo (Disc/PP, LoadB/PP), con poste o sin el; vacia "
-     "en los demas. Es una via de su paquete y nunca su propia VIA: la fila que nombre una que no "
-     "existe, o la suya, sale en el informe de la importacion."),
+     "en los demas. Es una via de su paquete y nunca la suya (VIA, o la del poste con VIA "
+     "vacia): la fila que nombre una que no existe, o la suya, sale en el informe de la "
+     "importacion. Con el poste en otra via, la del poste si puede ser la conectada."),
     ("NORMALLY_OPEN / DRIVE_TYPE",
      "Estado normal (SI = normalmente abierto, NO = normalmente cerrado) y accionamiento (MOTOR "
      "o MANUAL). Vacio es valido: el dominio no los exige."),

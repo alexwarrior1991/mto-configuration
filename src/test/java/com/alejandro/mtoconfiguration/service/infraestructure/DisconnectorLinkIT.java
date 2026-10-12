@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.service.infraestructure;
 
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
+import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.DisconnectorMasterDataPayloadMapper;
 import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.ProfileMasterDataPayloadMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
@@ -11,6 +12,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.schematic.TrackSchematicDTO.ProfileNode;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.DisconnectorRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.support.PostgresTestDatabase;
 import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
@@ -89,6 +91,10 @@ class DisconnectorLinkIT {
     private ProfileRepository profileRepository;
     @Autowired
     private ProfileMasterDataPayloadMapper profilePayloadMapper;
+    @Autowired
+    private DisconnectorMasterDataPayloadMapper disconnectorPayloadMapper;
+    @Autowired
+    private DisconnectorRepository disconnectorRepository;
     @Autowired
     private PlatformTransactionManager transactionManager;
 
@@ -341,6 +347,65 @@ class DisconnectorLinkIT {
         sinPoste.setConnectedTrackId(OTHER_TRACK);
         DisconnectorDTO creado = disconnectorService.create(sinPoste);
         assertThat(conectada(creado.getId())).isEqualTo(OTHER_TRACK);
+    }
+
+    /**
+     * En un haz de vías (talleres, cocheras) un seccionador cuelga del poste de una vía y maniobra
+     * otra. Con poste, su vía propia es esa: se guarda, sale en el detalle, en el esquema de la vía
+     * del poste y en su evento. La del propio poste no se guarda dos veces, y con vía propia la del
+     * poste puede ser la conectada, pero la que maniobra no.
+     */
+    @Test
+    @DisplayName("con poste, su vía propia es la que maniobra si no es la del poste: se guarda, se dibuja y viaja en su evento")
+    @SuppressWarnings("unchecked")
+    void viaPropiaConPoste() {
+        DisconnectorDTO enPoste = disconnectorService.getById(DISCONNECTOR_A);
+        enPoste.setTrackId(OTHER_TRACK);
+        enPoste.setConnectedTrackId(TRACK);
+
+        DisconnectorDTO guardado = disconnectorService.update(enPoste);
+        assertThat(guardado.getProfileId()).isEqualTo(PROFILE_A);
+        assertThat(guardado.getTrackId()).isEqualTo(OTHER_TRACK);
+        assertThat(guardado.getConnectedTrackId()).isEqualTo(TRACK);
+        assertThat(jdbcTemplate.queryForMap(
+                "select profile_id, track_id, connected_track_id from disconnector where id = ?", DISCONNECTOR_A))
+                .containsEntry("profile_id", PROFILE_A)
+                .containsEntry("track_id", OTHER_TRACK)
+                .containsEntry("connected_track_id", TRACK);
+        assertThat(disconnectorService.getById(DISCONNECTOR_A).getTrackId()).isEqualTo(OTHER_TRACK);
+
+        TrackSchematicDTO.DisconnectorMark marca = trackSchematicService.getSchematic(TRACK).profiles().stream()
+                .filter(nodo -> nodo.id() == PROFILE_A)
+                .findFirst().orElseThrow()
+                .disconnector();
+        assertThat(marca.track()).isEqualTo("IT-LINK-TRACK-2");
+        assertThat(marca.connectedTrack()).isEqualTo("IT-LINK-TRACK");
+
+        Map<String, Object> payload = new TransactionTemplate(transactionManager).execute(status ->
+                disconnectorPayloadMapper.toPayload(
+                        disconnectorRepository.findByIdForMessaging(DISCONNECTOR_A).orElseThrow()));
+        assertThat((Map<String, Object>) payload.get("profile")).containsEntry("id", PROFILE_A);
+        assertThat((Map<String, Object>) payload.get("track"))
+                .containsEntry("id", OTHER_TRACK).containsEntry("name", "IT-LINK-TRACK-2");
+        assertThat((Map<String, Object>) payload.get("connectedTrack")).containsEntry("id", TRACK);
+        assertThat(payload.get("kp")).isNull();
+
+        DisconnectorDTO conectadaLaQueManiobra = disconnectorService.getById(DISCONNECTOR_A);
+        conectadaLaQueManiobra.setConnectedTrackId(OTHER_TRACK);
+        assertThatThrownBy(() -> disconnectorService.update(conectadaLaQueManiobra))
+                .isInstanceOfSatisfying(ValidationException.class, e -> assertThat(e.getErrors())
+                        .singleElement()
+                        .satisfies(alert -> assertThat(alert.getFields()).containsExactly("connectedTrackId")));
+
+        DisconnectorDTO laDelPoste = disconnectorService.getById(DISCONNECTOR_A);
+        laDelPoste.setTrackId(TRACK);
+        laDelPoste.setConnectedTrackId(OTHER_TRACK);
+        assertThat(disconnectorService.update(laDelPoste).getTrackId())
+                .as("la del propio poste no se guarda dos veces").isNull();
+        assertThat(jdbcTemplate.queryForMap(
+                "select track_id, connected_track_id from disconnector where id = ?", DISCONNECTOR_A))
+                .containsEntry("track_id", null)
+                .containsEntry("connected_track_id", OTHER_TRACK);
     }
 
     /**

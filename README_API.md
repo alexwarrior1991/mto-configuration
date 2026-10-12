@@ -56,15 +56,22 @@ opcionales, y como el resto de la fila, un `PUT` que no los lleva los deja sin d
 como se leyeron (§4, «devuélvelo entero»).
 
 **Uno sin poste lleva su propio KP y su vía** (`V26`): `kp`, en metros y como texto (`"98375.5"`),
-igual que el del perfil, y `trackId`. Solo sin poste: en uno con `profileId` son los de su perfil, y
-mandarlos es un 400 `BUS-001` sobre `kp` o `trackId`. Al colgar de un poste un seccionador que no lo
-estaba, se mandan a `null`.
+igual que el del perfil, y `trackId`. El KP propio es solo sin poste: en uno con `profileId` es el de
+su perfil, y mandarlo es un 400 `BUS-001` sobre `kp`. Al colgar de un poste un seccionador que no lo
+estaba, se manda a `null`.
+
+**Con poste, `trackId` es la vía que maniobra cuando no es la del poste.** En un haz de vías
+(talleres, cocheras) un seccionador cuelga a veces del poste de una vía y aísla otra, o une dos que
+no son la del poste. Sin `trackId`, su vía es la del poste, como hasta ahora; con él, es esa, y el
+poste es solo de dónde cuelga (su KP sigue siendo el del perfil). La vía del propio poste no se
+guarda dos veces: mandarla como `trackId` la deja a `null`, y así vuelve en la respuesta.
 
 **Uno que pone dos vías en paralelo lleva la otra** (`V27`): `connectedTrackId`, con poste o sin él.
 Son los de puesta en paralelo (`Disc/PP`, `LoadB/PP`), que unen la catenaria de su vía con la de
-otra: su vía es la del poste, o su `trackId` sin poste, y esta es con la que la une. No puede ser la
-suya (400 `BUS-001` sobre `connectedTrackId`; con poste se compara con la vía del perfil). Es
-opcional y, como el resto de la fila, un `PUT` que no la lleva la quita.
+otra: su vía es su `trackId` si lo tiene, y si no la del poste, y esta es con la que la une. No puede
+ser la suya (400 `BUS-001` sobre `connectedTrackId`; con poste y sin `trackId` se compara con la vía
+del perfil). Con `trackId`, la del poste sí puede ser la conectada: el que une la vía del poste con la
+que maniobra. Es opcional y, como el resto de la fila, un `PUT` que no la lleva la quita.
 
 El borrado es **lógico**: marca la fila (`deleted = true`) y deja de aparecer en las consultas. No
 hay endpoint para restaurarla.
@@ -669,7 +676,7 @@ cada campo (§4 bis: alturas en metros, `stagger` y `railPoleDistance` en milím
       "cantilevers": [ { "id": 21, "type": "PT1", "stagger": "-200", "cwHeight": "5.300",
                          "catenaryHeight": "1.400", "steadyArmType": "SA1", "steadyArmLength": 1200 } ],
       "disconnector": { "id": 40, "name": "SEC-40", "onLoad": true, "function": "Disc/PP", "station": "ATOCHA",
-                        "connectedTrack": "VIA 2" } }
+                        "track": "VIA 3", "connectedTrack": "VIA 2" } }
   ],
   "sectionInsulators": [
     { "id": 50, "name": "AIS-50", "kp": "15.000", "installationType": "TRACK_CONNECTION", "enabled": true,
@@ -681,8 +688,10 @@ cada campo (§4 bis: alturas en metros, `stagger` y `railPoleDistance` en milím
 
 Lo que va a `null` no viaja. El perfil no tiene estación en el modelo: las de la vía van en
 `stations` y la del seccionador o del aislador, en su marca. Un seccionador que no está en un poste
-no sale: el esquema dibuja cada seccionador en su perfil. El que pone dos vías en paralelo lleva en
-`connectedTrack` la otra (`V27`), y sale en el esquema de la vía de su poste, no en el de esa otra.
+no sale: el esquema dibuja cada seccionador en su perfil. El que maniobra otra vía que la de su poste
+la lleva en `track`; sin ella, la suya es la del esquema. El que pone dos vías en paralelo lleva en
+`connectedTrack` la otra (`V27`). Los dos salen en el esquema de la vía de su poste, no en el de esas
+otras.
 Una vía sin perfiles devuelve las listas vacías; una vía inexistente, `404 NOT-001`.
 
 Está **cacheado** en Redis (`normal:item`, clave `TrackSchematicService:getSchematic:{id}`, 6 h):

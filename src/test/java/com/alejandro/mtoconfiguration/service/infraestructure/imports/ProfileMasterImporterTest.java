@@ -627,8 +627,12 @@ class ProfileMasterImporterTest {
                     .upsertDisconnector(eq(row), eq(2L), eq(1L), eq(1007L), isNull(), isNull(), eq(false));
         }
 
+        /**
+         * Si no esta en su via, se busca en todo su paquete (un seccionador puede colgar del poste de
+         * otra via), asi que el que no esta en ninguna dice el paquete.
+         */
         @Test
-        @DisplayName("un poste que no esta en la hoja PROFILES sale en el informe con su via")
+        @DisplayName("un poste que no esta en ninguna via de su paquete sale en el informe")
         void posteQueNoEsta() {
             givenDisconnectors(List.of(pole("83-1.02", "83063.410", 1, 7, true)),
                     disconnector("HER-01", "TRACK 1", "83-1.99", null));
@@ -637,7 +641,7 @@ class ProfileMasterImporterTest {
 
             assertThat(report.getErrors()).singleElement()
                     .extracting(ProfileImportReport.ItemError::message).asString()
-                    .contains("'83-1.99'", "'TRACK 1'", ProfileMasterParser.PROFILES_SHEET);
+                    .contains("'83-1.99'", "paquete EP6", ProfileMasterParser.PROFILES_SHEET);
         }
 
         /**
@@ -897,6 +901,160 @@ class ProfileMasterImporterTest {
                     .upsertDisconnector(eq(propia), any(), any(), any(), any(), any(), anyBoolean());
             verify(upsertService)
                     .upsertDisconnector(eq(despues), any(), eq(1L), eq(1007L), any(), isNull(), eq(true));
+        }
+
+        /**
+         * En un haz de vias (talleres, cocheras) un seccionador cuelga a veces del poste de una via y
+         * maniobra otra, o une dos que no son la del poste. VIA es entonces la que maniobra: el poste
+         * se busca en todo su paquete, y la via viaja como su via propia.
+         */
+        @Nested
+        @DisplayName("Con el poste en otra via que la que maniobra")
+        class PosteDeOtraVia {
+
+            @BeforeEach
+            void dosViasMas() {
+                when(upsertService.upsertTrack(argThat(track -> track != null && "TRACK 2".equals(track.name())),
+                        anyLong(), any(), anyBoolean())).thenReturn(UpsertResult.created(30L));
+                when(upsertService.upsertTrack(argThat(track -> track != null && "TRACK 3".equals(track.name())),
+                        anyLong(), any(), anyBoolean())).thenReturn(UpsertResult.created(31L));
+            }
+
+            private void given(List<ProfileMasterRow> poles, DisconnectorMasterRow... disconnectors) {
+                givenMaster(List.of(ep("EP6")), List.of(station("EP6", "HERZLIYA")),
+                        List.of(track("EP6", "TRACK 1", "HERZLIYA"), track("EP6", "TRACK 2", "HERZLIYA"),
+                                track("EP6", "TRACK 3", "HERZLIYA")),
+                        poles, List.of(), List.of(), List.of(), List.of(disconnectors));
+            }
+
+            private DisconnectorMasterRow row(String name, String track, String connectedTrack, String profileId) {
+                return new DisconnectorMasterRow("EP6", "HERZLIYA", track, connectedTrack, profileId, null, name,
+                        "", "NO", "NO", "MOTOR", "Disc/PP", true, 14);
+            }
+
+            @Test
+            @DisplayName("el poste se busca en su paquete y VIA viaja como la via que maniobra")
+            void maniobraOtraVia() {
+                DisconnectorMasterRow row = row("ASK-10", "TRACK 2", "", "83-1.02");
+                given(List.of(pole("83-1.02", "83063.410", 1, 7, true)), row);
+
+                ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+                assertThat(report.getFailed()).as("%s", report.getErrors()).isZero();
+                verify(upsertService)
+                        .upsertDisconnector(eq(row), eq(2L), eq(1L), eq(1007L), eq(30L), isNull(), eq(false));
+            }
+
+            @Test
+            @DisplayName("une dos vias que no son la del poste, o la del poste con la que maniobra")
+            void uneDosVias() {
+                DisconnectorMasterRow ningunaEsLaDelPoste = row("ASKD-05", "TRACK 2", "TRACK 3", "83-1.02");
+                DisconnectorMasterRow conLaDelPoste = row("ASK-08", "TRACK 2", "TRACK 1", "83-1.03");
+                given(List.of(pole("83-1.02", "83063.410", 1, 7, true), pole("83-1.03", "83100", 2, 8, true)),
+                        ningunaEsLaDelPoste, conLaDelPoste);
+
+                ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+                assertThat(report.getFailed()).as("%s", report.getErrors()).isZero();
+                verify(upsertService).upsertDisconnector(eq(ningunaEsLaDelPoste), eq(2L), eq(1L), eq(1007L),
+                        eq(30L), eq(31L), eq(false));
+                verify(upsertService).upsertDisconnector(eq(conLaDelPoste), eq(2L), eq(1L), eq(1008L),
+                        eq(30L), eq(3L), eq(false));
+            }
+
+            @Test
+            @DisplayName("con VIA en blanco, el poste se busca en su paquete y su via es la del poste")
+            void sinVia() {
+                DisconnectorMasterRow row = row("HER-B01", "", "TRACK 2", "83-1.02");
+                given(List.of(pole("83-1.02", "83063.410", 1, 7, true)), row);
+
+                ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+                assertThat(report.getFailed()).as("%s", report.getErrors()).isZero();
+                verify(upsertService)
+                        .upsertDisconnector(eq(row), eq(2L), eq(1L), eq(1007L), isNull(), eq(30L), eq(false));
+            }
+
+            @Test
+            @DisplayName("si el poste esta en su VIA, es ese, aunque otra via repita el identificador")
+            void elDeSuViaGana() {
+                DisconnectorMasterRow row = row("HER-B01", "TRACK 2", "", "130-1.22");
+                given(List.of(poleOn("TRACK 1", "130-1.22", "130500", 1, 7), poleOn("TRACK 2", "130-1.22", "130500", 1, 8)),
+                        row);
+
+                ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+                assertThat(report.getFailed()).as("%s", report.getErrors()).isZero();
+                verify(upsertService)
+                        .upsertDisconnector(eq(row), eq(2L), eq(1L), eq(1008L), isNull(), isNull(), eq(false));
+            }
+
+            /**
+             * Un poste de enlace esta en las dos vias que se cruzan, con el mismo identificador y el
+             * mismo KP. Si VIA no es ninguna de las dos, ni KP_POSTE dice de cual cuelga: no se elige.
+             */
+            @Test
+            @DisplayName("un poste de enlace con VIA en otra via sale en el informe, y KP_POSTE no lo arregla")
+            void posteDeEnlace() {
+                DisconnectorMasterRow sinKp = row("ASK-01", "TRACK 3", "", "130-1.22");
+                DisconnectorMasterRow conKp = new DisconnectorMasterRow("EP6", "HERZLIYA", "TRACK 3", "", "130-1.22",
+                        new BigDecimal("130500"), "ASK-02", "", "NO", "NO", "MOTOR", "Disc/PP", true, 15);
+                given(List.of(poleOn("TRACK 1", "130-1.22", "130500", 1, 7), poleOn("TRACK 2", "130-1.22", "130500", 1, 8)),
+                        sinKp, conKp);
+
+                ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+                assertThat(report.getErrors())
+                        .extracting(ProfileImportReport.ItemError::reference)
+                        .containsExactly("EP6 / ASK-01", "EP6 / ASK-02");
+                assertThat(report.getErrors().getFirst().message())
+                        .contains("el paquete EP6 tiene 2 postes '130-1.22'", "(via 'TRACK 1')", "(via 'TRACK 2')",
+                                "KP_POSTE no dice cual es el suyo");
+                assertThat(report.getErrors().get(1).message())
+                        .contains("2 postes '130-1.22' en el KP_POSTE 130500", "'TRACK 1' y 'TRACK 2'",
+                                "no se sabe de cual cuelga");
+                verify(upsertService, never())
+                        .upsertDisconnector(any(), any(), any(), any(), any(), any(), anyBoolean());
+            }
+
+            @Test
+            @DisplayName("una VIA que no esta cargada no se pierde: sale en el informe con la via del poste")
+            void viaQueNoEsta() {
+                DisconnectorMasterRow row = row("ASK-10", "TRACK 9", "", "83-1.02");
+                given(List.of(pole("83-1.02", "83063.410", 1, 7, true)), row);
+
+                ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+                assertThat(report.getErrors()).singleElement()
+                        .extracting(ProfileImportReport.ItemError::message).asString()
+                        .contains("su VIA 'TRACK 9' no esta entre las vias cargadas del paquete EP6",
+                                "'83-1.02' es de la via 'TRACK 1'", "VIA es la que maniobra");
+                verify(upsertService, never())
+                        .upsertDisconnector(any(), any(), any(), any(), any(), any(), anyBoolean());
+            }
+
+            @Test
+            @DisplayName("la conectada no puede ser la que maniobra, y la fila no se queda con el poste")
+            void conectadaIgualALaQueManiobra() {
+                DisconnectorMasterRow propia = row("ASK-08", "TRACK 2", "track 2", "83-1.02");
+                DisconnectorMasterRow despues = disconnector("HER-01", "TRACK 1", "83-1.02", null);
+                given(List.of(pole("83-1.02", "83063.410", 1, 7, true)), propia, despues);
+
+                ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+                assertThat(report.getErrors())
+                        .extracting(ProfileImportReport.ItemError::reference, ProfileImportReport.ItemError::message)
+                        .containsExactly(tuple("EP6 / ASK-08", "su VIA_CONECTADA 'track 2' es su propia via: "
+                                + "tiene que ser la otra de las dos que pone en paralelo"));
+                verify(upsertService)
+                        .upsertDisconnector(eq(despues), any(), eq(1L), eq(1007L), isNull(), isNull(), eq(false));
+            }
+
+            /** Un poste de otra via, con su fila de la hoja PROFILES. */
+            private static ProfileMasterRow poleOn(String track, String profileId, String kp, int orden, int sourceRow) {
+                return new ProfileMasterRow("EP6", track, profileId, kp, orden, "DEFINITIVE",
+                        ProfileLovCodes.empty(), null, null, null, null, true, sourceRow);
+            }
         }
 
         private void givenDisconnectorsOnTwoTracks(List<ProfileMasterRow> poles,

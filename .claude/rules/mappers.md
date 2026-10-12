@@ -44,10 +44,14 @@ paths:
   `BaseMapperTest` («Version de los hijos»), `ProfileMapperTest` y `CantileverMapperTest`.
 - Una regla que solo se puede comprobar con la entidad, y que tiene que valer en todas las
   escrituras, va en el `@AfterMapping` de su mapper, que es el único paso común: el alta en lote no
-  llama al `Business`, y los hijos que escribe su padre no pasan por el servicio del hijo. Hoy es
-  una: con poste, la vía conectada de un seccionador no puede ser la de su perfil (`V27`), con el
-  mismo 400 `BUS-001` que daría el validador. Lo fijan `DisconnectorMapperTest` y
-  `DisconnectorLinkIT`.
+  llama al `Business`, y los hijos que escribe su padre no pasan por el servicio del hijo. Hoy son
+  dos, las dos del seccionador con poste, porque la vía del perfil no viaja en el DTO:
+  - su vía propia (`trackId`) es la que maniobra cuando no es la del poste, así que la del propio
+    poste se queda a `null` y no se guarda dos veces;
+  - su vía conectada no puede ser la suya (`V27`): la propia si la trae, y si no, la del perfil. Sale
+    con el mismo 400 `BUS-001` que daría el validador.
+
+  Lo fijan `DisconnectorMapperTest` y `DisconnectorLinkIT`.
 - Tests: `MapperGraph` monta los mappers generados reales con sus dependencias
   (`new MapperGraph(masterDataService, referenceMapper).profile`); un `XMapperTest` por mapper, con un
   `@Nested` por aspecto.

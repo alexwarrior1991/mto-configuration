@@ -82,29 +82,57 @@ public abstract class DisconnectorMapper implements BaseMapper<DisconnectorDTO, 
 
         // 3. Sincronización de otras relaciones si existieran
 
+        forgetTheTrackOfItsPole(entity);
         requireConnectedTrackIsNotItsOwn(entity);
     }
 
     /**
-     * La via conectada (V27) es la otra de las dos que el seccionador pone en paralelo, asi que con
-     * poste no puede ser la del perfil; sin el, la compara {@code DisconnectorValidator} con su
-     * {@code trackId}.
+     * Con poste, la via propia es la que el seccionador maniobra cuando <b>no</b> es la de su poste
+     * (un haz de vias: cuelga del poste de una y aisla otra). La del propio poste no se guarda dos
+     * veces: queda a null, que es lo que dice «la de su poste», y asi un seccionador que la trae y
+     * otro que no la trae son el mismo. Sin poste, la via es la suya y no se toca.
+     *
+     * <p>Va aqui por lo mismo que {@link #requireConnectedTrackIsNotItsOwn}: la via del poste no viaja
+     * en el DTO. Leerla carga el perfil, solo cuando el seccionador trae via propia y poste.</p>
+     */
+    private static void forgetTheTrackOfItsPole(Disconnector entity) {
+        Track own = entity.getTrack();
+        Profile profile = entity.getProfile();
+        if (own == null || profile == null || profile.getTrack() == null) {
+            return;
+        }
+
+        if (Objects.equals(own.getId(), profile.getTrack().getId())) {
+            entity.setTrack(null);
+        }
+    }
+
+    /**
+     * La via conectada (V27) es la otra de las dos que el seccionador pone en paralelo, asi que no
+     * puede ser la suya: su via propia si la trae, con poste o sin el, y si no, la de su poste. Una
+     * via propia la compara tambien {@code DisconnectorValidator}, con el DTO; la del poste solo se
+     * puede comparar aqui. Con via propia, la del poste no es la suya, y puede ser la conectada: el
+     * que une la via del poste con otra que maniobra.
      *
      * <p>Va aqui, y no en el validador ni en {@code DisconnectorBusiness}, porque la via del poste no
      * viaja en el DTO y este es el unico paso por el que pasan todas las escrituras de un seccionador:
      * el alta y la modificacion, sueltas o en lote (el alta en lote no llama al {@code Business}), y
      * los seccionadores que su estacion escribe anidados. Sale con el mismo 400 que el validador,
      * sobre el mismo campo, como el 409 de {@code checkVersion} sale de {@code mergeCollection}. Leer
-     * la via carga el perfil, una vez y solo cuando el seccionador trae via conectada.</p>
+     * la via del poste carga el perfil, una vez y solo cuando el seccionador trae via conectada y no
+     * trae via propia.</p>
      */
     private static void requireConnectedTrackIsNotItsOwn(Disconnector entity) {
         Track connected = entity.getConnectedTrack();
-        Profile profile = entity.getProfile();
-        if (connected == null || profile == null || profile.getTrack() == null) {
+        if (connected == null) {
             return;
         }
 
-        if (Objects.equals(connected.getId(), profile.getTrack().getId())) {
+        Track own = entity.getTrack();
+        if (own == null && entity.getProfile() != null) {
+            own = entity.getProfile().getTrack();
+        }
+        if (own != null && Objects.equals(connected.getId(), own.getId())) {
             throw new ValidationException(List.of(
                     Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, FIELD_CONNECTED_TRACK_ID)));
         }

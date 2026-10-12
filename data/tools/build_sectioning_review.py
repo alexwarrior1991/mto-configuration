@@ -265,12 +265,18 @@ def function_proposal(kind, on_load, name_function, bridged, parallel=False):
     return ""
 
 
-def connected_track(r, via, tracks_of_ep, station):
+def connected_track(r, via, tracks_of_ep, station, on_a_pole=False):
     """VIA_CONECTADA de uno que pone dos vias en paralelo: la del maestro para la OTRA del plano.
 
     Devuelve (nombre, motivo si no se pudo). Solo se propone cuando una de las vias del plano es la
     suya y queda una sola distinta: si ninguna es la suya (la del poste sin numero, INT o EXT, o un
     plano que numera las vias de otra manera), no hay como saber cual de las dos es la otra.
+
+    Con poste, que ninguna sea la suya puede querer decir tambien que cuelga del poste de una via y
+    une dos que no son la del poste (un haz de vias: talleres, cocheras). El maestro lo admite: VIA
+    es entonces la que maniobra y VIA_CONECTADA la otra. No se propone solo, porque el plano numera
+    las vias de la estacion y no las del maestro: el motivo dice cuales serian, y lo decide quien
+    revisa.
     """
     resolved, problems = [], []
     for number in dict.fromkeys(r["tracks"]):
@@ -281,7 +287,15 @@ def connected_track(r, via, tracks_of_ep, station):
             problems.append(why)
     plan = "el plano une las vias %s" % "/".join(r["tracks"])
     if via not in resolved:
-        return "", "%s y ninguna es la suya (%s)" % (plan, via or "sin via")
+        why = "%s y ninguna es la suya (%s)" % (plan, via or "sin via")
+        if on_a_pole:
+            pair = list(dict.fromkeys(resolved))
+            why += (
+                "; si cuelga de ese poste y maniobra otras, pon en VIA la que maniobra y en "
+                "VIA_CONECTADA la otra%s, y deja el poste"
+                % ((" (segun el plano, %s y %s)" % tuple(pair)) if len(pair) == 2 else "")
+            )
+        return "", why
     others = [name for name in dict.fromkeys(resolved) if name != via]
     if len(others) == 1:
         return others[0], ""
@@ -1778,7 +1792,9 @@ def disconnector_rows(records, master):
         connected, missing = "", set()
         if bypass_across or PARALLEL_FUNCTION in function:
             if two_tracks:
-                connected, why = connected_track(r, via, master["tracks"].get(r["ep"], []), station)
+                connected, why = connected_track(
+                    r, via, master["tracks"].get(r["ep"], []), station, on_a_pole=bool(chosen)
+                )
             else:
                 why = "el plano no dice con que via"
             if connected:
@@ -2791,10 +2807,14 @@ def main():
         "PROFILE_ID": "Poste del maestro con seccionador a menos de 80 m del KP del rotulo; "
         "en naranja, el mas cercano sin codigo, con su KP en KP_POSTE. Vacio si el seccionador "
         "no esta en un poste.",
-        "KP_POSTE": "KP del poste, en metros. Solo cuenta si la via repite el PROFILE_ID (dos "
-        "tramos concatenados): dice cual de los dos. Si cambias de poste, cambialo tambien.",
+        "KP_POSTE": "KP del poste, en metros. Solo cuenta si el PROFILE_ID se repite (una via de "
+        "dos tramos concatenados, o las dos vias de un poste de enlace): dice cual es. Si cambias "
+        "de poste, cambialo tambien.",
+        "VIA": "La via que maniobra: la del poste, o la otra si cuelga del poste de otra via (un "
+        "haz de vias: talleres, cocheras); entonces el poste se busca en todo su EP.",
         "VIA_CONECTADA": "La otra via de uno que pone dos en paralelo (Disc/PP, LoadB/PP). En "
-        "naranja, la del plano; en amarillo, una de puesta en paralelo sin ella. Nunca la suya.",
+        "naranja, la del plano; en amarillo, una de puesta en paralelo sin ella. Nunca la suya (VIA, "
+        "o la del poste si VIA esta vacia).",
         "ESTACION": "La del EP, o SIN ESTACION si no es de ninguna (en plena via, una zona "
         "neutra, una subestacion). En blanco no se carga.",
         "ON_LOAD": "SI: circulo medio relleno (on-load). NO: vacio (off-load).",

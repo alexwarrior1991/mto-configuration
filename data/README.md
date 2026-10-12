@@ -675,22 +675,29 @@ modifica en vez de dar de alta otro. El resto de columnas:
   la fila sale en el informe. Sin estación y sin poste, su `VIA` es lo único que lo sitúa, y una que
   no está entre las del paquete también sale en el informe.
 
-- **`PROFILE_ID` y `VIA`**: el poste del que cuelga y la vía de ese poste, que es donde el
-  importador lo busca, entre los perfiles de la hoja `PROFILES`. Un poste admite **un solo**
-  seccionador: dos filas en el mismo poste, o un poste que ya lleva otro seccionador en la base, salen
-  en el informe con el nombre del otro. Sin `PROFILE_ID`, el seccionador no está en un poste (los
-  de los pórticos de subestación, los de puesta a tierra) y `VIA` es la suya; una vía que no existe
-  se queda vacía, como la de un aislador.
+- **`PROFILE_ID` y `VIA`**: el poste del que cuelga y la vía que maniobra. Lo normal es que sea la
+  del poste, y ahí lo busca primero el importador, entre los perfiles de la hoja `PROFILES`. En un
+  haz de vías (talleres, cocheras) un seccionador cuelga a veces del poste de una vía y maniobra
+  otra, o une dos que no son la del poste: entonces `VIA` es la que maniobra (y `VIA_CONECTADA` la
+  otra, si une dos), el poste se busca en todo su EP y la vía se guarda como suya, que es la que
+  aísla. Una `VIA` así que no está entre las del paquete sale en el informe; con `VIA` vacía, su vía
+  es la del poste. Un poste admite **un solo** seccionador: dos filas en el mismo poste, o un poste
+  que ya lleva otro seccionador en la base, salen en el informe con el nombre del otro. Sin
+  `PROFILE_ID`, el seccionador no está en un poste (los de los pórticos de subestación, los de puesta
+  a tierra) y `VIA` es la suya; una vía que no existe se queda vacía, como la de un aislador.
 - **`KP_POSTE`**: el KP del poste, en metros. Una vía de dos tramos concatenados (EP9A) repite el
-  `PROFILE_ID` dentro de la misma vía, y entonces es lo único que distingue un poste del otro; con
-  un solo poste con ese `PROFILE_ID` no se mira. El libro de revisión lo rellena con el del poste
+  `PROFILE_ID` dentro de la misma vía, y un poste de enlace está en las dos vías que se cruzan: ahí
+  es lo único que distingue un poste del otro; con un solo poste con ese `PROFILE_ID` no se mira.
+  Un poste de enlace en el mismo KP en dos vías, con una `VIA` que no es ninguna de las dos, sale en
+  el informe: no se elige al azar de cuál cuelga. El libro de revisión lo rellena con el del poste
   que propone.
 - **`KP`**: el del propio seccionador, en metros, **solo sin poste** (`V26`); con poste, el KP es el
   del perfil, y una fila con los dos sale en el informe.
 - **`VIA_CONECTADA`**: la otra vía de uno que pone dos en paralelo (`Disc/PP`, `LoadB/PP`; `V27`),
   con poste o sin él, y vacía en los demás. Se busca por nombre entre las vías de su paquete, como
   la del aislador. Al contrario que `VIA` sin poste, una que no existe **no** se queda vacía en
-  silencio: la fila sale en el informe, y lo mismo si es su propia `VIA`.
+  silencio: la fila sale en el informe, y lo mismo si es su propia vía (`VIA`, o la del poste con
+  `VIA` vacía). Con el poste en otra vía, la del poste sí puede ser la conectada.
 - **`ON_LOAD`** (`SI`/`NO`, obligatorio), **`NORMALLY_OPEN`** (`SI` = normalmente abierto, `NO` =
   cerrado, vacío = sin dato) y **`DRIVE_TYPE`** (`MOTOR`, `MANUAL` o vacío). Un valor que no es
   ninguno de esos no se adivina: la fila sale en el informe con su columna.
@@ -1037,10 +1044,14 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
   poste lleva `PP` en `SECTIONING_FEEDING` (`Disc/PP`, `LoadB/PP`), o si el nombre lleva la B del
   by-pass (`HER-B02`, `THS-BF01`) y sus patas tocan dos vías del plano. Entonces `VIA_CONECTADA`
   propone, en naranja, la vía del maestro para la otra del plano, si solo hay una candidata; si no,
-  la celda sale en amarillo y el motivo dice por qué. No bloquea `ENABLED`. A uno de la B con las
-  patas en dos vías y sin código en su poste se le propone `Disc/PP` o `LoadB/PP`, y no lo que
-  puentea: el aislador o la lámina que hay entre sus patas es lo que separa las dos vías, y el
-  maestro marca esos postes con `PP`.
+  la celda sale en amarillo y el motivo dice por qué. Si ninguna de las dos vías del plano es la
+  del poste propuesto, puede ser uno que cuelga del poste de una vía y une otras dos (un haz de vías,
+  en talleres y cocheras): el motivo dice entonces que se ponga en `VIA` la que maniobra y en
+  `VIA_CONECTADA` la otra, con las dos del plano, y que se deje el poste. No se propone solo, porque
+  el plano numera las vías de la estación y no las del maestro. No bloquea `ENABLED`. A uno de la
+  B con las patas en dos vías y sin código en su poste se le propone `Disc/PP` o `LoadB/PP`, y no
+  lo que puentea: el aislador o la lámina que hay entre sus patas es lo que separa las dos vías, y
+  el maestro marca esos postes con `PP`.
 
 ## Lo que el plano no dice
 

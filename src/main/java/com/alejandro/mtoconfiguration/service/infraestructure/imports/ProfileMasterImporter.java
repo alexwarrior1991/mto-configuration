@@ -384,14 +384,16 @@ public class ProfileMasterImporter {
     }
 
     /**
-     * Los seccionadores van los ultimos: su estacion, su poste y, sin poste, su via tienen que estar
-     * ya escritos.
+     * Los seccionadores van los ultimos: su estacion, su poste y su via tienen que estar ya escritos.
      *
-     * <p>El poste se busca en la hoja PROFILES, por su via y su identificador, y no en la base: asi la
-     * simulacion, que no escribe, encuentra los mismos que la carga real, y un poste deshabilitado o
-     * que fallo no se confunde con uno que no existe. Una via de dos tramos concatenados repite
-     * identificadores —el caso de EP9A que obliga a casar las mensulas por ORDEN—, y ahi decide
-     * KP_POSTE ({@link #findPole}).
+     * <p>El poste se busca en la hoja PROFILES, y no en la base: asi la simulacion, que no escribe,
+     * encuentra los mismos que la carga real, y un poste deshabilitado o que fallo no se confunde con
+     * uno que no existe. Primero en la via de la fila (VIA), que es lo normal: el seccionador maniobra
+     * la via de su poste. Si ahi no esta, en todo su paquete: en un haz de vias (talleres, cocheras)
+     * un seccionador cuelga a veces del poste de una via y maniobra otra, o une dos que no son la del
+     * poste, y VIA es entonces la que maniobra. Una via de dos tramos concatenados repite
+     * identificadores —el caso de EP9A que obliga a casar las mensulas por ORDEN—, y un poste de enlace
+     * esta en las dos vias que se cruzan: en los dos casos decide KP_POSTE ({@link #findPole}).
      *
      * <p>La estacion es opcional: {@code SIN ESTACION} en ESTACION dice que no es de ninguna (uno en
      * plena via, en una zona neutra o en una subestacion). En blanco no vale, porque un olvido se
@@ -401,12 +403,14 @@ public class ProfileMasterImporter {
      *
      * <p>Sin poste, la via que la fila nombra y no existe se deja a null, como la de un aislador: la
      * columna es anulable y el seccionador sigue siendo de su estacion. Sin estacion no: su via es lo
-     * unico que lo situa, y tiene que estar entre las cargadas de su paquete.
+     * unico que lo situa, y tiene que estar entre las cargadas de su paquete. Con el poste en otra
+     * via tampoco: es la que maniobra, y perderla lo dejaria en la del poste.
      *
-     * <p>La via conectada (VIA_CONECTADA, V27) no: es lo unico que dice que el seccionador pone dos
-     * vias en paralelo, y perderla en silencio dejaria la carga contando una fila que no dice lo que
-     * la hoja. Una que no es de su paquete, o que es la propia via de la fila, la señala en el
-     * informe, igual en la simulacion que en la carga real ({@link #connectedTrack}).
+     * <p>La via conectada (VIA_CONECTADA, V27) tampoco se deja a null: es lo unico que dice que el
+     * seccionador pone dos vias en paralelo, y perderla en silencio dejaria la carga contando una fila
+     * que no dice lo que la hoja. Una que no es de su paquete, o que es la suya (VIA, o la del poste
+     * con VIA en blanco), la señala en el informe, igual en la simulacion que en la carga real
+     * ({@link #connectedTrack}).
      *
      * @param profileIdsByRow lo que devuelve {@link #importProfiles}
      */
@@ -423,6 +427,11 @@ public class ProfileMasterImporter {
         Map<PoleKey, List<ProfileMasterRow>> poles = content.profiles().stream()
                 .collect(Collectors.groupingBy(row -> new PoleKey(
                         key(row.executionPackage()), key(row.track()), key(row.profileId()))));
+        // Los mismos postes por su paquete y su identificador, en cualquier via: los de un
+        // seccionador que cuelga del poste de una via y maniobra otra.
+        Map<PackagePoleKey, List<ProfileMasterRow>> polesInPackage = content.profiles().stream()
+                .collect(Collectors.groupingBy(row -> new PackagePoleKey(
+                        key(row.executionPackage()), key(row.profileId()))));
         // Que fila de la hoja se ha llevado ya cada poste: un poste admite un solo seccionador, y
         // dos filas en el mismo se señalan aqui, con el nombre de la otra, antes de que el indice
         // unico conteste por ellas.
@@ -471,21 +480,16 @@ public class ProfileMasterImporter {
                 }
             }
 
-            // Antes que el poste: una fila que falla aqui no puede quedarse con el poste de otra.
-            ConnectedTrack connected = connectedTrack(row, tracksByPackage.getOrDefault(code, Map.of()));
-            if (connected.problem() != null) {
-                fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
-                        connected.problem(), progress);
-                continue;
-            }
-
             Long profileId = null;
             Long trackId = null;
+            // El nombre de su via: la de VIA, o la de su poste si VIA esta en blanco o es esa.
+            String ownTrack = key(row.track());
+            ProfileMasterRow pole = null;
             if (key(row.profileId()).isEmpty()) {
-                TrackKey ownTrack = new TrackKey(code, key(row.track()));
-                if (withoutStation && !tracksByKey.containsKey(ownTrack)) {
+                TrackKey own = new TrackKey(code, ownTrack);
+                if (withoutStation && !tracksByKey.containsKey(own)) {
                     fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
-                            key(row.track()).isEmpty()
+                            ownTrack.isEmpty()
                                     ? "no es de ninguna estacion, no esta en un poste y no dice su VIA: "
                                     + "no quedaria en ningun sitio"
                                     : "no es de ninguna estacion ni esta en un poste, y su VIA '" + row.track()
@@ -494,19 +498,48 @@ public class ProfileMasterImporter {
                             progress);
                     continue;
                 }
-                trackId = tracksByKey.get(ownTrack);
+                trackId = tracksByKey.get(own);
             } else {
-                PoleMatch match = findPole(row, poles.getOrDefault(
-                        new PoleKey(code, key(row.track()), key(row.profileId())), List.of()));
+                PoleMatch match = findPole(row,
+                        poles.getOrDefault(new PoleKey(code, ownTrack, key(row.profileId())), List.of()),
+                        polesInPackage.getOrDefault(new PackagePoleKey(code, key(row.profileId())), List.of()));
                 if (match.pole() == null) {
                     fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
                             match.problem(), progress);
                     continue;
                 }
-                int poleRow = match.pole().sourceRow();
+                pole = match.pole();
+                String poleTrack = key(pole.track());
+                if (ownTrack.isEmpty() || ownTrack.equals(poleTrack)) {
+                    ownTrack = poleTrack;
+                } else {
+                    // Cuelga del poste de otra via: VIA es la que maniobra, y tiene que estar cargada.
+                    TrackKey own = new TrackKey(code, ownTrack);
+                    if (!tracksByKey.containsKey(own)) {
+                        fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
+                                "su VIA '" + row.track() + "' no esta entre las vias cargadas del paquete "
+                                        + row.executionPackage() + ", y su poste '" + row.profileId()
+                                        + "' es de la via '" + pole.track() + "': con el poste en otra via, "
+                                        + "VIA es la que maniobra", progress);
+                        continue;
+                    }
+                    trackId = tracksByKey.get(own);
+                }
+            }
+
+            // Antes de quedarse con el poste: una fila que falla aqui no puede quitarselo a otra.
+            ConnectedTrack connected = connectedTrack(row, ownTrack, tracksByPackage.getOrDefault(code, Map.of()));
+            if (connected.problem() != null) {
+                fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
+                        connected.problem(), progress);
+                continue;
+            }
+
+            if (pole != null) {
+                int poleRow = pole.sourceRow();
                 if (!profileIdsByRow.containsKey(poleRow)) {
                     fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
-                            "su poste '" + row.profileId() + "' de la via '" + row.track()
+                            "su poste '" + row.profileId() + "' de la via '" + pole.track()
                                     + "' no se ha podido cargar", progress);
                     continue;
                 }
@@ -534,45 +567,78 @@ public class ProfileMasterImporter {
     }
 
     /**
-     * El poste de la fila entre los que la hoja PROFILES tiene en su via con su identificador.
+     * El poste de la fila: primero entre los que la hoja PROFILES tiene en su via (VIA) con su
+     * identificador, y si ahi no esta, entre los de todo su paquete, porque VIA es entonces la via que
+     * maniobra y el poste es de otra.
      *
      * <p>Uno solo es el caso normal, y entonces KP_POSTE no se mira: el identificador basta, y quien
-     * cambia de poste en la hoja no tiene por que acordarse de cambiar tambien su KP. Varios es una
-     * via de dos tramos concatenados, y ahi KP_POSTE es lo unico que los distingue.
+     * cambia de poste en la hoja no tiene por que acordarse de cambiar tambien su KP. Varios en la via
+     * es una via de dos tramos concatenados; varios en el paquete, un poste de enlace, que esta en las
+     * dos vias que se cruzan. En los dos casos KP_POSTE es lo unico que los distingue, y si ni con el
+     * queda uno solo, la fila sale en el informe: dos postes en el mismo KP no se eligen al azar.
      */
-    private PoleMatch findPole(DisconnectorMasterRow row, List<ProfileMasterRow> candidates) {
-        if (candidates.isEmpty()) {
-            return PoleMatch.notFound("su poste '" + row.profileId() + "' no esta en la via '"
-                    + row.track() + "' de la hoja " + ProfileMasterParser.PROFILES_SHEET);
+    private PoleMatch findPole(DisconnectorMasterRow row, List<ProfileMasterRow> onItsTrack,
+                               List<ProfileMasterRow> inItsPackage) {
+        if (!onItsTrack.isEmpty()) {
+            return pick(row, onItsTrack, "la via '" + row.track() + "'", false);
         }
+        if (inItsPackage.isEmpty()) {
+            return PoleMatch.notFound("su poste '" + row.profileId() + "' no esta en ninguna via del paquete "
+                    + row.executionPackage() + " de la hoja " + ProfileMasterParser.PROFILES_SHEET);
+        }
+        return pick(row, inItsPackage, "el paquete " + row.executionPackage(), true);
+    }
+
+    /**
+     * Uno de los postes con el identificador de la fila. {@code where} dice donde se han buscado y
+     * {@code acrossTracks}, si en varias vias: entonces cada KP lleva la suya.
+     */
+    private PoleMatch pick(DisconnectorMasterRow row, List<ProfileMasterRow> candidates, String where,
+                           boolean acrossTracks) {
         if (candidates.size() == 1) {
             return PoleMatch.found(candidates.getFirst());
         }
 
-        String kps = candidates.stream().map(ProfileMasterRow::kp).collect(Collectors.joining(", "));
+        String kps = candidates.stream()
+                .map(candidate -> acrossTracks
+                        ? candidate.kp() + " (via '" + candidate.track() + "')"
+                        : candidate.kp())
+                .collect(Collectors.joining(", "));
         if (row.profileKp() == null) {
-            return PoleMatch.notFound("la via '" + row.track() + "' tiene " + candidates.size()
-                    + " postes '" + row.profileId() + "', en los KP " + kps
-                    + ", y KP_POSTE no dice cual es el suyo");
+            return PoleMatch.notFound(where + " tiene " + candidates.size() + " postes '" + row.profileId()
+                    + "', en los KP " + kps + ", y KP_POSTE no dice cual es el suyo");
         }
-        return candidates.stream()
+        List<ProfileMasterRow> atItsKp = candidates.stream()
                 .filter(candidate -> sameKp(candidate.kp(), row.profileKp()))
-                .findFirst()
-                .map(PoleMatch::found)
-                .orElseGet(() -> PoleMatch.notFound("ninguno de los " + candidates.size() + " postes '"
-                        + row.profileId() + "' de la via '" + row.track() + "' esta en el KP_POSTE "
-                        + row.profileKp().toPlainString() + ": estan en los KP " + kps));
+                .toList();
+        // En una misma via, dos con el mismo KP son una fila repetida del origen: el maestro carga la
+        // primera y deja la otra sin cargar, asi que la primera es la buena, como hasta ahora.
+        if (atItsKp.size() == 1 || (!atItsKp.isEmpty() && !acrossTracks)) {
+            return PoleMatch.found(atItsKp.getFirst());
+        }
+        if (atItsKp.isEmpty()) {
+            return PoleMatch.notFound("ninguno de los " + candidates.size() + " postes '" + row.profileId()
+                    + "' de " + where + " esta en el KP_POSTE " + row.profileKp().toPlainString()
+                    + ": estan en los KP " + kps);
+        }
+        return PoleMatch.notFound(where + " tiene " + atItsKp.size() + " postes '" + row.profileId()
+                + "' en el KP_POSTE " + row.profileKp().toPlainString() + ", en las vias "
+                + atItsKp.stream().map(candidate -> "'" + candidate.track() + "'").collect(Collectors.joining(" y "))
+                + " (un poste de enlace), y su VIA no es ninguna de ellas: no se sabe de cual cuelga");
     }
 
     /**
      * La via conectada de la fila, dentro de su paquete, como la del aislador.
      *
      * <p>En blanco no hay ninguna. Una que no esta entre las vias que esta carga ha escrito de su
-     * paquete (no existe, o su fila de TRACKS esta deshabilitada o ha fallado), o que es la VIA de la
-     * fila (la del poste, o la propia sin el), es un problema de la fila: se compara por nombre, que
-     * es lo que hay en la simulacion, donde una via que se da de alta en esta misma carga no tiene id.
+     * paquete (no existe, o su fila de TRACKS esta deshabilitada o ha fallado), o que es la suya, es
+     * un problema de la fila. La suya es {@code ownTrack}: VIA, o la del poste si VIA esta en blanco.
+     * Con el poste en otra via, la del poste no es la suya y puede ser la conectada: el que une la via
+     * del poste con la que maniobra. Se compara por nombre, que es lo que hay en la simulacion, donde
+     * una via que se da de alta en esta misma carga no tiene id.
      */
-    private ConnectedTrack connectedTrack(DisconnectorMasterRow row, Map<String, Long> tracksOfPackage) {
+    private ConnectedTrack connectedTrack(DisconnectorMasterRow row, String ownTrack,
+                                          Map<String, Long> tracksOfPackage) {
         String name = key(row.connectedTrack());
         if (name.isEmpty()) {
             return ConnectedTrack.NONE;
@@ -581,7 +647,7 @@ public class ProfileMasterImporter {
             return ConnectedTrack.problem("su VIA_CONECTADA '" + row.connectedTrack().trim()
                     + "' no esta entre las vias cargadas del paquete " + row.executionPackage());
         }
-        if (name.equals(key(row.track()))) {
+        if (name.equals(ownTrack)) {
             return ConnectedTrack.problem("su VIA_CONECTADA '" + row.connectedTrack().trim()
                     + "' es su propia via: tiene que ser la otra de las dos que pone en paralelo");
         }
@@ -703,6 +769,10 @@ public class ProfileMasterImporter {
 
     /** Un poste por su via y su identificador: lo que nombra una fila de DISCONNECTORS. */
     private record PoleKey(String executionPackage, String track, String profileId) {
+    }
+
+    /** Un poste por su identificador en todo su paquete: el de una fila cuya VIA no es la del poste. */
+    private record PackagePoleKey(String executionPackage, String profileId) {
     }
 
     /**

@@ -76,6 +76,7 @@ class TrackSchematicQueriesIT extends AbstractCriteriaSearchIT {
 
         Track via1 = via("VIA 1", paquete);
         Track via2 = via("VIA 2", paquete);
+        Track via3 = via("VIA 3", paquete);
         via1.addStation(atocha);
 
         PoleType heb = lov(new PoleType(), "HEB");
@@ -107,7 +108,8 @@ class TrackSchematicQueriesIT extends AbstractCriteriaSearchIT {
         seccionador.setOnLoad(true);
         seccionador.setDisconnectorFunction(feed);
         seccionador.setStation(atocha);
-        seccionador.setConnectedTrack(via2);   // pone VIA 1 en paralelo con VIA 2 (V27)
+        seccionador.setTrack(via3);            // cuelga del poste de VIA 1 y maniobra VIA 3
+        seccionador.setConnectedTrack(via2);   // y la pone en paralelo con VIA 2 (V27)
         p2.addDisconnector(seccionador);
         em.persist(seccionador);
 
@@ -217,6 +219,8 @@ class TrackSchematicQueriesIT extends AbstractCriteriaSearchIT {
         assertThat(segundo.getDisconnector().getStation().getName()).isEqualTo("ATOCHA");
         assertThat(Hibernate.isInitialized(segundo.getDisconnector().getDisconnectorFunction())).isTrue();
         assertThat(segundo.getDisconnector().getDisconnectorFunction().getCode()).isEqualTo("FEED");
+        assertThat(Hibernate.isInitialized(segundo.getDisconnector().getTrack())).isTrue();
+        assertThat(segundo.getDisconnector().getTrack().getName()).isEqualTo("VIA 3");
         assertThat(Hibernate.isInitialized(segundo.getDisconnector().getConnectedTrack())).isTrue();
         assertThat(segundo.getDisconnector().getConnectedTrack().getName()).isEqualTo("VIA 2");
     }

@@ -173,7 +173,8 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
      * en el de las ventanas por KP.
      *
      * <p>Trae en la misma consulta todo lo a-uno que el dibujo lee: las tres LOV que enseña y el
-     * seccionador con su estacion, su funcion y la via con la que pone la suya en paralelo (V27).
+     * seccionador con su estacion, su funcion, la via que maniobra si no es la del poste y la via con
+     * la que pone la suya en paralelo (V27).
      * {@code disconnector} es el lado INVERSO de un {@code @OneToOne} que Hibernate no puede
      * proxear: sin el {@code fetch} pagaria un select por perfil, 600 en la via mas larga. Las
      * ménsulas y los seccionamientos van en consultas aparte
@@ -188,6 +189,7 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
             left join fetch p.disconnector d
             left join fetch d.station
             left join fetch d.disconnectorFunction
+            left join fetch d.track
             left join fetch d.connectedTrack
             where p.track.id = :trackId
             order by p.orderInTrack asc, p.kp asc, p.id asc
