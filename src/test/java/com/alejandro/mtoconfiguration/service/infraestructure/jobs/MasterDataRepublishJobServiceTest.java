@@ -10,6 +10,7 @@ import com.alejandro.mtoconfiguration.enums.jobs.MasterDataRepublishTarget;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.DisconnectorRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackAccessPointRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -62,6 +63,8 @@ class MasterDataRepublishJobServiceTest {
     private DisconnectorRepository disconnectorRepository;
     @Mock
     private SectionInsulatorRepository sectionInsulatorRepository;
+    @Mock
+    private TrackAccessPointRepository trackAccessPointRepository;
 
     private AsyncJobProperties properties;
     private MasterDataRepublishJobService service;
@@ -75,6 +78,7 @@ class MasterDataRepublishJobServiceTest {
         when(profileRepository.countForRepublish(any())).thenReturn(3L);
         when(disconnectorRepository.countForRepublish(any())).thenReturn(2L);
         when(sectionInsulatorRepository.countForRepublish(any())).thenReturn(1L);
+        when(trackAccessPointRepository.countForRepublish(any())).thenReturn(4L);
 
         // El reparto de cupo vive en la base de datos, asi que aqui se simula su respuesta: por
         // defecto hay hueco. La atomicidad de esa reserva se prueba contra PostgreSQL de verdad en
@@ -85,7 +89,8 @@ class MasterDataRepublishJobServiceTest {
         service = new MasterDataRepublishJobService(store, heartbeat,
                 new AsyncJobMetrics(new SimpleMeterRegistry()), runner, currentUserService,
                 properties, new TaskExecutorAdapter(Runnable::run),
-                profileRepository, disconnectorRepository, sectionInsulatorRepository);
+                profileRepository, disconnectorRepository, sectionInsulatorRepository,
+                trackAccessPointRepository);
     }
 
     private AsyncJob job(JobStatus status) {
@@ -116,11 +121,23 @@ class MasterDataRepublishJobServiceTest {
     }
 
     @Test
-    @DisplayName("el total anunciado en el 202 es la suma de los tres recuentos con all")
+    @DisplayName("el total anunciado en el 202 es la suma de los cuatro recuentos con all")
     void totalDeAll() {
         service.submit("all", null, null);
 
-        verify(store).createClaimingSlot(any(), isNull(), isNull(), eq(6), any());
+        verify(store).createClaimingSlot(any(), isNull(), isNull(), eq(10), any());
+    }
+
+    @Test
+    @DisplayName("los puntos de acceso se republican acotados por via, con el total de su recuento")
+    void puntosDeAccesoPorVia() {
+        MasterDataRepublishJobSubmission submission = service.submit("track-access-point", 7L, null);
+
+        assertThat(submission.accepted()).isTrue();
+        verify(trackAccessPointRepository).countForRepublish(7L);
+        verify(store).createClaimingSlot(eq(JobType.MASTER_DATA_REPUBLISH), eq(7L), isNull(), eq(4), eq("ana"));
+        verify(runner).run(eq(submission.job().getId()), eq(MasterDataRepublishTarget.TRACK_ACCESS_POINT),
+                eq(7L), isNull(), any());
     }
 
     @Test
@@ -186,7 +203,8 @@ class MasterDataRepublishJobServiceTest {
     void entidadInvalida() {
         assertThatThrownBy(() -> service.submit("perfiles", null, null))
                 .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("section-insulator");
+                .hasMessageContaining("section-insulator")
+                .hasMessageContaining("track-access-point");
 
         assertThatThrownBy(() -> service.submit(null, null, null))
                 .isInstanceOf(ValidationException.class);
@@ -195,12 +213,18 @@ class MasterDataRepublishJobServiceTest {
     }
 
     @Test
-    @DisplayName("el filtro por via solo vale para perfiles y el de estacion no vale para perfiles")
+    @DisplayName("el filtro por via solo vale para perfiles y accesos, y el de estacion no vale para ellos")
     void filtrosCruzados() {
         assertThatThrownBy(() -> service.submit("disconnector", 7L, null))
                 .isInstanceOf(ValidationException.class);
 
+        assertThatThrownBy(() -> service.submit("section-insulator", 7L, null))
+                .isInstanceOf(ValidationException.class);
+
         assertThatThrownBy(() -> service.submit("profile", null, 4L))
+                .isInstanceOf(ValidationException.class);
+
+        assertThatThrownBy(() -> service.submit("track-access-point", null, 4L))
                 .isInstanceOf(ValidationException.class);
 
         verify(store, never()).createClaimingSlot(any(), any(), any(), any(), any());

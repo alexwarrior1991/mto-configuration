@@ -31,6 +31,7 @@ final class MapperGraph {
     final TrackMapperImpl track = new TrackMapperImpl();
     final StationMapperImpl station = new StationMapperImpl();
     final ExecutionPackageMapperImpl executionPackage = new ExecutionPackageMapperImpl();
+    final TrackAccessPointMapperImpl trackAccessPoint = new TrackAccessPointMapperImpl();
 
     MapperGraph(MasterDataService masterDataService, ReferenceMapper referenceMapper) {
         this.masterDataService = masterDataService;
@@ -45,6 +46,7 @@ final class MapperGraph {
         base(track);
         base(station);
         base(executionPackage);
+        base(trackAccessPoint);
 
         child(cantilever, "steadyArmMapper", steadyArm);
 

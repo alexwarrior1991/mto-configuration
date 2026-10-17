@@ -24,7 +24,7 @@ import static com.alejandro.mtoconfiguration.validator.AlertAssert.paths;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Las ocho entidades exponen endpoints de alta y modificación en lote, síncronos y asíncronos.
+ * Las nueve entidades exponen endpoints de alta y modificación en lote, síncronos y asíncronos.
  *
  * <p>Antes solo {@code ProfileValidator} implementaba la validación de lote; el resto heredaba un
  * método por defecto que devolvía la lista vacía, de modo que sus endpoints aceptaban cualquier cosa
@@ -69,7 +69,9 @@ class BulkValidationTest {
                 Arguments.of("executionPackage", executionPackage(), (Supplier<ExecutionPackageDTO>) ValidDtos::rootExecutionPackage, "name"),
                 Arguments.of("disconnector", new DisconnectorValidator(), (Supplier<DisconnectorDTO>) ValidDtos::rootDisconnector, "name"),
                 Arguments.of("sectionInsulator", new SectionInsulatorValidator(new SectionInsulatorSwitchValidator()), (Supplier<SectionInsulatorDTO>) ValidDtos::rootSectionInsulator, "name"),
-                Arguments.of("profile", profile(), (Supplier<ProfileDTO>) ValidDtos::rootProfile, "profileId"));
+                Arguments.of("profile", profile(), (Supplier<ProfileDTO>) ValidDtos::rootProfile, "profileId"),
+                Arguments.of("trackAccessPoint", new TrackAccessPointValidator(),
+                        (Supplier<TrackAccessPointDTO>) ValidDtos::rootTrackAccessPoint, "name"));
     }
 
     @SuppressWarnings("unchecked")
@@ -206,6 +208,7 @@ class BulkValidationTest {
             case DisconnectorDTO d -> d.setName(null);
             case SectionInsulatorDTO s -> s.setName(null);
             case ProfileDTO p -> p.setProfileId(null);
+            case TrackAccessPointDTO a -> a.setName(null);
             default -> throw new IllegalArgumentException("DTO no contemplado: " + dto.getClass());
         }
     }

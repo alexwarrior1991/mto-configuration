@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.enums.jobs.MasterDataRepublishTarget;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.DisconnectorRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackAccessPointRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -48,6 +49,7 @@ class MasterDataRepublishJobRunner {
     private final ProfileRepository profileRepository;
     private final DisconnectorRepository disconnectorRepository;
     private final SectionInsulatorRepository sectionInsulatorRepository;
+    private final TrackAccessPointRepository trackAccessPointRepository;
     private final MasterDataRepublishBatchPublisher batchPublisher;
     private final AsyncJobProperties properties;
 
@@ -75,7 +77,7 @@ class MasterDataRepublishJobRunner {
                           ProfileJobProgress progress) {
 
         Long filter = switch (target) {
-            case PROFILE -> trackId;
+            case PROFILE, TRACK_ACCESS_POINT -> trackId;
             case DISCONNECTOR, SECTION_INSULATOR -> stationId;
             case ALL -> throw new IllegalStateException("ALL no se recorre: se expande antes");
         };
@@ -144,7 +146,9 @@ class MasterDataRepublishJobRunner {
             case DISCONNECTOR -> (lastId, page) -> disconnectorRepository.findIdsForRepublish(filter, lastId, page);
             case SECTION_INSULATOR ->
                     (lastId, page) -> sectionInsulatorRepository.findIdsForRepublish(filter, lastId, page);
-            // Inalcanzable: run() expande ALL en los tres tipos concretos. Se lanza en vez de
+            case TRACK_ACCESS_POINT ->
+                    (lastId, page) -> trackAccessPointRepository.findIdsForRepublish(filter, lastId, page);
+            // Inalcanzable: run() expande ALL en los cuatro tipos concretos. Se lanza en vez de
             // devolver una pagina vacia porque un republicado que no republica nada y termina
             // COMPLETED es el peor resultado posible: nadie se entera.
             case ALL -> throw new IllegalStateException("ALL no se recorre: se expande antes");
@@ -156,6 +160,7 @@ class MasterDataRepublishJobRunner {
             case PROFILE -> profileRepository::findByIdForMessaging;
             case DISCONNECTOR -> disconnectorRepository::findByIdForMessaging;
             case SECTION_INSULATOR -> sectionInsulatorRepository::findByIdForMessaging;
+            case TRACK_ACCESS_POINT -> trackAccessPointRepository::findByIdForMessaging;
             case ALL -> throw new IllegalStateException("ALL no se recorre: se expande antes");
         };
     }

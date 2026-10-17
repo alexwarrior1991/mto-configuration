@@ -1,10 +1,18 @@
 package com.alejandro.mtoconfiguration.core.messaging;
 
+import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
+import com.alejandro.mtoconfiguration.entity.infrastructure.TrackAccessPoint;
 import com.alejandro.mtoconfiguration.entity.jobs.AsyncJob;
+import com.alejandro.mtoconfiguration.enums.infrastructure.TrackAccessPointKind;
+import com.alejandro.mtoconfiguration.enums.infrastructure.TrackAccessPointSide;
 import com.alejandro.mtoconfiguration.enums.jobs.JobStatus;
 import com.alejandro.mtoconfiguration.enums.jobs.JobType;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataChangedEvent;
+import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataEventTypeBuilder;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataOperation;
+import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.TrackAccessPointMasterDataPayloadMapper;
 import com.alejandro.mtoconfiguration.service.infraestructure.jobs.JobFinishedEventPublisher;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,6 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -66,6 +75,62 @@ class MessagingContractExamplesTest {
                         "steady-arm-321", "MASTER_DATA_STEADY_ARM_UPDATED", data);
 
         assertSameAsExample(message, example);
+    }
+
+    /**
+     * El punto de acceso a la via (V28), que materializa {@code mto-resources}. Los {@code values}
+     * salen del mapper de payload real, no escritos a mano: el ejemplo fija las claves y su forma tal
+     * como las produce el codigo, con la via y el id de su paquete, y la estacion.
+     */
+    @Test
+    @DisplayName("un punto de acceso a la via sale como el ejemplo, con los values de su mapper real")
+    void elPuntoDeAccesoSaleComoElEjemplo() throws IOException {
+        JsonNode example = example("master-data-track-access-point-updated.json");
+
+        ExecutionPackage executionPackage = new ExecutionPackage();
+        executionPackage.setId(14L);
+
+        Track track = new Track();
+        track.setId(3L);
+        track.setName("TRACK 1");
+        track.setExecutionPackage(executionPackage);
+
+        Station station = new Station();
+        station.setId(12L);
+        station.setName("ASHKELON");
+
+        TrackAccessPoint accessPoint = new TrackAccessPoint();
+        accessPoint.setId(77L);
+        accessPoint.setName("Acceso km 110+176");
+        accessPoint.setEnabled(true);
+        accessPoint.setKp(new BigDecimal("110176.000"));
+        accessPoint.setKind(TrackAccessPointKind.PREPARED_ACCESS);
+        accessPoint.setSide(TrackAccessPointSide.LEFT);
+        accessPoint.setRoadRailAccess(true);
+        accessPoint.setMaxAxleLoadT(new BigDecimal("12.500"));
+        accessPoint.setMaxGrossWeightT(new BigDecimal("40.000"));
+        accessPoint.setLatitude(new BigDecimal("31.669342"));
+        accessPoint.setLongitude(new BigDecimal("34.574119"));
+        accessPoint.setStation(station);
+        accessPoint.setTrack(track);
+
+        MasterDataChangedEvent data = new MasterDataChangedEvent("track-access-point", "77",
+                MasterDataOperation.UPDATED, new TrackAccessPointMasterDataPayloadMapper().toPayload(accessPoint));
+
+        AsynchronousMessage<MasterDataChangedEvent> message = factory(
+                MessageActor.of("6f1b1c8e-0000-4000-8000-000000000001", "config.editor"),
+                "5d2e7f10-2222-4333-8444-555555555555")
+                .create(UUID.fromString("7a1c2b3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"),
+                        "track-access-point-77",
+                        MasterDataEventTypeBuilder.build("track-access-point", MasterDataOperation.UPDATED), data);
+
+        assertSameAsExample(message, example);
+        assertThat(example.at("/data/values").propertyNames())
+                .as("las claves de values que fija el contrato con mto-resources, en su orden")
+                .containsExactly("id", "name", "enabled", "kp", "kind", "side", "roadRailAccess",
+                        "maxAxleLoadT", "maxGrossWeightT", "latitude", "longitude", "station", "track");
+        assertThat(example.at("/data/values/track").propertyNames())
+                .containsExactly("id", "name", "executionPackageId");
     }
 
     @Test

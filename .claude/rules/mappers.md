@@ -19,7 +19,7 @@ paths:
   métodos. Un mapper cuyo `toDTO` pone ids de padre (`@Mapping(target = "trackId", source =
   "track.id")`) la sobrescribe con `@Override @InheritConfiguration(name = "toDTO")`; si no, el
   detalle (`GET /{recurso}/{id}`) y las respuestas de alta y modificación, que terminan en
-  `updateDTOFromEntity`, devuelven esos ids a `null`. Lo hacen los nueve mappers de infraestructura con
+  `updateDTOFromEntity`, devuelven esos ids a `null`. Lo hacen los diez mappers de infraestructura con
   padre, y lo fijan los casos de detalle de sus `*MapperTest`, que llaman a `updateDTOFromEntity`.
 - Las referencias a catálogo se ignoran en el `@Mapping` y se resuelven en los `@AfterMapping`:
   `mapDtoToEntity` las busca por código en `MasterDataService`, y `mapEntityToDto` las rellena por id

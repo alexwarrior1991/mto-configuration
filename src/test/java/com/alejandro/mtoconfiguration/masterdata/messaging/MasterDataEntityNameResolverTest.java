@@ -2,6 +2,7 @@ package com.alejandro.mtoconfiguration.masterdata.messaging;
 
 import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
+import com.alejandro.mtoconfiguration.entity.infrastructure.TrackAccessPoint;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,6 +28,16 @@ class MasterDataEntityNameResolverTest {
         // el nombre de clase normalizado, asi que lo relevante aqui es que SI se lee la
         // anotacion en vez de derivar el nombre por reflexion.
         assertThat(resolver.resolve(new Cantilever())).isEqualTo("cantilever");
+    }
+
+    /**
+     * {@code track-access-point} es el nombre del contrato con {@code mto-resources} (V28): viaja en
+     * la clave de enrutado ({@code mto.master-data.track-access-point.*}), que es a lo que se liga su
+     * cola.
+     */
+    @Test
+    void elPuntoDeAccesoSePublicaComoTrackAccessPoint() {
+        assertThat(resolver.resolve(new TrackAccessPoint())).isEqualTo("track-access-point");
     }
 
     @Test

@@ -117,4 +117,25 @@ public final class InfrastructureConstraints {
      */
     public static final int TURNOUT_DENOMINATOR_MIN = 1;
     public static final int TURNOUT_DENOMINATOR_MAX = 100;
+
+    // --- TrackAccessPoint ---
+    /**
+     * Carga por eje y peso bruto máximos de un punto de acceso, en toneladas: {@code numeric(8, 3)},
+     * hasta 99.999,999 t con precisión de kilo. Holgado a propósito, como las medidas del perfil: se
+     * prefiere margen a tener que migrar la columna.
+     */
+    public static final int TONNES_INTEGER_DIGITS = 5;
+    public static final int TONNES_FRACTION_DIGITS = 3;
+
+    /**
+     * Latitud y longitud en grados decimales (WGS 84): {@code numeric(9, 6)}. Seis decimales son unos
+     * once centímetros, de sobra para encontrar un acceso; un valor con más se rechaza en lugar de
+     * redondearlo a escondidas.
+     */
+    public static final int COORDINATE_INTEGER_DIGITS = 3;
+    public static final int COORDINATE_FRACTION_DIGITS = 6;
+    public static final String LATITUDE_MIN = "-90";
+    public static final String LATITUDE_MAX = "90";
+    public static final String LONGITUDE_MIN = "-180";
+    public static final String LONGITUDE_MAX = "180";
 }

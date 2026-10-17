@@ -25,10 +25,10 @@ Ruta base: `/api/v1/configuration` — en los ejemplos aparece como `$BASE`.
 | `GET $BASE/tracks/{id}/schematic` | `200` | el esquema de la vía, cacheado (§6) |
 
 Recursos de infraestructura: `cantilevers`, `disconnectors`, `execution-packages`, `profiles`,
-`section-insulators`, `stations`, `steady-arms`, `tracks`. Aparte, `business-entities` (las
-empresas a las que apunta el `companyId` de un paquete) es de **solo lectura**:
-`GET $BASE/business-entities` y `GET $BASE/business-entities/{id}`. Se cargan con el maestro de
-perfiles, no por la API.
+`section-insulators`, `stations`, `steady-arms`, `track-access-points` (§4 quinquies), `tracks`.
+Aparte, `business-entities` (las empresas a las que apunta el `companyId` de un paquete) es de
+**solo lectura**: `GET $BASE/business-entities` y `GET $BASE/business-entities/{id}`. Se cargan con
+el maestro de perfiles, no por la API.
 
 **Las filas de una lista no llevan hijos.** En `/paged`, `/search` y `/filter` de
 `execution-packages`, `stations` y `tracks`, las colecciones (`tracks`, `stations`, `profiles`,
@@ -462,6 +462,60 @@ Reglas propias de la colección:
 Por lo demás `switches` se comporta como el resto de colecciones de hijos (§4): **la aguja que no
 mandas se borra**, y `[]` las deja al aislador sin ninguna.
 
+## 4 quinquies. El punto de acceso a la vía
+
+Un punto de acceso a la vía (`V28`) es por donde un vehículo bivial sale de la carretera y se
+encarrila. Es un maestro suelto, con las rutas de todos (`$BASE/track-access-points`: §1, más
+`POST /filter`, `POST /search` y `GET /paged`) y además los de una vía,
+`GET $BASE/track-access-points/track/{trackId}`, por KP. Ni la vía ni la estación lo llevan en una
+colección, así que no viaja anidado en ningún otro recurso. Cada escritura publica su evento
+`track-access-point`, que materializa `mto-resources` (`README_MESSAGING.md` §2.4).
+
+```jsonc
+{
+  "name": "Acceso km 110+176",
+  "trackId": 3,                        // obligatoria
+  "stationId": 12,                     // opcional: muchos están en plena vía
+  "kp": 110176.000,                    // en METROS, como el del aislador; opcional
+  "kind": "PREPARED_ACCESS",           // PREPARED_ACCESS | LEVEL_CROSSING | DEPOT
+  "side": "LEFT",                      // LEFT | RIGHT | BOTH
+  "roadRailAccess": true,              // si sirve para encarrilar biviales
+  "maxAxleLoadT": 12.5,                // toneladas; opcional
+  "maxGrossWeightT": 40,               // toneladas; opcional
+  "latitude": 31.669342,               // grados decimales WGS 84; opcionales, las dos o ninguna
+  "longitude": 34.574119,
+  "enabled": true
+}
+```
+
+| Campo | Obligatorio | Reglas |
+|---|---|---|
+| `name` | sí | Hasta 200 caracteres, **único dentro de su vía** sin distinguir mayúsculas (un repetido es 409 `BUS-002`; uno borrado no cuenta) |
+| `trackId` | sí | La vía a la que da acceso |
+| `stationId` | no | |
+| `kp` | no | `numeric(12,3)`: hasta 9 enteros y 3 decimales, ≥ 0 |
+| `kind` | sí | `PREPARED_ACCESS` (acceso preparado), `LEVEL_CROSSING` (paso a nivel) o `DEPOT` (base o cochera) |
+| `side` | sí | `LEFT`, `RIGHT` o `BOTH`, en el sentido creciente del KP |
+| `roadRailAccess` | sí | `true` si no viaja |
+| `maxAxleLoadT`, `maxGrossWeightT` | no | `numeric(8,3)`: hasta 5 enteros y 3 decimales, ≥ 0 |
+| `latitude` | no | `numeric(9,6)`, de -90 a 90, con 6 decimales como mucho |
+| `longitude` | no | `numeric(9,6)`, de -180 a 180, con 6 decimales como mucho. Con la latitud: si llega una sin la otra, 400 sobre la que falta |
+| `enabled` | sí | `true` si no viaja |
+
+Los decimales viajan **como número**, como el KP del aislador, y no como texto como el del perfil o el
+del seccionador: este recurso no pasa por la caché, que es lo único que obligaba al texto. Un valor
+con más decimales de los de su columna es un 400 sobre su campo, no se redondea. Un `kind` o un `side`
+que no existe es un 400.
+
+Como el resto de la fila, un `PUT` que no lleva un campo opcional lo deja vacío (§3), y uno sin
+`roadRailAccess` o sin `enabled` los deja a `true`. El borrado es lógico, y desactivar sin borrar es
+un `PUT` con `"enabled": false`.
+
+El filtro (`POST /filter`) admite `name`, `trackId`, `trackName`, `stationName`, `kind`, `side`,
+`roadRailAccess`, `enabled` y `searchText` (el nombre, la vía o la estación). La lista blanca de
+`sortBy` en `/search` es `name`, `enabled`, `kp`, `kind`, `side`, `roadRailAccess`, `createDate`,
+`versionDate`, `track.name` y `station.name`.
+
 ## 5. Listas de valores
 
 Las LOV van por código, no por id. Al referenciarlas desde otra entidad basta el `code`:
@@ -603,7 +657,7 @@ curl -X POST "$BASE/profiles/filter?page=0&size=20" \
 identificador, nombre de vía y nombre de estación).
 
 Una referencia opcional vacía **no saca la fila de la lista**: `searchText` encuentra el aislador
-sin vía o el seccionador sin estación si casa por otra columna, y ordenar por una columna de la
+sin vía, el seccionador sin estación o el punto de acceso sin estación si casa por otra columna, y ordenar por una columna de la
 tabla asociada (`track.name`, `station.name`, `poleType.code`) deja esas filas al final en orden
 ascendente y al principio en descendente. Filtrar por un campo de esa referencia (`trackName`,
 `stationName`, `poleTypeCode`) sí las deja fuera, porque no tienen con qué casar.
@@ -630,8 +684,9 @@ estaciones, y no hay forma de ordenar una fila por un valor del que tiene tres. 
 `stationName` sí sigue funcionando —devuelve las vías que pasan por esa estación—, y como el
 filtro salta a una colección, ahí una vía puede aparecer una vez por estación suya.
 
-Los filtros booleanos de `/filter` (`enabled` en `execution-packages`, `tracks` y
-`section-insulators`; `onLoad` en `disconnectors`) filtran **solo si vienen**: `true` o `false`
+Los filtros booleanos de `/filter` (`enabled` en `execution-packages`, `tracks`,
+`section-insulators` y `track-access-points`; `onLoad` en `disconnectors`; `roadRailAccess` en
+`track-access-points`) filtran **solo si vienen**: `true` o `false`
 devuelven ese estado y ausente no filtra (activos e inactivos a la vez). Antes eran primitivos, así
 que un cuerpo sin el campo valía `false` y `POST /tracks/filter` con `{}` devolvía solo las vías
 desactivadas.
@@ -696,8 +751,8 @@ Una vía sin perfiles devuelve las listas vacías; una vía inexistente, `404 NO
 
 Está **cacheado** en Redis (`normal:item`, clave `TrackSchematicService:getSchematic:{id}`, 6 h):
 la segunda petición de la misma vía no toca la base de datos. Cualquier escritura de
-infraestructura (paquete, estación, vía, perfil, ménsula, brazo, seccionador o aislador, también
-por los importadores) y cualquier cambio de catálogo vacían el esquema de **todas** las vías al
+infraestructura (paquete, estación, vía, perfil, ménsula, brazo, seccionador, aislador o punto de
+acceso, también por los importadores) y cualquier cambio de catálogo vacían el esquema de **todas** las vías al
 confirmar la transacción, porque el evento de invalidación solo dice qué servicio escribió, no
 qué vía. Es la única lectura de infraestructura que se cachea con sus hijos (`README.md`, Redis).
 
@@ -750,8 +805,8 @@ curl -X POST "$BASE/master-data/republish?entity=profile&trackId=2"
 curl "$BASE/master-data/republish/{jobId}"   # 200: estado y contadores
 ```
 
-`entity` es `profile`, `disconnector`, `section-insulator` o `all`; `trackId` acota solo perfiles,
-`stationId` solo seccionadores y aisladores (un seccionador sin estación sale sin filtro, nunca con
+`entity` es `profile`, `disconnector`, `section-insulator`, `track-access-point` o `all`; `trackId`
+acota solo perfiles y puntos de acceso, `stationId` solo seccionadores y aisladores (un seccionador sin estación sale sin filtro, nunca con
 uno), y `all` no admite filtros. No produce fichero, así que aquí no hay `/file`. Repetirlo es inocuo: el consumidor lo absorbe por su upsert idempotente.
 
 Códigos de la descarga, que distinguen casos que un 404 mezclaría:

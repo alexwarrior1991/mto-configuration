@@ -699,7 +699,11 @@ src/main/resources/db/migration
 ├── V21__assembly_configuration.sql            Catalogo assembly_configuration (+ _aud) y assembly_configuration_id en profile
 ├── V22__async_job_type_master_data_republish.sql  CHECK de async_job.job_type con MASTER_DATA_REPUBLISH
 ├── V23__section_insulator_switches.sql        section_insulator_switch (+ _aud) y el KP, el tipo de instalacion y las dos vias del aislador
-└── V24__disconnector_profile_unique_except_deleted.sql  Un perfil, un seccionador vivo: el unique de profile_id pasa a indice parcial
+├── V24__disconnector_profile_unique_except_deleted.sql  Un perfil, un seccionador vivo: el unique de profile_id pasa a indice parcial
+├── V25__disconnector_normal_state_and_drive.sql  Estado normal y accionamiento del seccionador; el poste pasa a opcional
+├── V26__disconnector_kp_and_track.sql         KP y via propios de un seccionador sin poste
+├── V27__disconnector_connected_track.sql      La via que un seccionador pone en paralelo con la suya
+└── V28__create_track_access_point.sql         track_access_point (+ _aud): el punto de acceso a la via, con su clave natural por via
 ```
 
 `V1` va **sin prefijo de schema** a proposito: el nombre real es configurable
