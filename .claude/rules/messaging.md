@@ -1,20 +1,21 @@
 # Mensajería: eventos de datos maestros y eventos propios
 
 - El contrato de los eventos de `mto.master-data.exchange` es de este repositorio, y lo consumen
-  `mto-stock`, `mto-maintenance` y `mto-notification`. Solo se **añaden** claves: renombrar o quitar
-  una clave, un nombre de entidad o una clave de enrutado rompe a los consumidores. Cada cambio se
-  documenta en README_MESSAGING.md (§2.4, con su aviso al principio del fichero) y se avisa a los
-  tres.
+  `mto-stock`, `mto-maintenance`, `mto-notification` y, desde `V28` (los puntos de acceso a la vía),
+  `mto-resources`. Solo se **añaden** claves: renombrar o quitar una clave, un nombre de entidad o una
+  clave de enrutado rompe a los consumidores. Cada cambio se documenta en README_MESSAGING.md (§2.4,
+  con su aviso al principio del fichero) y se avisa a los cuatro.
 - El sobre (`AsynchronousMessage`) lleva, además de las siete claves originales, `actor`
   (`{id, username, kind}`, con `kind` `PERSON`/`SERVICE`/`SYSTEM`) y `correlationId`. Los pone
   `AsynchronousMessageFactory` leyendo `MessageContextResolver` (el `SecurityContext` y el MDC) en
   el momento de crear el mensaje, que es el único en el que existe ese contexto; `messageHash` sigue
   siendo la huella de las siete claves originales. Un evento nunca lleva secretos en `values`. Lo
   fijan `AsynchronousMessageFactoryTest` y `MessageContextResolverTest`.
-- Publican las ocho entidades anotadas con `@PublishMasterDataEvent(name = "…")`:
-  `execution-package`, `station`, `track`, `profile`, `cantilever`, `steady-arm`, `disconnector` y
-  `section-insulator`. El nombre del evento sale de esa anotación, así que cambiarla es cambiar el
-  contrato. `SectionInsulatorSwitch` no publica: viaja dentro de su aislador.
+- Publican las nueve entidades anotadas con `@PublishMasterDataEvent(name = "…")`:
+  `execution-package`, `station`, `track`, `profile`, `cantilever`, `steady-arm`, `disconnector`,
+  `section-insulator` y `track-access-point` (V28, que consume `mto-resources`). El nombre del evento
+  sale de esa anotación, así que cambiarla es cambiar el contrato. `SectionInsulatorSwitch` no
+  publica: viaja dentro de su aislador.
 - Lo que este servicio cuenta de sí mismo sale por su propio exchange, `mto.configuration.exchange`
   (`ConfigurationRabbitMqNames`), con `data` en la forma `DomainEvent`
   (`{entityName, entityId, eventName, values}`), nunca por el de datos maestros: quien escucha

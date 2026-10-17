@@ -5,6 +5,8 @@ import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
 import com.alejandro.mtoconfiguration.entity.infrastructure.*;
 import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
+import com.alejandro.mtoconfiguration.enums.infrastructure.TrackAccessPointKind;
+import com.alejandro.mtoconfiguration.enums.infrastructure.TrackAccessPointSide;
 import com.alejandro.mtoconfiguration.entity.lov.*;
 import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
 import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.*;
@@ -73,6 +75,7 @@ import static org.assertj.core.api.SoftAssertions.assertSoftly;
         SectionInsulatorMasterDataPayloadMapper.class,
         StationMasterDataPayloadMapper.class,
         SteadyArmMasterDataPayloadMapper.class,
+        TrackAccessPointMasterDataPayloadMapper.class,
         TrackMasterDataPayloadMapper.class
 })
 class MasterDataPayloadContractIT {
@@ -97,6 +100,8 @@ class MasterDataPayloadContractIT {
     private StationRepository stationRepository;
     @Autowired
     private SteadyArmRepository steadyArmRepository;
+    @Autowired
+    private TrackAccessPointRepository trackAccessPointRepository;
     @Autowired
     private TrackRepository trackRepository;
 
@@ -228,6 +233,35 @@ class MasterDataPayloadContractIT {
         assertThat(payload.get("cantileverId")).isEqualTo(ids.cantilever());
     }
 
+    /**
+     * La via del acceso lleva el id de su paquete, que se lee del proxy sin inicializarlo: por eso el
+     * paquete no esta en el grafo y el mapeo desatachado no revienta.
+     */
+    @Test
+    @DisplayName("TrackAccessPoint: el grafo basta para construir el payload desatachado")
+    void trackAccessPoint() {
+        Map<String, Object> payload = payloadOfDetached(trackAccessPointRepository, ids.trackAccessPoint());
+
+        assertThat(payload).containsEntry("name", "Acceso 1").containsEntry("kind", "PREPARED_ACCESS")
+                .containsEntry("side", "LEFT").containsEntry("roadRailAccess", true);
+        assertThat((BigDecimal) payload.get("kp")).isEqualByComparingTo("110176.000");
+        assertThat((BigDecimal) payload.get("maxGrossWeightT")).isEqualByComparingTo("40");
+        assertThat((BigDecimal) payload.get("latitude")).isEqualByComparingTo("31.669342");
+        assertThat(asMap(payload, "station")).containsEntry("name", "Estacion principal");
+        assertThat(asMap(payload, "track")).containsEntry("name", "Via 1")
+                .containsEntry("executionPackageId", ids.executionPackage());
+    }
+
+    @Test
+    @DisplayName("TrackAccessPoint sin estacion: station a null, y la via con su paquete")
+    void trackAccessPointWithoutAStation() {
+        Map<String, Object> payload = payloadOfDetached(trackAccessPointRepository, ids.stationLessTrackAccessPoint());
+
+        assertThat(payload).containsEntry("station", null).containsEntry("kp", null)
+                .containsEntry("latitude", null).containsEntry("longitude", null);
+        assertThat(asMap(payload, "track")).containsEntry("executionPackageId", ids.executionPackage());
+    }
+
     @Test
     @DisplayName("Track: el grafo basta para construir el payload desatachado")
     void track() {
@@ -285,6 +319,8 @@ class MasterDataPayloadContractIT {
                     .as("steadyArm").isEqualTo(1);
             softly.assertThat(countStatements(() -> trackRepository.findByIdForMessaging(ids.track())))
                     .as("track: sin profiles.disconnector serian 1 + un select POR PERFIL").isEqualTo(1);
+            softly.assertThat(countStatements(() -> trackAccessPointRepository.findByIdForMessaging(ids.trackAccessPoint())))
+                    .as("trackAccessPoint").isEqualTo(1);
         });
     }
 
@@ -329,11 +365,12 @@ class MasterDataPayloadContractIT {
 
     private record Ids(Long cantilever, Long disconnector, Long poleLessDisconnector,
                        Long stationLessDisconnector, Long executionPackage, Long profile, Long sectionInsulator,
-                       Long station, Long steadyArm, Long track) {
+                       Long station, Long steadyArm, Long track, Long trackAccessPoint,
+                       Long stationLessTrackAccessPoint) {
     }
 
     /**
-     * Un unico arbol conectado que cubre a la vez a los ocho mappers. Las colecciones
+     * Un unico arbol conectado que cubre a la vez a los nueve mappers. Las colecciones
      * llevan dos elementos a proposito: con uno solo, un producto cartesiano pasaria
      * desapercibido.
      */
@@ -387,6 +424,18 @@ class MasterDataPayloadContractIT {
             stationLess.setKp(new BigDecimal("98500.000"));
             stationLess.setTrack(track);
             em.persist(stationLess);
+
+            // Los accesos no cuelgan de nada que los persista en cascada: la via y la estacion no los
+            // llevan en una coleccion.
+            TrackAccessPoint accessPoint = trackAccessPoint("Acceso 1", track, station);
+            accessPoint.setKp(new BigDecimal("110176.000"));
+            accessPoint.setMaxAxleLoadT(new BigDecimal("12.500"));
+            accessPoint.setMaxGrossWeightT(new BigDecimal("40.000"));
+            accessPoint.setLatitude(new BigDecimal("31.669342"));
+            accessPoint.setLongitude(new BigDecimal("34.574119"));
+            em.persist(accessPoint);
+            TrackAccessPoint stationLessAccessPoint = trackAccessPoint("Acceso 2", track, null);
+            em.persist(stationLessAccessPoint);
             em.flush();
 
             return new Ids(
@@ -399,7 +448,9 @@ class MasterDataPayloadContractIT {
                     sectionInsulator.getId(),
                     station.getId(),
                     cantilever.getSteadyArm().getId(),
-                    track.getId()
+                    track.getId(),
+                    accessPoint.getId(),
+                    stationLessAccessPoint.getId()
             );
         }
 
@@ -499,6 +550,18 @@ class MasterDataPayloadContractIT {
             sectionInsulatorSwitch.setTrack(track);
             sectionInsulatorSwitch.setEnabled(Boolean.TRUE);
             return sectionInsulatorSwitch;
+        }
+
+        private TrackAccessPoint trackAccessPoint(String name, Track track, Station station) {
+            TrackAccessPoint accessPoint = new TrackAccessPoint();
+            accessPoint.setName(name);
+            accessPoint.setTrack(track);
+            accessPoint.setStation(station);
+            accessPoint.setKind(TrackAccessPointKind.PREPARED_ACCESS);
+            accessPoint.setSide(TrackAccessPointSide.LEFT);
+            accessPoint.setRoadRailAccess(Boolean.TRUE);
+            accessPoint.setEnabled(Boolean.TRUE);
+            return accessPoint;
         }
 
         private <L extends Lov> L lov(L lov, String code) {

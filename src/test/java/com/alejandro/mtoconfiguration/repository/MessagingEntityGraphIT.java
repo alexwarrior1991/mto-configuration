@@ -69,7 +69,7 @@ class MessagingEntityGraphIT {
         return Stream.of(
                         "cantileverRepository", "disconnectorRepository", "executionPackageRepository",
                         "profileRepository", "sectionInsulatorRepository", "stationRepository",
-                        "steadyArmRepository", "trackRepository")
+                        "steadyArmRepository", "trackAccessPointRepository", "trackRepository")
                 .map(nombre -> DynamicTest.dynamicTest(nombre, () ->
                         assertThat(encontrados).contains(nombre)));
     }

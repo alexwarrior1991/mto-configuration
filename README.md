@@ -6,7 +6,7 @@ Aplicación backend desarrollada con Spring Boot para gestionar configuración y
 
 Actualmente la aplicación contiene una base funcional para exponer y gestionar entidades de configuración del dominio `MTO`:
 
-- Gestión de entidades de infraestructura, como perfiles, vías, estaciones, ménsulas, brazos de atirantado, seccionadores, aisladores de sección y paquetes de ejecución.
+- Gestión de entidades de infraestructura, como perfiles, vías, estaciones, ménsulas, brazos de atirantado, seccionadores, aisladores de sección, puntos de acceso a la vía y paquetes de ejecución.
 - Gestión de tablas maestras o valores catalogados (`LOV`), como tipos de cimentación, anclajes, soportes, pórticos, estados de perfil y otros catálogos de apoyo.
 - Capas genéricas para operaciones `CRUD`, lectura, guardado, borrado, cancelación, búsqueda y lectura masiva.
 - DTOs separados de las entidades JPA para transportar información hacia/desde la API.
@@ -216,8 +216,9 @@ RabbitMQ está habilitado mediante `app.rabbitmq.enabled=true`. La configuració
   `mto.master-data.<entidad>.<created|updated|deleted>`.
 - Exchange `mto.configuration.exchange` de tipo `topic`: lo que el servicio cuenta de sí mismo, hoy
   `mto.configuration.job.finished`.
-- Ninguna cola: pertenecen a los consumidores (`mto-stock`, `mto-maintenance`, `mto-notification`),
-  que las declaran con sus bindings y su dead letter. Ver `README_MESSAGING.md` §9.1.
+- Ninguna cola: pertenecen a los consumidores (`mto-stock`, `mto-maintenance`, `mto-notification` y
+  `mto-resources`, que solo escucha `mto.master-data.track-access-point.*`), que las declaran con sus
+  bindings y su dead letter. Ver `README_MESSAGING.md` §9.1.
 - Cada mensaje lleva `actor` (quién) y `correlationId` (la petición, o el trabajo en segundo plano
   que lo escribió). Un ejemplo por evento en `docs/messaging/examples/`.
 

@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.service.infraestructure.jobs;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
+import com.alejandro.mtoconfiguration.entity.infrastructure.TrackAccessPoint;
 import com.alejandro.mtoconfiguration.enums.jobs.MasterDataRepublishTarget;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataEventPublisher;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataOperation;
@@ -10,6 +11,7 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.jobs.JobI
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.DisconnectorRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackAccessPointRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -62,6 +64,8 @@ class MasterDataRepublishJobRunnerTest {
     @Mock
     private SectionInsulatorRepository sectionInsulatorRepository;
     @Mock
+    private TrackAccessPointRepository trackAccessPointRepository;
+    @Mock
     private MasterDataEventPublisher publisher;
 
     private AsyncJobProperties properties;
@@ -73,7 +77,8 @@ class MasterDataRepublishJobRunnerTest {
         properties.getRepublish().setBatchSize(2);
 
         runner = new MasterDataRepublishJobRunner(profileRepository, disconnectorRepository,
-                sectionInsulatorRepository, new MasterDataRepublishBatchPublisher(publisher), properties);
+                sectionInsulatorRepository, trackAccessPointRepository,
+                new MasterDataRepublishBatchPublisher(publisher), properties);
     }
 
     private ProfileJobProgress newProgress(Integer total) {
@@ -96,6 +101,12 @@ class MasterDataRepublishJobRunnerTest {
         SectionInsulator insulator = new SectionInsulator();
         insulator.setId(id);
         return insulator;
+    }
+
+    private TrackAccessPoint accessPoint(Long id) {
+        TrackAccessPoint accessPoint = new TrackAccessPoint();
+        accessPoint.setId(id);
+        return accessPoint;
     }
 
     /** Devuelve las paginas en orden y una vacia al final, como haria el keyset real. */
@@ -186,8 +197,25 @@ class MasterDataRepublishJobRunnerTest {
     }
 
     @Test
-    @DisplayName("all recorre los tres tipos, cada uno con su repositorio")
-    void allRecorreLosTresTipos() {
+    @DisplayName("el filtro por via acota tambien los puntos de acceso, releidos con su grafo de mensajeria")
+    void puntosDeAccesoPorVia() {
+        when(trackAccessPointRepository.findIdsForRepublish(eq(7L), any(), any(Pageable.class)))
+                .thenReturn(List.of(30L), List.of());
+        when(trackAccessPointRepository.findByIdForMessaging(30L)).thenReturn(Optional.of(accessPoint(30L)));
+
+        ProfileJobProgress progress = newProgress(1);
+        runner.run(JOB_ID, MasterDataRepublishTarget.TRACK_ACCESS_POINT, 7L, null, progress);
+
+        verify(trackAccessPointRepository).findIdsForRepublish(eq(7L), eq(0L), any(Pageable.class));
+        verify(trackAccessPointRepository).findByIdForMessaging(30L);
+        verify(publisher).publish(any(TrackAccessPoint.class), eq(MasterDataOperation.UPDATED));
+        verify(profileRepository, never()).findIdsForRepublish(any(), any(), any(Pageable.class));
+        assertThat(progress.getSuccessfulItems()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("all recorre los cuatro tipos, cada uno con su repositorio")
+    void allRecorreLosCuatroTipos() {
         when(profileRepository.findIdsForRepublish(isNull(), any(), any(Pageable.class)))
                 .thenReturn(List.of(1L), List.of());
         when(profileRepository.findByIdForMessaging(1L)).thenReturn(Optional.of(profile(1L)));
@@ -198,14 +226,18 @@ class MasterDataRepublishJobRunnerTest {
                 .thenReturn(List.of(3L), List.of());
         when(sectionInsulatorRepository.findByIdForMessaging(3L))
                 .thenReturn(Optional.of(sectionInsulator(3L)));
+        when(trackAccessPointRepository.findIdsForRepublish(isNull(), any(), any(Pageable.class)))
+                .thenReturn(List.of(4L), List.of());
+        when(trackAccessPointRepository.findByIdForMessaging(4L)).thenReturn(Optional.of(accessPoint(4L)));
 
-        ProfileJobProgress progress = newProgress(3);
+        ProfileJobProgress progress = newProgress(4);
         runner.run(JOB_ID, MasterDataRepublishTarget.ALL, null, null, progress);
 
         verify(publisher).publish(any(Profile.class), eq(MasterDataOperation.UPDATED));
         verify(publisher).publish(any(Disconnector.class), eq(MasterDataOperation.UPDATED));
         verify(publisher).publish(any(SectionInsulator.class), eq(MasterDataOperation.UPDATED));
-        assertThat(progress.getSuccessfulItems()).isEqualTo(3);
+        verify(publisher).publish(any(TrackAccessPoint.class), eq(MasterDataOperation.UPDATED));
+        assertThat(progress.getSuccessfulItems()).isEqualTo(4);
     }
 
     @Test

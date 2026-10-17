@@ -7,10 +7,11 @@ import java.util.stream.Collectors;
 /**
  * Que se republica en un trabajo de tipo {@link JobType#MASTER_DATA_REPUBLISH}.
  *
- * <p>Solo tres de las ocho entidades de datos maestros: son las que el consumidor de mantenimiento
- * materializa como activos de catenaria. Las otras cinco —paquete de ejecucion, estacion, via,
- * mensula y pendulo— se publican igual cuando cambian, pero ningun consumidor las necesita de golpe
- * y republicarlas seria escribir decenas de miles de filas de outbox para que alguien las ignore.</p>
+ * <p>Solo cuatro de las nueve entidades de datos maestros: las tres que el consumidor de
+ * mantenimiento materializa como activos de catenaria y los puntos de acceso a la via, que
+ * materializa {@code mto-resources}. Las otras cinco —paquete de ejecucion, estacion, via, mensula y
+ * pendulo— se publican igual cuando cambian, pero ningun consumidor las necesita de golpe y
+ * republicarlas seria escribir decenas de miles de filas de outbox para que alguien las ignore.</p>
  *
  * <p>El valor que viaja en la peticion es el <b>mismo nombre logico que lleva el evento</b>
  * ({@code @PublishMasterDataEvent}): asi quien lee la cola y quien lanza el republicado hablan el
@@ -28,7 +29,10 @@ public enum MasterDataRepublishTarget {
     /** Aisladores de seccion. Admite acotar por estacion. */
     SECTION_INSULATOR("section-insulator"),
 
-    /** Los tres, enteros. No admite filtros: ver {@code MasterDataRepublishJobService}. */
+    /** Puntos de acceso a la via (V28). Admite acotar por via, como los perfiles. */
+    TRACK_ACCESS_POINT("track-access-point"),
+
+    /** Los cuatro, enteros. No admite filtros: ver {@code MasterDataRepublishJobService}. */
     ALL("all");
 
     private final String parameter;
@@ -45,7 +49,7 @@ public enum MasterDataRepublishTarget {
     /** Tipos concretos que recorre esta seleccion, en orden estable. */
     public List<MasterDataRepublishTarget> expand() {
         return this == ALL
-                ? List.of(PROFILE, DISCONNECTOR, SECTION_INSULATOR)
+                ? List.of(PROFILE, DISCONNECTOR, SECTION_INSULATOR, TRACK_ACCESS_POINT)
                 : List.of(this);
     }
 
