@@ -32,10 +32,11 @@ paths:
   Lo fija `RedisCacheValueSerializationTest`, que usa el serializador real. Un tipo cacheado nuevo
   añade allí su ida y vuelta.
 - Cachear es la excepción. `BaseService.isCacheable()` devuelve `false`, y solo devuelven `true` los
-  servicios cuyo DTO no embebe otro DTO de entidad: hoy `SteadyArmService` y `DisconnectorService`. La
-  invalidación es por servicio y no por id, así que un DTO con hijos se quedaría obsoleto en cuanto
-  cambiase cualquier hijo. Lo fija `CacheableServicesTest`, cuya lista `DECLARADOS_CACHEABLES` tiene
-  que coincidir con esos servicios.
+  servicios cuyo DTO no embebe otro DTO de entidad ni lleva un `BigDecimal` (que no se podría leer,
+  arriba): hoy `SteadyArmService` y `DisconnectorService`. La invalidación es por servicio y no por
+  id, así que un DTO con hijos se quedaría obsoleto en cuanto cambiase cualquier hijo. El punto de
+  acceso a la vía no embebe nada, pero lleva sus decimales como número y no se cachea. Lo fija
+  `CacheableServicesTest`, cuya lista `DECLARADOS_CACHEABLES` tiene que coincidir con esos servicios.
 - Invalidación: cada escritura publica `CacheEvictionEvent` con el nombre del servicio (los catálogos,
   `LovCacheEvictionEvent`), y `CacheEvictionListener` y `LovCacheEvictionListener` vacían sus cachés y
   las del esquema de vía al confirmar la transacción (`AFTER_COMMIT`), con una sola conexión

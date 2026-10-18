@@ -4,6 +4,29 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ Nace el evento `track-access-point`, para `mto-resources`
+
+Un maestro nuevo (`V28`), y con él un nombre de entidad nuevo en `mto.master-data.exchange`:
+`track-access-point`, con claves `mto.master-data.track-access-point.<created|updated|deleted>` y
+`eventType` `MASTER_DATA_TRACK_ACCESS_POINT_<OPERACION>`. **No cambia ningún evento que ya existiera**,
+así que es compatible hacia atrás para quien ya consume:
+
+- **Un punto de acceso a la vía** es por donde un vehículo bivial sale de la carretera y se encarrila.
+  Cuelga de su vía (obligatoria) y quizá de una estación; lleva su clase (`PREPARED_ACCESS`,
+  `LEVEL_CROSSING`, `DEPOT`), su lado (`LEFT`, `RIGHT`, `BOTH`), si admite biviales, los pesos máximos
+  que aguanta y sus coordenadas. Sus `values`, en «El evento `track-access-point`» (§2.4), y un
+  ejemplo completo en `docs/messaging/examples/master-data-track-access-point-updated.json`.
+- **Lo consume `mto-resources`**, con su cola `mto.resources.master-data.queue` ligada solo a
+  `mto.master-data.track-access-point.*`: aplica con él las reglas de la flota al registrar dónde se
+  encarrila un vehículo. Es el cuarto consumidor del exchange (§3.2).
+- **Se republica** como los perfiles, los seccionadores y los aisladores
+  (`POST /api/v1/configuration/master-data/republish?entity=track-access-point`, acotable por
+  `trackId`), y `entity=all` lo incluye (§2.5).
+
+`mto-maintenance` y `mto-stock` reciben el evento por su `mto.master-data.#` y lo ignoran sin fallar,
+como cualquier entidad que no tratan: no hay que tocarlos. `mto-notification` lo registra como un dato
+maestro más (`configuration.track-access-point.*`).
+
 ## ⚠️ El evento `disconnector` puede traer `track` también con `profile`
 
 Un cambio compatible hacia atrás para quien consume: **ninguna clave nueva, renombrada ni quitada**.
@@ -336,12 +359,45 @@ a `null`. La API no deja uno sin estación, sin poste y sin vía propia (400 `BU
 y sin poste sí puede llegar sin `track`. Un seccionador sin estación no sale en la copia de ningún
 `station`.
 
+#### El evento `track-access-point`
+
+Nace con `V28`, para `mto-resources`. Es un evento nuevo, no un cambio de uno que existiera: ningún
+consumidor anterior lo recibía, y los que escuchan `mto.master-data.#` sin tratarlo
+(`mto-maintenance`, `mto-stock`) lo ignoran.
+
+| Clave | Tipo | Contenido |
+|---|---|---|
+| `id` | número | Identificador del punto de acceso |
+| `name` | texto | Nombre, único dentro de su vía |
+| `enabled` | `true` / `false` | Si está habilitado |
+| `kp` | número o `null` | Punto kilométrico, en **metros** con tres decimales, como el del aislador (`110+176` del plano son `110176.000`) |
+| `kind` | `"PREPARED_ACCESS"` / `"LEVEL_CROSSING"` / `"DEPOT"` | Acceso preparado, paso a nivel o cochera. Nunca `null` |
+| `side` | `"LEFT"` / `"RIGHT"` / `"BOTH"` | Por qué lado de la vía se entra, en el sentido creciente del KP. Nunca `null` |
+| `roadRailAccess` | `true` / `false` | Si sirve para encarrilar biviales (`true` por defecto). Nunca `null` |
+| `maxAxleLoadT` | número o `null` | Carga por eje máxima, en toneladas (`numeric(8,3)`, no negativa). `null` es «sin límite conocido» |
+| `maxGrossWeightT` | número o `null` | Peso bruto máximo, en toneladas (`numeric(8,3)`, no negativo) |
+| `latitude` | número o `null` | Latitud en grados decimales WGS 84 (`numeric(9,6)`, de -90 a 90) |
+| `longitude` | número o `null` | Longitud en grados decimales WGS 84 (`numeric(9,6)`, de -180 a 180). Llega a la vez que `latitude`: las dos o ninguna |
+| `station` | `{ "id", "name" }` o `null` | Estación en la que está. Opcional: muchos accesos están en plena vía |
+| `track` | `{ "id", "name", "executionPackageId" }` | Vía a la que da acceso, con el id de su paquete de ejecución. Nunca `null` |
+
+La vía lleva `executionPackageId`, que no lleva la vía en ningún otro evento, porque el consumidor
+guarda el paquete del acceso y no recibe el evento `track`. Se lee del id del proxy del paquete sin
+cargarlo, así que el `@EntityGraph` de `TrackAccessPointRepository.findByIdForMessaging` solo trae
+`station` y `track`, y `MasterDataPayloadContractIT` sigue exigiendo **una** sentencia por evento.
+
+Un `DELETED` es un borrado lógico (la fila se queda con `deleted = true`) y viaja con los mismos
+`values`; el consumidor lo desactiva. Desactivar sin borrar es un `UPDATED` con `"enabled": false`.
+El punto de acceso no viaja anidado en ningún otro evento: ni la vía ni la estación lo llevan.
+
 ### 2.5. Republicado de lo que ya existe
 
 Los eventos de esta sección solo nacen cuando algo pasa por la capa de servicio. Un consumidor que se
 conecta a un dominio **ya poblado** no recibe nada: las filas que ya estaban nunca publicaron, y
 nadie va a volver a editarlas para provocarlo. Es lo que le pasó a `mto-maintenance`, que materializa
-perfiles, seccionadores y aisladores de sección como `catenary_asset` y nacía con la tabla vacía.
+perfiles, seccionadores y aisladores de sección como `catenary_asset` y nacía con la tabla vacía, y lo
+que le pasa a `mto-resources` con los puntos de acceso a la vía (`entity=track-access-point`, que
+`all` incluye).
 
 El republicado (`POST /api/v1/configuration/master-data/republish`, ver `README_ASYNC_JOBS.md`)
 recorre lo que hay y escribe por cada elemento el mismo evento que habría escrito una edición: misma
@@ -398,7 +454,7 @@ Este servicio declara dos **Topic Exchange**, y son su contrato como productor:
 
 | Exchange | Qué sale por él | Quién lo escucha |
 | :--- | :--- | :--- |
-| `mto.master-data.exchange` | Los datos maestros: `mto.master-data.<entidad>.<created\|updated\|deleted>` | `mto-stock`, `mto-maintenance` y `mto-notification`, con `mto.master-data.#` |
+| `mto.master-data.exchange` | Los datos maestros: `mto.master-data.<entidad>.<created\|updated\|deleted>` | `mto-stock`, `mto-maintenance` y `mto-notification`, con `mto.master-data.#`; `mto-resources`, solo con `mto.master-data.track-access-point.*` |
 | `mto.configuration.exchange` | Lo que el servicio cuenta de sí mismo: hoy `mto.configuration.job.finished` (§2.6) | `mto-notification`, con `mto.configuration.#` |
 
 - **Tipo Topic**: A diferencia de un exchange directo, este permite una distribución selectiva. Los mensajes se envían con una "Routing Key" (ej: `mto.master-data.station.created`) y el exchange los entrega a las colas cuyo "Binding Pattern" coincida.
@@ -419,6 +475,7 @@ Las colas que hoy existen las declaran sus consumidores, cada uno en su reposito
 | `mto.stock.master-data.queue` | `mto.master-data.#` | `mto-stock` |
 | `mto.maintenance.master-data.queue` | `mto.master-data.#` | `mto-maintenance` |
 | `mto.notification.master-data.queue` | `mto.master-data.#` | `mto-notification` |
+| `mto.resources.master-data.queue` | `mto.master-data.track-access-point.*` | `mto-resources` |
 | `mto.notification.configuration.queue` | `mto.configuration.#` | `mto-notification` |
 
 Las cuatro colas `mto.master-data.{events,cache,audit,deleted}.queue` que este servicio declaraba
@@ -624,8 +681,8 @@ Si `outbox_message` ya es enorme en producción, conviene crearlos antes a mano 
 
 Este servicio **publica**, no consume: no hay un solo `@RabbitListener` en el repositorio, y **no
 declara ninguna cola**. Declaraba cuatro (`mto.master-data.{events,cache,audit,deleted}.queue`) que
-no leía nadie: los consumidores reales —`mto-stock`, `mto-maintenance`, `mto-notification`— declaran
-cada uno la suya, con sus bindings y su dead letter. Dejar colas huérfanas trae dos problemas:
+no leía nadie: los consumidores reales —`mto-stock`, `mto-maintenance`, `mto-notification` y
+`mto-resources`— declaran cada uno la suya, con sus bindings y su dead letter. Dejar colas huérfanas trae dos problemas:
 
 - **El consumidor es quien sabe lo que necesita** (qué TTL, qué límite, qué tipo de cola). Mientras las declare el productor, esas decisiones se toman en el sitio equivocado.
 - **Una cola sin consumidor solo crece.** Bindeada a `mto.master-data.#`, recibe una copia de cada evento y no la vacía nadie; sin límite, acaba llenando el disco del broker, y un broker con el disco lleno bloquea las publicaciones de **todos** los servicios (9.2).

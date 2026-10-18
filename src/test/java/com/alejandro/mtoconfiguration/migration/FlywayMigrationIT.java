@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28");
     }
 
     /**
@@ -239,7 +239,7 @@ class FlywayMigrationIT {
         }, SCHEMA);
 
         for (String nombre : List.of("ux_execution_package_name", "ux_station_ep_name",
-                "ux_track_ep_name", "ux_profile_track_profile_id_kp")) {
+                "ux_track_ep_name", "ux_profile_track_profile_id_kp", "ux_track_access_point_track_name")) {
             assertThat(indices).containsKey(nombre);
             assertThat(indices.get(nombre))
                     .as("%s tiene que ser UNIQUE y parcial", nombre)
@@ -769,6 +769,71 @@ class FlywayMigrationIT {
                   and c.conname = 'fk_disconnector_connected_track' and c.contype = 'f'
                 """, Integer.class, SCHEMA);
         assertThat(claves).isEqualTo(1);
+    }
+
+    /**
+     * V28: el punto de acceso a la via, con su gemela de auditoria, sus dos claves ajenas y los CHECK
+     * que hacen de red bajo el validador. ddl-auto: validate no mira ni los CHECK ni los indices.
+     */
+    @Test
+    void elPuntoDeAccesoTieneSuTablaSuGemelaYSusRestricciones() {
+        assertThat(existeTabla("track_access_point")).isTrue();
+        assertThat(existeTabla("track_access_point_aud"))
+                .as("sin la gemela, la primera revision de un acceso revienta")
+                .isTrue();
+
+        List<String> claves = jdbc().queryForList("""
+                select c.conname from pg_constraint c
+                join pg_class t on t.oid = c.conrelid
+                join pg_namespace n on n.oid = t.relnamespace
+                where n.nspname = ? and t.relname = 'track_access_point' and c.contype in ('f', 'c')
+                """, String.class, SCHEMA);
+        assertThat(claves).contains("fk_track_access_point_track", "fk_track_access_point_station",
+                "ck_track_access_point_kp", "ck_track_access_point_max_axle_load",
+                "ck_track_access_point_max_gross_weight", "ck_track_access_point_latitude",
+                "ck_track_access_point_longitude", "ck_track_access_point_coordinates");
+
+        String viaObligatoria = jdbc().queryForObject("""
+                select is_nullable from information_schema.columns
+                where table_schema = ? and table_name = 'track_access_point' and column_name = 'track_id'
+                """, String.class, SCHEMA);
+        assertThat(viaObligatoria).isEqualTo("NO");
+    }
+
+    /** V28: una latitud sin longitud la rechaza la base aunque llegue sin pasar por la API. */
+    @Test
+    void laBaseRechazaUnaCoordenadaSola() {
+        jdbc().update("""
+                insert into %1$s.execution_package (id, name, enabled, deleted, initial_package, length,
+                        start_date, end_date, create_date, create_user, version_date, version_user, version_number)
+                values (-281, 'V28', true, false, false, 0, date '2020-01-01', date '2020-12-31',
+                        now(), 'test', now(), 'test', 1)
+                """.formatted(SCHEMA));
+        jdbc().update("""
+                insert into %1$s.track (id, name, status, deleted, execution_package_id, create_date,
+                        create_user, version_date, version_user, version_number)
+                values (-282, 'V28', true, false, -281, now(), 'test', now(), 'test', 1)
+                """.formatted(SCHEMA));
+        try {
+            assertThatCode(() -> jdbc().update(insertAccessPoint("31.669342", "null")))
+                    .isInstanceOf(Exception.class)
+                    .hasMessageContaining("ck_track_access_point_coordinates");
+            assertThatCode(() -> jdbc().update(insertAccessPoint("31.669342", "34.574119")))
+                    .doesNotThrowAnyException();
+        } finally {
+            jdbc().update("delete from " + SCHEMA + ".track_access_point where track_id = -282");
+            jdbc().update("delete from " + SCHEMA + ".track where id = -282");
+            jdbc().update("delete from " + SCHEMA + ".execution_package where id = -281");
+        }
+    }
+
+    private String insertAccessPoint(String latitude, String longitude) {
+        return "insert into " + SCHEMA + ".track_access_point"
+                + " (id, name, track_id, kind, side, road_rail_access, latitude, longitude, status, deleted,"
+                + "  create_date, create_user, version_date, version_user, version_number)"
+                + " values (nextval('" + SCHEMA + ".track_access_point_seq'), 'Acceso V28', -282,"
+                + " 'PREPARED_ACCESS', 'LEFT', true, " + latitude + ", " + longitude + ", true, false,"
+                + " now(), 'test', now(), 'test', 1)";
     }
 
     private boolean existeTabla(String tabla) {

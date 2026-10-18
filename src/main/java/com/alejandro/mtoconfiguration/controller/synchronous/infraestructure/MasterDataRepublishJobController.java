@@ -76,9 +76,9 @@ public class MasterDataRepublishJobController {
                     immediately. Every selected entity is re-read with its messaging entity graph \
                     and written to the outbox as an UPDATED event, exactly as a real edit would.
 
-                    entity: profile | disconnector | section-insulator | all.
-                    trackId narrows profiles only; stationId narrows disconnectors and section \
-                    insulators only; all takes no filter.
+                    entity: profile | disconnector | section-insulator | track-access-point | all.
+                    trackId narrows profiles and track access points only; stationId narrows \
+                    disconnectors and section insulators only; all takes no filter.
 
                     Re-running it is harmless: consumers absorb it through their idempotent upsert \
                     and their sequence watermark."""

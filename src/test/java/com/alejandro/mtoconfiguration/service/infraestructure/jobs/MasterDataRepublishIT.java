@@ -18,9 +18,12 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
+import com.alejandro.mtoconfiguration.entity.infrastructure.TrackAccessPoint;
 import com.alejandro.mtoconfiguration.entity.lov.ComercialEntityType;
 import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
 import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
+import com.alejandro.mtoconfiguration.enums.infrastructure.TrackAccessPointKind;
+import com.alejandro.mtoconfiguration.enums.infrastructure.TrackAccessPointSide;
 import com.alejandro.mtoconfiguration.enums.jobs.MasterDataRepublishTarget;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataEntityIdResolver;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataEntityNameResolver;
@@ -30,6 +33,7 @@ import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataRabbitMqNam
 import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.DisconnectorMasterDataPayloadMapper;
 import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.ProfileMasterDataPayloadMapper;
 import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.SectionInsulatorMasterDataPayloadMapper;
+import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.TrackAccessPointMasterDataPayloadMapper;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.DisconnectorRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorRepository;
@@ -91,7 +95,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         MasterDataRepublishJobRunner.class,
         DisconnectorMasterDataPayloadMapper.class,
         ProfileMasterDataPayloadMapper.class,
-        SectionInsulatorMasterDataPayloadMapper.class
+        SectionInsulatorMasterDataPayloadMapper.class,
+        TrackAccessPointMasterDataPayloadMapper.class
 })
 class MasterDataRepublishIT {
 
@@ -120,7 +125,8 @@ class MasterDataRepublishIT {
         PostgresTestDatabase.registerProperties(registry);
     }
 
-    private record Ids(Long trackId, Long stationId, Long profileId, Long stationLessDisconnectorId) {
+    private record Ids(Long trackId, Long stationId, Long profileId, Long stationLessDisconnectorId,
+                       Long accessPointId) {
     }
 
     @BeforeEach
@@ -212,8 +218,8 @@ class MasterDataRepublishIT {
      * reconstruye sus activos con este republicado, y uno que se quedara fuera no le llegaria nunca.
      */
     @Test
-    @DisplayName("all republica los tres tipos con su nombre de agregado, tambien el seccionador sin estacion")
-    void allRepublicaLosTresTipos() {
+    @DisplayName("all republica los cuatro tipos con su nombre de agregado, tambien el seccionador sin estacion")
+    void allRepublicaLosCuatroTipos() {
         republish(MasterDataRepublishTarget.ALL, null, null);
 
         assertThat(outboxOf("profile")).hasSize(3);
@@ -221,6 +227,25 @@ class MasterDataRepublishIT {
                 .extracting(OutboxMessage::getAggregateId)
                 .contains(String.valueOf(ids.stationLessDisconnectorId()));
         assertThat(outboxOf("section-insulator")).hasSize(2);
+        assertThat(outboxOf("track-access-point")).hasSize(2);
+    }
+
+    /**
+     * Los puntos de acceso se republican por via, que es como los pide {@code mto-resources}, con su
+     * clave de enrutado propia: la cola de ese consumidor se liga a
+     * {@code mto.master-data.track-access-point.*}.
+     */
+    @Test
+    @DisplayName("los puntos de acceso se republican acotados por via, con su clave de enrutado")
+    void puntosDeAccesoPorVia() {
+        republish(MasterDataRepublishTarget.TRACK_ACCESS_POINT, ids.trackId(), null);
+
+        assertThat(outboxOf("track-access-point")).singleElement().satisfies(message -> {
+            assertThat(message.getAggregateId()).isEqualTo(String.valueOf(ids.accessPointId()));
+            assertThat(message.getEventType()).isEqualTo("MASTER_DATA_TRACK_ACCESS_POINT_UPDATED");
+            assertThat(message.getRoutingKey()).isEqualTo("mto.master-data.track-access-point.updated");
+            assertThat(message.getPayload()).contains("\"executionPackageId\":");
+        });
     }
 
     @Test
@@ -357,9 +382,15 @@ class MasterDataRepublishIT {
             stationLess.setKp(new BigDecimal("500.000"));
             stationLess.setTrack(track);
             em.persist(stationLess);
+
+            // Un acceso en cada via: nada los persiste en cascada.
+            TrackAccessPoint accessPoint = accessPoint("Acceso 1", track);
+            em.persist(accessPoint);
+            em.persist(accessPoint("Acceso 2", otherTrack));
             em.flush();
 
-            return new Ids(track.getId(), station.getId(), profile.getId(), stationLess.getId());
+            return new Ids(track.getId(), station.getId(), profile.getId(), stationLess.getId(),
+                    accessPoint.getId());
         }
 
         private BusinessEntity company() {
@@ -414,6 +445,15 @@ class MasterDataRepublishIT {
             sectionInsulator.setEnabled(Boolean.TRUE);
             station.addSectionInsulator(sectionInsulator);
             return sectionInsulator;
+        }
+
+        private TrackAccessPoint accessPoint(String name, Track track) {
+            TrackAccessPoint accessPoint = new TrackAccessPoint();
+            accessPoint.setName(name);
+            accessPoint.setTrack(track);
+            accessPoint.setKind(TrackAccessPointKind.LEVEL_CROSSING);
+            accessPoint.setSide(TrackAccessPointSide.BOTH);
+            return accessPoint;
         }
 
         private <L extends Lov> L lov(L lov, String code) {

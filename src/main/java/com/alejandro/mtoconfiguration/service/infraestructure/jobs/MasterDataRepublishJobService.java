@@ -12,6 +12,7 @@ import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.DisconnectorRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackAccessPointRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.AsyncTaskExecutor;
@@ -56,6 +57,7 @@ public class MasterDataRepublishJobService {
     private final ProfileRepository profileRepository;
     private final DisconnectorRepository disconnectorRepository;
     private final SectionInsulatorRepository sectionInsulatorRepository;
+    private final TrackAccessPointRepository trackAccessPointRepository;
 
     public MasterDataRepublishJobService(
             AsyncJobStore store,
@@ -67,7 +69,8 @@ public class MasterDataRepublishJobService {
             @Qualifier(AsyncConfiguration.TASK_EXECUTOR) AsyncTaskExecutor taskExecutor,
             ProfileRepository profileRepository,
             DisconnectorRepository disconnectorRepository,
-            SectionInsulatorRepository sectionInsulatorRepository
+            SectionInsulatorRepository sectionInsulatorRepository,
+            TrackAccessPointRepository trackAccessPointRepository
     ) {
         this.store = store;
         this.heartbeat = heartbeat;
@@ -79,14 +82,15 @@ public class MasterDataRepublishJobService {
         this.profileRepository = profileRepository;
         this.disconnectorRepository = disconnectorRepository;
         this.sectionInsulatorRepository = sectionInsulatorRepository;
+        this.trackAccessPointRepository = trackAccessPointRepository;
     }
 
     /**
      * Encola un republicado.
      *
-     * @param entity    {@code profile}, {@code disconnector}, {@code section-insulator} o
-     *                  {@code all}
-     * @param trackId   solo con {@code profile}
+     * @param entity    {@code profile}, {@code disconnector}, {@code section-insulator},
+     *                  {@code track-access-point} o {@code all}
+     * @param trackId   solo con {@code profile} y {@code track-access-point}
      * @param stationId solo con {@code disconnector} y {@code section-insulator}
      */
     public MasterDataRepublishJobSubmission submit(String entity, Long trackId, Long stationId) {
@@ -160,20 +164,20 @@ public class MasterDataRepublishJobService {
             throw new ValidationException(errors);
         }
 
-        // Un filtro que solo aplicase a un tercio de lo pedido es una trampa: con all se republican
-        // los tres tipos enteros o no se usa all.
+        // Un filtro que solo aplicase a una parte de lo pedido es una trampa: con all se republican
+        // los cuatro tipos enteros o no se usa all.
         if (target == MasterDataRepublishTarget.ALL && (trackId != null || stationId != null)) {
             errors.add(Alert.ofDanger(
-                    "Con entity=all no se admiten filtros: republica los tres tipos enteros",
+                    "Con entity=all no se admiten filtros: republica los cuatro tipos enteros",
                     "entity"));
         }
 
-        if (trackId != null && target != MasterDataRepublishTarget.PROFILE) {
+        if (trackId != null && target != MasterDataRepublishTarget.ALL && !acceptsTrack(target)) {
             errors.add(Alert.ofDanger(
-                    "El filtro por via solo aplica a los perfiles", "trackId"));
+                    "El filtro por via solo aplica a los perfiles y a los puntos de acceso", "trackId"));
         }
 
-        if (stationId != null && (target == MasterDataRepublishTarget.PROFILE)) {
+        if (stationId != null && acceptsTrack(target)) {
             errors.add(Alert.ofDanger(
                     "El filtro por estacion solo aplica a seccionadores y aisladores de seccion",
                     "stationId"));
@@ -184,6 +188,12 @@ public class MasterDataRepublishJobService {
         }
 
         return target;
+    }
+
+    /** Los que se acotan por via, no por estacion: los perfiles y los puntos de acceso. */
+    private static boolean acceptsTrack(MasterDataRepublishTarget target) {
+        return target == MasterDataRepublishTarget.PROFILE
+                || target == MasterDataRepublishTarget.TRACK_ACCESS_POINT;
     }
 
     /**
@@ -201,6 +211,7 @@ public class MasterDataRepublishJobService {
                 case PROFILE -> profileRepository.countForRepublish(trackId);
                 case DISCONNECTOR -> disconnectorRepository.countForRepublish(stationId);
                 case SECTION_INSULATOR -> sectionInsulatorRepository.countForRepublish(stationId);
+                case TRACK_ACCESS_POINT -> trackAccessPointRepository.countForRepublish(trackId);
                 case ALL -> 0L;
             };
         }

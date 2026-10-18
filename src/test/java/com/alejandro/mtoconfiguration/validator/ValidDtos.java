@@ -9,7 +9,10 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionIn
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorSwitchDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SteadyArmDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackAccessPointDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
+import com.alejandro.mtoconfiguration.enums.infrastructure.TrackAccessPointKind;
+import com.alejandro.mtoconfiguration.enums.infrastructure.TrackAccessPointSide;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.CantileverTypeDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
@@ -199,6 +202,24 @@ public final class ValidDtos {
         dto.setCompanyId(70L);
         dto.setTracks(new ArrayList<>());
         dto.setStations(new ArrayList<>());
+        return dto;
+    }
+
+    /** Un punto de acceso con todo lo opcional informado: KP, toneladas, estación y coordenadas. */
+    public static TrackAccessPointDTO rootTrackAccessPoint() {
+        TrackAccessPointDTO dto = new TrackAccessPointDTO();
+        dto.setName("Acceso km 110+176");
+        dto.setTrackId(3L);
+        dto.setStationId(40L);
+        dto.setKp(new BigDecimal("110176.000"));
+        dto.setKind(TrackAccessPointKind.PREPARED_ACCESS);
+        dto.setSide(TrackAccessPointSide.LEFT);
+        dto.setRoadRailAccess(Boolean.TRUE);
+        dto.setMaxAxleLoadT(new BigDecimal("12.500"));
+        dto.setMaxGrossWeightT(new BigDecimal("40.000"));
+        dto.setLatitude(new BigDecimal("31.669342"));
+        dto.setLongitude(new BigDecimal("34.574119"));
+        dto.setEnabled(Boolean.TRUE);
         return dto;
     }
 

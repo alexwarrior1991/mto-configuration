@@ -23,6 +23,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * SteadyArmDTO dentro de seis meses, nadie toca isCacheable(), y vuelven los datos
  * desactualizados sin que salte nada.
  * <p>
+ * Y la otra regla de lo que se puede cachear (cache.md): lo que se guarda tiene que poder
+ * leerse, y el serializador de la cache no lee BigDecimal. Un DTO sin hijos pero con decimales
+ * tampoco es cacheable mientras los lleve como numero (TrackAccessPointDTO: el KP, las toneladas y
+ * las coordenadas); el perfil y el seccionador los pasaron a texto para poder cachearse.
+ * <p>
  * Lo que este test NO ve: un DTO cacheable que copia campos planos de otra entidad
  * (DisconnectorDTO.profileCode y profileKp salen del perfil) o cuya fila se escribe
  * anidada desde otro servicio (el seccionador dentro de un PUT de perfil o de
@@ -37,7 +42,7 @@ class CacheableServicesTest {
             "com.alejandro.mtoconfiguration.model.synchronous.infrastructure";
 
     /**
-     * Servicios que declaran isCacheable() = true. Debe coincidir con los DTO sin hijos.
+     * Servicios que declaran isCacheable() = true. Debe coincidir con los DTO sin hijos ni decimales.
      *
      * <p>{@code SectionInsulatorDTO} salió de aquí cuando el aislador pasó a llevar sus agujas:
      * desde entonces embebe hijos, y una entrada cacheada se quedaría mintiendo en cuanto cambiara
@@ -48,26 +53,35 @@ class CacheableServicesTest {
 
     private static final Set<String> DTOS = Set.of(
             "ExecutionPackageDTO", "StationDTO", "TrackDTO", "ProfileDTO",
-            "CantileverDTO", "SteadyArmDTO", "SectionInsulatorDTO", "DisconnectorDTO");
+            "CantileverDTO", "SteadyArmDTO", "SectionInsulatorDTO", "DisconnectorDTO",
+            "TrackAccessPointDTO");
 
     @Test
     void soloDebenCachearseLosDtoQueNoEmbebenOtrasEntidades() throws Exception {
-        Set<String> sinHijos = new TreeSet<>();
+        Set<String> cacheables = new TreeSet<>();
 
         for (String dto : DTOS) {
             Class<?> type = Class.forName(ENTITY_DTO_PACKAGE + "." + dto);
-            if (!embebeOtraEntidad(type)) {
-                sinHijos.add(dto);
+            if (!embebeOtraEntidad(type) && !llevaDecimales(type)) {
+                cacheables.add(dto);
             }
         }
 
-        assertThat(sinHijos)
+        assertThat(cacheables)
                 .as("""
                         La composicion de los DTO ya no cuadra con isCacheable().
-                        Si un DTO ha dejado de embeber hijos, su servicio puede pasar a \
-                        isCacheable() = true. Si ha empezado a embeberlos, hay que ponerlo \
-                        a false o servira datos obsoletos. Ver BaseService.isCacheable().""")
+                        Si un DTO ha dejado de embeber hijos y no lleva decimales, su servicio puede \
+                        pasar a isCacheable() = true. Si ha empezado a embeberlos, o a llevar un \
+                        BigDecimal, hay que ponerlo a false: serviria datos obsoletos o no se podria \
+                        leer de la cache. Ver BaseService.isCacheable() y cache.md.""")
                 .containsExactlyInAnyOrderElementsOf(DECLARADOS_CACHEABLES);
+    }
+
+    /** La cache escribe un BigDecimal pero no lo lee (RedisCacheValueSerializationTest). */
+    private boolean llevaDecimales(Class<?> dto) {
+        return Arrays.stream(dto.getDeclaredFields())
+                .flatMap(this::tiposDe)
+                .anyMatch(java.math.BigDecimal.class::equals);
     }
 
     /** Recorre tambien los genericos, para que List<ProfileDTO> cuente como hijo. */

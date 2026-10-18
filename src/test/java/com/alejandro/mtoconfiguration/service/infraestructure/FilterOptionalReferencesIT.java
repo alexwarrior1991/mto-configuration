@@ -3,8 +3,10 @@ package com.alejandro.mtoconfiguration.service.infraestructure;
 import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackAccessPointDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.ProfileFilter;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.SectionInsulatorFilter;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.TrackAccessPointFilter;
 import com.alejandro.mtoconfiguration.support.PostgresTestDatabase;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * externo, porque QueryDSL crea uno para el {@code ORDER BY}, y se comprueba igual: en los aisladores
  * por la vía, y en los perfiles por el tipo de poste, que es opcional, y por el estado, que el
  * validador exige pero la columna admite vacío. El seccionador sin estación o sin poste lo prueba
- * {@code DisconnectorLinkIT}.
+ * {@code DisconnectorLinkIT}, y el punto de acceso sin estación (V28), este.
  *
  * <p>Los datos se insertan con SQL, como en {@code FilterOutsideTransactionIT}: así puede haber un
  * perfil sin estado.
@@ -51,6 +53,8 @@ class FilterOptionalReferencesIT {
     private static final long INSULATOR_WITHOUT_TRACK = -68L;
     private static final long SWITCH_W31 = -69L;
     private static final long SWITCH_W32 = -70L;
+    private static final long ACCESS_POINT_AT_STATION = -71L;
+    private static final long ACCESS_POINT_WITHOUT_STATION = -72L;
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -64,6 +68,8 @@ class FilterOptionalReferencesIT {
     private ProfileService profileService;
     @Autowired
     private SectionInsulatorService sectionInsulatorService;
+    @Autowired
+    private TrackAccessPointService trackAccessPointService;
 
     @BeforeEach
     void inserta() {
@@ -96,6 +102,17 @@ class FilterOptionalReferencesIT {
         aislador(INSULATOR_WITHOUT_TRACK, "IT-OPT-INS-B", null, null);
         aguja(SWITCH_W31, "W31");
         aguja(SWITCH_W32, "W32");
+        acceso(ACCESS_POINT_AT_STATION, "IT-OPT-ACC-A", STATION);
+        acceso(ACCESS_POINT_WITHOUT_STATION, "IT-OPT-ACC-B", null);
+    }
+
+    /** La estación del acceso es opcional (V28): muchos están en plena vía. */
+    private void acceso(long id, String name, Long station) {
+        jdbcTemplate.update("""
+                insert into track_access_point (id, name, track_id, station_id, kind, side, road_rail_access,
+                        status, deleted, create_date, create_user, version_date, version_user, version_number)
+                values (?, ?, ?, ?, 'LEVEL_CROSSING', 'BOTH', true, true, false, now(), 'test', now(), 'test', 1)
+                """, id, name, TRACK, station);
     }
 
     /** Sin estado, que la columna admite. */
@@ -129,6 +146,8 @@ class FilterOptionalReferencesIT {
 
     @AfterEach
     void limpia() {
+        jdbcTemplate.update("delete from track_access_point where id in (?, ?)", ACCESS_POINT_AT_STATION,
+                ACCESS_POINT_WITHOUT_STATION);
         jdbcTemplate.update("delete from section_insulator_switch where id in (?, ?)", SWITCH_W31, SWITCH_W32);
         jdbcTemplate.update("delete from section_insulator where id in (?, ?)", INSULATOR_ON_TRACK,
                 INSULATOR_WITHOUT_TRACK);
@@ -201,6 +220,44 @@ class FilterOptionalReferencesIT {
         assertThat(perfiles(new ProfileFilter(null, null, TRACK, null, null, null, null, null, "ITOPT", null, null,
                 null, null, null), Sort.unsorted()))
                 .containsExactly(PROFILE_WITH_POLE_TYPE);
+    }
+
+    @Test
+    @DisplayName("un punto de acceso sin estación sale en la búsqueda por texto y en la lista ordenada por estación")
+    void accesoSinEstacion() {
+        TrackAccessPointFilter buscando = new TrackAccessPointFilter(null, null, null, null, null, null, null,
+                "IT-OPT-ACC", null);
+        TrackAccessPointFilter deLaVia = new TrackAccessPointFilter("IT-OPT-ACC", TRACK, null, null, null, null,
+                null, null, null);
+
+        assertThat(accesos(buscando, Sort.unsorted()))
+                .containsExactlyInAnyOrder(ACCESS_POINT_AT_STATION, ACCESS_POINT_WITHOUT_STATION);
+        // La búsqueda por texto también mira la vía, que los dos tienen.
+        assertThat(accesos(new TrackAccessPointFilter("IT-OPT-ACC", null, null, null, null, null, null,
+                "IT-OPT-TRACK", null), Sort.unsorted()))
+                .containsExactlyInAnyOrder(ACCESS_POINT_AT_STATION, ACCESS_POINT_WITHOUT_STATION);
+        // En orden ascendente, el que no tiene estación va después; en descendente, antes.
+        assertThat(accesos(deLaVia, Sort.by("station.name")))
+                .containsExactly(ACCESS_POINT_AT_STATION, ACCESS_POINT_WITHOUT_STATION);
+        assertThat(accesos(deLaVia, Sort.by(Sort.Direction.DESC, "station.name")))
+                .containsExactly(ACCESS_POINT_WITHOUT_STATION, ACCESS_POINT_AT_STATION);
+        assertThat(accesos(deLaVia, Sort.by("track.name", "name")))
+                .containsExactly(ACCESS_POINT_AT_STATION, ACCESS_POINT_WITHOUT_STATION);
+        // Filtrar por la estación sí deja fuera al que no la tiene.
+        assertThat(accesos(new TrackAccessPointFilter("IT-OPT-ACC", null, null, "IT-OPT-STAT", null, null, null,
+                null, null), Sort.unsorted()))
+                .containsExactly(ACCESS_POINT_AT_STATION);
+        // Y los de una vía, por KP, también el que no tiene estación.
+        assertThat(trackAccessPointService.getTrackAccessPointsByTrackId(TRACK))
+                .extracting(TrackAccessPointDTO::getId)
+                .containsExactlyInAnyOrder(ACCESS_POINT_AT_STATION, ACCESS_POINT_WITHOUT_STATION);
+    }
+
+    private List<Long> accesos(TrackAccessPointFilter filter, Sort sort) {
+        return trackAccessPointService.getTrackAccessPoints(PageRequest.of(0, 50, sort), filter).getContent()
+                .stream()
+                .map(TrackAccessPointDTO::getId)
+                .toList();
     }
 
     private static SectionInsulatorFilter buscando(String text) {

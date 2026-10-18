@@ -141,10 +141,10 @@ Prefijo propio: `ConfigurationApiPaths.BASE_PATH + "/master-data/republish"` →
 | POST | `/?entity=profile&trackId=2` | `CONFIG_IMPORT` | 202 · 400 · 429 |
 | GET | `/{jobId}` | `CONFIG_READ` | 200 · 404 |
 
-`entity`: `profile`, `disconnector`, `section-insulator` o `all`. `trackId` acota **solo** perfiles;
-`stationId` **solo** seccionadores y aisladores (un seccionador sin estación va sin filtro, nunca con
-uno); `all` no admite filtros. Cualquier otra combinación
-es un 400, igual que una selección vacía o una que supere `app.jobs.republish.max-items`.
+`entity`: `profile`, `disconnector`, `section-insulator`, `track-access-point` o `all` (los cuatro).
+`trackId` acota **solo** perfiles y puntos de acceso; `stationId` **solo** seccionadores y aisladores
+(un seccionador sin estación va sin filtro, nunca con uno); `all` no admite filtros. Cualquier otra
+combinación es un 400, igual que una selección vacía o una que supere `app.jobs.republish.max-items`.
 
 **El problema que resuelve.** Los eventos de datos maestros solo nacen al pasar por la capa de
 servicio: `BaseService.create/update/bulkCreate` y `CRUDService.delete` publican un
@@ -527,7 +527,7 @@ tocó. En `bulk-create` no se exige.
 | `service.infraestructure.jobs.MasterDataRepublishJobService` | arranque y cierre del republicado |
 | `service.infraestructure.jobs.MasterDataRepublishJobRunner` | recorrido por páginas de ids |
 | `service.infraestructure.jobs.MasterDataRepublishBatchPublisher` | la transacción del lote: lee y publica dentro de ella |
-| `enums.jobs.MasterDataRepublishTarget` | qué se republica (`profile`/`disconnector`/`section-insulator`/`all`) |
+| `enums.jobs.MasterDataRepublishTarget` | qué se republica (`profile`/`disconnector`/`section-insulator`/`track-access-point`/`all`) |
 | `service.infraestructure.jobs.ProfileJobFiles` | dueño del directorio de exportación: nombra, localiza, borra |
 | `service.infraestructure.jobs.JobFinishedEventPublisher` | el evento `job.finished` en el outbox, en la transacción del cierre (ver §12) |
 | `service.infraestructure.jobs.JobCorrelation` | el `jobId` como `correlationId` del hilo de fondo |
