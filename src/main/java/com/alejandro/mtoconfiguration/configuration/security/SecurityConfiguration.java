@@ -48,9 +48,9 @@ public class SecurityConfiguration {
             API + "/*/search", API + "/*/filter",
             ASYNC_API + "/*/search", ASYNC_API + "/*/filter",
             // Lanzar una exportacion viaja por POST porque crea un trabajo, pero lo que expone son
-            // los mismos datos que el {@code GET .../export} de siempre, que pide lectura. Pedir
-            // permiso de escritura para obtener un CSV obligaria a dar {@code config-write} a
-            // perfiles que solo consultan.
+            // los mismos datos que cualquier GET de perfiles, que pide lectura. Pedir permiso de
+            // escritura para obtener un CSV obligaria a dar {@code config-write} a perfiles que
+            // solo consultan.
             API + "/*/jobs/export"
     };
 

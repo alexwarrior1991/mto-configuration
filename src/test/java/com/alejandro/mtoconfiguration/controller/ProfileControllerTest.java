@@ -13,7 +13,6 @@ import com.alejandro.mtoconfiguration.core.exception.web.ProblemDetailFactory;
 import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.ProfileFilter;
-import com.alejandro.mtoconfiguration.service.infraestructure.ProfileExportService;
 import com.alejandro.mtoconfiguration.service.infraestructure.ProfileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -94,8 +93,6 @@ class ProfileControllerTest {
 
     @MockitoBean
     private ProfileService profileService;
-    @MockitoBean
-    private ProfileExportService profileExportService;
 
     private static ProfileDTO profile(Long id) {
         ProfileDTO dto = new ProfileDTO();
@@ -347,34 +344,17 @@ class ProfileControllerTest {
     }
 
     @Nested
-    @DisplayName("Exportacion sincrona")
+    @DisplayName("Exportacion")
     class Exportacion {
 
         @Test
-        @DisplayName("la exportacion responde 202 sin esperar al fichero")
-        void exportacion() throws Exception {
+        @DisplayName("la exportacion antigua por GET ya no existe: se exporta con POST /profiles/jobs/export")
+        void laExportacionAntiguaYaNoExiste() throws Exception {
             mockMvc.perform(get(PROFILES + "/track/42/export"))
-                    .andExpect(status().isAccepted())
-                    .andExpect(content().string(org.hamcrest.Matchers.containsString("profiles-track-42.csv")));
+                    .andExpect(status().isNotFound());
 
-            verify(profileExportService).getBasicMapper();
-            verify(profileExportService).exportToCsvAsync(eq(42L), any(), any());
-        }
-
-        @Test
-        @DisplayName("mapperType elige el formateador y un valor desconocido cae en el basico")
-        void seleccionDeMapper() throws Exception {
-            mockMvc.perform(get(PROFILES + "/track/1/export").param("mapperType", "TECHNICAL"))
-                    .andExpect(status().isAccepted());
-            verify(profileExportService).getTechnicalMapper();
-
-            mockMvc.perform(get(PROFILES + "/track/1/export").param("mapperType", "default"))
-                    .andExpect(status().isAccepted());
-            verify(profileExportService).getDefaultMapper();
-
-            mockMvc.perform(get(PROFILES + "/track/1/export").param("mapperType", "loQueSea"))
-                    .andExpect(status().isAccepted());
-            verify(profileExportService).getBasicMapper();
+            mockMvc.perform(get(PROFILES + "/track/42/export").param("mapperType", "technical"))
+                    .andExpect(status().isNotFound());
         }
     }
 

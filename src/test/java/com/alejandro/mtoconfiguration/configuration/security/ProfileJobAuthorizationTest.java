@@ -64,7 +64,7 @@ class ProfileJobAuthorizationTest {
     }
 
     @Test
-    @DisplayName("lanzar una exportacion pide lectura, como el export de siempre")
+    @DisplayName("lanzar una exportacion pide lectura, como cualquier consulta de perfiles")
     void exportacionPideLectura() throws Exception {
         mockMvc.perform(post(JOBS + "/export").with(withRoles(SecurityRoles.CONFIG_READ)))
                 .andExpect(status().isOk());

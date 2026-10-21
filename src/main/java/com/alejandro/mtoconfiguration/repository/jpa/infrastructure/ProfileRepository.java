@@ -16,7 +16,6 @@ import java.util.Optional;
 @Repository
 public interface ProfileRepository extends CRUDRepository<Profile>,
         MessagingEntityGraphRepository<Profile> {
-    List<Profile> findByTrackId(Long trackId);
 
     /**
      * Busqueda por la clave natural, para el find-or-create del importador.

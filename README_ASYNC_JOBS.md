@@ -1,8 +1,8 @@
 # Operaciones asíncronas de verdad (trabajos en segundo plano)
 
-Capa **nueva y paralela** para las operaciones largas de perfiles. No sustituye ni modifica nada de
-lo que ya había: `POST/PUT /profiles/bulk`, `GET /profiles/track/{id}/export` y todos los endpoints
-`/async/profiles` siguen exactamente igual.
+Capa **nueva y paralela** para las operaciones largas de perfiles. `POST/PUT /profiles/bulk` y todos
+los endpoints `/async/profiles` siguen exactamente igual. La exportación antigua,
+`GET /profiles/track/{id}/export`, se quitó: su sustituto es `POST /profiles/jobs/export` (§11).
 
 ---
 
@@ -460,6 +460,8 @@ app:
       max-concurrency: 1         # APP_JOBS_REPUBLISH_MAX_CONCURRENCY — de TODO el despliegue
       batch-size: 500            # elementos por lote, y por tanto por transaccion
       max-items: 200000          # tope, comprobado con un recuento ANTES de crear la fila
+    lov:
+      report-directory: lov-imports  # APP_JOBS_LOV_REPORT_DIRECTORY
 ```
 
 - `heartbeat.timeout` debe quedar **holgado** respecto a `heartbeat.interval`. Con varios latidos de
@@ -554,11 +556,25 @@ Cuatro decisiones que sostienen el resto:
 
 ## 10. Limitaciones conocidas
 
-- **Los ficheros se escriben en disco local.** Con varias réplicas, `export-directory`,
+- **Los ficheros se escriben en un directorio del proceso.** Con varias réplicas, `export-directory`,
   `import-report-directory` y `app.jobs.lov.report-directory` deben apuntar a almacenamiento
   compartido; si no, la descarga responderá 410 cuando la sirva una réplica distinta de la que
-  generó el fichero. Es la limitación que queda con más filo: el cupo ya es de clúster, pero el
-  fichero no.
+  generó el fichero. El cupo ya es de clúster; el fichero lo es solo si su directorio lo es.
+
+  En OpenShift los tres van a un PVC `ReadWriteMany` (CephFS de ODF, por ejemplo) montado en `/data`,
+  el directorio que la imagen ya trae con permisos para el UID aleatorio del grupo 0:
+
+  ```yaml
+  APP_JOBS_PROFILE_EXPORT_DIRECTORY: /data/exports
+  APP_JOBS_PROFILE_IMPORT_REPORT_DIRECTORY: /data/profile-imports
+  APP_JOBS_LOV_REPORT_DIRECTORY: /data/lov-imports
+  ```
+
+  Los directorios los crea el servicio al escribir el primer fichero. **Sin ese PVC, con más de una
+  réplica, una descarga responde 410** cada vez que la atiende una réplica que no generó el fichero,
+  aunque el trabajo haya terminado bien; un `ReadWriteOnce` tampoco sirve, porque solo lo monta el
+  nodo de una de ellas. La purga (§5) corre en todas las réplicas sobre el mismo directorio, y no
+  importa: borrar un fichero que otra ya borró no es un error.
 - **No hay cancelación** de un trabajo en curso.
 - **`max-bulk-items` no protege de la memoria**, solo del trabajo inútil (ver §7).
 - **El republicado estrecha la ventana de desorden, no la cierra** (ver más arriba): una edición
@@ -571,15 +587,20 @@ Cuatro decisiones que sostienen el resto:
 
 ## 11. Cambios en lo que ya existía
 
-Todo aditivo, sin romper contratos:
+Todo aditivo salvo la exportación antigua, que se quitó después:
 
 - `ProfileExportService`: deja de crear su propio `ExecutorService` (que nunca se cerraba y corría
-  **sin identidad**) y recibe `applicationTaskExecutor`. Se extrae `writeCsv(...)` síncrono, se
-  añaden `resolveMapper` / `resolveHeader` / `resolveMapperName`, los fallos de E/S salen como
-  `UncheckedIOException` y se crean los directorios que falten. `exportToCsvAsync` produce el mismo
-  fichero que antes —**sin cabecera**, que es lo que esperan los consumidores actuales—;
-  `exportToCsvNoWindowAsync` queda `@Deprecated` (carga la vía entera en memoria: no falla despacio,
-  falla de golpe con un `OutOfMemoryError`).
+  **sin identidad**). Se extrae `writeCsv(...)` síncrono, se añaden `resolveMapper` /
+  `resolveHeader` / `resolveMapperName`, los fallos de E/S salen como `UncheckedIOException` y se
+  crean los directorios que falten.
+- **`GET /profiles/track/{id}/export` ya no existe.** Exportaba en segundo plano sin estado ni aviso
+  de fallo, a `exports/profiles-track-{id}.csv` relativo al proceso —sin pasar por
+  `export-directory`, así que con varias réplicas el fichero quedaba en la de turno—, contestaba con
+  esa ruta del servidor en texto y no había forma de descargarlo; la purga de huérfanos (§5) además
+  borraba ese fichero, porque su nombre encaja con los de los trabajos. No lo usaban ni
+  `mto-backoffice` ni `mto-frontend`. Con él se fueron `exportToCsvAsync` y
+  `exportToCsvNoWindowAsync`, que estaba `@Deprecated` (cargaba la vía entera en memoria). Ahora
+  responde 404; se exporta con `POST /profiles/jobs/export`, los mismos tres formatos con cabecera.
 - `SecurityConfiguration`: se añaden los patrones de las rutas nuevas. Sin ellos habrían caído en la
   regla general del verbo y **bastaría `config-write` para lanzar una carga masiva**.
 - `application.yaml`: bloque `app.jobs`.
