@@ -880,7 +880,9 @@ docker compose up -d --build
 
 Así verificas que:
 
-- El `Dockerfile` construye.
+- El `Dockerfile` construye. La imagen corre con un UID numérico (`USER 1001`) del grupo 0, y `/app` y
+  `/data` son del grupo 0 con escritura: así arranca igual con el UID aleatorio que asigna OpenShift
+  (SCC `restricted-v2`), que es lo que prueba el CI con `--user`.
 - El perfil `docker` funciona.
 - Flyway arranca desde cero.
 - Hibernate valida contra la base creada por Flyway.
