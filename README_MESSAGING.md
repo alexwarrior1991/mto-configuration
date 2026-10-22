@@ -768,6 +768,8 @@ La DLQ hereda el tipo de su cola principal — de nada sirve replicar la cola de
 
 Mientras la cola no existe, los mensajes no son enrutables y el relay los deja en reintento, así que la ventana es recuperable, pero conviene hacerlo con el outbox vigilado.
 
+Los consumidores de los eventos de datos maestros (`mto-stock`, `mto-maintenance`, `mto-notification` y `mto-resources`) declaran sus colas con su propia propiedad, la misma en los cuatro: `app.rabbitmq.queues.type` (`APP_RABBITMQ_QUEUES_TYPE`, `classic` por defecto y en local, `quorum` en OpenShift, con un RabbitMQ de tres nodos) para todas sus colas y sus DLQ, y `x-delivery-limit` 5 en las quorum. Con `classic` declaran exactamente lo de antes, sin `x-queue-type`, por la misma razón que aquí.
+
 `x-queue-mode: lazy` está **obsoleto**: RabbitMQ 3.12 y posteriores lo ignoran, porque las colas clásicas v2 ya escriben a disco por defecto. El validador avisa si alguna cola lo declara.
 
 ### 9.4. Qué se valida al arrancar
