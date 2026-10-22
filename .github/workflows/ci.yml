@@ -132,11 +132,14 @@ jobs:
       #
       # Con --network host, 'localhost' significa lo mismo dentro del contenedor y para el servicio
       # que el runner ha publicado.
+      #
+      # Corre con un UID cualquiera del grupo 0 (--user), como en OpenShift con la SCC restricted-v2:
+      # que arranque con el 1001 del Dockerfile no prueba que arranque con el que asigna el cluster.
       - name: Smoke test the image
         if: ${{ github.event_name != 'push' || github.ref != 'refs/heads/master' }}
         run: |
           IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
-          docker run -d --name mto-configuration-smoke --network host \
+          docker run -d --name mto-configuration-smoke --user 1000680000:0 --network host \
             -e SPRING_PROFILES_ACTIVE=docker \
             -e MTO_CONFIGURATION_DATASOURCE_URL=jdbc:postgresql://localhost:5432/mto_configuration_db \
             -e MTO_CONFIGURATION_DATASOURCE_USERNAME=mto_configuration_user \

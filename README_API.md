@@ -814,9 +814,14 @@ Códigos de la descarga, que distinguen casos que un 404 mezclaría:
 | Código | Significado |
 |---|---|
 | `409` | el trabajo existe pero aún no ha terminado: reintenta más tarde |
-| `410` | terminó, pero el fichero ya se purgó: hay que relanzar la exportación |
+| `410` | terminó, pero el fichero ya se purgó, o lo sirve una réplica que no lo ve (ficheros sin almacenamiento compartido): hay que relanzar la exportación |
 | `404` | no existe ese trabajo, o es de un tipo que no produce fichero |
 | `429` | no hay hueco de concurrencia; incluye `Retry-After` |
+
+`GET /profiles/track/{trackId}/export` ya no existe (404): escribía el CSV en un directorio fijo del
+contenedor, contestaba con la ruta del fichero en el servidor y no había forma de descargarlo. Su
+sustituto es `POST /profiles/jobs/export?trackId=…&mapperType=…`, con los mismos tres formatos
+(`basic`, `default`, `technical`) más la cabecera, el estado y la descarga.
 
 Detalle completo en [`README_ASYNC_JOBS.md`](README_ASYNC_JOBS.md).
 

@@ -133,10 +133,10 @@ public class AsyncJobProperties {
         /**
          * Directorio de los CSV generados.
          *
-         * <p>Relativo al directorio de trabajo del proceso, como el {@code exports} que ya usaba el
-         * endpoint antiguo. En un despliegue con varias replicas debe apuntar a almacenamiento
-         * compartido, o la descarga fallara cuando la sirva una replica distinta de la que
-         * genero el fichero.</p>
+         * <p>Por defecto, relativo al directorio de trabajo del proceso. En un despliegue con varias
+         * replicas debe apuntar a almacenamiento compartido (en OpenShift, un PVC ReadWriteMany en
+         * {@code /data}), o la descarga respondera 410 cuando la sirva una replica distinta de la
+         * que genero el fichero.</p>
          */
         private Path exportDirectory = Path.of("exports");
 

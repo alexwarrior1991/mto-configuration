@@ -31,15 +31,20 @@ FROM eclipse-temurin:25-jre
 # Establece el directorio de trabajo para la aplicación
 WORKDIR /app
 
-# Crea un usuario y grupo del sistema llamado 'spring' para ejecutar la aplicación
-# Esto mejora la seguridad evitando ejecutar la aplicación como root
-RUN addgroup --system spring && adduser --system spring --ingroup spring
-
 # Copia el JAR compilado desde la etapa de construcción (build)
 COPY --from=build /workspace/target/mto-configuration-0.0.1-SNAPSHOT.jar app.jar
 
-# Cambia al usuario 'spring' para ejecutar la aplicación sin privilegios de root
-USER spring:spring
+# /data es donde se montan los ficheros de los trabajos (APP_JOBS_*_DIRECTORY): un PVC ReadWriteMany
+# en OpenShift o un volumen en Docker Compose (README_ASYNC_JOBS.md §10).
+# OpenShift (SCC restricted-v2) arranca el contenedor con un UID aleatorio y el grupo 0; Docker, con
+# el 1001, que sin entrada en /etc/passwd también es del grupo 0. /app y /data son del grupo 0 y el
+# grupo puede lo mismo que el dueño, así que los dos funcionan igual y ninguno es root.
+RUN mkdir -p /data \
+    && chgrp -R 0 /app /data \
+    && chmod -R g=u /app /data
+
+# Ejecuta la aplicación sin privilegios de root, con un UID numérico (ver arriba)
+USER 1001
 
 # Expone el puerto 8080 en el que la aplicación escuchará
 EXPOSE 8080

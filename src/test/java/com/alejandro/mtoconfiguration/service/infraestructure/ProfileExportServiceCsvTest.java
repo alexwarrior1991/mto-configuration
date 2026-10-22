@@ -1,7 +1,6 @@
 package com.alejandro.mtoconfiguration.service.infraestructure;
 
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
-import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
 import java.util.LinkedHashSet;
 import org.junit.jupiter.api.DisplayName;
@@ -12,7 +11,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.core.task.support.TaskExecutorAdapter;
 
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
@@ -39,15 +37,12 @@ class ProfileExportServiceCsvTest {
 
     @Mock
     private IProfileService profileService;
-    @Mock
-    private ProfileRepository profileRepository;
 
     @TempDir
     Path tempDir;
 
     private ProfileExportService service() {
-        return new ProfileExportService(profileService, profileRepository,
-                new TaskExecutorAdapter(Runnable::run));
+        return new ProfileExportService(profileService);
     }
 
     private Profile profile(String id, String kp) {
@@ -100,7 +95,7 @@ class ProfileExportServiceCsvTest {
     }
 
     @Test
-    @DisplayName("sin cabecera cuando no se pide, para no cambiar los ficheros del endpoint antiguo")
+    @DisplayName("sin cabecera cuando no se pide")
     void sinCabeceraSiNoSePide() throws Exception {
         streamProfiles(List.of(profile("P-1", "1")));
         ProfileExportService service = service();

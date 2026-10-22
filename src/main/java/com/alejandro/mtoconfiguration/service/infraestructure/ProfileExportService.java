@@ -1,12 +1,8 @@
 package com.alejandro.mtoconfiguration.service.infraestructure;
 
-import com.alejandro.mtoconfiguration.configuration.AsyncConfiguration;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
-import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedWriter;
@@ -16,10 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.List;
 import java.util.StringJoiner;
 import java.util.stream.Collectors;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -35,35 +29,17 @@ public class ProfileExportService {
     public static final String MAPPER_TECHNICAL = "technical";
 
     private final IProfileService profileService;
-    private final ProfileRepository profileRepository;
 
-    /**
-     * Executor de la aplicacion, con hilos virtuales y propagacion del {@code SecurityContext}.
-     *
-     * <p>Antes esta clase creaba su propio {@code Executors.newVirtualThreadPerTaskExecutor()}. Eso
-     * tenia dos problemas que no se ven hasta que muerden: el executor no se cerraba nunca, y sobre
-     * todo la exportacion corria <b>sin identidad</b>, porque el {@code SecurityContext} vive en un
-     * ThreadLocal y un hilo virtual recien creado arranca vacio. La auditoria de todo lo que tocara
-     * esa rama quedaba atribuida a «system» en silencio.</p>
-     */
-    private final AsyncTaskExecutor taskExecutor;
-
-    public ProfileExportService(
-            IProfileService profileService,
-            ProfileRepository profileRepository,
-            @Qualifier(AsyncConfiguration.TASK_EXECUTOR) AsyncTaskExecutor taskExecutor
-    ) {
+    public ProfileExportService(IProfileService profileService) {
         this.profileService = profileService;
-        this.profileRepository = profileRepository;
-        this.taskExecutor = taskExecutor;
     }
 
     /**
      * Escribe el CSV de una via de forma <b>sincrona</b>, en el hilo que llama.
      *
-     * <p>Es el nucleo de la exportacion, y esta separado de las variantes asincronas justamente
-     * para que quien ya corre en segundo plano —la capa de trabajos— no tenga que envolver su
-     * trabajo en otro salto de hilo solo para reaprovechar el codigo de escritura.</p>
+     * <p>Es el nucleo de la exportacion y no salta de hilo: quien la llama, la capa de trabajos
+     * ({@code POST /profiles/jobs/export}), ya corre en segundo plano, con su estado, su cupo y su
+     * descarga.</p>
      *
      * <p>Recorre la via con {@code processProfilesByTrack}, es decir, por ventanas y desacoplando
      * cada entidad del contexto de persistencia. Cargar la via entera en una lista funciona hasta
@@ -122,70 +98,10 @@ public class ProfileExportService {
     }
 
     /**
-     * Exportacion en segundo plano que devuelve un {@code CompletableFuture}.
-     *
-     * <p>Sigue existiendo tal cual porque la usa el endpoint {@code GET /profiles/track/{id}/export},
-     * y su comportamiento no ha cambiado: mismo fichero, mismas columnas y <b>sin cabecera</b>, que
-     * es lo que esperan los consumidores que ya leen esos ficheros.</p>
-     *
-     * <p>Para operaciones nuevas es preferible la capa de trabajos
-     * ({@code POST /profiles/jobs/export}): aquella deja rastro del estado, controla la
-     * concurrencia y ofrece la descarga; esta no sabe decir si termino ni si fallo.</p>
-     */
-    public CompletableFuture<Void> exportToCsvAsync(Long trackId, Path targetPath, Function<Profile, String> mapper) {
-        return CompletableFuture.runAsync(() -> {
-            log.info("Hilo virtual iniciando exportación: {}", Thread.currentThread());
-            writeCsv(trackId, targetPath, mapper, null, null);
-        }, taskExecutor);
-    }
-
-    /**
-     * Variante sin ventanas: carga la via <b>entera</b> en memoria antes de escribirla.
-     *
-     * @deprecated No usar en produccion, y no usar en la capa de trabajos. Es material didactico:
-     * sirve para contrastar contra {@link #writeCsv} lo que cuesta prescindir de la paginacion. El
-     * consumo de memoria crece con el tamano de la via, de modo que el fallo no llega cuando la
-     * exportacion es lenta, sino de golpe y en forma de OutOfMemoryError que tumba el proceso
-     * completo. Se conserva unicamente para no romper a quien ya la llame.
-     */
-    @Deprecated(since = "capa de trabajos asincronos", forRemoval = false)
-    public CompletableFuture<Void> exportToCsvNoWindowAsync(Long trackId, Path targetPath, Function<Profile, String> mapper) {
-        return CompletableFuture.runAsync(() -> {
-            log.info("Iniciando exportación SIMPLE (sin ventanas) en hilo virtual: {}", Thread.currentThread());
-
-            createParentDirectories(targetPath);
-
-            try (BufferedWriter writer = Files.newBufferedWriter(targetPath,
-                    StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING)) {
-
-                List<Profile> profiles = profileRepository.findByTrackId(trackId);
-
-                log.info("Cargados {} perfiles en memoria para exportar", profiles.size());
-
-                profiles.forEach(profile -> {
-                    try {
-                        writer.write(mapper.apply(profile));
-                        writer.newLine();
-                    } catch (IOException e) {
-                        throw new UncheckedIOException("Error escribiendo linea CSV de la via " + trackId, e);
-                    }
-                });
-
-                log.info("Exportación finalizada en {}", targetPath);
-            } catch (IOException e) {
-                log.error("Fallo crítico en la exportación simple", e);
-                throw new UncheckedIOException("Error exportando la via " + trackId + " a " + targetPath, e);
-            }
-        }, taskExecutor);
-    }
-
-    /**
      * Mapper correspondiente al formato pedido; el basico si el nombre no se reconoce.
      *
      * <p>Se elige tolerar un nombre desconocido en lugar de rechazarlo porque el parametro tiene
-     * valor por defecto y ya se comportaba asi en el endpoint antiguo.</p>
+     * valor por defecto y asi se comportaba el antiguo {@code GET /profiles/track/{id}/export}.</p>
      */
     public Function<Profile, String> resolveMapper(String mapperType) {
         return switch (normalize(mapperType)) {
