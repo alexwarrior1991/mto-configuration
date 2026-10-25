@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.cache;
 
+import com.alejandro.mtoconfiguration.configuration.cache.CacheGeneration;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheAvailability;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheEvictService;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +28,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -67,6 +70,8 @@ class RedisCacheEvictServiceTest {
     private Cursor<byte[]> cursor;
     @Mock
     private RedisCacheAvailability availability;
+    @Mock
+    private CacheGeneration generation;
 
     private RedisCacheEvictService service;
 
@@ -78,7 +83,7 @@ class RedisCacheEvictServiceTest {
         when(cursor.hasNext()).thenReturn(false);
         when(availability.isAvailable()).thenReturn(true);
 
-        service = new RedisCacheEvictService(connectionFactory, APP, availability);
+        service = new RedisCacheEvictService(connectionFactory, APP, availability, generation);
     }
 
     /** Los patrones enviados a SCAN, en orden. */
@@ -290,6 +295,68 @@ class RedisCacheEvictServiceTest {
             service.evictNormalServiceCaches("TrackService");
 
             assertThat(patronesUsados()).allSatisfy(patron -> assertThat(casa(patron, CLAVE_DE_UNA_VIA)).isFalse());
+        }
+    }
+
+    @Nested
+    @DisplayName("La generacion de la cache")
+    class Generacion {
+
+        @Test
+        @DisplayName("cada tanda sube la generacion por su conexion antes de borrar nada")
+        void subeAntesDeBorrar() {
+            service.evictAfterLovWrite("PoleType");
+
+            // Una lectura que cargo mientras tanto lo ve al guardar y deshace su put
+            // (ResilientCache): si se subiera despues, su put podria colarse entre medias.
+            var orden = inOrder(generation, keyCommands);
+            orden.verify(generation).advance(connection);
+            orden.verify(keyCommands, times(6)).scan(any(ScanOptions.class));
+        }
+
+        @Test
+        @DisplayName("la sube aunque no haya ninguna clave que borrar")
+        void subeSinClaves() {
+            // Justo el caso de la carrera: la clave aun no existe y la guardara una lectura lenta.
+            service.evictNormalServiceCaches("ProfileService");
+
+            verify(generation, times(1)).advance(connection);
+            verify(keyCommands, never()).del(any(byte[][].class));
+        }
+
+        @Test
+        @DisplayName("con el cortocircuito abierto no la sube: lo hara la tanda que vacie lo pendiente")
+        void conElCortocircuitoNoLaSube() {
+            when(availability.isAvailable()).thenReturn(false, true);
+
+            service.evictAfterLovWrite("PoleType");
+            verify(generation, never()).advance(any());
+
+            service.evictAfterLovWrite("PortalType");
+            verify(generation, times(1)).advance(connection);
+        }
+
+        @Test
+        @DisplayName("si subirla falla, la tanda entera queda pendiente y no se borra nada")
+        void siFallaQuedaTodoPendiente() {
+            doThrow(new RedisConnectionFailureException("Connection reset"))
+                    .doNothing()
+                    .when(generation).advance(connection);
+
+            service.evictNormalServiceCaches("ProfileService");
+            verify(keyCommands, never()).scan(any(ScanOptions.class));
+            verify(availability, times(1)).markDegraded(eq("eviction"), any());
+
+            service.evictNormalServiceCaches("TrackService");
+            assertThat(patronesUsados()).containsExactlyInAnyOrder(
+                    APP + "::normal:item::ProfileService:*",
+                    APP + "::normal:list::ProfileService:*",
+                    APP + "::normal:page::ProfileService:*",
+                    APP + "::normal:search::ProfileService:*",
+                    APP + "::normal:item::TrackService:*",
+                    APP + "::normal:list::TrackService:*",
+                    APP + "::normal:page::TrackService:*",
+                    APP + "::normal:search::TrackService:*");
         }
     }
 

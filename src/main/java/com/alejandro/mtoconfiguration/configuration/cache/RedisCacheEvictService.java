@@ -40,6 +40,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * que el pendiente tiene techo. Lo que queda fuera: si tras el corte no se escribe nada, lo
  * pendiente espera a la siguiente escritura o al TTL, y un reinicio de la aplicacion lo pierde.
  *
+ * <p><b>Cada tanda sube antes la generacion</b> ({@link CacheGeneration}), por la misma conexion y
+ * aunque no haya clave que borrar: la lectura que este cargando a la vez lo ve al guardar y deshace
+ * su {@code put}, que si no llegaria despues de este {@code DEL} con lo de antes de la escritura. Una
+ * tanda que encuentra el cortocircuito no la sube; la sube la que vacia lo pendiente.
+ *
  * <p>Un fallo no se propaga: la invalidacion ocurre despues del commit, y convertir una caida de
  * Redis en un error para quien ya guardo seria peor que servir datos obsoletos un rato.
  */
@@ -58,6 +63,7 @@ public class RedisCacheEvictService {
     private final RedisConnectionFactory redisConnectionFactory;
     private final String applicationName;
     private final RedisCacheAvailability availability;
+    private final CacheGeneration generation;
 
     /** Patrones que una tanda anterior no pudo vaciar: el cortocircuito estaba abierto o fallo Redis. */
     private final Set<String> pending = ConcurrentHashMap.newKeySet();
@@ -65,10 +71,12 @@ public class RedisCacheEvictService {
     public RedisCacheEvictService(
             RedisConnectionFactory redisConnectionFactory,
             @Value("${cache.application:mto-configuration}") String applicationName,
-            RedisCacheAvailability availability) {
+            RedisCacheAvailability availability,
+            CacheGeneration generation) {
         this.redisConnectionFactory = redisConnectionFactory;
         this.applicationName = applicationName;
         this.availability = availability;
+        this.generation = generation;
     }
 
     /**
@@ -175,10 +183,11 @@ public class RedisCacheEvictService {
     }
 
     /**
-     * Una tanda: lo pendiente mas los patrones de esta escritura, por la misma conexion. Con el
-     * cortocircuito abierto no se intenta nada y todo queda pendiente; el primer fallo corta la
-     * tanda (sin conexion no hay patron que valga), deja pendiente lo que faltaba y degrada la
-     * cache, que ya escribe la traza una vez por ventana.
+     * Una tanda: la generacion y luego lo pendiente mas los patrones de esta escritura, por la misma
+     * conexion. Con el cortocircuito abierto no se intenta nada y todo queda pendiente; el primer
+     * fallo corta la tanda (sin conexion no hay patron que valga), deja pendiente lo que faltaba y
+     * degrada la cache, que ya escribe la traza una vez por ventana. Si falla la generacion, quedan
+     * pendientes todos los patrones, y la tanda que los vacie la subira.
      */
     private void evictByPatterns(String scope, List<String> patterns) {
         if (!availability.isAvailable()) {
@@ -195,6 +204,7 @@ public class RedisCacheEvictService {
         int done = 0;
         long deleted = 0;
         try (RedisConnection connection = redisConnectionFactory.getConnection()) {
+            generation.advance(connection);
             for (String pattern : ordered) {
                 deleted += deleteMatching(connection, pattern);
                 done++;

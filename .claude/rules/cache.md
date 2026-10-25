@@ -44,6 +44,14 @@ paths:
   que copia campos de otra entidad, o cuya fila se escribe anidada desde otro servicio, necesita su
   entrada en `CacheEvictionListener.DEPENDENT_SERVICES`. Lo fija `CacheEvictionListenerTest`, que
   también comprueba que los nombres del mapa existen.
+- Un `put` no puede llegar después del vaciado con lo de antes de la escritura (`CacheGeneration`).
+  Cada tanda de `RedisCacheEvictService` sube la generación (`<aplicación>::cache-generation`, sin
+  TTL, fuera de todo patrón de vaciado) por su conexión y antes de borrar, aunque no haya clave que
+  borrar. `ResilientCache` la apunta en el hilo al fallar un `get` y, tras el `put` de esa clave, la
+  vuelve a leer: si subió, borra lo guardado. Primero guarda y luego mira, nunca al revés. Un `put`
+  sin fallo antes en el hilo guarda sin más. Solo cubre el `get`/método/`put` de un `@Cacheable` sin
+  `sync`: un `sync = true` o un `@CachePut` nuevos no pasan por ahí. Lo fijan `ResilientCacheTest`,
+  `RedisCacheEvictServiceTest` y, contra Redis con la carrera forzada, `CacheGenerationIT`.
 - `TrackSchematicService.getSchematic` es el único DTO con hijos que se cachea (una clave por vía): se
   vacía con cualquier escritura de infraestructura o de catálogo.
 - Redis es opcional en ejecución. Si no responde, `ResilientCache` cortocircuita durante
@@ -63,7 +71,8 @@ paths:
   Quien cambie el `RedisCacheManager` o su escritor lo conserva. Lo fija `RedisCacheConfigTest`.
 - Los aciertos de caché se prueban contra Redis de verdad:
   - `RedisCacheIT`: cada caché, las páginas y los tipos que viajan;
-  - `RedisCacheResilienceIT`: el acierto antes de la caída.
+  - `RedisCacheResilienceIT`: el acierto antes de la caída;
+  - `CacheGenerationIT`: la lectura pausada entre la base y el `put` mientras una escritura vacía.
 
   Estuvieron en cuarentena por intermitentes hasta que se vio que la causa era la escritura en
   segundo plano. `RedisCacheEvictIT` escribe sus claves a mano para probar solo el `SCAN` y el `DEL`.
