@@ -561,8 +561,7 @@ Cuatro decisiones que sostienen el resto:
   compartido; si no, la descarga responderá 410 cuando la sirva una réplica distinta de la que
   generó el fichero. El cupo ya es de clúster; el fichero lo es solo si su directorio lo es.
 
-  En OpenShift los tres van a un PVC `ReadWriteMany` (CephFS de ODF, por ejemplo) montado en `/data`,
-  el directorio que la imagen ya trae con permisos para el UID aleatorio del grupo 0:
+  En OpenShift los tres van a un PVC `ReadWriteMany` (CephFS de ODF, por ejemplo) montado en `/data`:
 
   ```yaml
   APP_JOBS_PROFILE_EXPORT_DIRECTORY: /data/exports
@@ -570,8 +569,16 @@ Cuatro decisiones que sostienen el resto:
   APP_JOBS_LOV_REPORT_DIRECTORY: /data/lov-imports
   ```
 
-  Los directorios los crea el servicio al escribir el primer fichero. **Sin ese PVC, con más de una
-  réplica, una descarga responde 410** cada vez que la atiende una réplica que no generó el fichero,
+  Los directorios los crea el servicio al escribir el primer fichero (`Files.createDirectories`), así
+  que **la raíz del volumen tiene que admitir escribir al UID del pod**. Montado, el PVC tapa el `/data`
+  de la imagen y sus permisos para el grupo 0: lo que cuenta son los del volumen. Con la SCC
+  `restricted-v2` el pod lleva un `fsGroup` del rango del namespace, y un driver CSI que lo aplica
+  (`fsGroupPolicy`, como el de CephFS de ODF) le da la raíz a ese grupo; si el del clúster no lo hace,
+  la raíz se prepara aparte (un `chmod g+w` una vez) o se usa un subdirectorio ya escribible. Se
+  comprueba con `oc rsh deploy/mto-configuration touch /data/.probe`. En Docker Compose el volumen con
+  nombre de `compose.yaml` hereda al crearse los permisos de la imagen, y no hay que hacer nada.
+
+  **Sin ese PVC, con más de una réplica, una descarga responde 410** cada vez que la atiende una réplica que no generó el fichero,
   aunque el trabajo haya terminado bien; un `ReadWriteOnce` tampoco sirve, porque solo lo monta el
   nodo de una de ellas. La purga (§5) corre en todas las réplicas sobre el mismo directorio, y no
   importa: borrar un fichero que otra ya borró no es un error.

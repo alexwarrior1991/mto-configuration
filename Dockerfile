@@ -35,7 +35,8 @@ WORKDIR /app
 COPY --from=build /workspace/target/mto-configuration-0.0.1-SNAPSHOT.jar app.jar
 
 # /data es donde se montan los ficheros de los trabajos (APP_JOBS_*_DIRECTORY): un PVC ReadWriteMany
-# en OpenShift o un volumen en Docker Compose (README_ASYNC_JOBS.md §10).
+# en OpenShift, o el volumen con nombre de compose.yaml (README_ASYNC_JOBS.md §10). Un volumen con
+# nombre nuevo copia estos permisos; un PVC los tapa, y su raiz tiene que admitir al UID del pod.
 # OpenShift (SCC restricted-v2) arranca el contenedor con un UID aleatorio y el grupo 0; Docker, con
 # el 1001, que sin entrada en /etc/passwd también es del grupo 0. /app y /data son del grupo 0 y el
 # grupo puede lo mismo que el dueño, así que los dos funcionan igual y ninguno es root.
@@ -49,5 +50,8 @@ USER 1001
 # Expone el puerto 8080 en el que la aplicación escuchará
 EXPOSE 8080
 
-# Define el comando de inicio de la aplicación
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+# JAVA_OPTS, como en los hermanos: la forma exec de ENTRYPOINT no expande variables, y la JVM no lee
+# JAVA_OPTS por si sola, asi que compose.yaml la pasaba y no hacia nada. exec deja a java como PID 1,
+# para que reciba el SIGTERM de una parada.
+ENV JAVA_OPTS=""
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

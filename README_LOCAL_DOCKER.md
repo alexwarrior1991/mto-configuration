@@ -883,6 +883,10 @@ Así verificas que:
 - El `Dockerfile` construye. La imagen corre con un UID numérico (`USER 1001`) del grupo 0, y `/app` y
   `/data` son del grupo 0 con escritura: así arranca igual con el UID aleatorio que asigna OpenShift
   (SCC `restricted-v2`), que es lo que prueba el CI con `--user`.
+- Los ficheros de los trabajos van al volumen con nombre `jobs-data`, montado en `/data`: sobreviven a
+  recrear el contenedor, y una exportación terminada se sigue descargando (antes, en la capa del
+  contenedor, respondía 410). `docker compose down -v` lo borra.
+- `JAVA_OPTS` llega a la JVM (`ENTRYPOINT` por `sh -c`, como en los hermanos).
 - El perfil `docker` funciona.
 - Flyway arranca desde cero.
 - Hibernate valida contra la base creada por Flyway.
