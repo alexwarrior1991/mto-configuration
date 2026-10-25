@@ -9,6 +9,18 @@ import com.alejandro.mtoconfiguration.entity.lov.ProfileStatus;
 import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
 import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
 import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
+import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
+import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
+import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulatorSwitch;
+import com.alejandro.mtoconfiguration.entity.infrastructure.SteadyArm;
+import com.alejandro.mtoconfiguration.entity.lov.SteadyArmType;
+import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
+import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.CantileverMasterDataPayloadMapper;
+import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.DisconnectorMasterDataPayloadMapper;
+import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.ExecutionPackageMasterDataPayloadMapper;
+import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.SectionInsulatorMasterDataPayloadMapper;
+import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.StationMasterDataPayloadMapper;
+import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.TrackMasterDataPayloadMapper;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
@@ -37,6 +49,7 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -172,6 +185,63 @@ class MessagingContractExamplesTest {
         assertThat(example.at("/data/values/disconnectors").findValuesAsString("name"))
                 .containsExactly("NAT-NS3", "NAT-NS4");
         assertThat(example.at("/data/values/disconnector/name").asText()).isEqualTo("NAT-NS3");
+    }
+
+    @Test
+    @DisplayName("un paquete de ejecucion sale como el ejemplo, con su empresa, sus vias y sus estaciones")
+    void elPaqueteSaleComoElEjemplo() throws IOException {
+        ExampleEntities.Network network = ExampleEntities.network();
+
+        check("master-data-execution-package-updated.json", "1b2c3d4e-0001-4000-8000-000000000005",
+                "execution-package", network.executionPackage().getId(),
+                new ExecutionPackageMasterDataPayloadMapper().toPayload(network.executionPackage()));
+    }
+
+    @Test
+    @DisplayName("una estacion sale como el ejemplo, con sus vias, sus seccionadores y sus aisladores")
+    void laEstacionSaleComoElEjemplo() throws IOException {
+        ExampleEntities.Network network = ExampleEntities.network();
+
+        check("master-data-station-updated.json", "1b2c3d4e-0002-4000-8000-000000000051", "station",
+                network.station().getId(), new StationMasterDataPayloadMapper().toPayload(network.station()));
+    }
+
+    @Test
+    @DisplayName("una via sale como el ejemplo, con su paquete, sus estaciones y sus perfiles")
+    void laViaSaleComoElEjemplo() throws IOException {
+        ExampleEntities.Network network = ExampleEntities.network();
+
+        check("master-data-track-updated.json", "1b2c3d4e-0003-4000-8000-000000000052", "track",
+                network.track().getId(), new TrackMasterDataPayloadMapper().toPayload(network.track()));
+    }
+
+    @Test
+    @DisplayName("una mensula sale como el ejemplo, con su perfil y su brazo")
+    void laMensulaSaleComoElEjemplo() throws IOException {
+        ExampleEntities.Network network = ExampleEntities.network();
+
+        check("master-data-cantilever-updated.json", "1b2c3d4e-0004-4000-8000-000000009001", "cantilever",
+                network.cantilever().getId(), new CantileverMasterDataPayloadMapper().toPayload(network.cantilever()));
+    }
+
+    @Test
+    @DisplayName("un seccionador sale como el ejemplo, con su estacion, su poste y su funcion")
+    void elSeccionadorSaleComoElEjemplo() throws IOException {
+        ExampleEntities.Network network = ExampleEntities.network();
+
+        check("master-data-disconnector-updated.json", "1b2c3d4e-0005-4000-8000-000000000701", "disconnector",
+                network.disconnector().getId(),
+                new DisconnectorMasterDataPayloadMapper().toPayload(network.disconnector()));
+    }
+
+    @Test
+    @DisplayName("un aislador de seccion sale como el ejemplo, con sus dos vias y sus agujas en orden de KP")
+    void elAisladorSaleComoElEjemplo() throws IOException {
+        ExampleEntities.Network network = ExampleEntities.network();
+
+        check("master-data-section-insulator-updated.json", "1b2c3d4e-0006-4000-8000-000000008101",
+                "section-insulator", network.sectionInsulator().getId(),
+                new SectionInsulatorMasterDataPayloadMapper().toPayload(network.sectionInsulator()));
     }
 
     @Test
@@ -341,10 +411,34 @@ class MessagingContractExamplesTest {
             return lov;
         }
 
+        /** Todo lo que cuelga de EP5 en los ejemplos, enlazado en las dos direcciones. */
+        record Network(ExecutionPackage executionPackage, Station station, Track track, Profile profile,
+                       Cantilever cantilever, Disconnector disconnector, SectionInsulator sectionInsulator) {
+        }
+
         static Profile profileWithTwoDisconnectors() {
+            return network().profile();
+        }
+
+        static Network network() {
             ExecutionPackage executionPackage = executionPackage();
+            executionPackage.setLength(18_400L);
+            executionPackage.setStartDate(LocalDate.of(2026, 1, 1));
+            executionPackage.setEndDate(LocalDate.of(2027, 12, 31));
+            BusinessEntity company = new BusinessEntity();
+            company.setId(1L);
+            company.setCode("SYN");
+            company.setName("Syneox");
+            company.setIdentificationNumber("B10744258");
+            executionPackage.setCompany(company);
+
             Station nat = station(51L, "NAT", executionPackage);
+            executionPackage.addStation(nat);
+            Track track1 = track(53L, "TRACK 1", executionPackage);
             Track track = track(52L, "TRACK 2", executionPackage);
+            executionPackage.addTrack(track1);
+            executionPackage.addTrack(track);
+            nat.addTrack(track1);
             nat.addTrack(track);
 
             Profile profile = new Profile();
@@ -354,23 +448,59 @@ class MessagingContractExamplesTest {
             profile.setOrderInTrack(5);
             profile.setSpan(new BigDecimal("55.000"));
             profile.setRailPoleDistance(new BigDecimal("-3100"));
-            profile.setTrack(track);
             profile.setPoleType(lov(new PoleType(), 2L, "HEB"));
             profile.setProfileStatus(lov(new ProfileStatus(), 1L, "OK"));
             profile.setSectionings(new LinkedHashSet<>(java.util.List.of(lov(new Sectioning(), 31L, "NS"))));
+            track.addProfile(profile);
 
             Cantilever cantilever = new Cantilever();
             cantilever.setId(9001L);
             cantilever.setCwHeight(new BigDecimal("5.300"));
             cantilever.setStagger(new BigDecimal("200"));
             cantilever.setCantileverType(lov(new CantileverType(), 11L, "PT1"));
+            SteadyArm steadyArm = new SteadyArm();
+            steadyArm.setId(9101L);
+            steadyArm.setLength(1200L);
+            steadyArm.setSteadyArmType(lov(new SteadyArmType(), 7L, "ATI1"));
+            cantilever.addSteadyArm(steadyArm);
             profile.addCantilever(cantilever);
 
             DisconnectorFunction function = lov(new DisconnectorFunction(), 21L, "Disc/IO");
-            // Se cuelgan al reves de su nombre a proposito: el evento los ordena.
-            profile.addDisconnector(disconnector(702L, "NAT-NS4", false, nat, function));
-            profile.addDisconnector(disconnector(701L, "NAT-NS3", true, nat, function));
-            return profile;
+            // Se cuelgan al reves de su nombre a proposito: el evento del perfil los ordena.
+            Disconnector ns4 = disconnector(702L, "NAT-NS4", false, nat, function);
+            Disconnector ns3 = disconnector(701L, "NAT-NS3", true, nat, function);
+            profile.addDisconnector(ns4);
+            profile.addDisconnector(ns3);
+            nat.addDisconnector(ns4);
+            nat.addDisconnector(ns3);
+            // Pone la via de su poste en paralelo con la otra (V27).
+            ns3.setConnectedTrack(track1);
+
+            SectionInsulator insulator = new SectionInsulator();
+            insulator.setId(8101L);
+            insulator.setName("SI W31-W41");
+            insulator.setEnabled(true);
+            insulator.setKp(new BigDecimal("68180.000"));
+            insulator.setInstallationType(SectionInsulatorInstallationType.TRACK_CONNECTION);
+            insulator.setTrack(track);
+            insulator.setConnectedTrack(track1);
+            // En orden de KP, que es como las carga @OrderBy y como las publica el evento.
+            insulator.addSwitch(turnout(8201L, "W31", "68150.000", 9, track));
+            insulator.addSwitch(turnout(8202L, "W41", "68210.000", 12, track1));
+            nat.addSectionInsulator(insulator);
+
+            return new Network(executionPackage, nat, track, profile, cantilever, ns3, insulator);
+        }
+
+        static SectionInsulatorSwitch turnout(Long id, String code, String kp, int denominator, Track track) {
+            SectionInsulatorSwitch turnout = new SectionInsulatorSwitch();
+            turnout.setId(id);
+            turnout.setCode(code);
+            turnout.setKp(new BigDecimal(kp));
+            turnout.setTurnoutDenominator(denominator);
+            turnout.setTrack(track);
+            turnout.setEnabled(true);
+            return turnout;
         }
 
         static Disconnector disconnector(Long id, String name, Boolean normallyOpen, Station station,

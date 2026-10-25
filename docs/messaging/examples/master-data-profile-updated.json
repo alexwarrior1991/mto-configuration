@@ -53,7 +53,7 @@
         "windDeflection": null,
         "armAngle": null,
         "cantileverTypeId": 11,
-        "steadyArmId": null
+        "steadyArmId": 9101
       } ],
       "disconnectors": [ {
         "id": 701,
@@ -80,7 +80,7 @@
       }
     }
   },
-  "messageHash": "c77e643640bdd4a23cd96189ef3df4bb68cecb65f1c6563f80e75aab9b2b2d4d",
+  "messageHash": "7b49d3989a21ff887568eb88b30974712b14973cd421d65031ed3d887fbaea43",
   "actor": {
     "id": "6f1b1c8e-0000-4000-8000-000000000001",
     "username": "config.editor",
