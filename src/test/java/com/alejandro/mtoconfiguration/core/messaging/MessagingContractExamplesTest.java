@@ -1,7 +1,17 @@
 package com.alejandro.mtoconfiguration.core.messaging;
 
+import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
+import com.alejandro.mtoconfiguration.entity.lov.CantileverType;
+import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
+import com.alejandro.mtoconfiguration.entity.lov.PoleType;
+import com.alejandro.mtoconfiguration.entity.lov.ProfileStatus;
+import com.alejandro.mtoconfiguration.entity.lov.Sectioning;
+import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
+import com.alejandro.mtoconfiguration.enums.infrastructure.DisconnectorDriveType;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
+import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.entity.infrastructure.TrackAccessPoint;
 import com.alejandro.mtoconfiguration.entity.jobs.AsyncJob;
@@ -12,6 +22,7 @@ import com.alejandro.mtoconfiguration.enums.jobs.JobType;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataChangedEvent;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataEventTypeBuilder;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataOperation;
+import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.ProfileMasterDataPayloadMapper;
 import com.alejandro.mtoconfiguration.masterdata.messaging.mapper.TrackAccessPointMasterDataPayloadMapper;
 import com.alejandro.mtoconfiguration.service.infraestructure.jobs.JobFinishedEventPublisher;
 import org.junit.jupiter.api.DisplayName;
@@ -27,6 +38,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.UUID;
 
@@ -41,10 +53,21 @@ import static org.mockito.Mockito.when;
  * fichero, salvo las dos claves que cambian en cada ejecucion (la fecha y, con ella, la huella),
  * que se comprueban aparte: la huella del fichero es la que un consumidor calcularia sobre sus
  * siete claves originales.
+ *
+ * <p>Un evento nuevo o una clave nueva cambian el ejemplo en el mismo commit. Para regenerar los que
+ * salen de un mapper de payload: {@code MESSAGING_EXAMPLES_WRITE=true ./mvnw test
+ * -Dtest=MessagingContractExamplesTest}, y se revisa el diff como cualquier cambio de contrato.</p>
  */
 class MessagingContractExamplesTest {
 
     private static final Path EXAMPLES = Path.of("docs", "messaging", "examples");
+
+    private static final boolean WRITE = "true".equalsIgnoreCase(System.getenv("MESSAGING_EXAMPLES_WRITE"));
+
+    /** La fecha de los ejemplos que se escriben; la de los que ya estaban es la suya. */
+    private static final Instant CREATION_DATE = Instant.parse("2026-10-25T07:00:00Z");
+
+    private static final MessageActor EDITOR = MessageActor.of("6f1b1c8e-0000-4000-8000-000000000001", "config.editor");
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final AsynchronousMessageHashService hashService = new AsynchronousMessageHashService(objectMapper);
@@ -133,6 +156,24 @@ class MessagingContractExamplesTest {
                 .containsExactly("id", "name", "executionPackageId");
     }
 
+    /**
+     * El perfil, con dos seccionadores en su poste (V29): {@code disconnectors} los trae todos, por
+     * nombre, y {@code disconnector} sigue siendo el primero, para quien lo leia antes.
+     */
+    @Test
+    @DisplayName("un perfil sale como el ejemplo, con sus dos seccionadores y el primero en disconnector")
+    void elPerfilSaleComoElEjemplo() throws IOException {
+        Profile profile = ExampleEntities.profileWithTwoDisconnectors();
+
+        check("master-data-profile-updated.json", "9e1f2a3b-4c5d-4e6f-8a7b-0c1d2e3f4a5b", "profile",
+                profile.getId(), new ProfileMasterDataPayloadMapper().toPayload(profile));
+
+        JsonNode example = example("master-data-profile-updated.json");
+        assertThat(example.at("/data/values/disconnectors").findValuesAsString("name"))
+                .containsExactly("NAT-NS3", "NAT-NS4");
+        assertThat(example.at("/data/values/disconnector/name").asText()).isEqualTo("NAT-NS3");
+    }
+
     @Test
     @DisplayName("el final de un trabajo sale como el ejemplo, con quien lo lanzo y el jobId como correlacion")
     void elFinalDeUnTrabajoSaleComoElEjemplo() throws IOException {
@@ -164,6 +205,44 @@ class MessagingContractExamplesTest {
                         "job-" + jobId, ConfigurationRabbitMqNames.eventType("job", "finished"), data);
 
         assertSameAsExample(message, example);
+    }
+
+    /**
+     * Un evento de datos maestros con los {@code values} de su mapper real, comparado con su ejemplo
+     * (o escrito, con {@code MESSAGING_EXAMPLES_WRITE=true}).
+     */
+    private void check(String fileName, String operationId, String entityName, Long id, Map<String, Object> values)
+            throws IOException {
+        MasterDataChangedEvent data = new MasterDataChangedEvent(entityName, String.valueOf(id),
+                MasterDataOperation.UPDATED, values);
+        AsynchronousMessage<MasterDataChangedEvent> message = factory(EDITOR, "5d2e7f10-2222-4333-8444-" + "%012d".formatted(id))
+                .create(UUID.fromString(operationId), entityName + "-" + id,
+                        MasterDataEventTypeBuilder.build(entityName, MasterDataOperation.UPDATED), data);
+
+        if (WRITE) {
+            write(message, fileName);
+        }
+        assertSameAsExample(message, example(fileName));
+    }
+
+    private <T> void write(AsynchronousMessage<T> message, String fileName) throws IOException {
+        AsynchronousMessage<T> dated = new AsynchronousMessage<>(
+                message.operationId(),
+                message.referenceId(),
+                message.origin(),
+                CREATION_DATE,
+                message.eventType(),
+                message.data(),
+                "PENDING",
+                message.actor(),
+                message.correlationId());
+        AsynchronousMessage<T> hashed = dated.withMessageHash(hashService.calculate(dated));
+        // Del mensaje y no de un arbol releido: asi los decimales salen con su escala, como viajan
+        // (110176.000, no 110176.0). Los separadores, como en los ejemplos escritos a mano.
+        String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(hashed)
+                .replace("\" : ", "\": ")
+                .replace("[ ]", "[]");
+        Files.writeString(EXAMPLES.resolve(fileName), json + "\n");
     }
 
     private JsonNode example(String fileName) throws IOException {
@@ -217,5 +296,94 @@ class MessagingContractExamplesTest {
         assertThat(example.get("messageHash").asText())
                 .as("la huella del ejemplo es la de sus siete claves originales, con la fecha del ejemplo")
                 .isEqualTo(hashService.calculate(asInExample));
+    }
+
+    /**
+     * Las entidades de los ejemplos, con ids y nombres del plano (EP5, el poste 68-2.05 con sus dos
+     * seccionadores de la zona neutra de NAT): lo que un consumidor copia como fixture tiene que
+     * parecerse a lo que le llega.
+     */
+    static final class ExampleEntities {
+
+        private ExampleEntities() {
+        }
+
+        static ExecutionPackage executionPackage() {
+            ExecutionPackage executionPackage = new ExecutionPackage();
+            executionPackage.setId(5L);
+            executionPackage.setName("EP5");
+            executionPackage.setInitialPackage(false);
+            executionPackage.setEnabled(true);
+            return executionPackage;
+        }
+
+        static Station station(Long id, String name, ExecutionPackage executionPackage) {
+            Station station = new Station();
+            station.setId(id);
+            station.setName(name);
+            station.setExecutionPackage(executionPackage);
+            return station;
+        }
+
+        static Track track(Long id, String name, ExecutionPackage executionPackage) {
+            Track track = new Track();
+            track.setId(id);
+            track.setName(name);
+            track.setEnabled(true);
+            track.setExecutionPackage(executionPackage);
+            return track;
+        }
+
+        static <L extends Lov> L lov(L lov, Long id, String code) {
+            lov.setId(id);
+            lov.setCode(code);
+            lov.setEnabled(true);
+            return lov;
+        }
+
+        static Profile profileWithTwoDisconnectors() {
+            ExecutionPackage executionPackage = executionPackage();
+            Station nat = station(51L, "NAT", executionPackage);
+            Track track = track(52L, "TRACK 2", executionPackage);
+            nat.addTrack(track);
+
+            Profile profile = new Profile();
+            profile.setId(6802L);
+            profile.setProfileId("68-2.05");
+            profile.setKp(new BigDecimal("68205.000"));
+            profile.setOrderInTrack(5);
+            profile.setSpan(new BigDecimal("55.000"));
+            profile.setRailPoleDistance(new BigDecimal("-3100"));
+            profile.setTrack(track);
+            profile.setPoleType(lov(new PoleType(), 2L, "HEB"));
+            profile.setProfileStatus(lov(new ProfileStatus(), 1L, "OK"));
+            profile.setSectionings(new LinkedHashSet<>(java.util.List.of(lov(new Sectioning(), 31L, "NS"))));
+
+            Cantilever cantilever = new Cantilever();
+            cantilever.setId(9001L);
+            cantilever.setCwHeight(new BigDecimal("5.300"));
+            cantilever.setStagger(new BigDecimal("200"));
+            cantilever.setCantileverType(lov(new CantileverType(), 11L, "PT1"));
+            profile.addCantilever(cantilever);
+
+            DisconnectorFunction function = lov(new DisconnectorFunction(), 21L, "Disc/IO");
+            // Se cuelgan al reves de su nombre a proposito: el evento los ordena.
+            profile.addDisconnector(disconnector(702L, "NAT-NS4", false, nat, function));
+            profile.addDisconnector(disconnector(701L, "NAT-NS3", true, nat, function));
+            return profile;
+        }
+
+        static Disconnector disconnector(Long id, String name, Boolean normallyOpen, Station station,
+                                         DisconnectorFunction function) {
+            Disconnector disconnector = new Disconnector();
+            disconnector.setId(id);
+            disconnector.setName(name);
+            disconnector.setOnLoad(true);
+            disconnector.setNormallyOpen(normallyOpen);
+            disconnector.setDriveType(DisconnectorDriveType.MOTOR);
+            disconnector.setStation(station);
+            disconnector.setDisconnectorFunction(function);
+            return disconnector;
+        }
     }
 }

@@ -64,7 +64,11 @@ public class TrackMasterDataPayloadMapper implements MasterDataEntityPayloadMapp
             return List.of();
         }
 
+        // distinct: findByIdForMessaging trae los perfiles (una lista) junto con las estaciones de la
+        // via (un conjunto), y Hibernate repite cada perfil por cada estacion: una via en dos
+        // estaciones publicaba cada perfil dos veces.
         return profiles.stream()
+                .distinct()
                 .sorted(Comparator
                         .comparing((Profile profile) -> profile.getId(), Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(Profile::getProfileId, Comparator.nullsLast(Comparator.naturalOrder())))

@@ -22,7 +22,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -513,19 +512,48 @@ class DisconnectorLinkIT {
                 disconnectorId);
     }
 
+    /** V29: hasta entonces era un 409 BUS-002 por el indice unico de V24. */
     @Test
-    @DisplayName("dos seccionadores vivos en el mismo perfil siguen siendo un conflicto (409 BUS-002)")
+    @DisplayName("dos seccionadores vivos en el mismo perfil se guardan, y el perfil enseña los dos por nombre")
     void dosVivosEnElMismoPerfil() {
         DisconnectorDTO seccionador = disconnectorService.getById(DISCONNECTOR_A);
         seccionador.setProfileId(PROFILE_B);
 
-        assertThatThrownBy(() -> disconnectorService.update(seccionador))
-                .isInstanceOf(DataIntegrityViolationException.class);
-        assertThat(fila(DISCONNECTOR_A)).containsEntry("profile_id", PROFILE_A);
+        disconnectorService.update(seccionador);
+
+        assertThat(fila(DISCONNECTOR_A)).containsEntry("profile_id", PROFILE_B);
+        assertThat(fila(DISCONNECTOR_B)).containsEntry("profile_id", PROFILE_B);
+        ProfileDTO perfil = profileService.getById(PROFILE_B);
+        assertThat(perfil.getDisconnectors()).extracting(DisconnectorDTO::getId)
+                .containsExactly(DISCONNECTOR_A, DISCONNECTOR_B);
+        assertThat(perfil.getDisconnector().getId()).isEqualTo(DISCONNECTOR_A);
+        assertThat(profileService.getById(PROFILE_A).getDisconnectors()).isEmpty();
     }
 
     @Test
-    @DisplayName("un seccionador borrado ya no ocupa su perfil: se puede colgar otro, y el perfil enseña el vivo")
+    @DisplayName("con dos vivos en el mismo poste, el esquema y el evento del perfil los llevan a los dos")
+    @SuppressWarnings("unchecked")
+    void esquemaYEventoConDosVivos() {
+        DisconnectorDTO seccionador = disconnectorService.getById(DISCONNECTOR_A);
+        seccionador.setProfileId(PROFILE_B);
+        disconnectorService.update(seccionador);
+
+        ProfileNode nodo = trackSchematicService.getSchematic(TRACK).profiles().stream()
+                .filter(each -> each.id() == PROFILE_B).findFirst().orElseThrow();
+        assertThat(nodo.disconnectors()).extracting(TrackSchematicDTO.DisconnectorMark::id)
+                .containsExactly(DISCONNECTOR_A, DISCONNECTOR_B);
+        assertThat(nodo.disconnector().id()).isEqualTo(DISCONNECTOR_A);
+
+        Map<String, Object> payload = new TransactionTemplate(transactionManager).execute(status ->
+                profilePayloadMapper.toPayload(profileRepository.findByIdForMessaging(PROFILE_B).orElseThrow()));
+        assertThat((List<Map<String, Object>>) payload.get("disconnectors"))
+                .extracting(each -> each.get("id"))
+                .containsExactly(DISCONNECTOR_A, DISCONNECTOR_B);
+        assertThat((Map<String, Object>) payload.get("disconnector")).containsEntry("id", DISCONNECTOR_A);
+    }
+
+    @Test
+    @DisplayName("un seccionador borrado no sale en su perfil: al colgar otro, el perfil enseña solo el vivo")
     void elBorradoNoOcupaElPerfil() {
         disconnectorService.delete(disconnectorService.getById(DISCONNECTOR_B));
         DisconnectorDTO seccionador = disconnectorService.getById(DISCONNECTOR_A);
@@ -535,6 +563,8 @@ class DisconnectorLinkIT {
 
         assertThat(fila(DISCONNECTOR_B)).containsEntry("deleted", true).containsEntry("profile_id", PROFILE_B);
         assertThat(profileService.getById(PROFILE_B).getDisconnector().getId()).isEqualTo(DISCONNECTOR_A);
+        assertThat(profileService.getById(PROFILE_B).getDisconnectors()).extracting(DisconnectorDTO::getId)
+                .containsExactly(DISCONNECTOR_A);
     }
 
     @Test
@@ -554,9 +584,13 @@ class DisconnectorLinkIT {
                 .containsExactlyInAnyOrder(PROFILE_A, PROFILE_B, PROFILE_FREE);
         ProfileNode nodo = esquema.profiles().stream().filter(each -> each.id() == PROFILE_B).findFirst().orElseThrow();
         assertThat(nodo.disconnector().id()).isEqualTo(DISCONNECTOR_A);
+        assertThat(nodo.disconnectors()).extracting(TrackSchematicDTO.DisconnectorMark::id)
+                .containsExactly(DISCONNECTOR_A);
 
         Map<String, Object> payload = new TransactionTemplate(transactionManager).execute(status ->
                 profilePayloadMapper.toPayload(profileRepository.findByIdForMessaging(PROFILE_B).orElseThrow()));
         assertThat((Map<String, Object>) payload.get("disconnector")).containsEntry("id", DISCONNECTOR_A);
+        assertThat((List<Map<String, Object>>) payload.get("disconnectors")).singleElement()
+                .satisfies(each -> assertThat(each).containsEntry("id", DISCONNECTOR_A));
     }
 }

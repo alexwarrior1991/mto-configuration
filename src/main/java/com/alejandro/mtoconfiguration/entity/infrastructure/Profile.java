@@ -19,6 +19,7 @@ import org.hibernate.envers.Audited;
 import java.io.Serial;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -87,7 +88,7 @@ public class Profile extends CRUDEntity {
     private BigDecimal railPoleDistance;
 
     private Track track;
-    private Disconnector disconnector;
+    private Set<Disconnector> disconnectors = new LinkedHashSet<>();
     private List<Cantilever> cantilevers = new ArrayList<>();
 
     private Set<Anchorage> anchorages = new LinkedHashSet<>();
@@ -391,46 +392,55 @@ public class Profile extends CRUDEntity {
 
 
     /**
-     * El seccionador que cuelga del perfil. Es el lado <b>inverso</b>: el vinculo lo escribe el
-     * seccionador ({@code profile_id}), y desde la API del perfil es solo de salida
-     * ({@code ProfileMapper} lo ignora al escribir). Desde V24 un seccionador borrado conserva su
-     * perfil sin ocuparlo, asi que puede haber uno borrado y otro vivo en el mismo: la restriccion
-     * es lo que carga el vivo.
+     * Los seccionadores que cuelgan del perfil: casi siempre uno, a veces dos (V29). Es el lado
+     * <b>inverso</b>: el vinculo lo escribe cada seccionador ({@code profile_id}), y desde la API del
+     * perfil es solo de salida ({@code ProfileMapper} lo ignora al escribir). Un seccionador borrado
+     * conserva su perfil sin contar en el (V24): la restriccion es lo que deja fuera a los borrados.
+     * En orden, con {@link #disconnectorsByName()}.
      */
     @SQLRestriction("deleted = false") // ver CRUDEntity
-    @OneToOne(
+    @OneToMany(
             mappedBy = "profile",
             cascade = {CascadeType.PERSIST, CascadeType.MERGE},
-            fetch = FetchType.LAZY,
-            orphanRemoval = false
+            fetch = FetchType.LAZY
     )
-    public Disconnector getDisconnector() {
-        return disconnector;
+    public Set<Disconnector> getDisconnectors() {
+        return disconnectors == null ? Collections.emptySet() : disconnectors;
+    }
+
+    /**
+     * Sus seccionadores en el orden en que salen en la API, en el esquema de la via y en el evento del
+     * perfil: por nombre, sin mayusculas, y por id. No es un getter, para que Hibernate, que accede
+     * por propiedad, no lo tome por una columna.
+     */
+    public List<Disconnector> disconnectorsByName() {
+        List<Disconnector> ordered = new ArrayList<>(getDisconnectors());
+        ordered.sort(Disconnector.BY_NAME);
+        return ordered;
     }
 
     @PreRemove
     private void preRemove() {
-        if (disconnector != null) {
+        getDisconnectors().forEach(disconnector -> disconnector.setProfile(null));
+    }
+
+    public void addDisconnector(Disconnector disconnector) {
+        if (disconnector != null && !containsDisconnector(disconnector)) {
+            // Primero el perfil: sin id, el hashCode del seccionador lo incluye.
+            disconnector.setProfile(this);
+            getDisconnectors().add(disconnector);
+        }
+    }
+
+    public void removeDisconnector(Disconnector disconnector) {
+        if (disconnector != null && containsDisconnector(disconnector)) {
+            getDisconnectors().remove(disconnector);
             disconnector.setProfile(null);
         }
     }
 
-    public void addDisconnector(Disconnector disconnector) {
-        if (disconnector != null) {
-            this.setDisconnector(disconnector);
-            disconnector.setProfile(this);
-        }
-    }
-
-    public void removeDisconnector() {
-        if (this.disconnector != null) {
-            this.disconnector.setProfile(null);
-            this.setDisconnector(null);
-        }
-    }
-
-    public boolean containsDisconnector() {
-        return this.disconnector != null;
+    public boolean containsDisconnector(Disconnector disconnector) {
+        return getDisconnectors().contains(disconnector);
     }
 
     @Override

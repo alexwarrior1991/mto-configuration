@@ -282,10 +282,11 @@ class SoftDeleteIT extends AbstractCriteriaSearchIT {
     }
 
     @Test
-    @DisplayName("un seccionador borrado desaparece de la relacion uno a uno de su perfil")
-    void desapareceDeLaRelacionUnoAUno() {
-        // La restriccion tambien hace falta en el lado inverso de un @OneToOne: si no, el perfil
-        // sigue devolviendo un seccionador que ya no existe para el resto de la aplicacion.
+    @DisplayName("un seccionador borrado desaparece de los de su perfil, y el vivo del mismo poste se queda")
+    void desapareceDeLosSeccionadoresDelPerfil() {
+        // La restriccion tambien hace falta en el lado inverso del vinculo: si no, el perfil sigue
+        // devolviendo un seccionador que ya no existe para el resto de la aplicacion. Desde V29 un
+        // poste lleva varios, y solo se va el borrado.
         Track via = em.find(Track.class, viaVivaId);
         Profile perfil = new Profile();
         perfil.setProfileId("P-001");
@@ -296,9 +297,13 @@ class SoftDeleteIT extends AbstractCriteriaSearchIT {
         Disconnector seccionador = new Disconnector();
         seccionador.setName("SECC-1");
         seccionador.setOnLoad(true);
-        seccionador.setProfile(perfil);
-        perfil.setDisconnector(seccionador);
+        perfil.addDisconnector(seccionador);
         em.persist(seccionador);
+        Disconnector otro = new Disconnector();
+        otro.setName("SECC-2");
+        otro.setOnLoad(true);
+        perfil.addDisconnector(otro);
+        em.persist(otro);
         flushAndClear();
 
         Disconnector persistido = em.find(Disconnector.class, seccionador.getId());
@@ -306,7 +311,9 @@ class SoftDeleteIT extends AbstractCriteriaSearchIT {
         em.merge(persistido);
         flushAndClear();
 
-        assertThat(em.find(Profile.class, perfil.getId()).getDisconnector()).isNull();
+        assertThat(em.find(Profile.class, perfil.getId()).getDisconnectors())
+                .extracting(Disconnector::getName)
+                .containsExactly("SECC-2");
     }
 
     @Test

@@ -286,13 +286,15 @@ La relación 1:1 va aparte, y no funciona igual en los dos casos:
 
 - **`cantilevers.steadyArm`**: mandar el objeto crea el brazo o lo actualiza, y mandar `null` lo
   quita.
-- **`profiles.disconnector`**: es **solo de salida**, como `profileCode` y `profileKp` en el
-  seccionador. Al escribir un perfil se ignora: no se crea, no se modifica, no se desvincula y su
-  versión no se comprueba, así que da igual devolverlo como lo leíste o no mandarlo. El vínculo y
-  los datos son del seccionador, y se cambian con `PUT $BASE/disconnectors/{id}`: el perfil del que
-  cuelga es su `profileId`. Se mueve de perfil cambiándolo y se desvincula mandándolo a `null`
-  (desde `V25` el poste es opcional: hay seccionadores que no están en uno). Un perfil admite un solo
-  seccionador vivo: colgarle un segundo da 409 `BUS-002`, pero uno borrado ya no lo ocupa (`V24`).
+- **`profiles.disconnectors`** (y `profiles.disconnector`): son **solo de salida**, como `profileCode`
+  y `profileKp` en el seccionador. `disconnectors` trae todos los seccionadores vivos del poste, por
+  nombre: casi siempre uno, a veces dos (`V29`); `[]` si no lleva ninguno. `disconnector` es el
+  primero de esa lista, o `null`, y sigue ahí para quien lo leía antes de `V29`. Al escribir un
+  perfil se ignoran los dos: no se crea, no se modifica, no se desvincula ningún seccionador y su
+  versión no se comprueba, así que da igual devolverlos como los leíste o no mandarlos. El vínculo y
+  los datos son de cada seccionador, y se cambian con `PUT $BASE/disconnectors/{id}`: el perfil del
+  que cuelga es su `profileId`. Se mueve de perfil cambiándolo y se desvincula mandándolo a `null`
+  (desde `V25` el poste es opcional: hay seccionadores que no están en uno). Un borrado no cuenta.
 
 Cada hijo que devuelves con su `id` lleva también su `versionNumber`, y se comprueba como el del
 padre (§9): si otro ha guardado esa ménsula, ese brazo o esa aguja desde tu lectura, la petición
@@ -713,7 +715,7 @@ GET "$BASE/tracks/3/schematic"
 ```
 
 Devuelve los perfiles de la vía en su **orden físico** (`orderInTrack`, `kp`, `id`, el mismo que
-`GET /tracks/{id}`; no el de `keyset`/`range`), cada uno con sus ménsulas y con su seccionador, y
+`GET /tracks/{id}`; no el de `keyset`/`range`), cada uno con sus ménsulas y con sus seccionadores, y
 los aisladores de sección que cuelgan de la vía **o que conectan con ella** desde otra
 (`track` y `connectedTrack` dicen cuál es cuál). Solo lo que un esquema pinta: códigos de catálogo
 en vez de listas de valores, nada de auditoría ni de medidas que no se dibujen. Los KP y las
@@ -731,7 +733,11 @@ cada campo (§4 bis: alturas en metros, `stagger` y `railPoleDistance` en milím
       "cantilevers": [ { "id": 21, "type": "PT1", "stagger": "-200", "cwHeight": "5.300",
                          "catenaryHeight": "1.400", "steadyArmType": "SA1", "steadyArmLength": 1200 } ],
       "disconnector": { "id": 40, "name": "SEC-40", "onLoad": true, "function": "Disc/PP", "station": "ATOCHA",
-                        "track": "VIA 3", "connectedTrack": "VIA 2" } }
+                        "track": "VIA 3", "connectedTrack": "VIA 2" },
+      "disconnectors": [
+        { "id": 40, "name": "SEC-40", "onLoad": true, "function": "Disc/PP", "station": "ATOCHA",
+          "track": "VIA 3", "connectedTrack": "VIA 2" },
+        { "id": 41, "name": "SEC-41", "onLoad": false, "function": "Disc/IO", "station": "ATOCHA" } ] }
   ],
   "sectionInsulators": [
     { "id": 50, "name": "AIS-50", "kp": "15.000", "installationType": "TRACK_CONNECTION", "enabled": true,
@@ -743,7 +749,9 @@ cada campo (§4 bis: alturas en metros, `stagger` y `railPoleDistance` en milím
 
 Lo que va a `null` no viaja. El perfil no tiene estación en el modelo: las de la vía van en
 `stations` y la del seccionador o del aislador, en su marca. Un seccionador que no está en un poste
-no sale: el esquema dibuja cada seccionador en su perfil. El que maniobra otra vía que la de su poste
+no sale: el esquema dibuja cada seccionador en su perfil. Un poste puede llevar varios (`V29`):
+`disconnectors` los trae todos, por nombre, y `disconnector` es el primero, para quien lo leía antes.
+El que maniobra otra vía que la de su poste
 la lleva en `track`; sin ella, la suya es la del esquema. El que pone dos vías en paralelo lleva en
 `connectedTrack` la otra (`V27`). Los dos salen en el esquema de la vía de su poste, no en el de esas
 otras.

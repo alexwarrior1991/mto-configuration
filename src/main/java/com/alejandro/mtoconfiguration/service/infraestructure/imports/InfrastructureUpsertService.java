@@ -350,7 +350,6 @@ public class InfrastructureUpsertService {
         dto.setDisconnectorFunction(lov(row.disconnectorFunction(), DisconnectorFunctionDTO::new));
 
         requireResolvableFunction(row.disconnectorFunction());
-        requireFreePole(profileId, existing.map(entity -> entity.getId()).orElse(null));
 
         return write(existing.map(entity -> entity.getId()), dto,
                 disconnectorService::create, disconnectorService::update,
@@ -403,22 +402,12 @@ public class InfrastructureUpsertService {
     }
 
     /**
-     * Un poste admite un solo seccionador vivo ({@code ux_disconnector_profile_id}, V24). Si ya lo
-     * lleva otro, se dice cual, en vez de dejar que el indice conteste con un valor unico repetido
-     * que no nombra a ninguno. Pasa, por ejemplo, al renombrar en la hoja un seccionador ya cargado:
-     * para la clave natural es otro, y el de antes sigue en su poste.
+     * Los seccionadores vivos que ya cuelgan de un poste, por nombre. Un poste admite varios (V29),
+     * asi que el importador los mira para decir cual es el que no esta en su hoja: renombrar en la
+     * hoja uno ya cargado es, para su clave natural, otro seccionador, y sin esto quedarian los dos.
      */
-    private void requireFreePole(Long profileId, Long disconnectorId) {
-        if (profileId == null) {
-            return;
-        }
-        disconnectorRepository.findPoleHolder(profileId)
-                .filter(holder -> !holder.getId().equals(disconnectorId))
-                .ifPresent(holder -> {
-                    throw new ValidationException("su poste ya lo lleva el seccionador '" + holder.getName()
-                            + "' (id " + holder.getId() + ") y un poste admite uno solo: quitaselo, en su "
-                            + "fila o en la aplicacion, y vuelve a importar");
-                });
+    public List<String> disconnectorNamesOnPole(Long profileId) {
+        return profileId == null ? List.of() : disconnectorRepository.findNamesOnPole(profileId);
     }
 
     /** El KP de la fila como numero, o vacio si el origen no trajo uno utilizable. */

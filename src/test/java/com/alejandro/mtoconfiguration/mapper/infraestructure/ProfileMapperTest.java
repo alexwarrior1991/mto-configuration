@@ -718,7 +718,7 @@ class ProfileMapperTest {
         }
 
         @Test
-        @DisplayName("al dar de alta, el seccionador anidado se ignora: el perfil no crea ninguno")
+        @DisplayName("al dar de alta, los seccionadores anidados se ignoran: el perfil no crea ninguno")
         void altaIgnoraElSeccionador() {
             // El seccionador es el lado propietario del vinculo y se escribe por su recurso; desde el
             // perfil es solo de salida (README_API.md §4). Antes se creaba aqui, como copia.
@@ -727,10 +727,11 @@ class ProfileMapperTest {
             disconnector.setName("SECC-1");
             disconnector.setOnLoad(true);
             dto.setDisconnector(disconnector);
+            dto.setDisconnectors(new ArrayList<>(List.of(disconnector)));
 
             Profile entity = mapper.toEntity(dto);
 
-            assertThat(entity.getDisconnector()).isNull();
+            assertThat(entity.getDisconnectors()).isEmpty();
         }
 
         @Test
@@ -738,7 +739,7 @@ class ProfileMapperTest {
         void sinSeccionador() {
             Profile entity = mapper.toEntity(dto());
 
-            assertThat(entity.getDisconnector()).isNull();
+            assertThat(entity.getDisconnectors()).isEmpty();
         }
 
         @Test
@@ -767,10 +768,44 @@ class ProfileMapperTest {
 
             Profile entity = new Profile();
             entity.setProfileId("P-001");
-            entity.setDisconnector(disconnector);
+            entity.addDisconnector(disconnector);
 
-            assertThat(mapper.toDTO(entity).getDisconnector()).isNotNull();
-            assertThat(mapper.toDTO(entity).getDisconnector().getName()).isEqualTo("SECC-1");
+            ProfileDTO dto = mapper.toDTO(entity);
+            assertThat(dto.getDisconnectors()).extracting(DisconnectorDTO::getName).containsExactly("SECC-1");
+            assertThat(dto.getDisconnector()).isNotNull();
+            assertThat(dto.getDisconnector().getName()).isEqualTo("SECC-1");
+        }
+
+        /** V29: un poste puede llevar varios. */
+        @Test
+        @DisplayName("dos seccionadores en el poste viajan los dos, por nombre, y el primero en disconnector")
+        void dosSeccionadoresHaciaElDto() {
+            Disconnector segundo = new Disconnector();
+            segundo.setId(1L);
+            segundo.setName("SECC-2");
+            Disconnector primero = new Disconnector();
+            primero.setId(2L);
+            primero.setName("secc-1");
+
+            Profile entity = new Profile();
+            entity.setProfileId("P-001");
+            entity.addDisconnector(segundo);
+            entity.addDisconnector(primero);
+
+            ProfileDTO dto = mapper.toDTO(entity);
+            assertThat(dto.getDisconnectors()).extracting(DisconnectorDTO::getId).containsExactly(2L, 1L);
+            assertThat(dto.getDisconnector().getId()).isEqualTo(2L);
+        }
+
+        @Test
+        @DisplayName("sin seccionador, la lista va vacia y disconnector a null")
+        void sinSeccionadorHaciaElDto() {
+            Profile entity = new Profile();
+            entity.setProfileId("P-001");
+
+            ProfileDTO dto = mapper.toDTO(entity);
+            assertThat(dto.getDisconnectors()).isEmpty();
+            assertThat(dto.getDisconnector()).isNull();
         }
 
         @Test
@@ -805,7 +840,7 @@ class ProfileMapperTest {
             guardado.setName("SECC-5");
 
             Profile entity = new Profile();
-            entity.setDisconnector(guardado);
+            entity.addDisconnector(guardado);
 
             DisconnectorDTO otro = new DisconnectorDTO();
             otro.setId(9L);
@@ -813,16 +848,17 @@ class ProfileMapperTest {
             otro.setName("SECC-9");
             ProfileDTO dto = dto();
             dto.setDisconnector(otro);
+            dto.setDisconnectors(new ArrayList<>(List.of(otro)));
 
             mapper.updateEntityFromDTO(dto, entity);
 
-            assertThat(entity.getDisconnector()).isSameAs(guardado);
+            assertThat(entity.getDisconnectors()).containsExactly(guardado);
             assertThat(guardado.getName()).isEqualTo("SECC-5");
             assertThat(guardado.getVersionNumber()).isEqualTo(2);
         }
 
         @Test
-        @DisplayName("al modificar, el seccionador a null no lo quita del perfil")
+        @DisplayName("al modificar, un cuerpo sin seccionadores no los quita del perfil")
         void modificarConNullConservaElSeccionador() {
             // El vinculo esta en disconnector.profile_id: vaciar el lado inverso no lo cambiaba en la
             // base, pero la respuesta del PUT salia sin seccionador, como si se hubiese desvinculado.
@@ -830,14 +866,15 @@ class ProfileMapperTest {
             guardado.setId(5L);
 
             Profile entity = new Profile();
-            entity.setDisconnector(guardado);
+            entity.addDisconnector(guardado);
 
             ProfileDTO dto = dto();
             dto.setDisconnector(null);
+            dto.setDisconnectors(new ArrayList<>());
 
             mapper.updateEntityFromDTO(dto, entity);
 
-            assertThat(entity.getDisconnector()).isSameAs(guardado);
+            assertThat(entity.getDisconnectors()).containsExactly(guardado);
         }
     }
 
@@ -903,8 +940,7 @@ class ProfileMapperTest {
             disconnector.setId(40L);
             disconnector.setName("SEC-40");
             disconnector.setStation(station);
-            disconnector.setProfile(entity);
-            entity.setDisconnector(disconnector);
+            entity.addDisconnector(disconnector);
 
             ProfileDTO dto = new ProfileDTO();
             dto.setDisconnector(new DisconnectorDTO());

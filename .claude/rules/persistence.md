@@ -19,16 +19,22 @@ paths:
   columna auditada toca la gemela en la misma migración. Lo fijan `ddl-auto: validate` y
   `FlywayMigrationIT`.
 - Borrado lógico: `CRUDEntity` lleva `@SQLRestriction("deleted = false")`, pero la restricción de
-  clase no se aplica al cargar una colección. Cada `@OneToMany`, y el lado inverso de cada
-  `@ManyToMany` y de cada `@OneToOne` (`Profile.disconnector`), repite
+  clase no se aplica al cargar una colección. Cada `@OneToMany` (también `Profile.disconnectors`), y
+  el lado inverso de cada `@ManyToMany` y de cada `@OneToOne`, repite
   `@SQLRestriction("deleted = false")`; si no, lo borrado sigue apareciendo dentro de su padre. En el
-  perfil importa doble: desde `V24` un seccionador borrado y otro vivo pueden colgar del mismo, y la
-  restricción es lo que carga el vivo. Lo fijan `SoftDeleteIT` y `DisconnectorLinkIT`.
+  perfil importa doble: un seccionador borrado conserva su perfil, y la restricción es lo que deja
+  solo los vivos. Lo fijan `SoftDeleteIT` y `DisconnectorLinkIT`.
 - Las claves naturales de infraestructura son índices únicos parciales `ux_…` con
   `WHERE deleted = false` (y `upper(...)` en los nombres), para que lo borrado no impida dar de alta
-  otra vez el mismo nombre. El perfil de un seccionador sigue el mismo criterio
-  (`ux_disconnector_profile_id`, `V24`): uno borrado ya no deja ocupado su perfil. El `code` de los
-  catálogos es único sin más (`ux_<tabla>_code`). Lo fija `FlywayMigrationIT`.
+  otra vez el mismo nombre. El perfil de un seccionador no es una clave: un poste lleva varios
+  (`V29` quitó el `ux_disconnector_profile_id` de `V24`, y queda `idx_disconnector_profile_id` sobre
+  los vivos). El `code` de los catálogos es único sin más (`ux_<tabla>_code`). Lo fija
+  `FlywayMigrationIT`.
+- Un `@EntityGraph` que trae una lista (`Profile.cantilevers`, `Track.profiles`) junto con un conjunto
+  repite cada elemento de la lista por cada fila del producto: Hibernate no quita los repetidos de
+  una lista sin índice. El mapper que la recorre la pasa por `distinct()` (los de payload del perfil
+  y de la vía). Lo fija `MasterDataPayloadContractIT`, con dos seccionadores en el poste y la vía en
+  dos estaciones.
 - Los perfiles de una vía van en orden físico: `@OrderBy("orderInTrack ASC, kp ASC, id ASC")` en
   `Track.profiles`. `/profiles/track/{id}/keyset` y `/range` paginan por `kp`, y en una vía de dos
   tramos ese orden no es el físico (README_API.md §4).

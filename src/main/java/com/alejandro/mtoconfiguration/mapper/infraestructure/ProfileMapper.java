@@ -14,6 +14,10 @@ import com.alejandro.mtoconfiguration.entity.lov.Anchorage;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.AnchorageDTO;
 import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -51,6 +55,10 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Autowired
     protected CantileverMapper cantileverChildMapper;
 
+    /** Los seccionadores del perfil, en {@code mapEntityToDto}; el sufijo, por lo mismo que arriba. */
+    @Autowired
+    protected DisconnectorMapper disconnectorChildMapper;
+
     @Override
     @Mapping(target = "trackId", source = "track.id")
     @Mapping(target = "anchorages", ignore = true)
@@ -64,6 +72,8 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Mapping(target = "assemblyConfiguration", ignore = true)
     @Mapping(target = "sectionings", ignore = true)
     @Mapping(target = "sectioningFeedings", ignore = true)
+    @Mapping(target = "disconnectors", ignore = true) // en orden, en mapEntityToDto
+    @Mapping(target = "disconnector", ignore = true) // el primero de disconnectors
     public abstract ProfileDTO toDTO(Profile entity);
 
     /**
@@ -85,7 +95,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Override
     @Mapping(target = "track", source = "trackId")
     @Mapping(target = "cantilevers", ignore = true) // se reconcilia en mapDtoToEntity
-    @Mapping(target = "disconnector", ignore = true) // solo de salida (ver arriba)
+    @Mapping(target = "disconnectors", ignore = true) // solo de salida (ver arriba)
     @Mapping(target = "anchorages", ignore = true)
     @Mapping(target = "anchorageFoundation", ignore = true)
     @Mapping(target = "foundation", ignore = true)
@@ -103,7 +113,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @Override
     @Mapping(target = "track", source = "trackId")
     @Mapping(target = "cantilevers", ignore = true) // se reconcilia en mapDtoToEntity
-    @Mapping(target = "disconnector", ignore = true) // solo de salida (ver toEntity)
+    @Mapping(target = "disconnectors", ignore = true) // solo de salida (ver toEntity)
     @Mapping(target = "anchorages", ignore = true)
     @Mapping(target = "anchorageFoundation", ignore = true)
     @Mapping(target = "foundation", ignore = true)
@@ -209,6 +219,13 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
 
     @AfterMapping
     protected void mapEntityToDto(Profile entity, @MappingTarget ProfileDTO dto) {
+
+        // Los seccionadores, por nombre (V29), y el primero en «disconnector».
+        List<DisconnectorDTO> disconnectors = entity.disconnectorsByName().stream()
+                .map(disconnectorChildMapper::toDTO)
+                .collect(Collectors.toCollection(ArrayList::new));
+        dto.setDisconnectors(disconnectors);
+        dto.setDisconnector(disconnectors.isEmpty() ? null : disconnectors.getFirst());
 
         // 4. Enriquecimiento del DTO con LOVs usando la caché del MasterDataService
         if (entity.getAnchorages() != null) {

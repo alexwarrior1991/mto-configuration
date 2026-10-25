@@ -681,8 +681,11 @@ modifica en vez de dar de alta otro. El resto de columnas:
   otra, o une dos que no son la del poste: entonces `VIA` es la que maniobra (y `VIA_CONECTADA` la
   otra, si une dos), el poste se busca en todo su EP y la vía se guarda como suya, que es la que
   aísla. Una `VIA` así que no está entre las del paquete sale en el informe; con `VIA` vacía, su vía
-  es la del poste. Un poste admite **un solo** seccionador: dos filas en el mismo poste, o un poste
-  que ya lleva otro seccionador en la base, salen en el informe con el nombre del otro. Sin
+  es la del poste. Un poste admite **varios** seccionadores (`V29`: casi siempre uno, a veces dos,
+  en una zona neutra o en un haz de vías): cada uno es su fila, con el mismo `PROFILE_ID`. Lo que
+  sale en el informe es un poste que en la base ya lleva un seccionador que **no está en la hoja**,
+  con su nombre: casi siempre es uno renombrado en la hoja, que para el importador es otro, y sin
+  ese aviso quedarían los dos. Sin
   `PROFILE_ID`, el seccionador no está en un poste (los de los pórticos de subestación, los de puesta
   a tierra) y `VIA` es la suya; una vía que no existe se queda vacía, como la de un aislador.
 - **`KP_POSTE`**: el KP del poste, en metros. Una vía de dos tramos concatenados (EP9A) repite el

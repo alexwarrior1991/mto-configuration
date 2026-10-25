@@ -256,6 +256,8 @@ class TrackSchematicServiceTest {
             List<ProfileNode> perfiles = service.getSchematic(3L).profiles();
 
             assertThat(perfiles.getFirst().disconnector()).isNull();
+            assertThat(perfiles.getFirst().disconnectors()).as("sin seccionador: lista vacia, no null").isEmpty();
+            assertThat(perfiles.get(1).disconnectors()).extracting(DisconnectorMark::id).containsExactly(40L);
             assertThat(perfiles.get(1).disconnector().id()).isEqualTo(40L);
             assertThat(perfiles.get(1).disconnector().name()).isEqualTo("SEC-40");
             assertThat(perfiles.get(1).disconnector().onLoad()).isTrue();
@@ -266,6 +268,23 @@ class TrackSchematicServiceTest {
             assertThat(perfiles.get(1).disconnector().connectedTrack()).isNull();
         }
 
+        /** V29: un poste puede llevar varios; salen todos, por nombre, y el primero en disconnector. */
+        @Test
+        @DisplayName("dos seccionadores en el mismo poste salen los dos, por nombre")
+        void dosSeccionadoresEnElMismoPoste() {
+            Disconnector otro = new Disconnector();
+            otro.setId(39L);
+            otro.setName("SEC-39");
+            otro.setOnLoad(false);
+            p2.addDisconnector(otro);
+
+            ProfileNode poste = service.getSchematic(3L).profiles().get(1);
+
+            assertThat(poste.disconnectors()).extracting(DisconnectorMark::name).containsExactly("SEC-39", "SEC-40");
+            assertThat(poste.disconnectors()).isInstanceOf(ArrayList.class);
+            assertThat(poste.disconnector().name()).isEqualTo("SEC-39");
+        }
+
         /**
          * En un haz de vias, un seccionador cuelga del poste de una via y maniobra otra: se dibuja en
          * su poste, en el esquema de la via del poste, y la marca dice cuales maniobra.
@@ -273,7 +292,7 @@ class TrackSchematicServiceTest {
         @Test
         @DisplayName("el que cuelga del poste de esta via y maniobra otras lleva sus dos vias por nombre")
         void seccionadorQueManiobraOtraVia() {
-            Disconnector seccionador = p2.getDisconnector();
+            Disconnector seccionador = p2.disconnectorsByName().getFirst();
             seccionador.setTrack(track(5L, "VIA 5"));
             seccionador.setConnectedTrack(via2);
 

@@ -34,9 +34,14 @@ public class ProfileDTO extends BaseDTO {
 
     private Long trackId;
     /**
-     * El seccionador que cuelga del perfil, <b>solo de salida</b>. Al escribir se ignora: el vinculo
-     * y los datos son del seccionador, y se cambian con su propio recurso y su {@code profileId}
-     * (README_API.md §4).
+     * Los seccionadores que cuelgan del perfil, por nombre (V29: casi siempre uno, a veces dos),
+     * <b>solo de salida</b>. Al escribir se ignoran: el vinculo y los datos son de cada seccionador,
+     * y se cambian con su propio recurso y su {@code profileId} (README_API.md §4).
+     */
+    private List<DisconnectorDTO> disconnectors = new ArrayList<>();
+    /**
+     * El primero de {@code disconnectors}, o {@code null}: lo que habia antes de V29, para quien lo
+     * lea todavia. Tambien solo de salida.
      */
     private DisconnectorDTO disconnector;
     private List<CantileverDTO> cantilevers = new ArrayList<>();

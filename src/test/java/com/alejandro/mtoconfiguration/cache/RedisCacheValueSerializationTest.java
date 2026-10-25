@@ -80,10 +80,12 @@ class RedisCacheValueSerializationTest {
     void shouldRoundTripATrackSchematicWithItsNestedRecords() {
         var arm = new TrackSchematicDTO.CantileverArm(21L, "PT1", "-200", "5.300", "1.400", "SA1", 1200L);
         var disconnector = new TrackSchematicDTO.DisconnectorMark(40L, "SEC-40", true, "FEED", "ATOCHA", "VIA 4", "VIA 2");
+        var other = new TrackSchematicDTO.DisconnectorMark(41L, "SEC-41", false, "FEED", null, null, null);
         var profile = new TrackSchematicDTO.ProfileNode(7L, "P-007", "12.345", 1, "55.000", "HEB", null, "OK",
-                "-2500", new ArrayList<>(List.of("S1")), new ArrayList<>(List.of(arm)), disconnector);
+                "-2500", new ArrayList<>(List.of("S1")), new ArrayList<>(List.of(arm)), disconnector,
+                new ArrayList<>(List.of(disconnector, other)));
         var bare = new TrackSchematicDTO.ProfileNode(8L, "P-008", "70.000", 2, null, null, null, null,
-                null, new ArrayList<>(), new ArrayList<>(), null);
+                null, new ArrayList<>(), new ArrayList<>(), null, null);
         var turnout = new TrackSchematicDTO.SwitchMark(60L, "W31", "15.500", 9, "VIA 1");
         var insulator = new TrackSchematicDTO.InsulatorMark(50L, "AIS-50", "15.000", "TRACK_CONNECTION", true,
                 "ATOCHA", "VIA 1", "VIA 2", new ArrayList<>(List.of(turnout)));
@@ -91,6 +93,24 @@ class RedisCacheValueSerializationTest {
                 new ArrayList<>(List.of(profile, bare)), new ArrayList<>(List.of(insulator)));
 
         assertThat(roundTrip(original)).isEqualTo(original);
+        assertThat(bare.disconnectors()).as("sin seccionadores: lista mutable vacia, que se puede cachear")
+                .isInstanceOf(ArrayList.class).isEmpty();
+    }
+
+    /**
+     * Una entrada guardada antes de V29 trae solo {@code disconnector}. Jackson la relee con el
+     * constructor canonico del record, que rellena {@code disconnectors} con ese, asi que quien lea
+     * la lista no ve el poste vacio mientras la entrada vive (6 h como mucho).
+     */
+    @Test
+    void shouldReadAProfileNodeWrittenBeforeSeveralDisconnectorsPerPole() {
+        var disconnector = new TrackSchematicDTO.DisconnectorMark(40L, "SEC-40", true, "FEED", "ATOCHA", null, null);
+
+        var old = new TrackSchematicDTO.ProfileNode(7L, "P-007", "12.345", 1, null, null, null, null,
+                null, new ArrayList<>(), new ArrayList<>(), disconnector, null);
+
+        assertThat(old.disconnectors()).isInstanceOf(ArrayList.class).containsExactly(disconnector);
+        assertThat(roundTrip(old)).isEqualTo(old);
     }
 
     /**

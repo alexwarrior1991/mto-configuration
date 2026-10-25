@@ -124,9 +124,10 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
     long countForRepublish(@Param("trackId") Long trackId);
 
     /**
-     * {@code cantilevers.steadyArm} y {@code disconnector} son obligatorios: son el
-     * lado INVERSO de un {@code @OneToOne}, que Hibernate no puede proxear, asi que
-     * sin ellos se paga un select por fila.
+     * {@code cantilevers.steadyArm} es obligatorio: es el lado INVERSO de un
+     * {@code @OneToOne}, que Hibernate no puede proxear, asi que sin el se paga un select por
+     * fila. {@code disconnectors} (V29, una coleccion) entra porque el mapper la recorre, y
+     * desatachada no se podria.
      * <p>
      * {@code track.stations} entra desde V17 por lo mismo: dejo de ser un {@code @ManyToOne}
      * del que basta el id del proxy y paso a ser una coleccion, que desatachada no se puede
@@ -135,7 +136,7 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
      * Las rutas anidadas de las que el mapper solo lee el id se quedan fuera
      * ({@code track.executionPackage},
      * {@code cantilevers.cantileverType}, {@code cantilevers.steadyArm.steadyArmType}
-     * y {@code disconnector.disconnectorFunction}): con acceso por propiedad, leer el
+     * y {@code disconnectors.disconnectorFunction}): con acceso por propiedad, leer el
      * id de un proxy no lo inicializa.
      * <p>
      * El grafo trae VARIAS colecciones ({@code cantilevers} y las tres N:M de LOVs de
@@ -161,7 +162,7 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
             "assemblyConfiguration",
             "cantilevers",
             "cantilevers.steadyArm",
-            "disconnector"
+            "disconnectors"
     })
     @Query("select p from Profile p where p.id = :id")
     Optional<Profile> findByIdForMessaging(@Param("id") Long id);
@@ -171,11 +172,11 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
      * fisico</b> de {@code Track.profiles} ({@code orderInTrack, kp, id}; README_API.md §4), no
      * en el de las ventanas por KP.
      *
-     * <p>Trae en la misma consulta todo lo a-uno que el dibujo lee: las tres LOV que enseña y el
-     * seccionador con su estacion, su funcion, la via que maniobra si no es la del poste y la via con
-     * la que pone la suya en paralelo (V27).
-     * {@code disconnector} es el lado INVERSO de un {@code @OneToOne} que Hibernate no puede
-     * proxear: sin el {@code fetch} pagaria un select por perfil, 600 en la via mas larga. Las
+     * <p>Trae en la misma consulta lo que el dibujo lee: las tres LOV que enseña y los seccionadores
+     * del poste (V29: casi siempre uno, a veces dos) con su estacion, su funcion, la via que maniobra
+     * si no es la del poste y la via con la que pone la suya en paralelo (V27). Sin el {@code fetch}
+     * de {@code disconnectors} se pagaria un select por perfil, 600 en la via mas larga; un poste con
+     * dos repite su fila, y Hibernate devuelve el perfil una vez. Las
      * ménsulas y los seccionamientos van en consultas aparte
      * ({@code CantileverRepository.findForSchematic}, {@link #findSectioningCodesForSchematic})
      * para no multiplicar filas con dos colecciones.
@@ -185,7 +186,7 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
             left join fetch p.poleType
             left join fetch p.supportType
             left join fetch p.profileStatus
-            left join fetch p.disconnector d
+            left join fetch p.disconnectors d
             left join fetch d.station
             left join fetch d.disconnectorFunction
             left join fetch d.track

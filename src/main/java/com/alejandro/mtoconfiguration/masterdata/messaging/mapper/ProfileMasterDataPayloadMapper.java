@@ -52,7 +52,13 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         values.put("sectioningFeedings", profile.getSectioningFeedings() == null ? List.of()
                 : profile.getSectioningFeedings().stream().map(this::toLovPayload).toList());
         values.put("cantilevers", toCantileverPayload(profile.getCantilevers()));
-        values.put("disconnector", toDisconnectorPayload(profile.getDisconnector()));
+        // Un poste puede llevar varios seccionadores (V29): «disconnectors» los trae todos, por
+        // nombre, y «disconnector» sigue siendo el primero para quien lo leia (README_MESSAGING §2.4).
+        List<Map<String, Object>> disconnectors = profile.disconnectorsByName().stream()
+                .map(this::toDisconnectorPayload)
+                .toList();
+        values.put("disconnectors", disconnectors);
+        values.put("disconnector", disconnectors.isEmpty() ? null : disconnectors.getFirst());
 
         return values;
     }
@@ -202,7 +208,12 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
             return List.of();
         }
 
+        // distinct: findByIdForMessaging trae en una sentencia la lista de mensulas junto con los
+        // conjuntos del perfil (sus seccionadores, sus seccionamientos...), y Hibernate repite cada
+        // mensula de la lista por cada fila del producto. Con dos seccionadores en el poste (V29), o
+        // dos seccionamientos, el evento llevaba cada mensula dos veces.
         return cantilevers.stream()
+                .distinct()
                 .sorted(Comparator.comparing((Cantilever cantilever) -> cantilever.getId(), Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(this::toCantileverPayload)
                 .toList();

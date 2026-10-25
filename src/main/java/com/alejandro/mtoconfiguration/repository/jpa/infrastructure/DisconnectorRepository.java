@@ -76,20 +76,12 @@ public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
     }
 
     /**
-     * El seccionador vivo que ya cuelga de un poste, si lo hay: un poste admite uno solo
-     * ({@code ux_disconnector_profile_id}, V24). El importador lo mira antes de escribir para poder
-     * decir cuál es, en vez de dejar que el índice conteste con un valor único repetido.
+     * Los nombres de los seccionadores vivos que cuelgan de un poste (V29: puede llevar varios). El
+     * importador los compara con su hoja para no dejar dos con nombres distintos donde habia uno
+     * renombrado.
      */
-    @Query("select d.id as id, d.name as name from Disconnector d where d.profile.id = :profileId")
-    Optional<PoleHolder> findPoleHolder(@Param("profileId") Long profileId);
-
-    /** Proyección de {@link #findPoleHolder(Long)}. */
-    interface PoleHolder {
-        Long getId();
-
-        String getName();
-    }
-
+    @Query("select d.name from Disconnector d where d.profile.id = :profileId order by upper(d.name)")
+    List<String> findNamesOnPole(@Param("profileId") Long profileId);
 
     /**
      * Pagina de identificadores para el republicado de datos maestros, por clave.

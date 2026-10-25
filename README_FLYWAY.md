@@ -703,7 +703,8 @@ src/main/resources/db/migration
 ├── V25__disconnector_normal_state_and_drive.sql  Estado normal y accionamiento del seccionador; el poste pasa a opcional
 ├── V26__disconnector_kp_and_track.sql         KP y via propios de un seccionador sin poste
 ├── V27__disconnector_connected_track.sql      La via que un seccionador pone en paralelo con la suya
-└── V28__create_track_access_point.sql         track_access_point (+ _aud): el punto de acceso a la via, con su clave natural por via
+├── V28__create_track_access_point.sql         track_access_point (+ _aud): el punto de acceso a la via, con su clave natural por via
+└── V29__disconnector_several_per_profile.sql  Un poste admite varios seccionadores vivos: fuera el indice unico de V24, queda uno normal
 ```
 
 `V1` va **sin prefijo de schema** a proposito: el nombre real es configurable

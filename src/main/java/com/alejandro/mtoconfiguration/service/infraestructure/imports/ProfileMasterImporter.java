@@ -432,13 +432,15 @@ public class ProfileMasterImporter {
         Map<PackagePoleKey, List<ProfileMasterRow>> polesInPackage = content.profiles().stream()
                 .collect(Collectors.groupingBy(row -> new PackagePoleKey(
                         key(row.executionPackage()), key(row.profileId()))));
-        // Que fila de la hoja se ha llevado ya cada poste: un poste admite un solo seccionador, y
-        // dos filas en el mismo se señalan aqui, con el nombre de la otra, antes de que el indice
-        // unico conteste por ellas.
-        Map<Integer, String> claimedBy = new HashMap<>();
         // Que fila se ha llevado ya cada nombre de cada paquete, que es la clave del seccionador: la
         // segunda se señala con la primera, en vez de pisarla.
         Map<String, Integer> rowOfName = new HashMap<>();
+        // Todos los nombres de la hoja por paquete, tambien los de las filas deshabilitadas: un
+        // seccionador que ya cuelga del poste y no esta entre ellos es, casi siempre, uno renombrado
+        // en la hoja (ver disconnectorNamesOnPole).
+        Set<String> namesInSheet = content.disconnectors().stream()
+                .map(each -> key(each.executionPackage()) + "|" + key(each.name()))
+                .collect(Collectors.toSet());
         Map<String, Map<String, Long>> tracksByPackage = tracksByPackage(tracksByKey);
 
         for (DisconnectorMasterRow row : content.disconnectors()) {
@@ -543,15 +545,21 @@ public class ProfileMasterImporter {
                                     + "' no se ha podido cargar", progress);
                     continue;
                 }
-                String other = claimedBy.putIfAbsent(poleRow, row.name());
-                if (other != null) {
+                profileId = profileIdsByRow.get(poleRow);
+                // Un poste admite varios (V29), pero no uno que la hoja ya no tiene: renombrar en la
+                // hoja uno cargado da de alta otro con el nombre nuevo y el de antes se queda. Hasta
+                // V29 lo paraba el indice unico del poste.
+                List<String> notInSheet = upsertService.disconnectorNamesOnPole(profileId).stream()
+                        .filter(name -> !namesInSheet.contains(code + "|" + key(name)))
+                        .toList();
+                if (!notInSheet.isEmpty()) {
                     fail(report, row.sourceRow(), ProfileImportReport.DISCONNECTOR, reference(row),
-                            "su poste '" + row.profileId() + "' ya lo lleva '" + other
-                                    + "' en esta misma hoja, y un poste admite un solo seccionador",
-                            progress);
+                            "su poste '" + row.profileId() + "' ya lleva " + notInSheet.stream()
+                                    .map(name -> "'" + name + "'").collect(Collectors.joining(", "))
+                                    + ", que no esta en la hoja: si es este con otro nombre, renombralo o "
+                                    + "borralo en la aplicacion y vuelve a importar", progress);
                     continue;
                 }
-                profileId = profileIdsByRow.get(poleRow);
             }
 
             try {
