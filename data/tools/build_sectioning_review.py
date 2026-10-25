@@ -1338,7 +1338,9 @@ def build_disconnectors(drawing, labels, tracks, plan_stations, master):
 
     # Poste: asignacion 1:1 por EP contra los postes con codigo de seccionador, con el coste de
     # pole_cost. Los de alimentacion no compiten: van en el portico de la subestacion, y con el
-    # poste mas cercano le quitaban el suyo a uno de linea.
+    # poste mas cercano le quitaban el suyo a uno de linea. Es la propuesta: desde V29 un poste
+    # admite varios seccionadores, pero casi siempre lleva uno, y el reparto 1:1 es lo que evita
+    # que dos se queden con el poste mas cercano. El segundo de un poste se pone a mano.
     by_ep = collections.defaultdict(list)
     for i, r in enumerate(records):
         if r["ep"] and r["kp_m"] is not None and not on_portal(r):
@@ -1554,6 +1556,11 @@ def build_insulators(drawing, tracks, switches, plan_stations, disconnectors, ma
         codes = master["stations"].get(r.get("ep"), set())
         r["plan_station"] = (
             "%s (%s)" % (stations[0][1]["name"], stations[0][1]["code"])
+            if stations and stations[0][0] < 400
+            else ""
+        )
+        r["plan_station_code"] = (
+            STATION_ALIAS.get(stations[0][1]["code"], stations[0][1]["code"])
             if stations and stations[0][0] < 400
             else ""
         )
@@ -1923,7 +1930,8 @@ def disconnector_rows(records, master):
         )
 
     # Un mismo poste fisico aparece en dos hojas de via del maestro (mismo PROFILE_ID y KP): los
-    # dos seccionadores casados con el se señalan, porque uno de los dos sobra.
+    # dos seccionadores casados con el se señalan, porque o es el mismo dibujado en las dos hojas
+    # (y uno sobra) o el poste lleva los dos, que desde V29 se puede. Lo decide una persona.
     # Solo los casados: un poste propuesto ya espera a una persona.
     def matched(d):
         return d["PROFILE_ID"] and d["KP_POSTE"] != "" and "PROFILE_ID" not in d["_proposals"]
@@ -1943,7 +1951,8 @@ def disconnector_rows(records, master):
                 x
                 for x in [
                     d["MOTIVO_REVISAR"],
-                    "el maestro repite el poste %s en otra via; tambien casado con %s"
+                    "el maestro repite el poste %s en otra via; tambien casado con %s: si es el "
+                    "mismo seccionador, uno sobra; si el poste lleva los dos, valen los dos"
                     % (d["PROFILE_ID"], ", ".join(others)),
                 ]
                 if x
@@ -2002,6 +2011,8 @@ def disconnector_rows(records, master):
 def insulator_rows(records, master):
     rows, switch_rows, outside = [], [], []
     used_names = collections.Counter()
+    # Las estaciones de todos los EP del maestro: las de las lineas que se mantienen.
+    known_stations = set().union(*master["stations"].values()) if master["stations"] else set()
     for r in records:
         if future_ep(r["status"]):
             continue
@@ -2009,6 +2020,13 @@ def insulator_rows(records, master):
             outside.append(r)
             continue
         ep, station, kind = r["ep"], r["station"], r["type"]
+        plan_code = r.get("plan_station_code")
+        if not station and plan_code and plan_code not in known_stations:
+            # El KP lo deja en el EP, pero en el plano esta junto a una estacion que no es de ningun
+            # EP del maestro: es de una linea que no se mantiene (los de NAAN, YAVNE MA'ARAV,
+            # HA-RISHONIM y REHOVOT al lado de EP9B). No entra en el libro, como lo que no tiene EP.
+            outside.append(r)
+            continue
         tracks_of_ep = master["tracks"].get(ep, [])
         reasons = []
         if r["status"] != EN_SERVICE:
