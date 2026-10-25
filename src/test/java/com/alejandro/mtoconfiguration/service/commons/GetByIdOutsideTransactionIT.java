@@ -1,7 +1,9 @@
 package com.alejandro.mtoconfiguration.service.commons;
 
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackAccessPointDTO;
 import com.alejandro.mtoconfiguration.service.infraestructure.ExecutionPackageService;
+import com.alejandro.mtoconfiguration.service.infraestructure.TrackAccessPointService;
 import com.alejandro.mtoconfiguration.support.PostgresTestDatabase;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +35,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class GetByIdOutsideTransactionIT {
 
     private static final long ID = -7L;
+    private static final long TRACK = -8L;
+    private static final long ACCESS_POINT = -9L;
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -44,15 +48,17 @@ class GetByIdOutsideTransactionIT {
     private JdbcTemplate jdbcTemplate;
     @Autowired
     private ExecutionPackageService service;
+    @Autowired
+    private TrackAccessPointService trackAccessPointService;
 
     @AfterEach
     void limpia() {
+        jdbcTemplate.update("delete from track_access_point where id = ?", ACCESS_POINT);
+        jdbcTemplate.update("delete from track where id = ?", TRACK);
         jdbcTemplate.update("delete from execution_package where id = ?", ID);
     }
 
-    @Test
-    @DisplayName("el proxy se inicializa dentro del servicio, no en quien lo llama")
-    void leePorIdSinTransaccionDelLlamante() {
+    private void insertaPaquete() {
         jdbcTemplate.update("""
                 insert into execution_package (id, name, enabled, deleted, initial_package,
                         length, start_date, end_date, create_date, create_user,
@@ -60,9 +66,37 @@ class GetByIdOutsideTransactionIT {
                 values (?, 'IT-GETBYID', true, false, false, 0, date '2020-01-01',
                         date '2020-12-31', now(), 'test', now(), 'test', 1)
                 """, ID);
+    }
+
+    @Test
+    @DisplayName("el proxy se inicializa dentro del servicio, no en quien lo llama")
+    void leePorIdSinTransaccionDelLlamante() {
+        insertaPaquete();
 
         ExecutionPackageDTO dto = service.getById(ID);
 
         assertThat(dto.getName()).isEqualTo("IT-GETBYID");
+    }
+
+    @Test
+    @DisplayName("un punto de acceso tambien, con el id de su via")
+    void leeUnPuntoDeAccesoSinTransaccionDelLlamante() {
+        insertaPaquete();
+        jdbcTemplate.update("""
+                insert into track (id, name, status, deleted, execution_package_id, create_date,
+                        create_user, version_date, version_user, version_number)
+                values (?, 'IT-GETBYID-TRACK', true, false, ?, now(), 'test', now(), 'test', 1)
+                """, TRACK, ID);
+        jdbcTemplate.update("""
+                insert into track_access_point (id, name, track_id, kind, side, road_rail_access, status,
+                        deleted, create_date, create_user, version_date, version_user, version_number)
+                values (?, 'IT-GETBYID-ACCESS', ?, 'DEPOT', 'BOTH', true, true, false, now(), 'test', now(),
+                        'test', 1)
+                """, ACCESS_POINT, TRACK);
+
+        TrackAccessPointDTO dto = trackAccessPointService.getById(ACCESS_POINT);
+
+        assertThat(dto.getName()).isEqualTo("IT-GETBYID-ACCESS");
+        assertThat(dto.getTrackId()).isEqualTo(TRACK);
     }
 }
