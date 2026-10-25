@@ -202,6 +202,17 @@ pendiente en memoria y se vacía con la siguiente escritura que encuentre Redis;
 ninguna, lo acota el TTL. Antes era una conexión por patrón: con Redis caído, una escritura de
 perfil pagaba trece intentos fallidos y trece trazas.
 
+**Una lectura que carga mientras se vacía la caché no deja lo de antes** (`CacheGeneration`). Un
+`@Cacheable` que falla lee la base y guarda después. Si entre las dos cosas una escritura confirma y
+vacía la caché, el `put` llegaba después del `DEL` y dejaba en Redis lo de antes de la escritura
+hasta el TTL: 24 horas un catálogo. Así, la lista que una pantalla pidió al abrirse, lenta en frío,
+tapó un alta hecha mientras tanto (el e2e de mto-frontend). Ahora cada vaciado sube un contador en
+Redis (`mto-configuration::cache-generation`) antes de borrar. `ResilientCache` lo apunta al fallar
+una lectura y lo vuelve a mirar después de guardar: si subió, borra lo que acaba de guardar. Queda
+el instante entre ese `put` y su borrado, en el que otra lectura podría llevarse lo viejo una vez.
+El contador es uno para toda la caché: una escritura deshace el `put` de cualquier lectura que
+estuviera cargando a la vez, y esa lectura se guarda en la siguiente.
+
 Las escrituras en la caché son **inmediatas** (`RedisCacheConfig`, con `immediateWrites()`): el
 `put` vuelve cuando Redis ya tiene el valor. Spring Data Redis 4 escribe en segundo plano por
 defecto con Lettuce, por otra conexión. Con eso, una lectura justo después podía no encontrar el

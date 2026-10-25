@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.cache;
 
 import com.alejandro.mtoconfiguration.configuration.cache.CacheErrorConfig;
+import com.alejandro.mtoconfiguration.configuration.cache.CacheGeneration;
 import com.alejandro.mtoconfiguration.configuration.cache.CacheNames;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheAvailability;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheConfig;
@@ -61,6 +62,7 @@ import static org.mockito.Mockito.when;
         RedisCacheKeyGenerator.class,
         RedisCacheAvailability.class,
         CacheErrorConfig.class,
+        CacheGeneration.class,
         RedisCacheResilienceIT.ResilienceTestConfiguration.class
 })
 class RedisCacheResilienceIT {

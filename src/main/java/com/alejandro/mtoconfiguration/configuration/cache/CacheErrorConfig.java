@@ -40,13 +40,15 @@ public class CacheErrorConfig implements CachingConfigurer {
      */
     @Bean
     public static BeanPostProcessor resilientCacheManagerPostProcessor(
-            ObjectProvider<RedisCacheAvailability> availabilityProvider) {
+            ObjectProvider<RedisCacheAvailability> availabilityProvider,
+            ObjectProvider<CacheGeneration> generationProvider) {
 
         return new BeanPostProcessor() {
             @Override
             public Object postProcessAfterInitialization(Object bean, String beanName) {
                 if (bean instanceof CacheManager cacheManager && !(bean instanceof ResilientCacheManager)) {
-                    return new ResilientCacheManager(cacheManager, availabilityProvider.getObject());
+                    return new ResilientCacheManager(
+                            cacheManager, availabilityProvider.getObject(), generationProvider.getObject());
                 }
 
                 return bean;

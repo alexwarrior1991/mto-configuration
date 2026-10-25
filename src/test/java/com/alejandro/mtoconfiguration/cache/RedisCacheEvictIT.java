@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.cache;
 
+import com.alejandro.mtoconfiguration.configuration.cache.CacheGeneration;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheAvailability;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheEvictService;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheProperties;
@@ -41,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Testcontainers(disabledWithoutDocker = true)
 @ImportAutoConfiguration(DataRedisAutoConfiguration.class)
-@SpringBootTest(classes = {RedisCacheEvictService.class, RedisCacheEvictIT.Circuito.class})
+@SpringBootTest(classes = {RedisCacheEvictService.class, CacheGeneration.class, RedisCacheEvictIT.Circuito.class})
 class RedisCacheEvictIT {
 
     /**
@@ -59,6 +60,9 @@ class RedisCacheEvictIT {
     }
 
     private static final String APP = "mto-configuration";
+
+    /** El contador que sube cada tanda ({@link CacheGeneration}): no es una clave de cache. */
+    private static final String GENERACION = APP + "::cache-generation";
 
     @Container
     static final GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7.4-alpine"))
@@ -205,7 +209,23 @@ class RedisCacheEvictIT {
 
         service.evictLovCaches("Sectioning");
 
-        assertThat(clavesVivas()).containsExactlyInAnyOrderElementsOf(antes);
+        assertThat(clavesVivas())
+                .as("lo unico nuevo es la generacion, que la tanda sube aunque no borre nada")
+                .filteredOn(clave -> !clave.equals(GENERACION))
+                .containsExactlyInAnyOrderElementsOf(antes);
+    }
+
+    @Test
+    @DisplayName("cada tanda sube la generacion, y ningun barrido la borra")
+    void cadaTandaSubeLaGeneracion() {
+        service.evictLovCaches();
+        service.evictNormalServiceCaches("ProfileService");
+        service.evictAfterLovWrite("Anchorage");
+        service.evictTrackSchematics();
+
+        // Si un barrido la borrase, volveria a 0 y una lectura que la hubiera visto a 0 no
+        // notaria la escritura siguiente.
+        assertThat(redis_.opsForValue().get(GENERACION)).isEqualTo("4");
     }
 
     @Test

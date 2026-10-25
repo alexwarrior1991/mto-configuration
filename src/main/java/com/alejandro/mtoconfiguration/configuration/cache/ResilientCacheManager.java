@@ -15,11 +15,13 @@ public class ResilientCacheManager implements CacheManager {
 
     private final CacheManager delegate;
     private final RedisCacheAvailability availability;
+    private final CacheGeneration generation;
     private final Map<String, Cache> wrappers = new ConcurrentHashMap<>();
 
-    public ResilientCacheManager(CacheManager delegate, RedisCacheAvailability availability) {
+    public ResilientCacheManager(CacheManager delegate, RedisCacheAvailability availability, CacheGeneration generation) {
         this.delegate = delegate;
         this.availability = availability;
+        this.generation = generation;
     }
 
     @Override
@@ -30,7 +32,7 @@ public class ResilientCacheManager implements CacheManager {
             return null;
         }
 
-        return wrappers.computeIfAbsent(name, ignored -> new ResilientCache(cache, availability));
+        return wrappers.computeIfAbsent(name, ignored -> new ResilientCache(cache, availability, generation));
     }
 
     @Override
