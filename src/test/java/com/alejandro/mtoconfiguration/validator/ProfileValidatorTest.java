@@ -33,12 +33,13 @@ class ProfileValidatorTest {
     }
 
     @Test
-    @DisplayName("el seccionador anidado no se valida: al escribir un perfil se ignora")
+    @DisplayName("los seccionadores anidados no se validan: al escribir un perfil se ignoran")
     void elSeccionadorAnidadoNoSeValida() {
-        // Es solo de salida (README_API.md §4): validarlo haria fallar el perfil por un dato que
+        // Son solo de salida (README_API.md §4): validarlos haria fallar el perfil por un dato que
         // no se va a escribir.
         ProfileDTO dto = ValidDtos.rootProfile();
         dto.setDisconnector(new DisconnectorDTO());
+        dto.setDisconnectors(new java.util.ArrayList<>(List.of(new DisconnectorDTO(), new DisconnectorDTO())));
 
         assertNoErrors(validator.validateBeforeSave(dto));
     }

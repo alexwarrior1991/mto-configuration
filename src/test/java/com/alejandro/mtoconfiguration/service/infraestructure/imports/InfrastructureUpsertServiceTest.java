@@ -1181,7 +1181,6 @@ class InfrastructureUpsertServiceTest {
             function.setId(FUNCTION_ID);
             when(masterDataService.getDisconnectorFunctionByCode("Disc/IO")).thenReturn(function);
             when(disconnectorRepository.findByNameInPackage(any(), any())).thenReturn(List.of());
-            when(disconnectorRepository.findPoleHolder(any())).thenReturn(Optional.empty());
             when(disconnectorService.create(any())).thenAnswer(invocation -> {
                 DisconnectorDTO created = invocation.getArgument(0);
                 created.setId(88L);
@@ -1291,23 +1290,31 @@ class InfrastructureUpsertServiceTest {
         }
 
         @Test
-        @DisplayName("un poste que ya lleva otro seccionador se señala con su nombre, antes que el indice")
-        void posteOcupado() {
-            when(disconnectorRepository.findPoleHolder(PROFILE_ID)).thenReturn(Optional.of(holder(55L, "HER-VIEJO")));
+        @DisplayName("los nombres de los que ya cuelgan del poste salen del repositorio; sin poste, ninguno")
+        void nombresEnElPoste() {
+            when(disconnectorRepository.findNamesOnPole(PROFILE_ID)).thenReturn(List.of("HER-01", "HER-02"));
 
-            assertThatThrownBy(() -> service.upsertDisconnector(onAPole(), STATION_ID, PACKAGE_ID, PROFILE_ID, null,
-                    null, false))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("'HER-VIEJO' (id 55)");
-            verifyNoInteractions(disconnectorService);
+            assertThat(service.disconnectorNamesOnPole(PROFILE_ID)).containsExactly("HER-01", "HER-02");
+            assertThat(service.disconnectorNamesOnPole(null)).isEmpty();
+            verify(disconnectorRepository).findNamesOnPole(PROFILE_ID);
+        }
+
+        /** V29: un poste admite varios; antes este se rechazaba porque el poste ya llevaba otro. */
+        @Test
+        @DisplayName("un poste que ya lleva otro seccionador admite tambien este")
+        void posteConOtro() {
+            UpsertResult result = service.upsertDisconnector(onAPole(), STATION_ID, PACKAGE_ID, PROFILE_ID, null,
+                    null, false);
+
+            assertThat(result.outcome()).isEqualTo(UpsertResult.Outcome.CREATED);
+            assertThat(captureCreated().getProfileId()).isEqualTo(PROFILE_ID);
         }
 
         @Test
-        @DisplayName("el poste que ya lleva el propio seccionador no es un conflicto, y sin cambios no se reescribe")
+        @DisplayName("el mismo seccionador en su poste y sin cambios no se reescribe")
         void posteDelPropioSinCambios() {
             when(disconnectorRepository.findByNameInPackage("HER-01", PACKAGE_ID))
                     .thenReturn(List.of(existente(55L, null)));
-            when(disconnectorRepository.findPoleHolder(PROFILE_ID)).thenReturn(Optional.of(holder(55L, "HER-01")));
             when(disconnectorRepository.findLinkIdsById(55L))
                     .thenReturn(Optional.of(links(PROFILE_ID, null, FUNCTION_ID)));
 
@@ -1351,7 +1358,6 @@ class InfrastructureUpsertServiceTest {
         void cambioDeViaConectada() {
             when(disconnectorRepository.findByNameInPackage("HER-01", PACKAGE_ID))
                     .thenReturn(List.of(existente(55L, null)));
-            when(disconnectorRepository.findPoleHolder(PROFILE_ID)).thenReturn(Optional.of(holder(55L, "HER-01")));
             when(disconnectorRepository.findLinkIdsById(55L))
                     .thenReturn(Optional.of(links(PROFILE_ID, null, CONNECTED_TRACK_ID, FUNCTION_ID)));
 
@@ -1430,7 +1436,6 @@ class InfrastructureUpsertServiceTest {
         void cambioDeEstacion() {
             when(disconnectorRepository.findByNameInPackage("HER-01", PACKAGE_ID))
                     .thenReturn(List.of(existente(55L, null)));
-            when(disconnectorRepository.findPoleHolder(PROFILE_ID)).thenReturn(Optional.of(holder(55L, "HER-01")));
             when(disconnectorRepository.findLinkIdsById(55L))
                     .thenReturn(Optional.of(links(PROFILE_ID, null, FUNCTION_ID)));
 
@@ -1566,20 +1571,6 @@ class InfrastructureUpsertServiceTest {
                 @Override
                 public Long getDisconnectorFunctionId() {
                     return functionId;
-                }
-            };
-        }
-
-        private static DisconnectorRepository.PoleHolder holder(Long id, String name) {
-            return new DisconnectorRepository.PoleHolder() {
-                @Override
-                public Long getId() {
-                    return id;
-                }
-
-                @Override
-                public String getName() {
-                    return name;
                 }
             };
         }

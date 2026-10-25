@@ -383,7 +383,8 @@ class ProfileMasterImportIT {
         assertThat(seccionador("STA-03")).containsEntry("id", idSinPoste).containsEntry("estacion", null);
 
         // Renombrar en la hoja uno ya cargado es, para la clave natural, otro seccionador: el de
-        // antes sigue en su poste, y el informe tiene que decir cual es.
+        // antes sigue en su poste, y el informe tiene que decir cual es. Un poste admite varios (V29),
+        // pero no uno que la hoja ya no tiene.
         hojas.get(ProfileMasterParser.DISCONNECTORS_SHEET).get(1)[6] = "STA-01B";
         ProfileImportReport renamed = importer.importFrom(workbook(hojas), false);
 

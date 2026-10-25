@@ -563,6 +563,44 @@ class DisconnectorRowsTest(unittest.TestCase):
         self.assertIn("2-EXT.13", rows[0]["MOTIVO_REVISAR"])
 
 
+class InsulatorRowsTest(unittest.TestCase):
+    """Que aisladores entran en el libro y cuales van a AISLADORES_FUERA_MAESTRO."""
+
+    MASTER = {"tracks": {"EP9B": []}, "stations": {"EP9B": {"LOD_S", "LOD_D"}, "EP6": {"HER"}}}
+
+    @staticmethod
+    def record(station="", plan_station_code="", **extra):
+        record = {
+            "status": bsr.EN_SERVICE, "layer": "0_SI", "ep": "EP9B", "station": station,
+            "station_from": "prefijo" if station else "", "type": "IN_TRACK", "tracks": ["2"],
+            "switches": [], "switches_near": [], "bridged_by": "", "kp_m": 120034, "kp_from": "rotulo",
+            "kp_estimate": None, "section": "", "plan_station": plan_station_code,
+            "plan_station_code": plan_station_code, "x": 0.0, "y": 0.0, "handle": "A1",
+        }
+        record.update(extra)
+        return record
+
+    def test_one_next_to_a_station_of_no_ep_of_the_master_is_left_out(self):
+        rows, _, outside = bsr.insulator_rows([self.record(plan_station_code="RVT")], self.MASTER)
+
+        self.assertEqual(rows, [])
+        self.assertEqual([d["HANDLE"] for d in outside], ["A1"])
+
+    def test_one_next_to_a_station_of_another_ep_of_the_master_stays_to_be_reviewed(self):
+        rows, _, outside = bsr.insulator_rows([self.record(plan_station_code="HER")], self.MASTER)
+
+        self.assertEqual(outside, [])
+        self.assertEqual([d["ESTACION"] for d in rows], [""])
+        self.assertIn("estacion sin determinar", rows[0]["MOTIVO_REVISAR"])
+
+    def test_one_with_its_station_stays_wherever_the_plan_puts_it(self):
+        rows, _, outside = bsr.insulator_rows(
+            [self.record(station="LOD_S", plan_station_code="RVT")], self.MASTER)
+
+        self.assertEqual(outside, [])
+        self.assertEqual([d["ESTACION"] for d in rows], ["LOD_S"])
+
+
 class DropDownTest(unittest.TestCase):
     """Los desplegables del libro: las opciones de las celdas amarillas y naranjas."""
 

@@ -37,9 +37,12 @@
   (`MasterDataPayloadMapperCoverageTest`). Su repositorio tiene `findByIdForMessaging`, cuyo
   `@EntityGraph` carga en una sola sentencia todo lo que lee ese mapper (`MasterDataPayloadContractIT`,
   `MessagingEntityGraphIT`).
-- Hay un ejemplo JSON por evento en `docs/messaging/examples/`, y `MessagingContractExamplesTest` lo
-  construye con la factoría real y lo compara con el fichero: un evento nuevo o una clave nueva
-  cambian el ejemplo en el mismo commit. Los consumidores los copian como fixtures.
+- Hay un ejemplo JSON por evento en `docs/messaging/examples/` (los nueve de datos maestros y
+  `job.finished`), y `MessagingContractExamplesTest` lo construye con la factoría real y, los de datos
+  maestros, con su mapper de payload real, y lo compara con el fichero: un evento nuevo o una clave
+  nueva cambian el ejemplo en el mismo commit. `MESSAGING_EXAMPLES_WRITE=true ./mvnw test
+  -Dtest=MessagingContractExamplesTest` reescribe los que salen de un mapper, y el diff se revisa como
+  un cambio de contrato. Los consumidores los copian como fixtures.
 - Este servicio publica y no consume: no hay ningún `@RabbitListener` y **no declara ninguna cola**,
   solo sus dos exchanges. Una cola pertenece a quien la consume, que la declara con sus bindings
   (`ApplicationRabbitMqTopologyTest`). Los argumentos de una cola que ya existe no se pueden cambiar

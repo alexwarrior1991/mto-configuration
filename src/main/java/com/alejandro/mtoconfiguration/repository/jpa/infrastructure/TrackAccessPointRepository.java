@@ -20,6 +20,9 @@ public interface TrackAccessPointRepository extends CRUDRepository<TrackAccessPo
     /** Los accesos de una vía, por KP (los que no lo tienen, al final) y por id para desempatar. */
     List<TrackAccessPoint> findByTrackIdOrderByKpAscIdAsc(Long trackId);
 
+    /** Los accesos de una estación, en el mismo orden: los que se vuelven a publicar si cambia. */
+    List<TrackAccessPoint> findByStationIdOrderByKpAscIdAsc(Long stationId);
+
     /**
      * Pagina de identificadores para el republicado, por clave, como
      * {@code SectionInsulatorRepository.findIdsForRepublish}: solo ids, y cada uno se relee despues con

@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29");
     }
 
     /**
@@ -249,19 +249,22 @@ class FlywayMigrationIT {
     }
 
     /**
-     * V24: un perfil solo admite un seccionador <b>vivo</b>.
+     * V29: un poste admite varios seccionadores vivos.
      *
-     * <p>El {@code unique} de {@code disconnector.profile_id} de V1 contaba tambien las filas
-     * borradas, y el borrado logico conserva el perfil: un seccionador borrado dejaba su perfil
-     * ocupado para siempre, y colgarle otro daba 409. Lo sustituye un indice unico parcial, el mismo
-     * criterio que las claves naturales de V12.
+     * <p>V24 cambio el {@code unique} de {@code disconnector.profile_id} de V1, que contaba tambien
+     * las filas borradas, por un indice unico parcial. V29 lo quita: en la linea hay postes con dos.
+     * Queda un indice normal sobre las filas vivas, el que usan el esquema y el evento del perfil.
      */
     @Test
-    void unPerfilSoloAdmiteUnSeccionadorVivo() {
-        List<String> indices = jdbc().queryForList("select indexdef from pg_indexes"
+    void unPosteAdmiteVariosSeccionadoresVivos() {
+        List<String> unicos = jdbc().queryForList("select indexdef from pg_indexes"
                 + " where schemaname = ? and indexname = 'ux_disconnector_profile_id'", String.class, SCHEMA);
+        assertThat(unicos).as("el indice unico de V24 ya no existe").isEmpty();
+
+        List<String> indices = jdbc().queryForList("select indexdef from pg_indexes"
+                + " where schemaname = ? and indexname = 'idx_disconnector_profile_id'", String.class, SCHEMA);
         assertThat(indices).singleElement(org.assertj.core.api.InstanceOfAssertFactories.STRING)
-                .contains("UNIQUE")
+                .doesNotContain("UNIQUE")
                 .contains("(profile_id)")
                 .contains("deleted = false");
 
@@ -272,7 +275,7 @@ class FlywayMigrationIT {
                  where n.nspname = ? and t.relname = 'disconnector' and c.contype = 'u'
                 """, Integer.class, SCHEMA);
         assertThat(restriccionesUnicas)
-                .as("el unique de V1 sobre profile_id ya no existe")
+                .as("el unique de V1 sobre profile_id tampoco")
                 .isZero();
     }
 

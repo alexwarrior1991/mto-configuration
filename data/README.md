@@ -681,8 +681,11 @@ modifica en vez de dar de alta otro. El resto de columnas:
   otra, o une dos que no son la del poste: entonces `VIA` es la que maniobra (y `VIA_CONECTADA` la
   otra, si une dos), el poste se busca en todo su EP y la vía se guarda como suya, que es la que
   aísla. Una `VIA` así que no está entre las del paquete sale en el informe; con `VIA` vacía, su vía
-  es la del poste. Un poste admite **un solo** seccionador: dos filas en el mismo poste, o un poste
-  que ya lleva otro seccionador en la base, salen en el informe con el nombre del otro. Sin
+  es la del poste. Un poste admite **varios** seccionadores (`V29`: casi siempre uno, a veces dos,
+  en una zona neutra o en un haz de vías): cada uno es su fila, con el mismo `PROFILE_ID`. Lo que
+  sale en el informe es un poste que en la base ya lleva un seccionador que **no está en la hoja**,
+  con su nombre: casi siempre es uno renombrado en la hoja, que para el importador es otro, y sin
+  ese aviso quedarían los dos. Sin
   `PROFILE_ID`, el seccionador no está en un poste (los de los pórticos de subestación, los de puesta
   a tierra) y `VIA` es la suya; una vía que no existe se queda vacía, como la de un aislador.
 - **`KP_POSTE`**: el KP del poste, en metros. Una vía de dos tramos concatenados (EP9A) repite el
@@ -1009,11 +1012,18 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
   tiene: no recibe EP nunca y solo sale en el inventario, con su estado.
 - **Las líneas que el maestro no tiene** (prefijos BSD, OFA, GOR, NAN, LCH…): sin EP ni poste
   posibles, van a `SECCIONADORES_FUERA_MAESTRO` y `AISLADORES_FUERA_MAESTRO`.
+- **Un aislador junto a una estación de otra línea**: si su KP lo deja en un EP pero su estación no
+  sale entre las de ese EP y en el plano está junto a una estación que no es de ningún EP del maestro,
+  es de una línea que no se mantiene, y va a `AISLADORES_FUERA_MAESTRO`. Así quedan fuera de EP9B
+  los de NAAN, YAVNE MA'ARAV, HA-RISHONIM y REHOVOT. Junto a una estación de otro EP del maestro se
+  queda en el libro, sin estación y para revisar.
 - **El color del rótulo** (verde o rojo, instalado o no): está desactualizado y se ignora.
 
 ## El cruce con el maestro
 
-- **Poste**: asignación 1:1 por EP contra los postes con `Disc*`/`LoadB*`/`ED*` en
+- **Poste**: la propuesta es una asignación 1:1 por EP (un poste admite varios desde `V29`, pero casi
+  siempre lleva uno, y el reparto evita que dos se queden con el más cercano; el segundo de un poste
+  se pone a mano) contra los postes con `Disc*`/`LoadB*`/`ED*` en
   `SECTIONING_FEEDING`, a menos de 80 m del KP, preferente en la misma vía y del mismo tipo (y uno
   de puesta a tierra, solo con `ED`). Medido
   sobre el plano de julio de 2025: el 87 % de los casados está a menos de 10 m del KP del rótulo, y

@@ -8,10 +8,12 @@ import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDT
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorSwitchDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackAccessPointDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.DisconnectorFilter;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.ProfileFilter;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.SectionInsulatorFilter;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.TrackFilter;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.TrackAccessPointFilter;
 import com.alejandro.mtoconfiguration.support.PostgresTestDatabase;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,6 +67,7 @@ class FilterOutsideTransactionIT {
     private static final long DISCONNECTOR = -76L;
     private static final long INSULATOR = -77L;
     private static final long SWITCH = -78L;
+    private static final long ACCESS_POINT = -79L;
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -82,6 +85,8 @@ class FilterOutsideTransactionIT {
     private DisconnectorService disconnectorService;
     @Autowired
     private SectionInsulatorService sectionInsulatorService;
+    @Autowired
+    private TrackAccessPointService trackAccessPointService;
 
     @BeforeEach
     void inserta() {
@@ -131,10 +136,18 @@ class FilterOutsideTransactionIT {
                         version_date, version_user, version_number)
                 values (?, 'W31', ?, ?, 1.500, 9, true, false, now(), 'test', now(), 'test', 1)
                 """, SWITCH, INSULATOR, TRACK);
+        jdbcTemplate.update("""
+                insert into track_access_point (id, name, track_id, station_id, kilometric_point, kind, side,
+                        road_rail_access, status, deleted, create_date, create_user, version_date,
+                        version_user, version_number)
+                values (?, 'IT-FILTER-ACCESS', ?, ?, 2.000, 'PREPARED_ACCESS', 'LEFT', true, true, false,
+                        now(), 'test', now(), 'test', 1)
+                """, ACCESS_POINT, TRACK, STATION);
     }
 
     @AfterEach
     void limpia() {
+        jdbcTemplate.update("delete from track_access_point where id = ?", ACCESS_POINT);
         jdbcTemplate.update("delete from section_insulator_switch where id = ?", SWITCH);
         jdbcTemplate.update("delete from section_insulator where id = ?", INSULATOR);
         jdbcTemplate.update("delete from disconnector where id = ?", DISCONNECTOR);
@@ -166,6 +179,40 @@ class FilterOutsideTransactionIT {
         assertThat(page.getContent()).singleElement()
                 .satisfies(profile -> assertThat(profile.getCantilevers())
                         .extracting(CantileverDTO::getId).containsExactly(CANTILEVER));
+    }
+
+    /** V29: los seccionadores del perfil son una coleccion perezosa, que se recorre dentro del servicio. */
+    @Test
+    @DisplayName("un perfil de la lista trae sus seccionadores")
+    void unPerfilDeLaListaTraeSusSeccionadores() {
+        Page<ProfileDTO> page = profileService.getProfiles(PageRequest.of(0, 10),
+                new ProfileFilter("IT-FILTER-PROFILE", null, TRACK, null, null, null, null, null, null, null,
+                        null, null, null, null));
+
+        assertThat(page.getContent()).singleElement()
+                .satisfies(profile -> {
+                    assertThat(profile.getDisconnectors()).extracting(DisconnectorDTO::getId)
+                            .containsExactly(DISCONNECTOR);
+                    assertThat(profile.getDisconnector().getId()).isEqualTo(DISCONNECTOR);
+                });
+    }
+
+    @Test
+    @DisplayName("un punto de acceso de la lista, de la pagina o de la busqueda trae su via y su estacion")
+    void unPuntoDeAccesoTraeSuViaYSuEstacion() {
+        Page<TrackAccessPointDTO> filtrada = trackAccessPointService.getTrackAccessPoints(PageRequest.of(0, 10),
+                new TrackAccessPointFilter("IT-FILTER-ACCESS", null, null, null, null, null, null, null, null));
+
+        for (Page<TrackAccessPointDTO> page : List.of(filtrada,
+                trackAccessPointService.findAll(primeraPaginaPorId()),
+                trackAccessPointService.search(busqueda("name", "IT-FILTER-ACCESS")))) {
+            assertThat(page.getContent()).filteredOn(accessPoint -> accessPoint.getId() == ACCESS_POINT)
+                    .singleElement()
+                    .satisfies(accessPoint -> {
+                        assertThat(accessPoint.getTrackId()).isEqualTo(TRACK);
+                        assertThat(accessPoint.getStationId()).isEqualTo(STATION);
+                    });
+        }
     }
 
     @Test

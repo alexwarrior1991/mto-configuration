@@ -77,10 +77,11 @@ class TrackControllerTest {
     private static TrackSchematicDTO esquema() {
         var brazo = new TrackSchematicDTO.CantileverArm(21L, "PT1", "-200", "5.300", "1.400", "SA1", 1200L);
         var seccionador = new TrackSchematicDTO.DisconnectorMark(40L, "SEC-40", true, "Disc/PP", "ATOCHA", "VIA 4", "VIA 2");
+        var otro = new TrackSchematicDTO.DisconnectorMark(41L, "SEC-41", false, "Disc/IO", "ATOCHA", null, null);
         var p1 = new TrackSchematicDTO.ProfileNode(1L, "P-001", "10.000", 1, "55.000", "HEB", null, "OK",
-                "-2500", new ArrayList<>(List.of("S1")), new ArrayList<>(List.of(brazo)), null);
+                "-2500", new ArrayList<>(List.of("S1")), new ArrayList<>(List.of(brazo)), null, new ArrayList<>());
         var p2 = new TrackSchematicDTO.ProfileNode(2L, "P-002", "20.000", 2, null, null, null, null,
-                null, new ArrayList<>(), new ArrayList<>(), seccionador);
+                null, new ArrayList<>(), new ArrayList<>(), seccionador, new ArrayList<>(List.of(seccionador, otro)));
         var aguja = new TrackSchematicDTO.SwitchMark(60L, "W31", "15.500", 9, "VIA 1");
         var aislador = new TrackSchematicDTO.InsulatorMark(50L, "AIS-50", "15.000", "TRACK_CONNECTION", true,
                 "ATOCHA", "VIA 1", "VIA 2", new ArrayList<>(List.of(aguja)));
@@ -114,6 +115,10 @@ class TrackControllerTest {
                     .andExpect(jsonPath("$.profiles[1].disconnector.station").value("ATOCHA"))
                     .andExpect(jsonPath("$.profiles[1].disconnector.track").value("VIA 4"))
                     .andExpect(jsonPath("$.profiles[1].disconnector.connectedTrack").value("VIA 2"))
+                    .andExpect(jsonPath("$.profiles[1].disconnectors.length()").value(2))
+                    .andExpect(jsonPath("$.profiles[1].disconnectors[0].name").value("SEC-40"))
+                    .andExpect(jsonPath("$.profiles[1].disconnectors[1].name").value("SEC-41"))
+                    .andExpect(jsonPath("$.profiles[1].disconnectors[1].function").value("Disc/IO"))
                     .andExpect(jsonPath("$.sectionInsulators[0].name").value("AIS-50"))
                     .andExpect(jsonPath("$.sectionInsulators[0].installationType").value("TRACK_CONNECTION"))
                     .andExpect(jsonPath("$.sectionInsulators[0].connectedTrack").value("VIA 2"))
@@ -128,6 +133,7 @@ class TrackControllerTest {
             mockMvc.perform(get(TRACKS + "/3/schematic"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.profiles[0].disconnector").doesNotExist())
+                    .andExpect(jsonPath("$.profiles[0].disconnectors").isEmpty())
                     .andExpect(jsonPath("$.profiles[0].supportType").doesNotExist())
                     .andExpect(jsonPath("$.profiles[1].span").doesNotExist())
                     .andExpect(jsonPath("$.profiles[1].cantilevers").isArray())

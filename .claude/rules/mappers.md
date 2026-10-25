@@ -32,10 +32,12 @@ paths:
   `null` no toca nada (README_API.md §4). Los 1:1 se enlazan con `linkEntity`. Nunca con la
   estrategia de colecciones de MapStruct: reemplazar borra e inserta, y los hijos cambian de id y
   pierden su historial. Lo fijan `BaseMapperTest` («Fusion por id») y los `mapper/merge/*ChildMergeIT`.
-- El seccionador del perfil no es un hijo: el perfil es el lado inverso de un vínculo que escribe el
-  seccionador (`disconnector.profile_id`, con sus datos), así que `ProfileMapper` lo ignora al
-  escribir (`@Mapping(target = "disconnector", ignore = true)`) y `ProfileValidator` no lo valida.
-  Desde el perfil es solo de salida (README_API.md §4). Cuando el código generado lo volcaba, otro
+- Los seccionadores del perfil no son hijos: el perfil es el lado inverso de un vínculo que escribe
+  cada seccionador (`disconnector.profile_id`, con sus datos), así que `ProfileMapper` los ignora al
+  escribir (`@Mapping(target = "disconnectors", ignore = true)`) y `ProfileValidator` no los valida.
+  Desde el perfil son solo de salida (README_API.md §4): `disconnectors`, por nombre
+  (`Profile.disconnectorsByName`, que se rellena en `mapEntityToDto`), y `disconnector`, el primero,
+  para quien lo leía antes de `V29`. Cuando el código generado lo volcaba, otro
   seccionador se copiaba sobre el actual, el alta creaba una copia y `null` lo quitaba de la
   respuesta pero no de la base. Lo fijan `ProfileMapperTest` y `DisconnectorLinkIT`.
 - Antes de volcar un hijo que llega con su id, se compara su `versionNumber` con el guardado

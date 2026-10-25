@@ -4,6 +4,38 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ El evento `profile` gana `disconnectors`: un poste puede llevar varios seccionadores
+
+Un cambio compatible hacia atrás: **una clave nueva, ninguna renombrada ni quitada** (`V29`).
+
+- **`disconnectors`** es la lista de los seccionadores vivos del poste, por nombre (sin mayúsculas, y
+  por id), cada uno con la misma copia reducida que `disconnector`
+  (`{id, name, onLoad, normallyOpen, driveType, disconnectorFunctionId}`); `[]` si no lleva ninguno.
+  Casi siempre trae uno, a veces dos: los de una zona neutra, o los de un haz de vías.
+- **`disconnector`** sigue ahí, con la misma forma: es el **primero** de `disconnectors`, o `null`.
+  Quien lo leía sigue leyendo uno; quien quiera todos lee la lista. Un ejemplo completo, con dos
+  seccionadores en el poste, en `docs/messaging/examples/master-data-profile-updated.json`.
+- **El evento `disconnector` no cambia**: cada seccionador sigue diciendo su `profile`, y dos pueden
+  decir el mismo.
+
+Arreglado de paso, en dos eventos que ya existían: `cantilevers` del perfil y `profiles` de la vía
+podían llegar con elementos **repetidos**, al republicar o en cualquier evento que cargase la entidad
+de cero. La consulta de mensajería trae esa lista junto con un conjunto (los seccionamientos o los
+seccionadores del perfil; las estaciones de la vía), y cada elemento salía una vez por cada fila del
+producto: una vía en dos estaciones publicaba cada perfil dos veces. Ahora sale una vez (§2.4).
+
+`mto-maintenance`, `mto-stock` y `mto-notification` no leen el seccionador anidado del perfil (lo
+reciben por su propio evento), así que no hay que tocarlos.
+
+## ⚠️ `track-access-point` también llega cuando cambia su vía o su estación
+
+Sin claves nuevas. El evento copia el nombre de su vía, el paquete de esa vía y el nombre de su
+estación, y `mto-resources` no escucha `track` ni `station`: renombrar una vía, pasarla a otro paquete
+o renombrar una estación no le llegaba hasta que alguien tocase cada acceso o lanzase el republicado.
+Ahora cada `UPDATED` de una vía o de una estación trae detrás un `UPDATED` de cada uno de sus puntos de
+acceso vivos, en la misma transacción (`TrackAccessPointRepublisher`). Borrar una vía o una estación no
+toca sus accesos, como no toca nada de lo que cuelga de un maestro (§2.4).
+
 ## ⚠️ Nace el evento `track-access-point`, para `mto-resources`
 
 Un maestro nuevo (`V28`), y con él un nombre de entidad nuevo en `mto.master-data.exchange`:
@@ -288,6 +320,23 @@ Que salga con código obliga a que la relación venga inicializada, así que `se
 en el `@EntityGraph` de `ProfileRepository.findByIdForMessaging`. Es un join a-uno, no multiplica
 filas, y `MasterDataPayloadContractIT` sigue exigiendo **una** sentencia por evento.
 
+#### Varios seccionadores en el poste: `disconnectors` (`V29`)
+
+| Clave nueva | Tipo | Contenido |
+|---|---|---|
+| `disconnectors` | lista de `{ "id", "name", "onLoad", "normallyOpen", "driveType", "disconnectorFunctionId" }` | Los seccionadores vivos del poste, por nombre (sin mayúsculas) y por id. `[]` si no lleva ninguno |
+
+`disconnector` no cambia de forma y es el primero de `disconnectors`, o `null`: hasta `V29` un poste
+solo admitía uno, y quien lo leía sigue leyendo ese. Los dos salen del mismo recorrido
+(`Profile.disconnectorsByName`), así que nunca se contradicen.
+
+`disconnectors` entra en el `@EntityGraph` de `ProfileRepository.findByIdForMessaging` en lugar del
+`disconnector` de antes. Es una colección junto a otra lista (`cantilevers`) y a varios conjuntos, y
+el producto repite cada ménsula por cada fila: Hibernate no quita los repetidos de una lista sin
+índice. El mapper de payload la pasa por `distinct()` (y el de la vía, sus `profiles`, que se unen
+con sus estaciones), y `MasterDataPayloadContractIT` lo comprueba con dos seccionadores en el poste y
+una vía en dos estaciones, sin dejar de exigir **una** sentencia por evento.
+
 #### Cambios en el contrato del evento `section-insulator`
 
 El aislador de sección incorpora cinco claves nuevas. **El cambio es compatible hacia atrás**: sólo
@@ -339,8 +388,9 @@ atrás**: sólo añade claves, no renombra ni quita ninguna.
 
 `normallyOpen`, `driveType` y `kp` son columnas de la propia fila, así que, igual que `kp` e
 `installationType` del aislador, viajan también en la copia reducida del seccionador dentro de
-`station` (`disconnectors[]`), sin una sentencia más; la de `profile` (`disconnector`) lleva las dos
-primeras, porque un seccionador colgado de un perfil nunca tiene KP propio. La vía no viaja en las
+`station` (`disconnectors[]`), sin una sentencia más; las de `profile` (`disconnectors[]` y
+`disconnector`) llevan las dos primeras, porque un seccionador colgado de un perfil nunca tiene KP
+propio. La vía no viaja en las
 copias, como la del aislador, ni tampoco la conectada. Que el evento lleve sus nombres obliga a
 cargarlas: `track` y `connectedTrack` entran en el `@EntityGraph` de
 `DisconnectorRepository.findByIdForMessaging`, y `MasterDataPayloadContractIT` sigue exigiendo
@@ -389,6 +439,13 @@ cargarlo, así que el `@EntityGraph` de `TrackAccessPointRepository.findByIdForM
 Un `DELETED` es un borrado lógico (la fila se queda con `deleted = true`) y viaja con los mismos
 `values`; el consumidor lo desactiva. Desactivar sin borrar es un `UPDATED` con `"enabled": false`.
 El punto de acceso no viaja anidado en ningún otro evento: ni la vía ni la estación lo llevan.
+
+Como copia el nombre de su vía, su paquete y el nombre de su estación, un `UPDATED` de su vía o de su
+estación lo vuelve a publicar: `TrackAccessPointRepublisher` escucha el mismo evento de aplicación que
+el outbox y publica un `UPDATED` por cada acceso vivo, en la misma transacción. Un borrado de la vía o
+de la estación no: el acceso sigue vivo, como todo lo que cuelga de un maestro, y se borra o se
+desactiva aparte. Uno nuevo no se puede colgar de una vía o una estación que no existe o está borrada:
+es un 400 `BUS-001` sobre `trackId` o `stationId` (`TrackAccessPointMapper`).
 
 ### 2.5. Republicado de lo que ya existe
 

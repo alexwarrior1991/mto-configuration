@@ -663,8 +663,9 @@ class ProfileMasterImporterTest {
                     .upsertDisconnector(any(), any(), any(), any(), any(), any(), anyBoolean());
         }
 
+        /** V29: un poste admite varios; antes la segunda fila salia en el informe. */
         @Test
-        @DisplayName("dos filas en el mismo poste: la segunda sale en el informe con el nombre de la primera")
+        @DisplayName("dos filas en el mismo poste se cargan las dos, en ese poste")
         void dosEnElMismoPoste() {
             DisconnectorMasterRow primero = disconnector("HER-01", "TRACK 1", "83-1.02", null);
             DisconnectorMasterRow segundo = new DisconnectorMasterRow("EP6", "HERZLIYA", "TRACK 1", "", "83-1.02",
@@ -673,13 +674,50 @@ class ProfileMasterImporterTest {
 
             ProfileImportReport report = importer.importFrom(ANY_FILE, false);
 
-            assertThat(report.getErrors())
-                    .extracting(ProfileImportReport.ItemError::row, ProfileImportReport.ItemError::message)
-                    .containsExactly(tuple(12, "su poste '83-1.02' ya lo lleva 'HER-01' en esta misma hoja, "
-                            + "y un poste admite un solo seccionador"));
-            verify(upsertService).upsertDisconnector(eq(primero), any(), any(), any(), any(), any(), anyBoolean());
+            assertThat(report.getErrors()).isEmpty();
+            ArgumentCaptor<Long> poles = ArgumentCaptor.forClass(Long.class);
+            verify(upsertService).upsertDisconnector(eq(primero), any(), any(), poles.capture(), any(), any(),
+                    anyBoolean());
+            verify(upsertService).upsertDisconnector(eq(segundo), any(), any(), poles.capture(), any(), any(),
+                    anyBoolean());
+            assertThat(poles.getAllValues()).hasSize(2).doesNotContainNull()
+                    .allMatch(id -> id.equals(poles.getAllValues().getFirst()));
+        }
+
+        /**
+         * Lo que paraba el indice unico del poste hasta V29: renombrar en la hoja uno ya cargado da de
+         * alta otro, y el de antes se quedaria en el poste.
+         */
+        @Test
+        @DisplayName("un poste que ya lleva uno que no esta en la hoja: la fila sale en el informe con su nombre")
+        void posteConUnoQueNoEstaEnLaHoja() {
+            DisconnectorMasterRow row = disconnector("HER-01", "TRACK 1", "83-1.02", null);
+            givenDisconnectors(List.of(pole("83-1.02", "83063.410", 1, 7, true)), row);
+            when(upsertService.disconnectorNamesOnPole(any())).thenReturn(List.of("HER-01", "HER-VIEJO"));
+
+            ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+            assertThat(report.getErrors()).singleElement()
+                    .extracting(ProfileImportReport.ItemError::message).asString()
+                    .contains("'83-1.02'", "'HER-VIEJO'", "no esta en la hoja")
+                    .doesNotContain("'HER-01'");
             verify(upsertService, never())
-                    .upsertDisconnector(eq(segundo), any(), any(), any(), any(), any(), anyBoolean());
+                    .upsertDisconnector(any(), any(), any(), any(), any(), any(), anyBoolean());
+        }
+
+        @Test
+        @DisplayName("el otro del poste esta en la hoja, aunque deshabilitado: se carga")
+        void posteConOtroDeLaHoja() {
+            DisconnectorMasterRow row = disconnector("HER-01", "TRACK 1", "83-1.02", null);
+            DisconnectorMasterRow disabled = new DisconnectorMasterRow("EP6", "HERZLIYA", "TRACK 1", "", "83-1.02",
+                    null, "her-02", "", "SI", "NO", "MOTOR", "Disc/IO", false, 12);
+            givenDisconnectors(List.of(pole("83-1.02", "83063.410", 1, 7, true)), row, disabled);
+            when(upsertService.disconnectorNamesOnPole(any())).thenReturn(List.of("HER-02"));
+
+            ProfileImportReport report = importer.importFrom(ANY_FILE, false);
+
+            assertThat(report.getErrors()).isEmpty();
+            verify(upsertService).upsertDisconnector(eq(row), any(), any(), any(), any(), any(), anyBoolean());
         }
 
         @Test

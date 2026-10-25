@@ -70,7 +70,12 @@ public record TrackSchematicDTO(
                 sectionInsulators);
     }
 
-    /** Un poste: sus datos principales, sus ménsulas y, si lo lleva, su seccionador. */
+    /**
+     * Un poste: sus datos principales, sus ménsulas y sus seccionadores (V29: casi siempre uno, a
+     * veces dos), por nombre. {@code disconnector} es el primero de {@code disconnectors}, para quien
+     * lo leia antes; una entrada de la cache anterior a V29 trae solo ese, y al releerla lleva
+     * {@code disconnectors} con el.
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ProfileNode(
             Long id,
@@ -84,11 +89,23 @@ public record TrackSchematicDTO(
             String railPoleDistance,
             List<String> sectionings,
             List<CantileverArm> cantilevers,
-            DisconnectorMark disconnector
+            DisconnectorMark disconnector,
+            List<DisconnectorMark> disconnectors
     ) {
 
+        public ProfileNode {
+            if (disconnectors == null) {
+                disconnectors = new ArrayList<>();
+                if (disconnector != null) {
+                    disconnectors.add(disconnector);
+                }
+            }
+        }
+
         public static ProfileNode of(Profile profile, List<CantileverArm> cantilevers, List<String> sectionings) {
-            Disconnector disconnector = profile.getDisconnector();
+            List<DisconnectorMark> disconnectors = profile.disconnectorsByName().stream()
+                    .map(DisconnectorMark::of)
+                    .collect(Collectors.toCollection(ArrayList::new));
             return new ProfileNode(
                     profile.getId(),
                     profile.getProfileId(),
@@ -101,7 +118,8 @@ public record TrackSchematicDTO(
                     plain(profile.getRailPoleDistance()),
                     sectionings,
                     cantilevers,
-                    disconnector == null ? null : DisconnectorMark.of(disconnector));
+                    disconnectors.isEmpty() ? null : disconnectors.getFirst(),
+                    disconnectors);
         }
     }
 

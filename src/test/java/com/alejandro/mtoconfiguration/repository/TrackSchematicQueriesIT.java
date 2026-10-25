@@ -112,6 +112,13 @@ class TrackSchematicQueriesIT extends AbstractCriteriaSearchIT {
         seccionador.setConnectedTrack(via2);   // y la pone en paralelo con VIA 2 (V27)
         p2.addDisconnector(seccionador);
         em.persist(seccionador);
+        Disconnector otroDelPoste = new Disconnector();   // V29: el mismo poste lleva dos
+        otroDelPoste.setName("SEC-41");
+        otroDelPoste.setOnLoad(false);
+        otroDelPoste.setDisconnectorFunction(feed);
+        otroDelPoste.setStation(atocha);
+        p2.addDisconnector(otroDelPoste);
+        em.persist(otroDelPoste);
 
         SectionInsulator ais1 = aislador("AIS-1", "15.000", via1, via2, atocha);
         SectionInsulatorSwitch w31 = new SectionInsulatorSwitch();
@@ -200,7 +207,7 @@ class TrackSchematicQueriesIT extends AbstractCriteriaSearchIT {
     }
 
     @Test
-    @DisplayName("los perfiles salen en el orden fisico, sin el borrado, con lo a-uno ya cargado")
+    @DisplayName("los perfiles salen en el orden fisico, sin el borrado y una vez cada uno, con sus seccionadores ya cargados")
     void perfilesEnOrdenFisico() {
         List<Profile> perfiles = profileRepository.findForSchematic(via1Id);
 
@@ -211,18 +218,22 @@ class TrackSchematicQueriesIT extends AbstractCriteriaSearchIT {
         Profile primero = perfiles.getFirst();
         assertThat(Hibernate.isInitialized(primero.getPoleType())).isTrue();
         assertThat(primero.getPoleType().getCode()).isEqualTo("HEB");
-        assertThat(primero.getDisconnector()).isNull();
+        assertThat(Hibernate.isInitialized(primero.getDisconnectors())).isTrue();
+        assertThat(primero.getDisconnectors()).isEmpty();
 
         Profile segundo = perfiles.get(1);
-        assertThat(Hibernate.isInitialized(segundo.getDisconnector())).isTrue();
-        assertThat(Hibernate.isInitialized(segundo.getDisconnector().getStation())).isTrue();
-        assertThat(segundo.getDisconnector().getStation().getName()).isEqualTo("ATOCHA");
-        assertThat(Hibernate.isInitialized(segundo.getDisconnector().getDisconnectorFunction())).isTrue();
-        assertThat(segundo.getDisconnector().getDisconnectorFunction().getCode()).isEqualTo("FEED");
-        assertThat(Hibernate.isInitialized(segundo.getDisconnector().getTrack())).isTrue();
-        assertThat(segundo.getDisconnector().getTrack().getName()).isEqualTo("VIA 3");
-        assertThat(Hibernate.isInitialized(segundo.getDisconnector().getConnectedTrack())).isTrue();
-        assertThat(segundo.getDisconnector().getConnectedTrack().getName()).isEqualTo("VIA 2");
+        assertThat(Hibernate.isInitialized(segundo.getDisconnectors())).isTrue();
+        assertThat(segundo.disconnectorsByName()).extracting(Disconnector::getName)
+                .containsExactly("SEC-40", "SEC-41");
+        Disconnector sec40 = segundo.disconnectorsByName().getFirst();
+        assertThat(Hibernate.isInitialized(sec40.getStation())).isTrue();
+        assertThat(sec40.getStation().getName()).isEqualTo("ATOCHA");
+        assertThat(Hibernate.isInitialized(sec40.getDisconnectorFunction())).isTrue();
+        assertThat(sec40.getDisconnectorFunction().getCode()).isEqualTo("FEED");
+        assertThat(Hibernate.isInitialized(sec40.getTrack())).isTrue();
+        assertThat(sec40.getTrack().getName()).isEqualTo("VIA 3");
+        assertThat(Hibernate.isInitialized(sec40.getConnectedTrack())).isTrue();
+        assertThat(sec40.getConnectedTrack().getName()).isEqualTo("VIA 2");
     }
 
     @Test

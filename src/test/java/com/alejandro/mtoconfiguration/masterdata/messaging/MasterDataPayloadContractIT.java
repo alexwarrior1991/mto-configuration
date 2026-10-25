@@ -181,10 +181,15 @@ class MasterDataPayloadContractIT {
     void profile() {
         Map<String, Object> payload = payloadOfDetached(profileRepository, ids.profile());
 
-        assertThat(asList(payload, "cantilevers")).hasSize(2);
-        assertThat(payload).containsKeys("track", "foundation", "poleType", "disconnector");
+        assertThat(asList(payload, "cantilevers"))
+                .as("cada mensula una vez, aunque el poste lleve dos seccionadores").hasSize(2);
+        assertThat(payload).containsKeys("track", "foundation", "poleType", "disconnector", "disconnectors");
         assertThat(asMap(payload, "disconnector"))
                 .containsEntry("normallyOpen", true).containsEntry("driveType", "MOTOR");
+        // V29: los dos del poste, por nombre; «disconnector» es el primero.
+        assertThat(asList(payload, "disconnectors"))
+                .extracting(each -> each.get("name"), each -> each.get("disconnectorFunctionId") != null)
+                .containsExactly(tuple("Seccionador 1", true), tuple("Seccionador 4", true));
         // sectioningFeeding entra en el grafo como una LOV mas del perfil: si se cayera de
         // findByIdForMessaging, leer su codigo aqui reventaria con la entidad ya desatachada.
         assertThat(payload).containsKeys("span", "heightCantileverSupport", "poleGaugeLocation",
@@ -267,11 +272,12 @@ class MasterDataPayloadContractIT {
     void track() {
         Map<String, Object> payload = payloadOfDetached(trackRepository, ids.track());
 
-        assertThat(asList(payload, "profiles")).hasSize(2);
+        assertThat(asList(payload, "profiles")).as("cada perfil una vez, aunque la via este en dos estaciones")
+                .hasSize(2);
         assertThat(payload).containsKeys("executionPackage", "stations");
         // Una coleccion, no un @ManyToOne: si 'stations' se cayera del grafo esto no daria un
         // null discreto, reventaria con LazyInitializationException al publicar el evento.
-        assertThat(asList(payload, "stations")).hasSize(1);
+        assertThat(asList(payload, "stations")).hasSize(2);
     }
 
     /**
@@ -287,11 +293,12 @@ class MasterDataPayloadContractIT {
      *   <li><b>station 3</b> y <b>executionPackage 2</b> son deliberados: leen tres y
      *       dos colecciones, y unirlas en un solo grafo multiplicaria las filas entre
      *       si. Si alguien las reagrupa, estos numeros bajan a 1 y el test falla.</li>
-     *   <li><b>cantilever</b> y <b>track</b> valen 1 gracias a traer
-     *       Profile.disconnector en el grafo. Sin esa ruta valdrian 2 y 1+N: es el
-     *       lado inverso de un {@code @OneToOne} y Hibernate lo carga con un select
-     *       por cada Profile materializado. En track crecia con los perfiles de la
-     *       via.</li>
+     *   <li><b>cantilever</b> y <b>track</b> valen 1 sin traer los seccionadores del
+     *       perfil. Hasta V29 {@code Profile.disconnector} era el lado inverso de un
+     *       {@code @OneToOne}, que Hibernate cargaba con un select por cada Profile
+     *       materializado, y habia que traerlo en el grafo; ahora es una coleccion
+     *       perezosa que sus mappers no leen. Si alguien vuelve a hacerlo a-uno, estos
+     *       numeros suben.</li>
      * </ul>
      */
     @Test
@@ -318,7 +325,7 @@ class MasterDataPayloadContractIT {
             softly.assertThat(countStatements(() -> steadyArmRepository.findByIdForMessaging(ids.steadyArm())))
                     .as("steadyArm").isEqualTo(1);
             softly.assertThat(countStatements(() -> trackRepository.findByIdForMessaging(ids.track())))
-                    .as("track: sin profiles.disconnector serian 1 + un select POR PERFIL").isEqualTo(1);
+                    .as("track: los seccionadores de sus perfiles no se cargan").isEqualTo(1);
             softly.assertThat(countStatements(() -> trackAccessPointRepository.findByIdForMessaging(ids.trackAccessPoint())))
                     .as("trackAccessPoint").isEqualTo(1);
         });
@@ -389,9 +396,12 @@ class MasterDataPayloadContractIT {
             executionPackage.setCompany(company);
 
             Station station = station("Estacion principal", executionPackage);
-            station("Estacion secundaria", executionPackage);
+            Station secondary = station("Estacion secundaria", executionPackage);
 
             Track track = track("Via 1", executionPackage, station);
+            // En dos estaciones: el grafo de la via une sus perfiles con sus estaciones, y un perfil
+            // repetido en el evento se veria aqui.
+            secondary.addTrack(track);
             Track otherTrack = track("Via 2", executionPackage, station);
 
             Profile profile = profile("P-001", "1.5", track);
@@ -406,6 +416,12 @@ class MasterDataPayloadContractIT {
             // V27: pone su via, la de su poste, en paralelo con la otra.
             disconnector.setConnectedTrack(otherTrack);
             profile.addDisconnector(disconnector);
+            // V29: el mismo poste lleva otro, sin estacion; por nombre va detras del primero.
+            Disconnector sameProfile = new Disconnector();
+            sameProfile.setName("Seccionador 4");
+            sameProfile.setOnLoad(Boolean.FALSE);
+            sameProfile.setDisconnectorFunction(lov(new DisconnectorFunction(), "FUN4"));
+            profile.addDisconnector(sameProfile);
             // Sin poste: desde V25 el poste es opcional, y desde V26 lleva su propio KP y su via.
             Disconnector poleLess = disconnector("Seccionador 2", station);
             poleLess.setKp(new BigDecimal("98375.500"));
@@ -424,6 +440,7 @@ class MasterDataPayloadContractIT {
             stationLess.setKp(new BigDecimal("98500.000"));
             stationLess.setTrack(track);
             em.persist(stationLess);
+            em.persist(sameProfile);
 
             // Los accesos no cuelgan de nada que los persista en cascada: la via y la estacion no los
             // llevan en una coleccion.

@@ -48,6 +48,14 @@ services:
       KEYCLOAK_SERVICE_CLIENT_SECRET: ${KEYCLOAK_SERVICE_CLIENT_SECRET:?falta en .env, copiese .env.example}
 
       JAVA_OPTS: ${JAVA_OPTS:-}
+
+      # Los ficheros de los trabajos (exportaciones e informes de importacion) en el volumen de /data:
+      # en la capa del contenedor se perdian al recrearlo, y su descarga respondia 410.
+      APP_JOBS_PROFILE_EXPORT_DIRECTORY: /data/exports
+      APP_JOBS_PROFILE_IMPORT_REPORT_DIRECTORY: /data/profile-imports
+      APP_JOBS_LOV_REPORT_DIRECTORY: /data/lov-imports
+    volumes:
+      - jobs-data:/data
     # El 'iss' del token es http://auth.mto.local:8082 y la aplicacion tiene que poder resolver ese
     # mismo nombre para descargar el JWK Set: es el mismo string el que viaja en el token y el que
     # se valida, asi que no vale apuntar a un nombre de contenedor desde dentro de la red.
@@ -65,3 +73,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+
+volumes:
+  jobs-data:

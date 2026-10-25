@@ -32,6 +32,14 @@ public class Disconnector extends CRUDEntity {
     @Serial
     private static final long serialVersionUID = 1L;
 
+    /**
+     * El orden de los seccionadores de un mismo poste (V29): por nombre, sin mayusculas, y por id
+     * para desempatar. Lo usan la API del perfil, el esquema de la via y el evento del perfil.
+     */
+    public static final Comparator<Disconnector> BY_NAME = Comparator
+            .comparing(Disconnector::getName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+            .thenComparing(disconnector -> disconnector.getId(), Comparator.nullsLast(Comparator.<Long>naturalOrder()));
+
     private static final String DISCONNECTOR_GENERATOR = "Disconnector_gen";
     private static final String DISCONNECTOR_SEQUENCE = "Disconnector_seq";
 
@@ -106,9 +114,9 @@ public class Disconnector extends CRUDEntity {
 
     /**
      * Poste del que cuelga. Opcional: no todos los seccionadores están en un poste de la línea, y
-     * uno que no lo está guarda solo su estación.
+     * uno que no lo está guarda solo su estación. Un poste puede llevar varios (V29).
      */
-    @OneToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "PROFILE_ID", nullable = true)
     @Audited(targetAuditMode = NOT_AUDITED)
     public Profile getProfile() {
