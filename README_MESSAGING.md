@@ -27,6 +27,15 @@ producto: una vía en dos estaciones publicaba cada perfil dos veces. Ahora sale
 `mto-maintenance`, `mto-stock` y `mto-notification` no leen el seccionador anidado del perfil (lo
 reciben por su propio evento), así que no hay que tocarlos.
 
+## ⚠️ `track-access-point` también llega cuando cambia su vía o su estación
+
+Sin claves nuevas. El evento copia el nombre de su vía, el paquete de esa vía y el nombre de su
+estación, y `mto-resources` no escucha `track` ni `station`: renombrar una vía, pasarla a otro paquete
+o renombrar una estación no le llegaba hasta que alguien tocase cada acceso o lanzase el republicado.
+Ahora cada `UPDATED` de una vía o de una estación trae detrás un `UPDATED` de cada uno de sus puntos de
+acceso vivos, en la misma transacción (`TrackAccessPointRepublisher`). Borrar una vía o una estación no
+toca sus accesos, como no toca nada de lo que cuelga de un maestro (§2.4).
+
 ## ⚠️ Nace el evento `track-access-point`, para `mto-resources`
 
 Un maestro nuevo (`V28`), y con él un nombre de entidad nuevo en `mto.master-data.exchange`:
@@ -430,6 +439,13 @@ cargarlo, así que el `@EntityGraph` de `TrackAccessPointRepository.findByIdForM
 Un `DELETED` es un borrado lógico (la fila se queda con `deleted = true`) y viaja con los mismos
 `values`; el consumidor lo desactiva. Desactivar sin borrar es un `UPDATED` con `"enabled": false`.
 El punto de acceso no viaja anidado en ningún otro evento: ni la vía ni la estación lo llevan.
+
+Como copia el nombre de su vía, su paquete y el nombre de su estación, un `UPDATED` de su vía o de su
+estación lo vuelve a publicar: `TrackAccessPointRepublisher` escucha el mismo evento de aplicación que
+el outbox y publica un `UPDATED` por cada acceso vivo, en la misma transacción. Un borrado de la vía o
+de la estación no: el acceso sigue vivo, como todo lo que cuelga de un maestro, y se borra o se
+desactiva aparte. Uno nuevo no se puede colgar de una vía o una estación que no existe o está borrada:
+es un 400 `BUS-001` sobre `trackId` o `stationId` (`TrackAccessPointMapper`).
 
 ### 2.5. Republicado de lo que ya existe
 

@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.mapper.infraestructure;
 
+import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.entity.infrastructure.TrackAccessPoint;
@@ -9,6 +10,8 @@ import com.alejandro.mtoconfiguration.mapper.commons.ReferenceMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackAccessPointDTO;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
 import com.alejandro.mtoconfiguration.validator.ValidDtos;
+import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
+import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -23,7 +26,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
@@ -167,6 +172,36 @@ class TrackAccessPointMapperTest {
             assertThat(entity.getId()).isEqualTo(70L);
             assertThat(entity.getStation()).isNull();
             assertThat(entity.getName()).isEqualTo("Otro nombre");
+        }
+
+        @Test
+        @DisplayName("una vía borrada es un 400 sobre trackId, no un acceso colgado de ella")
+        void viaBorrada() {
+            Track borrada = track(3L);
+            borrada.delete();
+            when(referenceMapper.resolve(eq(3L), eq(Track.class))).thenReturn(borrada);
+
+            assertThatThrownBy(() -> mapper.toEntity(ValidDtos.rootTrackAccessPoint()))
+                    .isInstanceOfSatisfying(ValidationException.class, error -> assertThat(error.getErrors())
+                            .singleElement()
+                            .satisfies(alert -> {
+                                assertThat(alert.getMessage()).isEqualTo(ErrorCodes.BUSINESS_RULE_VIOLATION);
+                                assertThat(alert.getFields()).containsExactly("trackId");
+                            }));
+        }
+
+        @Test
+        @DisplayName("una estación que no existe es un 400 sobre stationId, no un 409 de la clave ajena")
+        void estacionQueNoExiste() {
+            when(referenceMapper.resolve(eq(3L), eq(Track.class))).thenReturn(track(3L));
+            Station inexistente = mock(Station.class);
+            when(inexistente.isDeleted()).thenThrow(new EntityNotFoundException("no existe"));
+            when(referenceMapper.resolve(eq(40L), eq(Station.class))).thenReturn(inexistente);
+
+            assertThatThrownBy(() -> mapper.updateEntityFromDTO(ValidDtos.rootTrackAccessPoint(), acceso()))
+                    .isInstanceOfSatisfying(ValidationException.class, error -> assertThat(error.getErrors())
+                            .flatExtracting(alert -> alert.getFields())
+                            .containsExactly("stationId"));
         }
     }
 }

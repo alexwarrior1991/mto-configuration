@@ -58,6 +58,10 @@ class TrackAccessPointServiceIT {
     private JdbcTemplate jdbcTemplate;
     @Autowired
     private TrackAccessPointService trackAccessPointService;
+    @Autowired
+    private TrackService trackService;
+    @Autowired
+    private StationService stationService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -93,6 +97,10 @@ class TrackAccessPointServiceIT {
         jdbcTemplate.update("delete from track_access_point_aud where id in "
                 + "(select id from track_access_point where name like 'IT-TAP%')");
         jdbcTemplate.update("delete from track_access_point where name like 'IT-TAP%'");
+        jdbcTemplate.update("delete from outbox_message where aggregate_type in ('track', 'station')"
+                + " and aggregate_id in (?, ?)", String.valueOf(TRACK), String.valueOf(STATION));
+        jdbcTemplate.update("delete from track_aud where id = ?", TRACK);
+        jdbcTemplate.update("delete from station_aud where id = ?", STATION);
         jdbcTemplate.update("delete from track where id = ?", TRACK);
         jdbcTemplate.update("delete from station where id = ?", STATION);
         jdbcTemplate.update("delete from execution_package where id = ?", PACKAGE);
@@ -221,5 +229,61 @@ class TrackAccessPointServiceIT {
                 .isInstanceOf(ValidationException.class);
         assertThat(jdbcTemplate.queryForObject("select count(*) from track_access_point where name = ?",
                 Integer.class, PREFIX + "-E")).isZero();
+    }
+
+    @Test
+    @DisplayName("una vía que no existe es un 400 sobre trackId, no un 409 de la clave ajena")
+    void viaQueNoExiste() {
+        TrackAccessPointDTO dto = acceso(PREFIX + "-F");
+        dto.setTrackId(-999L);
+
+        assertThatThrownBy(() -> trackAccessPointService.create(dto))
+                .isInstanceOfSatisfying(ValidationException.class, error -> assertThat(error.getErrors())
+                        .flatExtracting(alert -> alert.getFields())
+                        .containsExactly("trackId"));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from track_access_point where name = ?",
+                Integer.class, PREFIX + "-F")).isZero();
+    }
+
+    @Test
+    @DisplayName("una vía borrada tampoco admite accesos nuevos")
+    void viaBorrada() {
+        jdbcTemplate.update("update track set deleted = true where id = ?", TRACK);
+
+        assertThatThrownBy(() -> trackAccessPointService.create(acceso(PREFIX + "-G")))
+                .isInstanceOf(ValidationException.class);
+    }
+
+    /**
+     * El evento copia el nombre de la vía y el id de su paquete, y {@code mto-resources} no escucha los
+     * eventos {@code track}: sin esto se quedaba con el nombre de antes.
+     */
+    @Test
+    @DisplayName("renombrar la vía vuelve a publicar sus accesos con el nombre nuevo")
+    void renombrarLaViaRepublicaSusAccesos() {
+        TrackAccessPointDTO creado = trackAccessPointService.create(acceso(PREFIX + "-H"));
+
+        var via = trackService.getById(TRACK);
+        via.setName("IT-TAP-TRACK-RENOMBRADA");
+        trackService.update(via);
+
+        assertThat(eventos(creado.getId())).hasSize(2).last().satisfies(evento -> {
+            assertThat(evento.get("routing_key")).isEqualTo("mto.master-data.track-access-point.updated");
+            assertThat(values(evento).at("/track/name").asText()).isEqualTo("IT-TAP-TRACK-RENOMBRADA");
+        });
+    }
+
+    @Test
+    @DisplayName("renombrar la estación vuelve a publicar los suyos")
+    void renombrarLaEstacionRepublicaSusAccesos() {
+        TrackAccessPointDTO creado = trackAccessPointService.create(acceso(PREFIX + "-I"));
+
+        var estacion = stationService.getById(STATION);
+        estacion.setName("IT-TAP-STATION-RENOMBRADA");
+        stationService.update(estacion);
+
+        assertThat(eventos(creado.getId())).hasSize(2).last()
+                .satisfies(evento -> assertThat(values(evento).at("/station/name").asText())
+                        .isEqualTo("IT-TAP-STATION-RENOMBRADA"));
     }
 }

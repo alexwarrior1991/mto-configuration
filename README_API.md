@@ -471,7 +471,9 @@ encarrila. Es un maestro suelto, con las rutas de todos (`$BASE/track-access-poi
 `POST /filter`, `POST /search` y `GET /paged`) y además los de una vía,
 `GET $BASE/track-access-points/track/{trackId}`, por KP. Ni la vía ni la estación lo llevan en una
 colección, así que no viaja anidado en ningún otro recurso. Cada escritura publica su evento
-`track-access-point`, que materializa `mto-resources` (`README_MESSAGING.md` §2.4).
+`track-access-point`, que materializa `mto-resources` (`README_MESSAGING.md` §2.4). Como el evento
+copia el nombre de su vía, su paquete y el nombre de su estación, modificar la vía o la estación lo
+vuelve a publicar.
 
 ```jsonc
 {
@@ -493,8 +495,8 @@ colección, así que no viaja anidado en ningún otro recurso. Cada escritura pu
 | Campo | Obligatorio | Reglas |
 |---|---|---|
 | `name` | sí | Hasta 200 caracteres, **único dentro de su vía** sin distinguir mayúsculas (un repetido es 409 `BUS-002`; uno borrado no cuenta) |
-| `trackId` | sí | La vía a la que da acceso |
-| `stationId` | no | |
+| `trackId` | sí | La vía a la que da acceso. Una que no existe o está borrada es un 400 `BUS-001` sobre `trackId` |
+| `stationId` | no | Una que no existe o está borrada, 400 `BUS-001` sobre `stationId` |
 | `kp` | no | `numeric(12,3)`: hasta 9 enteros y 3 decimales, ≥ 0 |
 | `kind` | sí | `PREPARED_ACCESS` (acceso preparado), `LEVEL_CROSSING` (paso a nivel) o `DEPOT` (base o cochera) |
 | `side` | sí | `LEFT`, `RIGHT` o `BOTH`, en el sentido creciente del KP |
