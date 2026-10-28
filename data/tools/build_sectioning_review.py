@@ -130,6 +130,9 @@ SWITCH_TIE = 3.0  # dos rotulos de aguja a menos de 3 unidades de diferencia: em
 
 # Prefijos del rotulo que no coinciden con el codigo de estacion del maestro.
 STATION_ALIAS = {"ASKD": "ASK-D", "ASKS": "ASK-S", "DLOD": "LOD_D", "LOD": "LOD_S", "MSM": "MSMR"}
+# Estaciones del maestro que el plano rotula sin el codigo entre parentesis, solo con el nombre y
+# el numero debajo ('TZOMET REMEZ\n30'): el nombre, en mayusculas, y su codigo.
+PLAN_STATION_NAMES = {"TZOMET REMEZ": "REM", "PLESHET": "PST"}
 
 # --------------------------------------------------------------------------------
 # Rotulos: nombre y KP
@@ -1090,21 +1093,24 @@ def read_switches(drawing):
 
 
 def read_stations(drawing):
-    """'BINYAMINA (BIN)\\n28' en la capa de estaciones: codigo, nombre y posicion."""
+    """'BINYAMINA (BIN)\\n28' en la capa de estaciones: codigo, nombre y posicion.
+
+    Una estacion rotulada sin codigo ('TZOMET REMEZ\\n30') solo cuenta si su nombre esta en
+    PLAN_STATION_NAMES: el resto de esos textos son andenes, edificios y KP sueltos.
+    """
     stations = []
     for t in drawing["texts"]:
         if t["layer"] != "0_Stations":
             continue
         m = re.search(r"\(([A-Z][A-Z_\-]{1,6})\)", t["text"].replace("\n", " "))
         if m:
-            stations.append(
-                {
-                    "code": m.group(1),
-                    "name": re.sub(r"\s+", " ", t["text"].split("(")[0]).strip(),
-                    "x": t["x"],
-                    "y": t["y"],
-                }
-            )
+            code, name = m.group(1), re.sub(r"\s+", " ", t["text"].split("(")[0]).strip()
+        else:
+            name = re.sub(r"\s+", " ", t["text"].strip().split("\n")[0]).strip()
+            code = PLAN_STATION_NAMES.get(name.upper())
+            if not code:
+                continue
+        stations.append({"code": code, "name": name, "x": t["x"], "y": t["y"]})
     return stations
 
 
