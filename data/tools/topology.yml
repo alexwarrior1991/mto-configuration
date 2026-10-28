@@ -278,15 +278,16 @@ execution_packages:
     stations:
       - ZIC
       - BIN
+      - REM
       - HAD
       - KFA
     tracks:
       - sheet: "HR Track 1"
         name: "TRACK 1"          # REVISAR: derivado de A1
-        station: [ZIC, BIN, HAD, KFA]            # REVISAR: A1 no nombra estacion
+        station: [ZIC, BIN, HAD, REM, KFA]            # REVISAR: A1 no nombra estacion
       - sheet: "HR Track 2"
         name: "TRACK 2"          # REVISAR: derivado de A1
-        station: [ZIC, BIN, HAD, KFA]            # REVISAR: A1 no nombra estacion
+        station: [ZIC, BIN, HAD, REM, KFA]            # REVISAR: A1 no nombra estacion
       - sheet: "HR Track 3 ZIC"
         name: "TRACK 3 ZIC"          # REVISAR: derivado de A1
         station: ZIC     # REVISAR: derivado del titulo A1
