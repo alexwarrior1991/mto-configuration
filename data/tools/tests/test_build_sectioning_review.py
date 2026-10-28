@@ -101,6 +101,24 @@ class LabelTest(unittest.TestCase):
         self.assertEqual(bsr.station_code("*TN1-TE1"), "TN1")
         self.assertEqual(bsr.station_code("F1.1"), "")
 
+    def test_a_station_of_the_plan_with_or_without_its_code(self):
+        def text(value, layer="0_Stations"):
+            return {"layer": layer, "text": value, "x": 1.0, "y": 2.0}
+
+        drawing = {"texts": [
+            text("BINYAMINA (BIN)\n28"),
+            # Sin codigo: solo las de PLAN_STATION_NAMES, sin el numero de debajo.
+            text("TZOMET REMEZ\n30"),
+            text("PLESHET\n55 "),
+            text("PARDES HANNA\n282"),
+            text("Station Building\n41+121/41+161"),
+            text("TZOMET REMEZ\n30", layer="0_Text"),
+        ]}
+        self.assertEqual(
+            [(s["code"], s["name"]) for s in bsr.read_stations(drawing)],
+            [("BIN", "BINYAMINA"), ("REM", "TZOMET REMEZ"), ("PST", "PLESHET")],
+        )
+
 
 class FunctionTest(unittest.TestCase):
 

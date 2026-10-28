@@ -1046,7 +1046,10 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
   subestaciones (`KAF`, `TN3`, `HSA`) no lo son: se propone la estación del plano más cercana y se
   decide **una vez por prefijo**, en la hoja `ESTACION_POR_PREFIJO`. Un seccionador puede no ser de
   ninguna estación: entonces se escribe `SIN ESTACION`, en su fila o en `ESTACION_CORRECTA` de su
-  prefijo.
+  prefijo. Las estaciones del plano son los textos `NOMBRE (CODIGO)` de la capa `0_Stations`; las
+  que el plano rotula sin código (`TZOMET REMEZ` es `REM`, `PLESHET` es `PST`) se declaran en
+  `PLAN_STATION_NAMES`, y una estación nueva en `topology.yml` que el plano rotule así necesita su
+  línea allí.
 - **Nombre repetido**: el importador identifica cada seccionador por su EP y su nombre, así que dos
   filas con el mismo nombre en el mismo EP salen las dos con `REVISAR = SI` y `ENABLED = NO`.
 - **Función**: el código del poste casado; si no hay, una propuesta por lo que puentea y el nombre.
