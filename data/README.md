@@ -637,6 +637,19 @@ Para revisar en el workbook:
   apunta en `DESCARTADOS` como «tipo de mensula supuesto».
 - `154-1.24` dice `AS-NS1` en la columna `Survey`, pero el seccionador del plano es `ASK-NS1`.
 
+## Las erratas corregidas en EP9B
+
+EP9B traía un `1` de más delante de `110` en un KP y en doce identificadores de poste, y se han
+corregido en `EP9B.xlsm`:
+
+- **El KP de `110-1.27`** (`HR Track 1 LOD_S`) era `1110546`: es `110546`, entre `110516` y `110594`.
+  Con él, la vía parecía llegar hasta el kilómetro 1.110.
+- **`1110-8.38`, `1110-8.38B`, `1110-14.38`, `1110-14.38B` y `1110-25D.13`, `.14`, `.16` y `.17`**
+  (en las vías 8, 10 y 14 de LOD_S y 25 y 26 de LOD_D) son `110-…`, como el resto de su vía. Los
+  seccionadores DLOD-29, DLOD-30 y DLOD-31 cuelgan de `110-8.38` y `110-8.38B`, y con la errata
+  no encontraban su poste. Las hojas que copian esos identificadores con una fórmula guardan
+  también el valor corregido.
+
 ## Generar
 
 ```bash
