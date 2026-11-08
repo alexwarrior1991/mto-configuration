@@ -713,7 +713,8 @@ ellas, todos los seccionadores se cargarían sin poste sin una sola queja.
 
 ### Las dos hojas del aislador de sección
 
-Salen vacías hasta que se revisa el plano, pero el camino de importación está entero.
+Salen del libro de revisión del plano (`data/sectioning-review.xlsx`, ver «El seccionamiento desde el
+plano DXF»), y vacías sin él.
 
 `SECTION_INSULATORS` identifica cada aislador por `EP + ESTACION + NOMBRE`, que es su clave
 natural. `TIPO_INSTALACION` es `TRACK_CONNECTION` (el aislador separa las catenarias de **dos**
@@ -721,7 +722,8 @@ vías que conectan por una aguja, lo normal) o `IN_TRACK` (está en medio de una
 entonces `VIA_CONECTADA` va vacía). Vacío también vale: el dominio no lo exige.
 
 `SECTION_INSULATOR_SWITCHES` lleva una fila por aguja, colgada de su aislador repitiendo esos
-tres valores en `AISLADOR`. El `CODIGO` es el del plano —`W` y un número: `W31`, `W110`— y no
+tres valores en `AISLADOR`. En el libro de revisión no se escribe aparte: las agujas van en la fila
+de su aislador y el generador saca de ahí estas filas. El `CODIGO` es el del plano —`W` y un número: `W31`, `W110`— y no
 puede repetirse dentro del mismo aislador, que es por donde se reconoce la aguja al reimportar:
 así conserva su id y su histórico de auditoría aunque cambie de orden o aparezca una nueva en
 medio.
@@ -975,6 +977,28 @@ lo decide `ENABLED`, que es de quien revisa. `ESTACION_CORRECTA` de `ESTACION_PO
 a los seccionadores de ese prefijo y ese EP, porque la estación de una zona neutra o de una
 subestación se decide una vez por prefijo. Sin el fichero, las tres hojas salen vacías.
 
+**Las agujas van en la fila de su aislador**, para no escribir dos veces el aislador y sus agujas:
+`AGUJA_1`, `KP_AGUJA_1` y `TANGENTE_1` son la del lado de `VIA`, y `AGUJA_2`, `KP_AGUJA_2` y
+`TANGENTE_2` la del lado de `VIA_CONECTADA`; en un `IN_TRACK`, las dos son de `VIA`. Un aislador
+puede no tener ninguna. `build_profile_master.py` escribe con ellas `SECTION_INSULATOR_SWITCHES`
+(`insulator_switches`), todas con `ENABLED = SI`, porque lo que no se carga lo decide el aislador; una
+con KP o tangente y sin código va a `DESCARTADOS`. La hoja `SECTION_INSULATOR_SWITCHES` del libro
+queda oculta y vacía. Un libro anterior, sin esas columnas, trae su hoja de agujas y se copia tal
+cual, que es lo que sigue escribiendo `build_sectioning_review.py`: el libro revisado de 2026 se
+pasó a la forma nueva al rellenarlo.
+
+**El KP del aislador** (`insulator_kp`) es el que se escribe a mano en `KP`. Si no, sale de sus
+agujas:
+- las dos a 300 m o menos: el punto medio, redondeado al metro como el `ROUND` de Excel. En el libro
+  revisado, las dos agujas de un escape están a 185 m como mucho (los de 1:18 y 1:20);
+- más separadas: el de la aguja 1. La aguja 2 va entonces con el KP de otra vía, una de estación o de
+  taller con el suyo propio (`TBA SI W13-W15`: 89388 y 408);
+- una sola: la suya.
+
+La columna `KP` del libro lleva esa regla como fórmula, pero el generador no se fía del valor
+guardado (es el de la última vez que se calculó) y la vuelve a aplicar. Un número escrito en `KP`
+manda.
+
 El DXF no está en el repositorio: son 46 MB más de binarios (ver «El tamaño de `workbook/`»).
 
 ## Qué lee del plano
@@ -1070,9 +1094,12 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
 
 - **El nombre y el KP de los aisladores.** El nombre que sale es una propuesta (las agujas del
   escape); el KP, solo cuando un seccionador rotulado lo puentea. `KP_ESTIMADO_M` interpola entre
-  los vecinos y es solo una pista: el plano no está a escala (mediana de error ~20 m, uno de cada
-  cinco a más de 70 m).
-- **El KP de las agujas.**
+  los vecinos y es solo una pista: el plano no está a escala. Contra los 165 aisladores del libro
+  revisado que la tienen, la mediana de error es de 41 m, uno de cada cinco se va de más de 370 m y
+  28 de más de 1 km, porque sus vecinos van con el KP de otra vía o de otro tramo.
+- **El KP de las agujas, casi nunca.** Solo algunas lo llevan, en la anotación `Wn Switch` de la capa
+  `0_Turnouts Text` (`W24 Switch KP78+177`); el libro de revisión no lo lee, y en el libro revisado
+  se tomaron de ahí y de los workbooks y se completaron a mano.
 - **El número de vía en plena vía.** Solo se rotula en las estaciones. Donde el maestro tiene dos
   postes con seccionador al mismo KP, uno por vía, y la vía del plano no dice cuál es, la fila lo
   dice («vía sin comprobar»).
