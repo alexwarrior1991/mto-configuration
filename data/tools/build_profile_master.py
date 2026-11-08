@@ -33,7 +33,7 @@ import argparse
 import collections
 import os
 import sys
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 import openpyxl
 import yaml
@@ -1068,8 +1068,10 @@ READ_ME = [
     ("DISCONNECTORS / SECTION_INSULATORS / SECTION_INSULATOR_SWITCHES",
      "El seccionamiento. Lo trae el plano, no los workbooks: build_sectioning_review.py escribe "
      "un libro de revision con estas mismas columnas, y una vez revisado se guarda como "
-     "data/sectioning-review.xlsx, de donde este generador copia sus filas. Sin ese fichero, las "
-     "tres hojas salen con cabecera y sin filas."),
+     "data/sectioning-review.xlsx, de donde este generador copia sus filas. Las agujas se "
+     "rellenan alli en la fila de su aislador, y de ahi salen SECTION_INSULATOR_SWITCHES y el KP "
+     "del aislador que no se escribio a mano: el punto medio de sus dos agujas, o el de la primera "
+     "si estan a mas de 300 m. Sin ese fichero, las tres hojas salen con cabecera y sin filas."),
     ("ESTACION / NOMBRE del seccionador",
      "El seccionador se identifica por EP + NOMBRE: dos filas con el mismo nombre en el mismo EP "
      "salen en el informe de la importacion. La estacion es opcional: SIN ESTACION si no es de "
@@ -1146,8 +1148,64 @@ def write_sheet(wb, name, headers, rows, review_key=None):
 
 SECTIONING_SHEETS = ("DISCONNECTORS", "SECTION_INSULATORS", "SECTION_INSULATOR_SWITCHES")
 
+# Las dos agujas de un aislador, en su fila del libro de revision: la 1 es la del lado de VIA y la 2
+# la del lado de VIA_CONECTADA (en un IN_TRACK, las dos de VIA).
+INSULATOR_SWITCH_COLUMNS = (("AGUJA_1", "KP_AGUJA_1", "TANGENTE_1"),
+                            ("AGUJA_2", "KP_AGUJA_2", "TANGENTE_2"))
+# En el libro, las dos agujas de un escape estan a 185 m como mucho (los de 1:18 y 1:20 son los mas
+# largos). Mas lejos, la segunda va con el KP de otra via (una de estacion o de taller con el suyo
+# propio), y el KP del aislador es el de la primera, la de VIA.
+SWITCH_KP_MAX_GAP_M = 300
 
-def load_sectioning(path):
+
+def is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def insulator_kp(written, kp_1, kp_2):
+    """El KP de un aislador: el que se escribio a mano; si no, el de sus agujas.
+
+    Con las dos a SWITCH_KP_MAX_GAP_M o menos, el punto medio redondeado al metro, como el ROUND de
+    la formula del libro; mas separadas, el de la aguja 1; con una, el suyo. Sin nada, ninguno.
+    """
+    if is_number(written):
+        return written
+    if is_number(kp_1) and is_number(kp_2):
+        if abs(kp_1 - kp_2) > SWITCH_KP_MAX_GAP_M:
+            return kp_1
+        return int(Decimal(str((kp_1 + kp_2) / 2)).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+    if is_number(kp_1):
+        return kp_1
+    return kp_2 if is_number(kp_2) else None
+
+
+def insulator_switches(row, master=None, sheet_row=None):
+    """Las filas de SECTION_INSULATOR_SWITCHES de un aislador, desde las columnas de su fila.
+
+    Una aguja se identifica en su aislador por su codigo (W31): una con KP o tangente y sin codigo no
+    se puede cargar, y va a DESCARTADOS en lugar de perderse. Entran todas con ENABLED = SI: lo que
+    no se carga lo decide el ENABLED del aislador.
+    """
+    switches = []
+    connection = squash(row.get("TIPO_INSTALACION")).upper() == "TRACK_CONNECTION"
+    for index, (code_column, kp_column, tangent_column) in enumerate(INSULATOR_SWITCH_COLUMNS):
+        code = squash(row.get(code_column))
+        if not code:
+            if master is not None and (row.get(kp_column) not in (None, "")
+                                       or row.get(tangent_column) not in (None, "")):
+                master.discard(motivo="aguja sin codigo", ep=row.get("EP"),
+                               hoja="sectioning-review / SECTION_INSULATORS", fila=sheet_row,
+                               detalle=f"{row.get('NOMBRE')}: {code_column} vacia")
+            continue
+        track = row.get("VIA_CONECTADA") if index == 1 and connection else row.get("VIA")
+        switches.append({"EP": row.get("EP"), "ESTACION": row.get("ESTACION"),
+                         "AISLADOR": row.get("NOMBRE"), "CODIGO": code,
+                         "KP": row.get(kp_column), "TANGENTE": row.get(tangent_column),
+                         "VIA": track, "ENABLED": "SI"})
+    return switches
+
+
+def load_sectioning(path, master=None):
     """Las tres hojas del seccionamiento, del libro de revision del plano ya revisado.
 
     El libro lo escribe build_sectioning_review.py con las columnas de estas hojas primero y las
@@ -1158,6 +1216,12 @@ def load_sectioning(path):
     SIN ESTACION, en ESTACION o en ESTACION_CORRECTA, pasa tal cual: es lo que el importador lee
     como un seccionador que no es de ninguna estacion.
 
+    Las agujas se rellenan en la fila de su aislador (AGUJA_1 ... TANGENTE_2), para no escribir dos
+    veces el aislador y sus agujas: de ahi salen las filas de SECTION_INSULATOR_SWITCHES
+    (insulator_switches) y el KP del aislador (insulator_kp). Un numero escrito en KP manda; una
+    formula no, porque su valor guardado es el de la ultima vez que se calculo, y se recalcula aqui
+    con la misma regla. Un libro anterior, sin esas columnas, trae su hoja de agujas y se copia.
+
     Sin fichero, las tres hojas salen vacias, como antes de que hubiera plano.
     """
     sheets = {name: [] for name in SECTIONING_SHEETS}
@@ -1165,28 +1229,56 @@ def load_sectioning(path):
         return sheets
 
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    formulas = openpyxl.load_workbook(path, read_only=True, data_only=False)
     try:
-        def rows(name):
+        def rows(name, with_formulas=False):
             if name not in wb.sheetnames:
                 return []
-            iterator = wb[name].iter_rows(values_only=True)
-            header = [str(h).strip() if h is not None else "" for h in next(iterator, [])]
-            return [dict(zip(header, row)) for row in iterator
-                    if row and any(v not in (None, "") for v in row)]
+            values = wb[name].iter_rows(values_only=True)
+            raw = formulas[name].iter_rows(values_only=True) if with_formulas else None
+            header = [str(h).strip() if h is not None else "" for h in next(values, [])]
+            if raw is not None:
+                next(raw, None)
+            found = []
+            for index, row in enumerate(values, start=2):
+                raw_row = next(raw, ()) if raw is not None else ()
+                if row and any(v not in (None, "") for v in row):
+                    record = dict(zip(header, row))
+                    record["_row"] = index
+                    record["_raw"] = dict(zip(header, raw_row))
+                    found.append(record)
+            return found
 
         corrections = {(r.get("PREFIJO"), r.get("EP")): str(r["ESTACION_CORRECTA"]).strip()
                        for r in rows("ESTACION_POR_PREFIJO")
                        if r.get("ESTACION_CORRECTA") not in (None, "")}
+        insulators = rows("SECTION_INSULATORS", with_formulas=True)
+        switches_in_columns = bool(insulators) and "AGUJA_1" in insulators[0]
         for name in SECTIONING_SHEETS:
-            for row in rows(name):
+            if name == "SECTION_INSULATOR_SWITCHES" and switches_in_columns:
+                continue
+            for row in (insulators if name == "SECTION_INSULATORS" else rows(name)):
                 copied = {column: row.get(column) for column in SHEETS[name]}
                 if name == "DISCONNECTORS":
                     fixed = corrections.get((row.get("PREFIJO"), row.get("EP")))
                     if fixed:
                         copied["ESTACION"] = fixed
+                if name == "SECTION_INSULATORS" and switches_in_columns:
+                    # Lo escrito a mano pasa tal cual (un texto lo rechaza el importador con su
+                    # fila); una formula o una celda vacia se calcula.
+                    written = row["_raw"].get("KP")
+                    formula = isinstance(written, str) and written.startswith("=")
+                    if written in (None, "") or formula:
+                        copied["KP"] = insulator_kp(None, row.get("KP_AGUJA_1"),
+                                                    row.get("KP_AGUJA_2"))
+                    else:
+                        copied["KP"] = written
+                    sheets["SECTION_INSULATOR_SWITCHES"].extend(
+                        insulator_switches(row, master, row["_row"]))
                 sheets[name].append(copied)
     finally:
         wb.close()
+        formulas.close()
     return sheets
 
 
@@ -1421,7 +1513,7 @@ def main():
         totals["cantilevers"] += cantilevers
         print(f"  {ep:8} hojas={sheets:<3} perfiles={profiles:<6} mensulas={cantilevers}")
 
-    master.sectioning = load_sectioning(args.sectioning)
+    master.sectioning = load_sectioning(args.sectioning, master)
     write_master(args.output, master)
 
     enabled_profiles = sum(1 for p in master.profiles if p["ENABLED"] == "SI")

@@ -435,8 +435,9 @@ def master_track(tracks_of_ep, station, number):
 def interpolate_kp(x, neighbours):
     """KP a la abscisa x por interpolacion lineal entre el vecino de cada lado.
 
-    neighbours: [(x, kp)]. El plano no esta a escala; en las pruebas contra los aisladores
-    con KP conocido el error mediano es de ~20 m, pero uno de cada cinco se va de mas de 70 m.
+    neighbours: [(x, kp)]. El plano no esta a escala. Contra los 165 aisladores del libro revisado
+    que tienen estimacion, el error mediano es de 41 m, uno de cada cinco se va de mas de 370 m y
+    28 de mas de 1 km: los vecinos van con el KP de otra via o de otro tramo.
     """
     left = sorted([n for n in neighbours if n[0] <= x], key=lambda n: x - n[0])
     right = sorted([n for n in neighbours if n[0] > x], key=lambda n: n[0] - x)
@@ -2655,7 +2656,7 @@ README = [
         "AISLADORES",
         "El plano no les pone nombre ni KP. NOMBRE es una propuesta (las agujas del escape). KP "
         "solo cuando un seccionador rotulado lo puentea; KP_ESTIMADO_M es una pista para "
-        "buscarlo (mediana de error ~20 m, uno de cada cinco a mas de 70 m).",
+        "buscarlo (mediana de error 41 m, uno de cada cinco a mas de 370 m).",
     ),
     (
         "AGUJAS",

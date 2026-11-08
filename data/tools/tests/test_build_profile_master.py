@@ -552,6 +552,98 @@ class SeccionamientoDesdeElLibroRevisado(unittest.TestCase):
 
         self.assertEqual(sheets, {name: [] for name in bpm.SECTIONING_SHEETS})
 
+    def _libro_con_las_agujas_en_su_fila(self, filas):
+        import openpyxl
+        wb = openpyxl.load_workbook(self.path)
+        del wb["SECTION_INSULATORS"]
+        ws = wb.create_sheet("SECTION_INSULATORS")
+        ws.append(["EP", "ESTACION", "NOMBRE", "KP", "TIPO_INSTALACION", "VIA", "VIA_CONECTADA",
+                   "AGUJA_1", "KP_AGUJA_1", "TANGENTE_1", "AGUJA_2", "KP_AGUJA_2", "TANGENTE_2",
+                   "ENABLED", "REVISAR"])
+        for fila in filas:
+            ws.append(fila)
+        # Una hoja de agujas vieja que ya no manda: las agujas salen de la fila de su aislador.
+        vieja = wb.create_sheet("SECTION_INSULATOR_SWITCHES")
+        vieja.append(bpm.SHEETS["SECTION_INSULATOR_SWITCHES"])
+        vieja.append(["EP4", "BIN", "SI W31-W33", "W99", 1, 9, "TRACK 1", "SI"])
+        wb.save(self.path)
+
+    def test_las_agujas_salen_de_la_fila_de_su_aislador(self):
+        formula = '=IF(AND(ISNUMBER(I2),ISNUMBER(L2)),ROUND((I2+L2)/2,0),"")'
+        self._libro_con_las_agujas_en_su_fila([
+            ["EP4", "BIN", "SI W8-W7", formula, "TRACK_CONNECTION", "TRACK 1", "TRACK 2",
+             "W8", 39991, 12, "W7", 40081, 12, "SI", "NO"],
+            ["EP15", "BUMA", "SI W1", 48, "IN_TRACK", "TRACK 3", None,
+             None, None, None, "W1", 47664, 9, "SI", "NO"],
+            ["EP6", "TSA", "SI TSA-13", 93316, "IN_TRACK", "TRACK 1 TLV SAVIDOR", None,
+             None, None, None, None, None, None, "SI", "NO"],
+        ])
+
+        sheets = bpm.load_sectioning(self.path)
+
+        self.assertEqual([r["KP"] for r in sheets["SECTION_INSULATORS"]], [40036, 48, 93316],
+                         "la formula se recalcula; el numero escrito a mano manda")
+        self.assertEqual(
+            [(r["AISLADOR"], r["CODIGO"], r["KP"], r["TANGENTE"], r["VIA"], r["ENABLED"])
+             for r in sheets["SECTION_INSULATOR_SWITCHES"]],
+            [("SI W8-W7", "W8", 39991, 12, "TRACK 1", "SI"),
+             ("SI W8-W7", "W7", 40081, 12, "TRACK 2", "SI"),
+             # En un IN_TRACK, la aguja de la segunda columna tambien es de su via.
+             ("SI W1", "W1", 47664, 9, "TRACK 3", "SI")])
+        self.assertEqual(list(sheets["SECTION_INSULATOR_SWITCHES"][0]),
+                         bpm.SHEETS["SECTION_INSULATOR_SWITCHES"])
+        self.assertNotIn("W99", [r["CODIGO"] for r in sheets["SECTION_INSULATOR_SWITCHES"]],
+                         "la hoja de agujas del libro ya no se lee")
+
+    def test_una_aguja_sin_codigo_no_se_pierde_en_silencio(self):
+        self._libro_con_las_agujas_en_su_fila([
+            ["EP4", "BIN", "SI W6", None, "TRACK_CONNECTION", "TRACK 4 BIN", "TRACK 5 BIN",
+             "W6", 40951, 8, None, 40990, None, "SI", "NO"],
+        ])
+        master = bpm.Master()
+
+        sheets = bpm.load_sectioning(self.path, master)
+
+        self.assertEqual([r["CODIGO"] for r in sheets["SECTION_INSULATOR_SWITCHES"]], ["W6"])
+        self.assertEqual([(d["motivo"], d["fila"]) for d in master.discarded],
+                         [("aguja sin codigo", 2)])
+
+    def test_un_libro_anterior_trae_su_hoja_de_agujas(self):
+        import openpyxl
+        wb = openpyxl.load_workbook(self.path)
+        ws = wb.create_sheet("SECTION_INSULATOR_SWITCHES")
+        ws.append(bpm.SHEETS["SECTION_INSULATOR_SWITCHES"])
+        ws.append(["EP4", "BIN", "SI W31-W33", "W31", 41000, 9, "TRACK 1", "SI"])
+        wb.save(self.path)
+
+        sheets = bpm.load_sectioning(self.path)
+
+        self.assertEqual([r["CODIGO"] for r in sheets["SECTION_INSULATOR_SWITCHES"]], ["W31"])
+        self.assertIsNone(sheets["SECTION_INSULATORS"][0]["KP"], "sin agujas en su fila, tal cual")
+
+
+class KpDeUnAislador(unittest.TestCase):
+    """El KP de un aislador sale de sus agujas cuando no se escribe a mano."""
+
+    def test_lo_escrito_a_mano_manda(self):
+        self.assertEqual(bpm.insulator_kp(48, 47664, None), 48)
+
+    def test_dos_agujas_cerca_el_punto_medio_redondeado_como_excel(self):
+        self.assertEqual(bpm.insulator_kp(None, 39991, 40081), 40036)
+        # ROUND de Excel: la mitad hacia arriba, no hacia el par.
+        self.assertEqual(bpm.insulator_kp(None, 7024, 7121), 7073)
+        self.assertEqual(bpm.insulator_kp(None, 59098, 58915), 59007, "una 1:18, a 183 m")
+
+    def test_dos_agujas_lejos_la_de_su_via(self):
+        # La segunda va con el KP de otra via: TRACK 5 BNEI BRAK-HERZLIYA empieza en 0.
+        self.assertEqual(bpm.insulator_kp(None, 89388, 408), 89388)
+        self.assertEqual(bpm.insulator_kp(None, 99, 3238), 99)
+
+    def test_una_aguja_o_ninguna(self):
+        self.assertEqual(bpm.insulator_kp(None, None, 47664), 47664)
+        self.assertEqual(bpm.insulator_kp(None, 3072, None), 3072)
+        self.assertIsNone(bpm.insulator_kp(None, None, None))
+
 
 class MaestroDePerfilesGenerado(unittest.TestCase):
     """Contraste sobre el fichero real, que es el que importara la aplicacion."""
