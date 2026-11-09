@@ -4,10 +4,11 @@
 Que hace
 --------
 Lee el plano de operacion ("Operational disconnectors 28.07.25 (based on OCS-SCADA_PD_R38)",
-exportado a DXF) y escribe un libro de REVISION con tres hojas que tienen exactamente las
-columnas de las costuras de profile-master.xlsx (DISCONNECTORS, SECTION_INSULATORS y
-SECTION_INSULATOR_SWITCHES), cruzadas con los postes del propio maestro. Una persona completa
-y valida ese libro; nada de lo que sale de aqui va directo a la aplicacion.
+exportado a DXF) y escribe un libro de REVISION con las hojas DISCONNECTORS y SECTION_INSULATORS,
+que llevan primero las columnas que build_profile_master.py copia a profile-master.xlsx, cruzadas
+con los postes del propio maestro. Las agujas de cada aislador van en su fila, y de ellas saca
+build_profile_master.py la hoja SECTION_INSULATOR_SWITCHES del maestro. Una persona completa y
+valida ese libro; nada de lo que sale de aqui va directo a la aplicacion.
 
 Por que no lo lee la aplicacion
 -------------------------------
@@ -1633,17 +1634,21 @@ DISCONNECTOR_COLUMNS = [
     "DISCONNECTOR_FUNCTION",
     "ENABLED",
 ]
-INSULATOR_COLUMNS = [
-    "EP",
-    "ESTACION",
-    "NOMBRE",
-    "KP",
-    "TIPO_INSTALACION",
-    "VIA",
-    "VIA_CONECTADA",
-    "ENABLED",
+# Las agujas van en la fila de su aislador, para no escribir dos veces el aislador y sus agujas: la
+# 1 es la del lado de VIA y la 2 la del lado de VIA_CONECTADA. build_profile_master.py escribe con
+# ellas la hoja SECTION_INSULATOR_SWITCHES del maestro.
+INSULATOR_SWITCH_COLUMNS = [
+    ("AGUJA_1", "KP_AGUJA_1", "TANGENTE_1"),
+    ("AGUJA_2", "KP_AGUJA_2", "TANGENTE_2"),
 ]
-SWITCH_COLUMNS = ["EP", "ESTACION", "AISLADOR", "CODIGO", "KP", "TANGENTE", "VIA", "ENABLED"]
+INSULATOR_COLUMNS = (
+    ["EP", "ESTACION", "NOMBRE", "KP", "TIPO_INSTALACION", "VIA", "VIA_CONECTADA"]
+    + [column for switch in INSULATOR_SWITCH_COLUMNS for column in switch]
+    + ["ENABLED"]
+)
+# Dos agujas a mas de 300 m: la segunda va con el KP de otra via, y el del aislador es el de la
+# primera. La misma regla que build_profile_master.insulator_kp, que la vuelve a aplicar al cargar.
+SWITCH_KP_MAX_GAP_M = 300
 
 # Motivos que dejan la fila en ENABLED = NO aunque tenga todos los datos.
 BLOCKING = (
@@ -2016,7 +2021,15 @@ def disconnector_rows(records, master):
 
 
 def insulator_rows(records, master):
-    rows, switch_rows, outside = [], [], []
+    """Las filas de SECTION_INSULATORS, con sus agujas, y las de AISLADORES_FUERA_MAESTRO.
+
+    Las agujas de un escape van en las columnas AGUJA_1 ... TANGENTE_2 de su fila (la 1, la del
+    extremo en VIA). El plano no rotula su KP, asi que KP_AGUJA_n sale en amarillo, y KP es la
+    formula que calcula el del aislador con ellos (insulator_kp_formula). Si lo puentea un
+    seccionador rotulado, KP es el suyo, escrito: manda sobre la formula hasta que se borre. Sin
+    agujas, KP se escribe a mano.
+    """
+    rows, outside = [], []
     used_names = collections.Counter()
     # Las estaciones de todos los EP del maestro: las de las lineas que se mantienen.
     known_stations = set().union(*master["stations"].values()) if master["stations"] else set()
@@ -2064,7 +2077,12 @@ def insulator_rows(records, master):
         if not station:
             reasons.append("estacion sin determinar")
         if r.get("kp_m") is None:
-            reasons.append("KP sin rotular en el plano")
+            reasons.append(
+                "KP sin rotular en el plano: rellena el KP de las agujas y la formula de KP saca "
+                "el del aislador, o escribelo en KP"
+                if codes
+                else "KP sin rotular en el plano: escribelo en KP"
+            )
         if kind == "TRACK_CONNECTION" and len([t for t in sides if t]) < 2:
             reasons.append("falta el numero de via de algun lado del escape")
         for why in dict.fromkeys(w for w in (why1, why2) if w):
@@ -2082,6 +2100,29 @@ def insulator_rows(records, master):
             reasons.append("sin via debajo del simbolo")
         if r.get("station_from") == "cercania":
             reasons.append("estacion propuesta: la del plano mas cercana")
+        # Las agujas, en su fila: la del extremo de cada lado del escape, sin repetir.
+        switch_cells, missing = {}, set()
+        seen = set()
+        for k, s in enumerate(r["switches"][: len(INSULATOR_SWITCH_COLUMNS)]):
+            if not s or s["code"] in seen:
+                continue
+            seen.add(s["code"])
+            code_column, kp_column, tangent_column = INSULATOR_SWITCH_COLUMNS[k]
+            switch_cells[code_column] = s["code"]
+            switch_cells[tangent_column] = s["tangent"] or ""
+            missing.add(kp_column)
+            if not s["tangent"]:
+                missing.add(tangent_column)
+                reasons.append("%s: tangente sin rotular" % s["code"])
+            if k < len(r["switches_near"]) and len(r["switches_near"][k]) > 1:
+                reasons.append(
+                    "%s: otras agujas en el mismo cruce: %s"
+                    % (s["code"], "/".join(r["switches_near"][k]))
+                )
+        if r.get("kp_m") is not None and switch_cells:
+            reasons.append(
+                "KP: el del seccionador que lo puentea; borralo para que mande el de las agujas"
+            )
         pole = r.get("sect_i_pole")
         complete = (
             ep
@@ -2109,6 +2150,8 @@ def insulator_rows(records, master):
                 "TIPO_INSTALACION": kind,
                 "VIA": via,
                 "VIA_CONECTADA": connected,
+                **{column: switch_cells.get(column, "")
+                   for switch in INSULATOR_SWITCH_COLUMNS for column in switch},
                 "ENABLED": enabled,
                 "REVISAR": "SI" if reasons else "NO",
                 "MOTIVO_REVISAR": "; ".join(reasons),
@@ -2135,44 +2178,9 @@ def insulator_rows(records, master):
                 "HANDLE": r["handle"],
                 "_proposals": {"NOMBRE"}
                 | ({"ESTACION"} if r.get("station_from") == "cercania" else set()),
+                "_missing": missing,
             }
         )
-        if kind == "TRACK_CONNECTION":
-            seen = set()
-            for k, s in enumerate(r["switches"]):
-                if not s or s["code"] in seen:
-                    continue
-                seen.add(s["code"])
-                side = sides[k] if k < len(sides) else None
-                track_name, why = master_track(tracks_of_ep, station, side)
-                notes = []
-                if not s["tangent"]:
-                    notes.append("tangente sin rotular")
-                if why:
-                    notes.append(why)
-                if k < len(r["switches_near"]) and len(r["switches_near"][k]) > 1:
-                    notes.append(
-                        "otras agujas en el mismo cruce: %s" % "/".join(r["switches_near"][k])
-                    )
-                switch_rows.append(
-                    {
-                        "EP": ep,
-                        "ESTACION": station,
-                        "AISLADOR": name,
-                        "CODIGO": s["code"],
-                        "KP": "",
-                        "TANGENTE": s["tangent"] or "",
-                        "VIA": track_name,
-                        "ENABLED": "SI",
-                        "REVISAR": "SI" if notes else "NO",
-                        "MOTIVO_REVISAR": "; ".join(notes),
-                        "VIA_DXF": side or "",
-                        "X_AISLADOR": round(r["x"], 2),
-                        "Y_AISLADOR": round(r["y"], 2),
-                        "HANDLE_AISLADOR": r["handle"],
-                        "_proposals": {"AISLADOR"},
-                    }
-                )
     rows.sort(
         key=lambda d: (
             d["EP"],
@@ -2181,7 +2189,11 @@ def insulator_rows(records, master):
             d["X"],
         )
     )
-    switch_rows.sort(key=lambda d: (d["EP"], d["ESTACION"], d["AISLADOR"], d["CODIGO"]))
+    # La formula va con el numero de su fila, que solo se sabe ya ordenadas. Sin agujas no hay de
+    # que calcularlo, y KP se queda vacio (en amarillo) para escribirlo a mano.
+    for i, d in enumerate(rows, 2):
+        if d["KP"] == "" and any(d[code] for code, _, _ in INSULATOR_SWITCH_COLUMNS):
+            d["KP"] = insulator_kp_formula(i)
     outside_rows = [
         {
             "TIPO_INSTALACION": r["type"],
@@ -2197,7 +2209,23 @@ def insulator_rows(records, master):
         }
         for r in outside
     ]
-    return rows, switch_rows, outside_rows
+    return rows, outside_rows
+
+
+def insulator_kp_formula(row_number):
+    """La formula de KP de un aislador en la fila row_number del libro: el KP de sus agujas.
+
+    El punto medio de KP_AGUJA_1 y KP_AGUJA_2, redondeado al metro; si se separan mas de
+    SWITCH_KP_MAX_GAP_M, el de la aguja 1; con una sola, la suya; sin ninguna, vacio.
+    """
+    from openpyxl.utils import get_column_letter
+
+    kp_1 = "%s%d" % (get_column_letter(INSULATOR_COLUMNS.index("KP_AGUJA_1") + 1), row_number)
+    kp_2 = "%s%d" % (get_column_letter(INSULATOR_COLUMNS.index("KP_AGUJA_2") + 1), row_number)
+    return (
+        '=IF(AND(ISNUMBER({a}),ISNUMBER({b})),IF(ABS({a}-{b})>{gap},{a},ROUND(({a}+{b})/2,0)),'
+        'IF(ISNUMBER({a}),{a},IF(ISNUMBER({b}),{b},"")))'
+    ).format(a=kp_1, b=kp_2, gap=SWITCH_KP_MAX_GAP_M)
 
 
 def own_options(row):
@@ -2247,7 +2275,6 @@ def review_choices():
             "TIPO_INSTALACION": (fixed("TIPO_INSTALACION"), True),
             "ENABLED": yes_no,
         },
-        "SECTION_INSULATOR_SWITCHES": {"ESTACION": stations, "VIA": tracks, "ENABLED": yes_no},
         "ESTACION_POR_PREFIJO": {"ESTACION_CORRECTA": disconnector_stations},
     }
 
@@ -2255,8 +2282,8 @@ def review_choices():
 def review_lists(master, functions):
     """Las listas de la hoja OPCIONES: las fijas, y la estacion y la via de cada EP del maestro.
 
-    La de estaciones va dos veces: tal cual para los aisladores y sus agujas, y con SIN ESTACION al
-    final para los seccionadores.
+    La de estaciones va dos veces: tal cual para los aisladores, y con SIN ESTACION al final para
+    los seccionadores.
     """
     lists = {
         "SI_NO": ["SI", "NO"],
@@ -2384,6 +2411,8 @@ def write_review(path, sheets_data, readme, choices=None):
                 + [
                     len(str(ws.cell(row=i, column=j).value or ""))
                     for i in range(2, min(len(data) + 2, 400))
+                    # Una formula no se ve: su ancho no es el de la columna.
+                    if not str(ws.cell(row=i, column=j).value or "").startswith("=")
                 ]
             )
             ws.column_dimensions[get_column_letter(j)].width = min(60, max(8, width + 2))
@@ -2471,8 +2500,21 @@ def write_review(path, sheets_data, readme, choices=None):
             "  en lineas que el maestro no tiene",
             "=COUNTA(%s)-1" % col("AISLADORES_FUERA_MAESTRO", "HANDLE"),
         ),
-        ("Agujas (filas)", "=COUNTA(%s)-1" % col("SECTION_INSULATOR_SWITCHES", "HANDLE_AISLADOR")),
-        ("  con tangente", '=COUNTIF(%s,">0")' % col("SECTION_INSULATOR_SWITCHES", "TANGENTE")),
+        (
+            "Agujas (en la fila de su aislador)",
+            '=COUNTIF(%s,"?*")+COUNTIF(%s,"?*")-2'
+            % (col("SECTION_INSULATORS", "AGUJA_1"), col("SECTION_INSULATORS", "AGUJA_2")),
+        ),
+        (
+            "  con KP",
+            "=COUNT(%s)+COUNT(%s)"
+            % (col("SECTION_INSULATORS", "KP_AGUJA_1"), col("SECTION_INSULATORS", "KP_AGUJA_2")),
+        ),
+        (
+            "  con tangente",
+            "=COUNT(%s)+COUNT(%s)"
+            % (col("SECTION_INSULATORS", "TANGENTE_1"), col("SECTION_INSULATORS", "TANGENTE_2")),
+        ),
         (
             "Rotulos de seccionador sin simbolo",
             "=COUNTA(%s)-1" % col("ROTULOS_SIN_SIMBOLO", "ROTULO"),
@@ -2525,8 +2567,9 @@ README = [
     ),
     (
         "HOJAS DEL MAESTRO",
-        "DISCONNECTORS, SECTION_INSULATORS y SECTION_INSULATOR_SWITCHES llevan primero, con "
-        "cabecera azul, exactamente las columnas de esas hojas en profile-master.xlsx. Las de "
+        "DISCONNECTORS y SECTION_INSULATORS llevan primero, con cabecera azul, las columnas que "
+        "build_profile_master.py copia a profile-master.xlsx; las agujas de cada aislador van en "
+        "su fila, y de ellas sale la hoja SECTION_INSULATOR_SWITCHES del maestro. Las de "
         "cabecera gris son para revisar.",
     ),
     (
@@ -2609,9 +2652,10 @@ README = [
     ),
     (
         "DESPUES DE REVISAR",
-        "Guarda el libro como data/sectioning-review.xlsx: build_profile_master.py copia sus "
-        "tres primeras hojas (solo las columnas de cabecera azul) a profile-master.xlsx, y "
-        "aplica ESTACION_CORRECTA a los seccionadores de su prefijo. Solo se carga lo que "
+        "Guarda el libro como data/sectioning-review.xlsx: build_profile_master.py copia "
+        "DISCONNECTORS y SECTION_INSULATORS (solo las columnas de cabecera azul) a "
+        "profile-master.xlsx, escribe SECTION_INSULATOR_SWITCHES con las agujas de cada aislador "
+        "y aplica ESTACION_CORRECTA a los seccionadores de su prefijo. Solo se carga lo que "
         "tenga ENABLED = SI.",
     ),
     (
@@ -2654,13 +2698,21 @@ README = [
     ),
     (
         "AISLADORES",
-        "El plano no les pone nombre ni KP. NOMBRE es una propuesta (las agujas del escape). KP "
-        "solo cuando un seccionador rotulado lo puentea; KP_ESTIMADO_M es una pista para "
-        "buscarlo (mediana de error 41 m, uno de cada cinco a mas de 370 m).",
+        "El plano no les pone nombre ni KP. NOMBRE es una propuesta (las agujas del escape). KP es "
+        "una formula: el punto medio de KP_AGUJA_1 y KP_AGUJA_2 si estan a 300 m o menos; si se "
+        "separan mas, la aguja 2 va con el KP de otra via y manda el de la aguja 1; con una sola, "
+        "la que haya. Si lo puentea un seccionador rotulado, KP lleva el suyo escrito, y manda "
+        "hasta que lo borres. Un numero escrito en KP manda; un aislador sin agujas lleva el KP a "
+        "mano. KP_ESTIMADO_M es una pista para buscarlo (mediana de error 41 m, uno de cada cinco "
+        "a mas de 370 m).",
     ),
     (
         "AGUJAS",
-        "Codigo W y tangente 1:N de cada extremo del escape. El plano no rotula su KP.",
+        "Van en la fila de su aislador: AGUJA_1, KP_AGUJA_1 y TANGENTE_1 son la del extremo del "
+        "escape en VIA, y AGUJA_2, KP_AGUJA_2 y TANGENTE_2 la del extremo en VIA_CONECTADA; en un "
+        "IN_TRACK, las dos son de VIA. Un aislador puede no tener agujas. Del plano salen el "
+        "codigo W y la tangente 1:N (TANGENTE solo el denominador: 9 para 1:9); el KP no lo "
+        "rotula, y va en amarillo: en metros, 84+490 = 84490.",
     ),
     (
         "LOCALIZAR EN AUTOCAD",
@@ -2703,7 +2755,7 @@ def main():
     )
 
     d_rows, d_outside = disconnector_rows(disconnectors, master)
-    i_rows, s_rows, i_outside = insulator_rows(insulators, master)
+    i_rows, i_outside = insulator_rows(insulators, master)
     inventory = [
         {
             "HANDLE": r["handle"],
@@ -2823,11 +2875,6 @@ def main():
         for k in (i_rows[0] if i_rows else {})
         if k not in INSULATOR_COLUMNS and not k.startswith("_")
     ]
-    s_cols = SWITCH_COLUMNS + [
-        k
-        for k in (s_rows[0] if s_rows else {})
-        if k not in SWITCH_COLUMNS and not k.startswith("_")
-    ]
     master_comments = {
         "PROFILE_ID": "Poste del maestro con seccionador a menos de 80 m del KP del rotulo; "
         "en naranja, el mas cercano sin codigo, con su KP en KP_POSTE. Vacio si el seccionador "
@@ -2869,19 +2916,14 @@ def main():
             i_rows,
             {
                 "NOMBRE": "Propuesta: el plano no nombra los aisladores.",
-                "KP": "En metros. Solo cuando lo puentea un seccionador rotulado.",
+                "KP": "En metros. Una formula con el KP de las agujas: el punto medio, o el de la "
+                "aguja 1 si se separan mas de %d m. Un numero escrito manda; sin agujas, se escribe "
+                "a mano." % SWITCH_KP_MAX_GAP_M,
                 "VIA_CONECTADA": "Solo en TRACK_CONNECTION.",
-            },
-        ),
-        (
-            "SECTION_INSULATOR_SWITCHES",
-            s_cols,
-            len(SWITCH_COLUMNS),
-            {"ESTACION", "KP", "TANGENTE", "VIA"},
-            s_rows,
-            {
-                "KP": "El plano no rotula el KP de las agujas.",
-                "TANGENTE": "Solo el denominador: 9 para 1:9.",
+                "AGUJA_1": "La aguja del extremo del escape en VIA: su codigo (W31), su KP en metros "
+                "y la tangente (9 para 1:9). El plano no rotula el KP.",
+                "AGUJA_2": "La aguja del extremo en VIA_CONECTADA. En un IN_TRACK, las dos son de "
+                "VIA.",
             },
         ),
         (
@@ -2959,7 +3001,13 @@ def main():
         "%-34s%8d%10d"
         % ("SECTION_INSULATORS", len(i_rows), sum(1 for r in i_rows if r["ENABLED"] == "SI"))
     )
-    print("%-34s%8d" % ("SECTION_INSULATOR_SWITCHES", len(s_rows)))
+    print(
+        "%-34s%8d"
+        % (
+            "  agujas",
+            sum(1 for r in i_rows for code, _, _ in INSULATOR_SWITCH_COLUMNS if r[code]),
+        )
+    )
     print("%-34s%8d" % ("ESTACION_POR_PREFIJO", len(by_prefix)))
     print("%-34s%8d" % ("SECCIONADORES_FUERA_MAESTRO", len(d_outside)))
     print("%-34s%8d" % ("AISLADORES_FUERA_MAESTRO", len(i_outside)))

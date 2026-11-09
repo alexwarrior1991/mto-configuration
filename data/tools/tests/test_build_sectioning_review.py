@@ -599,24 +599,137 @@ class InsulatorRowsTest(unittest.TestCase):
         return record
 
     def test_one_next_to_a_station_of_no_ep_of_the_master_is_left_out(self):
-        rows, _, outside = bsr.insulator_rows([self.record(plan_station_code="RVT")], self.MASTER)
+        rows, outside = bsr.insulator_rows([self.record(plan_station_code="RVT")], self.MASTER)
 
         self.assertEqual(rows, [])
         self.assertEqual([d["HANDLE"] for d in outside], ["A1"])
 
     def test_one_next_to_a_station_of_another_ep_of_the_master_stays_to_be_reviewed(self):
-        rows, _, outside = bsr.insulator_rows([self.record(plan_station_code="HER")], self.MASTER)
+        rows, outside = bsr.insulator_rows([self.record(plan_station_code="HER")], self.MASTER)
 
         self.assertEqual(outside, [])
         self.assertEqual([d["ESTACION"] for d in rows], [""])
         self.assertIn("estacion sin determinar", rows[0]["MOTIVO_REVISAR"])
 
     def test_one_with_its_station_stays_wherever_the_plan_puts_it(self):
-        rows, _, outside = bsr.insulator_rows(
+        rows, outside = bsr.insulator_rows(
             [self.record(station="LOD_S", plan_station_code="RVT")], self.MASTER)
 
         self.assertEqual(outside, [])
         self.assertEqual([d["ESTACION"] for d in rows], ["LOD_S"])
+
+
+class InsulatorSwitchesTest(unittest.TestCase):
+    """Las agujas de un aislador van en su fila, y su KP sale de ellas."""
+
+    TRACKS = [
+        {"name": "TRACK 1", "num": "1", "stations": ["BIN"]},
+        {"name": "TRACK 2", "num": "2", "stations": ["BIN"]},
+    ]
+    MASTER = {"tracks": {"EP4": TRACKS}, "stations": {"EP4": {"BIN"}}}
+
+    @staticmethod
+    def record(**extra):
+        record = {
+            "status": bsr.EN_SERVICE, "layer": "0_SI", "ep": "EP4", "station": "BIN",
+            "station_from": "prefijo", "type": "TRACK_CONNECTION", "tracks": ["1", "2"],
+            "switches": [{"code": "W8", "tangent": 12}, {"code": "W7", "tangent": None}],
+            "switches_near": [["W8"], ["W7"]], "bridged_by": "", "kp_m": None, "kp_from": "",
+            "kp_estimate": 40100.0, "section": "", "plan_station": "BINYAMINA (BIN)",
+            "plan_station_code": "BIN", "x": 0.0, "y": 0.0, "handle": "A1",
+        }
+        record.update(extra)
+        return record
+
+    def test_the_switches_go_in_the_row_of_their_insulator(self):
+        rows, _ = bsr.insulator_rows([self.record()], self.MASTER)
+        row = rows[0]
+
+        self.assertEqual(
+            [row[c] for c in ("NOMBRE", "VIA", "VIA_CONECTADA", "AGUJA_1", "TANGENTE_1",
+                              "AGUJA_2", "TANGENTE_2", "KP_AGUJA_1", "KP_AGUJA_2")],
+            ["SI W8-W7", "TRACK 1", "TRACK 2", "W8", 12, "W7", "", "", ""],
+        )
+        # El plano no rotula el KP de las agujas ni esta tangente: en amarillo.
+        self.assertEqual(row["_missing"], {"KP_AGUJA_1", "KP_AGUJA_2", "TANGENTE_2"})
+        self.assertIn("W7: tangente sin rotular", row["MOTIVO_REVISAR"])
+        self.assertIn("rellena el KP de las agujas", row["MOTIVO_REVISAR"])
+
+    def test_the_kp_is_the_formula_of_its_own_row(self):
+        rows, _ = bsr.insulator_rows(
+            [self.record(handle="B", x=10.0), self.record(handle="A", kp_estimate=39000.0)],
+            self.MASTER,
+        )
+
+        # Ya ordenadas por KP: la de 39000 es la fila 2 del libro, y la otra, la 3.
+        self.assertEqual([r["HANDLE"] for r in rows], ["A", "B"])
+        self.assertEqual(rows[1]["KP"], bsr.insulator_kp_formula(3))
+        self.assertIn("ABS(I3-L3)>300", rows[1]["KP"])
+        self.assertTrue(rows[1]["KP"].startswith("=IF(AND(ISNUMBER(I3),ISNUMBER(L3))"))
+
+    def test_the_kp_of_a_labelled_bridging_disconnector_stays_written(self):
+        rows, _ = bsr.insulator_rows([self.record(kp_m=40036.4, kp_from="rotulo")], self.MASTER)
+
+        self.assertEqual(rows[0]["KP"], 40036)
+        self.assertIn("borralo para que mande el de las agujas", rows[0]["MOTIVO_REVISAR"])
+
+    def test_without_switches_the_kp_is_written_by_hand(self):
+        rows, _ = bsr.insulator_rows(
+            [self.record(type="IN_TRACK", tracks=["1"], switches=[], switches_near=[])],
+            self.MASTER,
+        )
+
+        self.assertEqual((rows[0]["KP"], rows[0]["AGUJA_1"], rows[0]["AGUJA_2"]), ("", "", ""))
+        self.assertIn("KP sin rotular en el plano: escribelo en KP", rows[0]["MOTIVO_REVISAR"])
+
+    def test_one_switch_drawn_twice_goes_once(self):
+        rows, _ = bsr.insulator_rows(
+            [self.record(switches=[{"code": "W6", "tangent": 8}, {"code": "W6", "tangent": 8}])],
+            self.MASTER,
+        )
+
+        self.assertEqual((rows[0]["AGUJA_1"], rows[0]["AGUJA_2"]), ("W6", ""))
+
+    def test_the_master_builder_reads_the_same_columns_and_rule(self):
+        bpm = _load("build_profile_master")
+
+        self.assertEqual([tuple(c) for c in bsr.INSULATOR_SWITCH_COLUMNS],
+                         [tuple(c) for c in bpm.INSULATOR_SWITCH_COLUMNS])
+        self.assertEqual(bsr.SWITCH_KP_MAX_GAP_M, bpm.SWITCH_KP_MAX_GAP_M)
+        for column in bpm.SHEETS["SECTION_INSULATORS"]:
+            self.assertIn(column, bsr.INSULATOR_COLUMNS)
+
+    def test_the_reviewed_workbook_gives_the_master_its_switches(self):
+        try:
+            import openpyxl  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("openpyxl no instalado")
+        import tempfile
+
+        bpm = _load("build_profile_master")
+        rows, _ = bsr.insulator_rows([self.record()], self.MASTER)
+        # Lo que escribe quien revisa: el KP de las dos agujas y la tangente que faltaba.
+        rows[0].update({"KP_AGUJA_1": 39991, "KP_AGUJA_2": 40081, "TANGENTE_2": 12, "ENABLED": "SI"})
+        sheets = DropDownTest.sheets([])
+        columns = bsr.INSULATOR_COLUMNS + [
+            k for k in rows[0] if k not in bsr.INSULATOR_COLUMNS and not k.startswith("_")
+        ]
+        sheets = [
+            ("SECTION_INSULATORS", columns, len(bsr.INSULATOR_COLUMNS), set(), rows, None)
+            if title == "SECTION_INSULATORS" else (title, *rest)
+            for title, *rest in sheets
+        ]
+        path = os.path.join(tempfile.mkdtemp(), "sectioning-review.xlsx")
+        bsr.write_review(path, sheets, [])
+
+        loaded = bpm.load_sectioning(path)
+
+        self.assertEqual([(r["NOMBRE"], r["KP"], r["VIA"], r["VIA_CONECTADA"], r["ENABLED"])
+                          for r in loaded["SECTION_INSULATORS"]],
+                         [("SI W8-W7", 40036, "TRACK 1", "TRACK 2", "SI")])
+        self.assertEqual([(r["CODIGO"], r["KP"], r["TANGENTE"], r["VIA"])
+                          for r in loaded["SECTION_INSULATOR_SWITCHES"]],
+                         [("W8", 39991, 12, "TRACK 1"), ("W7", 40081, 12, "TRACK 2")])
 
 
 class DropDownTest(unittest.TestCase):
@@ -780,9 +893,8 @@ class DropDownTest(unittest.TestCase):
             sheet("ESTACION_POR_PREFIJO", ["PREFIJO", "EP", "ESTACION_CORRECTA"]),
             sheet("SECCIONADORES_FUERA_MAESTRO", ["HANDLE"]),
             sheet("AISLADORES_DXF", ["HANDLE"]),
-            sheet("SECTION_INSULATORS", ["HANDLE", "KP", "ENABLED"]),
+            sheet("SECTION_INSULATORS", bsr.INSULATOR_COLUMNS + ["HANDLE"]),
             sheet("AISLADORES_FUERA_MAESTRO", ["HANDLE"]),
-            sheet("SECTION_INSULATOR_SWITCHES", ["HANDLE_AISLADOR", "TANGENTE"]),
             sheet("ROTULOS_SIN_SIMBOLO", ["ROTULO"]),
             sheet("POSTES_SIN_CASAR", ["PROFILE_ID"]),
         ]
