@@ -974,9 +974,10 @@ podrían vivir fuera del repo con su ubicación documentada aquí.
 Las hojas `DISCONNECTORS`, `SECTION_INSULATORS` y `SECTION_INSULATOR_SWITCHES` del maestro de
 perfiles salen vacías porque los workbooks no traen esos datos. Los trae el **plano de operación de
 seccionadores** («Operational disconnectors 28.07.25 (based on OCS-SCADA_PD_R38)»), exportado a DXF.
-`tools/build_sectioning_review.py` lo lee y escribe un **libro de revisión**, no un maestro: las tres
-hojas con exactamente sus columnas, cruzadas con los postes de `profile-master.xlsx`, y cada dato
-dudoso señalado para que lo complete una persona.
+`tools/build_sectioning_review.py` lo lee y escribe un **libro de revisión**, no un maestro:
+`DISCONNECTORS` y `SECTION_INSULATORS` con las columnas que copia `build_profile_master.py` primero
+(las agujas, en la fila de su aislador), cruzadas con los postes de `profile-master.xlsx`, y cada
+dato dudoso señalado para que lo complete una persona.
 
 ```bash
 pip install ezdxf scipy openpyxl
@@ -984,7 +985,7 @@ python3 data/tools/build_sectioning_review.py plano.dxf -o sectioning-review.xls
 ```
 
 **Del libro revisado al maestro.** Una vez revisado, el libro se guarda como
-`data/sectioning-review.xlsx` y `build_profile_master.py` copia de él las tres hojas al maestro
+`data/sectioning-review.xlsx` y `build_profile_master.py` escribe con él las tres hojas del maestro
 (`--sectioning` para otra ruta): solo las columnas de la costura y tal cual, porque lo que se carga
 lo decide `ENABLED`, que es de quien revisa. `ESTACION_CORRECTA` de `ESTACION_POR_PREFIJO` se aplica
 a los seccionadores de ese prefijo y ese EP, porque la estación de una zona neutra o de una
@@ -995,10 +996,10 @@ subestación se decide una vez por prefijo. Sin el fichero, las tres hojas salen
 `TANGENTE_2` la del lado de `VIA_CONECTADA`; en un `IN_TRACK`, las dos son de `VIA`. Un aislador
 puede no tener ninguna. `build_profile_master.py` escribe con ellas `SECTION_INSULATOR_SWITCHES`
 (`insulator_switches`), todas con `ENABLED = SI`, porque lo que no se carga lo decide el aislador; una
-con KP o tangente y sin código va a `DESCARTADOS`. La hoja `SECTION_INSULATOR_SWITCHES` del libro
-queda oculta y vacía. Un libro anterior, sin esas columnas, trae su hoja de agujas y se copia tal
-cual, que es lo que sigue escribiendo `build_sectioning_review.py`: el libro revisado de 2026 se
-pasó a la forma nueva al rellenarlo.
+con KP o tangente y sin código va a `DESCARTADOS`. Del plano salen el código y la tangente de la
+aguja de cada extremo del escape; su KP no, y va en amarillo. Un libro anterior, sin esas columnas,
+trae su hoja `SECTION_INSULATOR_SWITCHES` y se copia tal cual (en el revisado de 2026 queda oculta y
+vacía).
 
 **El KP del aislador** (`insulator_kp`) es el que se escribe a mano en `KP`. Si no, sale de sus
 agujas:
@@ -1008,9 +1009,11 @@ agujas:
   taller con el suyo propio (`TBA SI W13-W15`: 89388 y 408);
 - una sola: la suya.
 
-La columna `KP` del libro lleva esa regla como fórmula, pero el generador no se fía del valor
-guardado (es el de la última vez que se calculó) y la vuelve a aplicar. Un número escrito en `KP`
-manda.
+La columna `KP` del libro lleva esa regla como fórmula (`insulator_kp_formula`), pero el generador
+del maestro no se fía del valor guardado (es el de la última vez que se calculó) y la vuelve a
+aplicar. Un número escrito en `KP` manda: el que el libro trae escrito cuando un seccionador rotulado
+puentea el aislador, hasta que se borre, y el de un aislador sin agujas, que se escribe a mano. Las
+dos herramientas comparten las columnas y el umbral, y un test lo comprueba.
 
 El DXF no está en el repositorio: son 46 MB más de binarios (ver «El tamaño de `workbook/`»).
 
@@ -1136,7 +1139,7 @@ hoja `OPCIONES`, y las de cada fila en la hoja oculta `OPCIONES_FILA`, cada valo
 van dentro de la validación de la celda: ahí todo es texto, y un Excel con coma decimal no leería
 `93453.41` como un número; además no caben más de 255 caracteres ni una coma dentro de un valor. El
 KP, la tangente y el nombre de un aislador no llevan desplegable: son un número o un nombre que no
-sale de ninguna lista.
+sale de ninguna lista; tampoco las agujas.
 
 ## Probar
 
@@ -1147,7 +1150,10 @@ listas para cargar (las de otra capa dentro de un EP, la de Haifa, la que no tie
 distinta y los dos postes al mismo KP), el KP propio solo sin poste, y los desplegables: los postes
 cercanos con el de la fila primero, el KP del poste propuesto, los rótulos sueltos como nombre, el
 orden del catálogo de funciones y el libro con sus listas; y la vía conectada: la propuesta, la
-ambigua, la que falta en amarillo y la función `PP` de uno de la B entre dos vías. El módulo importa
+ambigua, la que falta en amarillo y la función `PP` de uno de la B entre dos vías; y las agujas en la
+fila de su aislador, con la fórmula de `KP` de esa fila, el KP escrito de un seccionador que lo
+puentea y el de un aislador sin agujas, y un libro generado que `build_profile_master.py` lee hasta
+sacar sus agujas y su KP. El módulo importa
 `ezdxf` y `scipy` solo dentro de las funciones que los usan, así que corre en el mismo paso de CI
 que los demás, con `openpyxl` y `pyyaml`. `tools/tests/test_build_profile_master.py` prueba el
 paso del libro revisado al maestro.
