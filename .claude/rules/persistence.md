@@ -28,7 +28,9 @@ paths:
   `WHERE deleted = false` (y `upper(...)` en los nombres), para que lo borrado no impida dar de alta
   otra vez el mismo nombre. El perfil de un seccionador no es una clave: un poste lleva varios
   (`V29` quitó el `ux_disconnector_profile_id` de `V24`, y queda `idx_disconnector_profile_id` sobre
-  los vivos). El `code` de los catálogos es único sin más (`ux_<tabla>_code`). Lo fija
+  los vivos). El brazo de una ménsula sí es 1:1, pero entre los vivos: `V30` cambió el `unique` de
+  `steady_arm.cantilever_id` de `V1` por `ux_steady_arm_cantilever_id`, parcial, para que un brazo
+  borrado no deje su ménsula ocupada (`SteadyArmLinkIT`). El `code` de los catálogos es único sin más (`ux_<tabla>_code`). Lo fija
   `FlywayMigrationIT`.
 - Un `@EntityGraph` que trae una lista (`Profile.cantilevers`, `Track.profiles`) junto con un conjunto
   repite cada elemento de la lista por cada fila del producto: Hibernate no quita los repetidos de

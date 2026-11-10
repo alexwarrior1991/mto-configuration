@@ -29,7 +29,11 @@ paths:
   `ProfileMapperTest` y `LovReferenceResolverTest`.
 - Las colecciones de hijos también se ignoran en el `@Mapping` y se reconcilian en `mapDtoToEntity`
   con `BaseMapper.mergeCollection`: con id se actualiza, sin id se crea, lo que no llega se borra y
-  `null` no toca nada (README_API.md §4). Los 1:1 se enlazan con `linkEntity`. Nunca con la
+  `null` no toca nada (README_API.md §4). El 1:1 de la ménsula con su brazo se reconcilia igual, a mano
+  (`CantileverMapper.mergeSteadyArm`): el brazo nuevo se construye entero antes de colgarlo de una
+  ménsula gestionada, porque resolver su tipo consulta el catálogo y el auto-flush persistía el
+  brazo a medio rellenar; y `SteadyArmMapper` no cuelga de su ménsula el brazo de un alta, que la
+  cascada insertaba otra vez (`SteadyArmLinkIT`). Nunca con la
   estrategia de colecciones de MapStruct: reemplazar borra e inserta, y los hijos cambian de id y
   pierden su historial. Lo fijan `BaseMapperTest` («Fusion por id») y los `mapper/merge/*ChildMergeIT`.
 - Los seccionadores del perfil no son hijos: el perfil es el lado inverso de un vínculo que escribe

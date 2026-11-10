@@ -293,4 +293,57 @@ class CantileverMapperTest {
                 .isInstanceOf(ConcurrencyException.class)
                 .hasMessageContaining("llego la version 2 y va por la 3");
     }
+
+    @Test
+    @DisplayName("el brazo que se da de alta al modificar la mensula se cuelga ya construido")
+    void altaDelBrazoAlModificar() {
+        // El codigo generado colgaba un brazo vacio y lo rellenaba despues; con la mensula
+        // gestionada, la consulta del catalogo lo persistia a medias (INSERT sin tipo).
+        SteadyArmType tipo = new SteadyArmType();
+        tipo.setId(4L);
+        tipo.setCode("CRT");
+        when(masterDataService.getSteadyArmTypeByCode("CRT")).thenReturn(tipo);
+        Cantilever entity = new Cantilever();
+        entity.setId(21L);
+        SteadyArmDTO steadyArm = new SteadyArmDTO();
+        steadyArm.setLength(200L);
+        SteadyArmTypeDTO tipoDto = new SteadyArmTypeDTO();
+        tipoDto.setCode("CRT");
+        steadyArm.setSteadyArmType(tipoDto);
+        CantileverDTO dto = dto();
+        dto.setSteadyArm(steadyArm);
+
+        mapper.updateEntityFromDTO(dto, entity);
+
+        assertThat(entity.getSteadyArm().getLength()).isEqualTo(200L);
+        assertThat(entity.getSteadyArm().getSteadyArmType()).isSameAs(tipo);
+        assertThat(entity.getSteadyArm().getCantilever()).isSameAs(entity);
+    }
+
+    @Test
+    @DisplayName("el brazo que ya existe se actualiza sobre su instancia, y null lo quita")
+    void brazoExistenteYNull() {
+        SteadyArm guardado = new SteadyArm();
+        guardado.setId(8L);
+        guardado.setLength(100L);
+        Cantilever entity = new Cantilever();
+        entity.setId(21L);
+        entity.setSteadyArm(guardado);
+        SteadyArmDTO leido = new SteadyArmDTO();
+        leido.setId(8L);
+        leido.setLength(900L);
+        CantileverDTO dto = dto();
+        dto.setSteadyArm(leido);
+
+        mapper.updateEntityFromDTO(dto, entity);
+
+        assertThat(entity.getSteadyArm()).isSameAs(guardado);
+        assertThat(guardado.getLength()).isEqualTo(900L);
+        assertThat(guardado.getCantilever()).isSameAs(entity);
+
+        dto.setSteadyArm(null);
+        mapper.updateEntityFromDTO(dto, entity);
+
+        assertThat(entity.getSteadyArm()).isNull();
+    }
 }

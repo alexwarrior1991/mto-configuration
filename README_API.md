@@ -285,7 +285,9 @@ necesitas mover un perfil dentro de la vía, lo que se cambia es su `kp`.
 La relación 1:1 va aparte, y no funciona igual en los dos casos:
 
 - **`cantilevers.steadyArm`**: mandar el objeto crea el brazo o lo actualiza, y mandar `null` lo
-  quita.
+  quita. Una ménsula lleva un brazo vivo como mucho (un segundo es 409 `BUS-002`), y uno borrado
+  no cuenta (`V30`): tras `DELETE $BASE/steady-arms/{id}` se puede dar de alta otro en la misma
+  ménsula, con `POST $BASE/steady-arms` y su `cantileverId` o dentro del `PUT` de la ménsula.
 - **`profiles.disconnectors`** (y `profiles.disconnector`): son **solo de salida**, como `profileCode`
   y `profileKp` en el seccionador. `disconnectors` trae todos los seccionadores vivos del poste, por
   nombre: casi siempre uno, a veces dos (`V29`); `[]` si no lleva ninguno. `disconnector` es el
