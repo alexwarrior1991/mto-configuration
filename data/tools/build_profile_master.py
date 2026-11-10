@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import collections
 import os
+import re
 import sys
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
@@ -61,6 +62,7 @@ from synoptic import (  # noqa: E402
     MULTI_FIELDS,
     SINGLE_LOV_FIELDS,
     is_synoptic,
+    parse_kp,
     synoptic_layout,
     synoptic_records,
     translate_codes,
@@ -188,6 +190,33 @@ def to_decimal(value):
         return Decimal(repr(value) if isinstance(value, float) else text)
     except (InvalidOperation, ValueError):
         return None
+
+
+def track_kp(value):
+    """El KP de la celda de una hoja HR Track, listo para fit_numeric.
+
+    Un numero pasa tal cual. Un texto con la kilometracion con signo mas ('30+719', como la
+    escribe el plano) son 30719 m: la misma lectura que synoptic.parse_kp hace en el
+    sinoptico. Cualquier otro texto pasa tal cual, para que fit_numeric diga que no es un
+    numero. EP11B escribe asi el KP de 30-1.16b, 30-1.23b, 30-2.16b y 30-2.23B.
+    """
+    if isinstance(value, str) and "+" in value:
+        parsed = parse_kp(value)
+        if parsed is not None:
+            return parsed
+    return value
+
+
+def is_legend_note(code):
+    """True si el identificador de perfil es un texto de la leyenda, no un poste.
+
+    Las hojas de EP9A llevan bajo los datos la leyenda de colores, con sus notas en la
+    columna del perfil ('Possible Signalling Interface Detected', 'Not For Construction').
+    Un identificador de poste empieza por una cifra ('8-1.12', '0-EXT.04 (00-01.04)'); una
+    nota empieza por una palabra y lleva al menos tres. 'PROFILE 2' no es una nota: es un
+    poste por numerar.
+    """
+    return len(code.split()) >= 3 and re.match(r"[A-Za-z]{3,}\b", code) is not None
 
 
 def fit_numeric(field, value, *, ep, sheet, row, master: Master):
@@ -531,6 +560,10 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
             continue
 
         number = offset + 1                       # el numero que enseña Excel
+        if is_legend_note(code):
+            master.discard(motivo="nota de la leyenda, no es un perfil", ep=ep, hoja=sheet,
+                           fila=number, detalle=code)
+            continue
         review = False
         record = {"EP": ep, "VIA": track_name, "PROFILE_ID": code[:50],
                   "HOJA_ORIGEN": sheet, "FILA_ORIGEN": number}
@@ -539,7 +572,7 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
                            fila=number, detalle=code)
             review = True
 
-        kp, bad = fit_numeric("KP", cell(row, single.get("KP")), ep=ep, sheet=sheet,
+        kp, bad = fit_numeric("KP", track_kp(cell(row, single.get("KP"))), ep=ep, sheet=sheet,
                               row=number, master=master)
         record["KP"] = kp
         review = review or bad
