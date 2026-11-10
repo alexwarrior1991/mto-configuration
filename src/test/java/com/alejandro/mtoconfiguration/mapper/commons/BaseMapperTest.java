@@ -1,5 +1,8 @@
 package com.alejandro.mtoconfiguration.mapper.commons;
 
+import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
+import com.alejandro.mtoconfiguration.model.commons.Alert;
+import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
@@ -226,7 +229,7 @@ class BaseMapperTest {
             List<Child> entities = new ArrayList<>(List.of(existente));
             List<Long> actualizados = new ArrayList<>();
 
-            mapper.mergeCollection(List.of(new TestDTO(1L)), entities, parent,
+            mapper.mergeCollection("children", List.of(new TestDTO(1L)), entities, parent,
                     dto -> new Child(null), (dto, child) -> actualizados.add(child.getId()),
                     Child::setParent);
 
@@ -243,7 +246,7 @@ class BaseMapperTest {
             Parent parent = new Parent();
             List<Child> entities = new ArrayList<>(List.of(new Child(1L), new Child(2L)));
 
-            mapper.mergeCollection(List.<TestDTO>of(), entities, parent,
+            mapper.mergeCollection("children", List.<TestDTO>of(), entities, parent,
                     dto -> new Child(null), (dto, child) -> { }, Child::setParent);
 
             assertThat(entities).isEmpty();
@@ -265,7 +268,7 @@ class BaseMapperTest {
             Child conservado = new Child(2L);
             List<Child> entities = new ArrayList<>(List.of(quitado, conservado));
 
-            mapper.mergeCollection(List.of(new TestDTO(2L)), entities, parent,
+            mapper.mergeCollection("children", List.of(new TestDTO(2L)), entities, parent,
                     dto -> new Child(null), (dto, child) -> { }, Child::setParent);
 
             assertThat(entities).containsExactly(conservado);
@@ -299,7 +302,7 @@ class BaseMapperTest {
             Child otro = new Child(2L);
             List<Child> entities = new ArrayList<>(List.of(uno, otro));
 
-            mapper.mergeCollection(null, entities, parent,
+            mapper.mergeCollection("children", null, entities, parent,
                     dto -> new Child(null), (dto, child) -> { }, Child::setParent);
 
             assertThat(entities).containsExactly(uno, otro);
@@ -326,7 +329,7 @@ class BaseMapperTest {
             List<Child> entities = new ArrayList<>(List.of(existente));
             List<Long> actualizados = new ArrayList<>();
 
-            assertThatThrownBy(() -> mapper.mergeCollection(List.of(dtoConVersion(1L, 3)), entities,
+            assertThatThrownBy(() -> mapper.mergeCollection("children", List.of(dtoConVersion(1L, 3)), entities,
                     new Parent(), dto -> new Child(null), (dto, child) -> actualizados.add(child.getId()),
                     Child::setParent))
                     .isInstanceOf(ConcurrencyException.class);
@@ -344,7 +347,7 @@ class BaseMapperTest {
             List<Child> entities = new ArrayList<>(List.of(alDia, sinVersion));
             List<Long> actualizados = new ArrayList<>();
 
-            mapper.mergeCollection(List.of(dtoConVersion(1L, 4), dtoConVersion(2L, null)), entities,
+            mapper.mergeCollection("children", List.of(dtoConVersion(1L, 4), dtoConVersion(2L, null)), entities,
                     new Parent(), dto -> new Child(null), (dto, child) -> actualizados.add(child.getId()),
                     Child::setParent);
 
@@ -428,6 +431,75 @@ class BaseMapperTest {
                     false);
 
             assertThat(removed).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("La ruta del error de un hijo")
+    class RutaDelError {
+
+        private static ValidationException rechazo(String... fields) {
+            return new ValidationException(List.of(Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, fields)));
+        }
+
+        @Test
+        @DisplayName("el campo del hijo sale con la ruta desde su padre, y cada nivel añade el suyo")
+        void prefijaElCampo() {
+            assertThatThrownBy(() -> BaseMapper.atField("profiles[2]", () -> BaseMapper.atField("cantilevers[1]",
+                    () -> {
+                        throw rechazo("cantileverType", "argumento");
+                    })))
+                    .isInstanceOfSatisfying(ValidationException.class, rejected ->
+                            assertThat(rejected.getErrors()).singleElement().satisfies(alert -> {
+                                assertThat(alert.getMessage()).isEqualTo(ErrorCodes.BUSINESS_RULE_VIOLATION);
+                                assertThat(alert.getFields())
+                                        .containsExactly("profiles[2].cantilevers[1].cantileverType", "argumento");
+                            }));
+        }
+
+        @Test
+        @DisplayName("la posicion en un lote va pegada al campo, y un error sin campo se queda con el del hijo")
+        void posicionEnUnLote() {
+            assertThatThrownBy(() -> BaseMapper.atField("[1]", () -> BaseMapper.atField("sectionings",
+                    () -> {
+                        throw rechazo("[0]");
+                    })))
+                    .isInstanceOfSatisfying(ValidationException.class, rejected ->
+                            assertThat(rejected.getErrors().getFirst().getFields()).containsExactly("[1].sectionings[0]"));
+            assertThatThrownBy(() -> BaseMapper.atField("steadyArm", () -> {
+                throw rechazo();
+            })).isInstanceOfSatisfying(ValidationException.class, rejected ->
+                    assertThat(rejected.getErrors().getFirst().getFields()).containsExactly("steadyArm"));
+        }
+
+        @Test
+        @DisplayName("lo que no es un error de campo pasa tal cual, y sin error devuelve el resultado")
+        void loDemasNoSeToca() {
+            ConcurrencyException conflicto = new ConcurrencyException("otra version");
+
+            assertThatThrownBy(() -> BaseMapper.atField("profiles[0]", () -> {
+                throw conflicto;
+            })).isSameAs(conflicto);
+            assertThat(BaseMapper.atField("profiles[0]", () -> "ok")).isEqualTo("ok");
+        }
+
+        @Test
+        @DisplayName("mergeCollection dice la posicion del hijo en lo que mando el cliente, tambien al dar de alta")
+        void laFusionDiceLaPosicion() {
+            List<Child> entities = new ArrayList<>(List.of(new Child(1L)));
+
+            assertThatThrownBy(() -> mapper.mergeCollection("children", List.of(new TestDTO(1L), new TestDTO(null)),
+                    entities, new Parent(), dto -> {
+                        throw rechazo("type");
+                    }, (dto, child) -> { }, Child::setParent))
+                    .isInstanceOfSatisfying(ValidationException.class, rejected ->
+                            assertThat(rejected.getErrors().getFirst().getFields()).containsExactly("children[1].type"));
+            assertThatThrownBy(() -> mapper.mergeCollection("children", List.of(new TestDTO(1L)),
+                    entities, new Parent(), dto -> new Child(null), (dto, child) -> {
+                        throw rechazo("type");
+                    }, Child::setParent))
+                    .isInstanceOfSatisfying(ValidationException.class, rejected ->
+                            assertThat(rejected.getErrors().getFirst().getFields()).containsExactly("children[0].type"));
         }
     }
 }

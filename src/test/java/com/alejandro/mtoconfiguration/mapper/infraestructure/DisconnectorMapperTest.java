@@ -1,5 +1,7 @@
 package com.alejandro.mtoconfiguration.mapper.infraestructure;
 
+import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
+import com.alejandro.mtoconfiguration.entity.lov.DisconnectorFunction;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
@@ -333,5 +335,78 @@ class DisconnectorMapperTest {
 
         assertThat(mapper.toEntity(dto).getProfile()).isSameAs(pole);
         verify(pole, never()).getTrack();
+    }
+
+    @Nested
+    @DisplayName("La funcion del seccionador, por su catalogo")
+    class Funcion {
+
+        private DisconnectorDTO con(Long id, String code) {
+            DisconnectorFunctionDTO function = new DisconnectorFunctionDTO();
+            function.setId(id);
+            function.setCode(code);
+            DisconnectorDTO dto = new DisconnectorDTO();
+            dto.setName("SEC-1");
+            dto.setOnLoad(true);
+            dto.setDisconnectorFunction(function);
+            return dto;
+        }
+
+        /**
+         * Un codigo mal escrito en {@code PUT /disconnectors/{id}} dejaba al seccionador sin funcion
+         * con un 200, y su evento salia sin ella: mto-maintenance elige las tareas por esa funcion.
+         */
+        @Test
+        @DisplayName("un codigo que el catalogo no tiene es un 400 BUS-001 sobre disconnectorFunction, y la funcion se queda")
+        void codigoDesconocido() {
+            DisconnectorFunction actual = new DisconnectorFunction();
+            actual.setId(4L);
+            Disconnector entity = seccionador();
+            entity.setDisconnectorFunction(actual);
+
+            assertThatThrownBy(() -> mapper.updateEntityFromDTO(con(4L, "SurgA"), entity))
+                    .isInstanceOfSatisfying(ValidationException.class, rejected ->
+                            assertThat(rejected.getErrors()).singleElement().satisfies(alert -> {
+                                assertThat(alert.getMessage()).isEqualTo(ErrorCodes.BUSINESS_RULE_VIOLATION);
+                                assertThat(alert.getFields()).containsExactly("disconnectorFunction");
+                            }));
+            assertThat(entity.getDisconnectorFunction()).isSameAs(actual);
+            assertThatThrownBy(() -> mapper.toEntity(con(null, "SurgA"))).isInstanceOf(ValidationException.class);
+        }
+
+        @Test
+        @DisplayName("a null o vacia ({}) no se toca: la funcion de un seccionador no se puede quitar")
+        void nullYVaciaNoLaTocan() {
+            DisconnectorFunction actual = new DisconnectorFunction();
+            actual.setId(4L);
+            Disconnector entity = seccionador();
+            entity.setDisconnectorFunction(actual);
+
+            DisconnectorDTO sinFuncion = con(null, null);
+            sinFuncion.setDisconnectorFunction(null);
+            mapper.updateEntityFromDTO(sinFuncion, entity);
+            assertThat(entity.getDisconnectorFunction()).isSameAs(actual);
+
+            mapper.updateEntityFromDTO(con(null, null), entity);
+            mapper.updateEntityFromDTO(con(null, " "), entity);
+            assertThat(entity.getDisconnectorFunction()).isSameAs(actual);
+        }
+
+        @Test
+        @DisplayName("con su codigo se resuelve por el; solo con su id, por el id, y un id que no existe es el mismo 400")
+        void porCodigoYPorId() {
+            DisconnectorFunction surge = new DisconnectorFunction();
+            surge.setId(5L);
+            DisconnectorFunctionDTO enCatalogo = new DisconnectorFunctionDTO();
+            enCatalogo.setId(5L);
+            enCatalogo.setCode("SurgeA");
+            when(masterDataService.getDisconnectorFunctionByCode("SurgeA")).thenReturn(surge);
+            when(masterDataService.getDisconnectorFunctionByIdAndMapToDTO(5L)).thenReturn(enCatalogo);
+
+            // El id que acompaña a un codigo no cuenta: manda el codigo (README_API.md §3).
+            assertThat(mapper.toEntity(con(99L, "SurgeA")).getDisconnectorFunction()).isSameAs(surge);
+            assertThat(mapper.toEntity(con(5L, null)).getDisconnectorFunction()).isSameAs(surge);
+            assertThatThrownBy(() -> mapper.toEntity(con(99L, null))).isInstanceOf(ValidationException.class);
+        }
     }
 }

@@ -151,7 +151,7 @@ existe responde 404, igual al modificar que al borrar.
 **Las referencias a catálogo se resuelven por su `code`** (`poleType`, `profileStatus`,
 `cantileverType`, `disconnectorFunction`…); el resto del objeto no cuenta, así que devolver la que
 leíste la deja como está. En un perfil, una referencia a `null` (o que no viaja) es «no la toques»,
-y para quitar una opcional se manda **sin código**:
+y para quitar una opcional se manda **vacía**, sin código y sin id:
 
 ```jsonc
 {
@@ -163,8 +163,26 @@ y para quitar una opcional se manda **sin código**:
 }
 ```
 
-La `disconnectorFunction` de un seccionador no se puede quitar: sin código se ignora. Y en los dos,
-un código que el catálogo no tiene no da error: deja la referencia vacía.
+La `disconnectorFunction` de un seccionador no se puede quitar: es obligatoria, y vacía se rechaza.
+
+**Una referencia informada tiene que existir.** Si trae `code`, se busca por él (el `id` que lo
+acompañe no cuenta); si solo trae `id`, por el id. Si el catálogo no la tiene, la petición se
+rechaza entera con un **400** y el error en su campo, con el código `BUS-001`:
+
+```jsonc
+// PUT /disconnectors/9 con "disconnectorFunction": { "id": 4, "code": "SurgA" }   (es «SurgeA»)
+{
+  "status": 400, "code": "VAL-000",
+  "errors": [ { "field": "disconnectorFunction", "code": "BUS-001", "message": "…" } ]
+}
+```
+
+Vale para todas las referencias a catálogo de todos los maestros, en altas, modificaciones y lotes
+(`[1].poleType`), para los elementos de las listas del perfil (`sectionings[1]`, §4 ter) y para los
+hijos anidados (`cantilevers[1].cantileverType`, `cantilevers[0].steadyArm.steadyArmType`,
+`disconnectors[0].disconnectorFunction` dentro de su estación). Antes no daba error: dejaba la
+referencia vacía con un 200, y un código mal escrito borraba el dato. `null` y `{}` no cambian: la
+primera no toca nada y la segunda vacía una opcional del perfil.
 
 ---
 
@@ -417,9 +435,10 @@ Como el resto de colecciones de esta API (§4), **mandar la lista reemplaza el c
 entero**: el seccionamiento que no mandas se quita. Mandar `[]` los deja todos fuera; omitir
 el campo no toca nada.
 
-Un código que el catálogo no tenga **no se inventa ni rompe la petición**: se ignora, y el
-resto se guarda. Quien quiera que un código desconocido sea un error, lo tiene en la
-importación (`InfrastructureUpsertService`), que sí rechaza la fila y nombra el código.
+Un código que el catálogo no tenga **rechaza la petición**: 400, con el error en la posición del
+elemento (`sectionings[1]`, `BUS-001`), como cualquier otra referencia a catálogo (§3) y como la
+importación, que rechaza la fila y nombra el código. Antes se ignoraba y el resto se guardaba, de
+modo que una errata quitaba el seccionamiento sin avisar. Un elemento vacío (`{}`) no cuenta.
 
 Dos efectos secundarios que conviene tener presentes:
 
@@ -898,6 +917,7 @@ validación no, hasta que cambies el cuerpo.
 | `400` | `VAL-000` | validación fallida, o cuerpo mal formado |
 | `401` / `403` | — | sin token, o sin el rol necesario |
 | `404` | `NOT-001` | el recurso no existe: al leerlo, al modificarlo o al borrarlo |
+| `400` | `VAL-000` con `BUS-001` en `errors[]` | una referencia que no existe: una vía, una estación, o una entrada de catálogo informada por `code` o por `id` (§3) |
 | `409` | `CON-001` | conflicto de concurrencia: el `versionNumber` que mandas no es el guardado |
 | `409` | `BUS-002` | un valor único repetido (el `code` de un catálogo), o al borrar, una fila que otro registro usa |
 | `429` | — | sin hueco para el trabajo |

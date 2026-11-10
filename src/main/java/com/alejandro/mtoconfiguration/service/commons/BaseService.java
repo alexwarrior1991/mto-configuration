@@ -38,6 +38,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.*;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
 
@@ -279,7 +280,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                     validateBeforeBulkCreate(list);
                     return list;
                 })
-                .map(getMapper()::toListEntity)
+                .map(this::toEntitiesByPosition)
                 .map(getRepository()::saveAll)
                 .map(savedEntities -> {
                     getRepository().flush();
@@ -289,6 +290,50 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                     return getMapper().toListDTO(savedEntities);
                 })
                 .orElseGet(Collections::emptyList));
+    }
+
+    /** Un elemento de una modificacion en lote, con su posicion para el error que de el mapper. */
+    private E updateInBulk(T dto, int index) {
+        return Optional.ofNullable(dto)
+                                .filter(Utils::exists)
+                                .map(T::getId)
+                                .map(id -> getRepository().findById(id)
+                                        .orElseThrow(() -> notFound(id))
+                                )
+                                .map(entity -> {
+                                    entity.validateVersion(dto.getVersionNumber());
+
+                                    Optional.ofNullable(getBusiness())
+                                            .ifPresent(b -> b.preMapperDTOToEntity(dto, entity));
+
+                                    // El error que de el mapper dice su posicion en el lote.
+                                    BaseMapper.atField("[" + index + "]", () -> {
+                                        getMapper().updateEntityFromDTO(dto, entity);
+                                        return entity;
+                                    });
+
+                                    Optional.ofNullable(getBusiness())
+                                            .ifPresent(b -> b.postValidationDTOToEntity(dto, entity));
+
+                                    return entity;
+                                })
+                                .orElseThrow(() -> new BaseException("No se puede actualizar un objeto nulo o sin ID"));
+    }
+
+    /**
+     * Las entidades de un alta en lote, una a una, para que el error que de el mapper (una referencia
+     * a catalogo que no existe) diga en que elemento esta: {@code [1].poleType}, como el validador.
+     */
+    private List<E> toEntitiesByPosition(List<T> dtos) {
+        List<E> entities = new ArrayList<>(dtos.size());
+
+        for (int index = 0; index < dtos.size(); index++) {
+            T dto = dtos.get(index);
+
+            entities.add(BaseMapper.atField("[" + index + "]", () -> getMapper().toEntity(dto)));
+        }
+
+        return entities;
     }
 
     @Transactional(
@@ -340,28 +385,8 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                     validateBeforeBulkUpdate(list);
                     return list;
                 })
-                .map(list -> list.stream()
-                        .map(dto -> Optional.ofNullable(dto)
-                                .filter(Utils::exists)
-                                .map(T::getId)
-                                .map(id -> getRepository().findById(id)
-                                        .orElseThrow(() -> notFound(id))
-                                )
-                                .map(entity -> {
-                                    entity.validateVersion(dto.getVersionNumber());
-
-                                    Optional.ofNullable(getBusiness())
-                                            .ifPresent(b -> b.preMapperDTOToEntity(dto, entity));
-
-                                    getMapper().updateEntityFromDTO(dto, entity);
-
-                                    Optional.ofNullable(getBusiness())
-                                            .ifPresent(b -> b.postValidationDTOToEntity(dto, entity));
-
-                                    return entity;
-                                })
-                                .orElseThrow(() -> new BaseException("No se puede actualizar un objeto nulo o sin ID"))
-                        )
+                .map(list -> IntStream.range(0, list.size())
+                        .mapToObj(index -> updateInBulk(list.get(index), index))
                         .toList()
                 )
                 .map(getRepository()::saveAll)

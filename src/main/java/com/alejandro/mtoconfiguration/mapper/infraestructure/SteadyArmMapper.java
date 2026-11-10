@@ -55,10 +55,13 @@ public abstract class SteadyArmMapper implements BaseMapper<SteadyArmDTO, Steady
     protected void mapDtoToEntity(SteadyArmDTO dto, @MappingTarget SteadyArm entity) {
 
         // 2. Resolución del LOV: SteadyArmType (por código)
-        if (dto.getSteadyArmType() != null && dto.getSteadyArmType().getCode() != null) {
-            entity.setSteadyArmType(
-                    masterDataService.getSteadyArmTypeByCode(dto.getSteadyArmType().getCode())
-            );
+        if (dto.getSteadyArmType() != null) {
+            // Vacia (sin codigo y sin id) se ignora: no se puede quitar. Informada, tiene que existir.
+            var resolved = resolveLov(dto.getSteadyArmType(), "steadyArmType",
+                    masterDataService::getSteadyArmTypeByCode, masterDataService::getSteadyArmTypeByIdAndMapToDTO);
+            if (resolved != null) {
+                entity.setSteadyArmType(resolved);
+            }
         }
 
         // 3. Sincronización de la relación 1:1 con Cantilever (Bidireccional)

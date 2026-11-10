@@ -135,11 +135,12 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         // 1. Resolución de múltiples LOVs usando MasterDataService
         if (dto.getAnchorages() != null) {
             Set<Anchorage> resolved = new LinkedHashSet<>();
+            int index = 0;
             for (AnchorageDTO each : dto.getAnchorages()) {
-                if (each == null || each.getCode() == null) {
-                    continue;
-                }
-                Anchorage anchorage = masterDataService.getAnchorageByCode(each.getCode());
+                String field = "anchorages[" + index++ + "]";
+                // Un hueco, o una referencia vacia, no cuenta; una informada tiene que existir.
+                Anchorage anchorage = each == null ? null : resolveLov(each, field,
+                        masterDataService::getAnchorageByCode, masterDataService::getAnchorageByIdAndMapToDTO);
                 if (anchorage != null) {
                     resolved.add(anchorage);
                 }
@@ -149,39 +150,47 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
             }
         }
         if (dto.getAnchorageFoundation() != null) {
-            entity.setAnchorageFoundation(masterDataService.getAnchorageFoundationByCode(dto.getAnchorageFoundation().getCode()));
+            entity.setAnchorageFoundation(resolveLov(dto.getAnchorageFoundation(), "anchorageFoundation",
+                    masterDataService::getAnchorageFoundationByCode, masterDataService::getAnchorageFoundationByIdAndMapToDTO));
         }
         if (dto.getFoundation() != null) {
-            entity.setFoundation(masterDataService.getFoundationByCode(dto.getFoundation().getCode()));
+            entity.setFoundation(resolveLov(dto.getFoundation(), "foundation",
+                    masterDataService::getFoundationByCode, masterDataService::getFoundationByIdAndMapToDTO));
         }
         if (dto.getPoleType() != null) {
-            entity.setPoleType(masterDataService.getPoleTypeByCode(dto.getPoleType().getCode()));
+            entity.setPoleType(resolveLov(dto.getPoleType(), "poleType",
+                    masterDataService::getPoleTypeByCode, masterDataService::getPoleTypeByIdAndMapToDTO));
         }
         if (dto.getPortal() != null) {
-            entity.setPortal(masterDataService.getPortalByCode(dto.getPortal().getCode()));
+            entity.setPortal(resolveLov(dto.getPortal(), "portal",
+                    masterDataService::getPortalByCode, masterDataService::getPortalByIdAndMapToDTO));
         }
         if (dto.getProfileStatus() != null) {
-            entity.setProfileStatus(masterDataService.getProfileStatusByCode(dto.getProfileStatus().getCode()));
+            entity.setProfileStatus(resolveLov(dto.getProfileStatus(), "profileStatus",
+                    masterDataService::getProfileStatusByCode, masterDataService::getProfileStatusByIdAndMapToDTO));
         }
         if (dto.getSupportType() != null) {
-            entity.setSupportType(masterDataService.getSupportTypeByCode(dto.getSupportType().getCode()));
+            entity.setSupportType(resolveLov(dto.getSupportType(), "supportType",
+                    masterDataService::getSupportTypeByCode, masterDataService::getSupportTypeByIdAndMapToDTO));
         }
         if (dto.getAssemblyConfiguration() != null) {
-            entity.setAssemblyConfiguration(masterDataService.getAssemblyConfigurationByCode(
-                    dto.getAssemblyConfiguration().getCode()));
+            entity.setAssemblyConfiguration(resolveLov(dto.getAssemblyConfiguration(), "assemblyConfiguration",
+                    masterDataService::getAssemblyConfigurationByCode, masterDataService::getAssemblyConfigurationByIdAndMapToDTO));
         }
         if (dto.getReturnSupport() != null) {
-            entity.setReturnSupport(masterDataService.getReturnSupportByCode(dto.getReturnSupport().getCode()));
+            entity.setReturnSupport(resolveLov(dto.getReturnSupport(), "returnSupport",
+                    masterDataService::getReturnSupportByCode, masterDataService::getReturnSupportByIdAndMapToDTO));
         }
         if (dto.getSectionings() != null) {
             // Se reemplaza el conjunto entero, no se anade: mandar la lista es declarar cuales
             // son TODOS los seccionamientos del perfil, igual que en el resto de la API.
             Set<Sectioning> resolved = new LinkedHashSet<>();
+            int index = 0;
             for (SectioningDTO each : dto.getSectionings()) {
-                if (each == null || each.getCode() == null) {
-                    continue;
-                }
-                Sectioning sectioning = masterDataService.getSectioningByCode(each.getCode());
+                String field = "sectionings[" + index++ + "]";
+                // Un hueco, o una referencia vacia, no cuenta; una informada tiene que existir.
+                Sectioning sectioning = each == null ? null : resolveLov(each, field,
+                        masterDataService::getSectioningByCode, masterDataService::getSectioningByIdAndMapToDTO);
                 if (sectioning != null) {
                     resolved.add(sectioning);
                 }
@@ -192,12 +201,12 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         }
         if (dto.getSectioningFeedings() != null) {
             Set<DisconnectorFunction> resolved = new LinkedHashSet<>();
+            int index = 0;
             for (DisconnectorFunctionDTO each : dto.getSectioningFeedings()) {
-                if (each == null || each.getCode() == null) {
-                    continue;
-                }
-                DisconnectorFunction function =
-                        masterDataService.getDisconnectorFunctionByCode(each.getCode());
+                String field = "sectioningFeedings[" + index++ + "]";
+                // Un hueco, o una referencia vacia, no cuenta; una informada tiene que existir.
+                DisconnectorFunction function = each == null ? null : resolveLov(each, field,
+                        masterDataService::getDisconnectorFunctionByCode, masterDataService::getDisconnectorFunctionByIdAndMapToDTO);
                 if (function != null) {
                     resolved.add(function);
                 }
@@ -213,6 +222,7 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
         // que actualizar ESA fila. Añadirla, que es lo que hacia el codigo generado, insertaba una
         // copia sin id junto a la original y dejaba la original sin los cambios.
         mergeCollection(
+                "cantilevers",
                 dto.getCantilevers(),
                 entity.getCantilevers(),
                 entity,

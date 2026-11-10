@@ -153,6 +153,8 @@ class CantileverMapperTest {
     @DisplayName("el brazo de atirantado queda apuntando a su mensula")
     void vinculoBidireccionalConElBrazo() {
         // Sin este vinculo el brazo se persiste con la clave ajena a null y queda huerfano.
+        when(masterDataService.getSteadyArmTypeByCode("CRT"))
+                .thenReturn(new com.alejandro.mtoconfiguration.entity.lov.SteadyArmType());
         CantileverDTO dto = dto();
         SteadyArmDTO steadyArm = new SteadyArmDTO();
         steadyArm.setLength(200L);

@@ -81,6 +81,7 @@ public abstract class SectionInsulatorMapper implements BaseMapper<SectionInsula
         // hace el código generado, insertaría una copia sin id junto a la original y dejaría la
         // original sin los cambios.
         mergeCollection(
+                "switches",
                 dto.getSwitches(),
                 entity.getSwitches(),
                 entity,

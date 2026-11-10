@@ -102,6 +102,7 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
 
         // 2. Seccionadores
         mergeCollection(
+                "disconnectors",
                 dto.getDisconnectors(),
                 entity.getDisconnectors(),
                 entity,
@@ -112,6 +113,7 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
 
         // 3. Aisladores de seccion
         mergeCollection(
+                "sectionInsulators",
                 dto.getSectionInsulators(),
                 entity.getSectionInsulators(),
                 entity,
@@ -151,10 +153,14 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
             }
         }
 
+        int index = -1;
         for (TrackDTO childDto : dto.getTracks()) {
+            index++;
             if (childDto == null) {
                 continue;
             }
+            // Para que el error de una via anidada diga su ruta (BaseMapper.atField).
+            String field = "tracks[" + index + "]";
             Track ligada = childDto.getId() == null ? null : ligadas.get(childDto.getId());
             if (ligada != null && ligada.isDeleted()) {
                 // La misma peticion acaba de quitarla de su paquete (un PUT del paquete trae cada
@@ -163,7 +169,10 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
                 continue;
             }
             if (ligada != null) {
-                trackChildMapper.updateEntityFromDTO(childDto, ligada);
+                BaseMapper.atField(field, () -> {
+                    trackChildMapper.updateEntityFromDTO(childDto, ligada);
+                    return ligada;
+                });
                 // El lado dueño es Track.stations, asi que el vinculo se afirma ahi tambien. Es
                 // idempotente (es un Set) y hace que el mapper no dependa de que quien construyo
                 // la via ya lo hubiera puesto: updateEntityFromDTO no lo toca, porque un TrackDTO
@@ -175,10 +184,13 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
                 // que Hibernate no reconoce como la fila, de modo que el vinculo no se guardaba
                 // y la peticion respondia 200 sin haber hecho nada.
                 Track existente = referenceResolver.resolve(childDto.getId(), Track.class);
-                trackChildMapper.updateEntityFromDTO(childDto, existente);
+                BaseMapper.atField(field, () -> {
+                    trackChildMapper.updateEntityFromDTO(childDto, existente);
+                    return existente;
+                });
                 entity.addTrack(existente);
             } else {
-                entity.addTrack(trackChildMapper.toEntity(childDto));
+                entity.addTrack(BaseMapper.atField(field, () -> trackChildMapper.toEntity(childDto)));
             }
         }
     }

@@ -1,6 +1,11 @@
 package com.alejandro.mtoconfiguration.mapper.infraestructure;
 
 import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
+import com.alejandro.mtoconfiguration.core.exception.ValidationException;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SteadyArmDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.CantileverTypeDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.SteadyArmTypeDTO;
+import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
@@ -72,6 +77,16 @@ class ProfileMapperTest {
     @BeforeEach
     void setUp() {
         mapper = new MapperGraph(masterDataService, referenceMapper).profile;
+    }
+
+    /** El campo de cada error con el que el mapper rechaza la peticion. */
+    private static List<String> camposRechazados(Runnable mapping) {
+        try {
+            mapping.run();
+        } catch (ValidationException rejected) {
+            return rejected.getErrors().stream().map(alert -> alert.getFields().getFirst()).toList();
+        }
+        return List.of();
     }
 
     private static ProfileDTO dto() {
@@ -327,7 +342,7 @@ class ProfileMapperTest {
         }
 
         @Test
-        @DisplayName("un codigo que el catalogo no tiene no se inventa: se queda fuera")
+        @DisplayName("un codigo que el catalogo no tiene rechaza el perfil, sobre su posicion: antes se quedaba fuera en silencio")
         void codigoDesconocidoNoSeInventa() {
             Sectioning as = new Sectioning();
             as.setId(1L);
@@ -337,6 +352,26 @@ class ProfileMapperTest {
 
             ProfileDTO dto = dto();
             dto.setSectionings(List.of(sectioningDto("A/S"), sectioningDto("NO-EXISTE")));
+
+            assertThat(camposRechazados(() -> mapper.toEntity(dto))).containsExactly("sectionings[1]");
+        }
+
+        @Test
+        @DisplayName("un hueco o una referencia vacia en la lista no cuenta, y una solo con id se resuelve por el")
+        void referenciasVaciasYPorIdEnLaLista() {
+            Sectioning as = new Sectioning();
+            as.setId(1L);
+            when(masterDataService.getSectioningByIdAndMapToDTO(1L)).thenReturn(sectioningDto("A/S"));
+            when(masterDataService.getSectioningByCode("A/S")).thenReturn(as);
+            SectioningDTO soloId = new SectioningDTO();
+            soloId.setId(1L);
+            List<SectioningDTO> lista = new ArrayList<>();
+            lista.add(null);
+            lista.add(new SectioningDTO());
+            lista.add(soloId);
+
+            ProfileDTO dto = dto();
+            dto.setSectionings(lista);
 
             assertThat(mapper.toEntity(dto).getSectionings()).containsExactly(as);
         }
@@ -468,7 +503,83 @@ class ProfileMapperTest {
             vaciada.setPoleType(new PoleTypeDTO());
             mapper.updateEntityFromDTO(vaciada, entity);
             assertThat(entity.getPoleType()).isNull();
-            verify(masterDataService).getPoleTypeByCode(null);
+            verifyNoInteractions(masterDataService);
+        }
+
+        /**
+         * Una referencia informada que el catalogo no tiene dejaba la LOV a null con un 200: un
+         * codigo mal escrito borraba el tipo de poste. Ahora rechaza la peticion, sobre su campo, y
+         * no toca la entidad.
+         */
+        @Test
+        @DisplayName("un codigo que el catalogo no tiene es un 400 BUS-001 sobre su campo, y la LOV se queda como estaba")
+        void codigoDesconocidoRechazaLaPeticion() {
+            PoleType poleType = new PoleType();
+            poleType.setId(1L);
+            Profile entity = new Profile();
+            entity.setPoleType(poleType);
+            PoleTypeDTO malEscrito = new PoleTypeDTO();
+            malEscrito.setId(1L);
+            malEscrito.setCode("PT-1");
+
+            ProfileDTO dto = dto();
+            dto.setPoleType(malEscrito);
+
+            assertThatThrownBy(() -> mapper.updateEntityFromDTO(dto, entity))
+                    .isInstanceOfSatisfying(ValidationException.class, rejected -> {
+                        assertThat(rejected.getErrors()).singleElement().satisfies(alert -> {
+                            assertThat(alert.getMessage()).isEqualTo(ErrorCodes.BUSINESS_RULE_VIOLATION);
+                            assertThat(alert.getFields()).containsExactly("poleType");
+                        });
+                    });
+            assertThat(entity.getPoleType()).isSameAs(poleType);
+        }
+
+        @Test
+        @DisplayName("una referencia solo con id se resuelve por el, y si no existe es el mismo 400")
+        void referenciaSoloConId() {
+            PoleType poleType = new PoleType();
+            poleType.setId(1L);
+            PoleTypeDTO enCatalogo = new PoleTypeDTO();
+            enCatalogo.setId(1L);
+            enCatalogo.setCode("PT1");
+            when(masterDataService.getPoleTypeByIdAndMapToDTO(1L)).thenReturn(enCatalogo);
+            when(masterDataService.getPoleTypeByCode("PT1")).thenReturn(poleType);
+            PoleTypeDTO soloId = new PoleTypeDTO();
+            soloId.setId(1L);
+            PoleTypeDTO noExiste = new PoleTypeDTO();
+            noExiste.setId(99L);
+
+            ProfileDTO dto = dto();
+            dto.setPoleType(soloId);
+            assertThat(mapper.toEntity(dto).getPoleType()).isSameAs(poleType);
+
+            dto.setPoleType(noExiste);
+            assertThat(camposRechazados(() -> mapper.toEntity(dto))).containsExactly("poleType");
+        }
+
+        @Test
+        @DisplayName("el error de una mensula anidada dice su ruta desde el perfil, y el de su brazo, la suya")
+        void rutaDeLosHijos() {
+            CantileverTypeDTO tipo = new CantileverTypeDTO();
+            tipo.setCode("NO-EXISTE");
+            CantileverDTO buena = cantilever(null);
+            CantileverDTO mala = cantilever(null);
+            mala.setCantileverType(tipo);
+            ProfileDTO dto = dto();
+            dto.setCantilevers(new ArrayList<>(List.of(buena, mala)));
+
+            assertThat(camposRechazados(() -> mapper.toEntity(dto))).containsExactly("cantilevers[1].cantileverType");
+
+            SteadyArmTypeDTO tipoDeBrazo = new SteadyArmTypeDTO();
+            tipoDeBrazo.setCode("NO-EXISTE");
+            SteadyArmDTO brazo = new SteadyArmDTO();
+            brazo.setSteadyArmType(tipoDeBrazo);
+            mala.setCantileverType(null);
+            buena.setSteadyArm(brazo);
+
+            assertThat(camposRechazados(() -> mapper.toEntity(dto)))
+                    .containsExactly("cantilevers[0].steadyArm.steadyArmType");
         }
 
         /**

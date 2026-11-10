@@ -68,10 +68,13 @@ public abstract class CantileverMapper implements BaseMapper<CantileverDTO, Cant
     protected void mapDtoToEntity(CantileverDTO dto, @MappingTarget Cantilever entity) {
 
         // 2. Resolución de LOV: CantileverType (por código)
-        if (dto.getCantileverType() != null && dto.getCantileverType().getCode() != null) {
-            entity.setCantileverType(
-                    masterDataService.getCantileverTypeByCode(dto.getCantileverType().getCode())
-            );
+        if (dto.getCantileverType() != null) {
+            // Vacia (sin codigo y sin id) se ignora: no se puede quitar. Informada, tiene que existir.
+            var resolved = resolveLov(dto.getCantileverType(), "cantileverType",
+                    masterDataService::getCantileverTypeByCode, masterDataService::getCantileverTypeByIdAndMapToDTO);
+            if (resolved != null) {
+                entity.setCantileverType(resolved);
+            }
         }
 
         // 3. El brazo, 1:1.
@@ -92,6 +95,8 @@ public abstract class CantileverMapper implements BaseMapper<CantileverDTO, Cant
      * <p>Al modificar, primero la versión: si el brazo que devuelve el cliente está
      * desactualizado, la excepción sale antes de volcar nada sobre él.
      */
+    private static final String FIELD_STEADY_ARM = "steadyArm";
+
     private void mergeSteadyArm(SteadyArmDTO dto, Cantilever entity) {
         SteadyArm current = entity.getSteadyArm();
 
@@ -104,14 +109,17 @@ public abstract class CantileverMapper implements BaseMapper<CantileverDTO, Cant
         }
 
         if (current == null) {
-            SteadyArm created = steadyArmChildMapper.toEntity(dto);
+            SteadyArm created = BaseMapper.atField(FIELD_STEADY_ARM, () -> steadyArmChildMapper.toEntity(dto));
             created.setCantilever(entity);
             entity.setSteadyArm(created);
             return;
         }
 
         checkVersion(dto, current);
-        steadyArmChildMapper.updateEntityFromDTO(dto, current);
+        BaseMapper.atField(FIELD_STEADY_ARM, () -> {
+            steadyArmChildMapper.updateEntityFromDTO(dto, current);
+            return current;
+        });
         current.setCantilever(entity);
     }
 

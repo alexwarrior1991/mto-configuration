@@ -218,7 +218,7 @@ class BaseServiceTest {
             List<TestEntity> entities = List.of(new TestEntity(), new TestEntity());
             List<TestEntity> saved = List.of(new TestEntity(1L), new TestEntity(2L));
 
-            when(mapper.toListEntity(dtos)).thenReturn(entities);
+            when(mapper.toEntity(any())).thenReturn(entities.get(0), entities.get(1));
             when(repository.saveAll(entities)).thenReturn(saved);
             when(mapper.toListDTO(saved)).thenReturn(dtos);
 
@@ -230,6 +230,19 @@ class BaseServiceTest {
                             new EntityChangeApplicationEvent<>(saved.get(0), EntityChangeOperation.CREATED),
                             new EntityChangeApplicationEvent<>(saved.get(1), EntityChangeOperation.CREATED),
                             new CacheEvictionEvent("TestService"));
+        }
+
+        @Test
+        @DisplayName("el error que da el mapper en un elemento del lote dice su posicion, y no se guarda nada")
+        void bulkCreateRechazadoPorElMapper() {
+            when(mapper.toEntity(any())).thenReturn(new TestEntity()).thenThrow(new ValidationException(
+                    List.of(Alert.ofDanger("BUS-001", "poleType"))));
+
+            assertThatThrownBy(() -> service.bulkCreate(List.of(new TestDTO(), new TestDTO())))
+                    .isInstanceOfSatisfying(ValidationException.class, rejected ->
+                            assertThat(rejected.getErrors().getFirst().getFields()).containsExactly("[1].poleType"));
+
+            verifyNoInteractions(repository);
         }
 
         @Test
@@ -441,6 +454,23 @@ class BaseServiceTest {
                             new EntityChangeApplicationEvent<>(firstEntity, EntityChangeOperation.UPDATED),
                             new EntityChangeApplicationEvent<>(secondEntity, EntityChangeOperation.UPDATED),
                             new CacheEvictionEvent("TestService"));
+        }
+
+        @Test
+        @DisplayName("el error que da el mapper en un elemento del lote dice su posicion, y no se guarda nada")
+        void bulkUpdateRechazadoPorElMapper() {
+            TestDTO second = new TestDTO(2L);
+            TestEntity secondEntity = new TestEntity(2L);
+            when(repository.findById(1L)).thenReturn(Optional.of(new TestEntity(1L)));
+            when(repository.findById(2L)).thenReturn(Optional.of(secondEntity));
+            org.mockito.Mockito.doThrow(new ValidationException(List.of(Alert.ofDanger("BUS-001", "poleType"))))
+                    .when(mapper).updateEntityFromDTO(second, secondEntity);
+
+            assertThatThrownBy(() -> service.bulkUpdate(List.of(new TestDTO(1L), second)))
+                    .isInstanceOfSatisfying(ValidationException.class, rejected ->
+                            assertThat(rejected.getErrors().getFirst().getFields()).containsExactly("[1].poleType"));
+
+            verify(repository, never()).saveAll(anyList());
         }
 
         @Test

@@ -91,6 +91,7 @@ public abstract class TrackMapper implements BaseMapper<TrackDTO, Track> {
         // Un perfil que el cliente devuelve con su id actualiza ESA fila; añadirlo insertaba una
         // copia sin id junto a la original y dejaba la original sin los cambios.
         mergeCollection(
+                "profiles",
                 dto.getProfiles(),
                 entity.getProfiles(),
                 entity,

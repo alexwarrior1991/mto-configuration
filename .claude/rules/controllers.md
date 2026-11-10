@@ -49,7 +49,8 @@ paths:
   `services.md`). Lo fija `ProfileControllerTest` («Errores»).
 - Validación: el servicio lanza `ValidationException` con las alertas del validador y sale 400
   `VAL-000` con `errors[{field, code, message}]`, donde `field` es la ruta desde la raíz del cuerpo
-  (`cantilevers[1].cwHeight`; `[0].name` en un lote). Un `IllegalArgumentException` es 400 `VAL-000`,
+  (`cantilevers[1].cwHeight`; `[0].name` en un lote). Una referencia a catálogo informada que no
+  existe sale igual, con `BUS-001` en su campo, pero la lanza el mapper (ver `mappers.md`). Un `IllegalArgumentException` es 400 `VAL-000`,
   y un valor único repetido (`DataIntegrityViolationException`), 409 `BUS-002`. Lo fija
   `RestExceptionHandlerTest`.
 

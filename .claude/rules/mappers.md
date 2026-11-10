@@ -24,9 +24,20 @@ paths:
 - Las referencias a catálogo se ignoran en el `@Mapping` y se resuelven en los `@AfterMapping`:
   `mapDtoToEntity` las busca por código en `MasterDataService`, y `mapEntityToDto` las rellena por id
   desde su caché. Un `@AfterMapping` se aplica a todo método con esos tipos, también a
-  `updateDTOFromEntity`. Al modificar, una referencia a `null` no toca nada y una sin código la
-  quita, porque el catálogo no resuelve un código vacío (README_API.md §3); lo fijan
-  `ProfileMapperTest` y `LovReferenceResolverTest`.
+  `updateDTOFromEntity`. Al modificar, una referencia a `null` no toca nada y una vacía (sin código
+  y sin id) la quita en el perfil y se ignora en los demás (README_API.md §3).
+- Toda referencia a catálogo se resuelve con `BaseMapper.resolveLov`: por su `code`, y si no lo
+  trae, por su `id`. Una **informada** que el catálogo no tiene lanza `ValidationException`
+  (`BUS-001` sobre su campo, 400), nunca se queda a `null`: un código mal escrito borraba la
+  referencia con un 200 y el evento salía sin ella. Va en el mapper porque es el único paso común a
+  todas las escrituras y el que ya consulta el catálogo. Una referencia nueva usa `resolveLov`, no
+  `masterDataService.getXByCode` a secas.
+- El campo de un error que lanza un mapper es la ruta desde la raíz del cuerpo, como la del
+  validador: `mergeCollection` recibe el nombre de la colección y prefija el error de cada hijo con
+  `BaseMapper.atField` (`cantilevers[1].cantileverType`); un hijo que se reconcilia a mano (el brazo,
+  las vías de una estación) llama a `atField`, y `BaseService` pone la posición en un lote
+  (`[1].poleType`). Lo fijan `BaseMapperTest` («La ruta del error de un hijo»), `ProfileMapperTest`,
+  `DisconnectorMapperTest`, `BaseServiceTest` y `CatalogReferenceIT`.
 - Las colecciones de hijos también se ignoran en el `@Mapping` y se reconcilian en `mapDtoToEntity`
   con `BaseMapper.mergeCollection`: con id se actualiza, sin id se crea, lo que no llega se borra y
   `null` no toca nada (README_API.md §4). Lo que no llega se borra **en lógico**, con su rama

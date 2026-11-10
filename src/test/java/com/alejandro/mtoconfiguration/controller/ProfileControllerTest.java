@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.controller;
 
+import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import com.alejandro.mtoconfiguration.configuration.security.KeycloakJwtAuthenticationConverter;
 import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.controller.synchronous.infraestructure.ProfileController;
@@ -373,6 +374,24 @@ class ProfileControllerTest {
                             .content("{}"))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+        }
+
+        @Test
+        @DisplayName("una referencia a catalogo que no existe sale como 400 VAL-000 con BUS-001 en su campo, tambien el de un hijo")
+        void referenciaACatalogoDesconocida() throws Exception {
+            when(profileService.update(any())).thenThrow(new ValidationException(List.of(
+                    Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, "poleType"),
+                    Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, "cantilevers[1].cantileverType"))));
+
+            mockMvc.perform(put(PROFILES + "/7")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"profileId\":\"P-7\",\"poleType\":{\"id\":1,\"code\":\"NO-EXISTE\"}}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                    .andExpect(jsonPath("$.code").value("VAL-000"))
+                    .andExpect(jsonPath("$.errors[0].field").value("poleType"))
+                    .andExpect(jsonPath("$.errors[0].code").value("BUS-001"))
+                    .andExpect(jsonPath("$.errors[1].field").value("cantilevers[1].cantileverType"));
         }
 
         @Test
