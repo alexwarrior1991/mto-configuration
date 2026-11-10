@@ -29,13 +29,20 @@ paths:
   `ProfileMapperTest` y `LovReferenceResolverTest`.
 - Las colecciones de hijos también se ignoran en el `@Mapping` y se reconcilian en `mapDtoToEntity`
   con `BaseMapper.mergeCollection`: con id se actualiza, sin id se crea, lo que no llega se borra y
-  `null` no toca nada (README_API.md §4). El 1:1 de la ménsula con su brazo se reconcilia igual, a mano
+  `null` no toca nada (README_API.md §4). Lo que no llega se borra **en lógico**, con su rama
+  (`BaseMapper.removeChild` → `CRUDEntity.deleteCascade`), y sale de la colección en memoria: ninguna
+  colección de hijos lleva `orphanRemoval`, y una entidad con hijos nuevos los declara en
+  `ownedChildren()`. Así cada entidad quitada publica su `DELETED` (ver `services.md`). El 1:1 de la ménsula con su brazo se reconcilia igual, a mano
   (`CantileverMapper.mergeSteadyArm`): el brazo nuevo se construye entero antes de colgarlo de una
   ménsula gestionada, porque resolver su tipo consulta el catálogo y el auto-flush persistía el
   brazo a medio rellenar; y `SteadyArmMapper` no cuelga de su ménsula el brazo de un alta, que la
   cascada insertaba otra vez (`SteadyArmLinkIT`). Nunca con la
   estrategia de colecciones de MapStruct: reemplazar borra e inserta, y los hijos cambian de id y
   pierden su historial. Lo fijan `BaseMapperTest` («Fusion por id») y los `mapper/merge/*ChildMergeIT`.
+- Un conjunto de referencias (`Track.stations`, los tres del perfil) solo se sustituye si cambia
+  (`BaseMapper.sameEntities`). Un conjunto nuevo con las mismas filas reescribe la tabla de unión y
+  sube la versión de su dueño, y ese `UPDATE` de una entidad que no ha cambiado se publicaría como
+  una modificación cada vez que viaja dentro de su padre. Lo fija `NestedChildEventsIT`.
 - Los seccionadores del perfil no son hijos: el perfil es el lado inverso de un vínculo que escribe
   cada seccionador (`disconnector.profile_id`, con sus datos), así que `ProfileMapper` los ignora al
   escribir (`@Mapping(target = "disconnectors", ignore = true)`) y `ProfileValidator` no los valida.

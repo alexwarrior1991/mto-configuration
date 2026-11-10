@@ -17,6 +17,7 @@ import com.alejandro.mtoconfiguration.service.commons.CrudServiceFixtures.TestEn
 import com.alejandro.mtoconfiguration.service.commons.CrudServiceFixtures.TestService;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeApplicationEvent;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeOperation;
+import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeTracker;
 import com.alejandro.mtoconfiguration.validator.commons.CRUDValidator;
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.dsl.Expressions;
@@ -282,6 +283,58 @@ class BaseServiceTest {
                     .containsExactly(
                             new EntityChangeApplicationEvent<>(saved, EntityChangeOperation.UPDATED),
                             new CacheEvictionEvent("TestService"));
+        }
+
+        @Test
+        @DisplayName("lo que Hibernate escribe ademas de la raiz publica su evento, despues del de la raiz y una vez")
+        void updatePublicaLosHijos() {
+            // El listener JPA de BaseEntity apunta cada fila que el flush escribe. Aqui lo hace el
+            // repositorio simulado: un hijo dado de alta, otro borrado y la propia raiz, que no
+            // puede salir dos veces.
+            TestDTO dto = new TestDTO(5L);
+            TestEntity entity = new TestEntity(5L);
+            TestEntity creado = new TestEntity(7L);
+            TestEntity borrado = new TestEntity(8L);
+
+            when(repository.findById(5L)).thenReturn(Optional.of(entity));
+            when(repository.saveAndFlush(entity)).thenAnswer(invocation -> {
+                EntityChangeTracker.record(creado, EntityChangeOperation.CREATED);
+                EntityChangeTracker.record(entity, EntityChangeOperation.UPDATED);
+                EntityChangeTracker.record(borrado, EntityChangeOperation.DELETED);
+                return entity;
+            });
+
+            service.update(dto);
+
+            assertThat(publishedEvents())
+                    .containsExactly(
+                            new EntityChangeApplicationEvent<>(entity, EntityChangeOperation.UPDATED),
+                            new EntityChangeApplicationEvent<>(creado, EntityChangeOperation.CREATED),
+                            new EntityChangeApplicationEvent<>(borrado, EntityChangeOperation.DELETED),
+                            new CacheEvictionEvent("TestService"));
+            // Y el ambito se cierra con la escritura: lo que se escriba despues no es de nadie.
+            EntityChangeTracker.record(new TestEntity(9L), EntityChangeOperation.UPDATED);
+            assertThat(EntityChangeTracker.drain()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("una escritura que falla cierra su ambito y no publica nada")
+        void updateFallidoCierraElAmbito() {
+            TestDTO dto = new TestDTO(5L);
+            TestEntity entity = new TestEntity(5L);
+
+            when(repository.findById(5L)).thenReturn(Optional.of(entity));
+            when(repository.saveAndFlush(entity)).thenAnswer(invocation -> {
+                EntityChangeTracker.record(new TestEntity(7L), EntityChangeOperation.CREATED);
+                throw new IllegalStateException("el flush falla");
+            });
+
+            assertThatThrownBy(() -> service.update(dto)).isInstanceOf(IllegalStateException.class);
+
+            verify(publisher, never()).publishEvent(any(Object.class));
+            try (EntityChangeTracker.Scope ignored = EntityChangeTracker.open()) {
+                assertThat(EntityChangeTracker.drain()).isEmpty();
+            }
         }
 
         @Test

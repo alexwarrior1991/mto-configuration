@@ -1,5 +1,7 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
+import java.util.List;
+import java.util.Collection;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.lov.CantileverType;
 import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
@@ -142,7 +144,8 @@ public class Cantilever extends CRUDEntity {
         return cantileverType;
     }
 
-    @OneToOne(mappedBy = "cantilever", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    // Sin orphanRemoval: el brazo que se quita se borra en logico (ver CRUDEntity.deleteCascade).
+    @OneToOne(mappedBy = "cantilever", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @SQLRestriction("deleted = false") // ver CRUDEntity
     public SteadyArm getSteadyArm() {
         return steadyArm;
@@ -204,5 +207,11 @@ public class Cantilever extends CRUDEntity {
     @Override
     public int hashCode() {
         return Cantilever.class.hashCode();
+    }
+
+    /** Lo que se borra con la mensula cuando una modificacion de su padre la quita (ver CRUDEntity). */
+    @Override
+    protected Collection<? extends CRUDEntity> ownedChildren() {
+        return getSteadyArm() == null ? List.of() : List.of(getSteadyArm());
     }
 }

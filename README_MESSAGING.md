@@ -4,6 +4,41 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ Los hijos escritos dentro de su padre publican su evento, también el `DELETED` de los que se quitan
+
+Ninguna clave nueva, renombrada ni quitada, y ningún nombre de entidad ni clave de enrutado nuevos:
+**se publican eventos que faltaban**. Hasta ahora una escritura solo publicaba el evento de su raíz.
+Lo que un `PUT` de un padre hacía con sus hijos (README_API.md §4) no publicaba nada:
+
+- el hijo que se **quitaba** —un perfil en `PUT /tracks/{id}`, un seccionador o un aislador en
+  `PUT /stations/{id}`, una vía o una estación en `PUT /execution-packages/{id}`, una ménsula en
+  `PUT /profiles/{id}`, el brazo en `PUT /cantilevers/{id}`— se borraba **en físico**, con toda su
+  rama, y sin `DELETED`. El consumidor lo conservaba para siempre, y el republicado no lo arreglaba,
+  porque solo recorre lo vivo;
+- el hijo que se **daba de alta** o se **modificaba** ahí dentro tampoco publicaba su `CREATED` ni su
+  `UPDATED`: solo viajaba, si acaso, dentro de la copia reducida del evento de su padre.
+
+Ahora cada entidad que publica (`station`, `track`, `profile`, `cantilever`, `steady-arm`,
+`disconnector`, `section-insulator`) deja su propio evento cuando se crea, se modifica o se quita
+dentro de la escritura de su padre, a cualquier profundidad, en la misma transacción y con los mismos
+`values` que en una escritura directa (§2.4). El hijo quitado se borra **en lógico**, como con su
+`DELETE`, y su `DELETED` viaja con sus `values`; también el de cada entidad que colgaba de él. Un hijo
+que llega sin cambios no publica.
+
+Lo que cambia para un consumidor es el **volumen**, y lo que tiene que hacer es nada si ya trata los
+tres eventos de cada entidad:
+
+- `mto-maintenance` recibe por fin el `DELETED` de `profile`, `disconnector` y `section-insulator`
+  quitados en anidado, y desactiva su activo como con un borrado directo. Los que se borraron así
+  **antes** de este cambio no tienen evento ni fila de la que sacarlo: siguen habilitados allí hasta
+  que se desactiven a mano en mantenimiento.
+- Quitar una vía de su paquete publica el `DELETED` de la vía y, además, el de cada perfil, ménsula y
+  brazo: en una vía grande son miles de eventos en una transacción.
+- `mto-resources` no cambia: `track-access-point` no viaja anidado en nadie. Una vía o una estación
+  modificada dentro de su paquete sí vuelve a publicar sus puntos de acceso, como cuando se modifica
+  sola.
+- `mto-stock` y `mto-notification` reciben más eventos de los que ya recibían, con la misma forma.
+
 ## ⚠️ El `kp` de `profile` y de `disconnector` puede llegar negativo
 
 Ninguna clave nueva, renombrada ni quitada: cambia el **rango** de un valor. Un poste de antes del
@@ -307,6 +342,43 @@ Lógica específica para eventos de entidades de infraestructura.
 
 *   **`MasterDataRabbitMqNames`**:
     Genera las routing-keys siguiendo el estándar: `mto.master-data.{entity}.{operation}`.
+
+#### Qué escrituras publican, y de quién
+
+Publica toda escritura que pasa por un servicio (`BaseService`: alta, modificación, lotes y borrado), y
+publica **cada entidad que esa escritura cambia**, no solo la que el servicio recibe:
+
+| Lo que pasa | Evento |
+|---|---|
+| alta, modificación o borrado directos (`POST`, `PUT`, `DELETE` del recurso) | el de la entidad, siempre: un `PUT` que no cambia nada publica igual su `UPDATED` |
+| un hijo sin `id` dentro del `POST` o el `PUT` de su padre | `CREATED` del hijo |
+| un hijo con `id` dentro del `PUT` de su padre, **si cambia algo de su fila** | `UPDATED` del hijo |
+| un hijo que el `PUT` de su padre deja fuera de la colección (o el brazo a `null`) | `DELETED` del hijo y de cada entidad de su rama |
+
+La raíz va primero y los demás detrás, en el orden en que se escribieron, todos en la transacción de
+negocio: si la petición se rechaza no queda ninguno. Cada evento es el mismo que publicaría la
+escritura directa de esa entidad: mismo nombre, misma clave de enrutado, mismos `values`.
+
+Cómo se sabe qué ha cambiado: no lo decide el mapper, que vuelca todos los hijos que llegan, sino
+Hibernate al hacer flush. `core.audit.EntityListener`, el listener JPA de todas las entidades, apunta
+cada `INSERT` y cada `UPDATE` en `EntityChangeTracker` mientras un servicio escribe, y el servicio,
+después del flush y del evento de su raíz, publica el evento de aplicación de cada entidad apuntada
+(`EntityChangeApplicationEvent`), que `MasterDataEntityChangedEventListener` lleva al outbox si la
+entidad tiene `@PublishMasterDataEvent`. Un hijo devuelto tal cual no genera `UPDATE` y no publica:
+un `PUT` de un paquete con sus vías y sus miles de perfiles sigue siendo un evento.
+
+El hijo quitado se borra **en lógico** con su rama (`CRUDEntity.deleteCascade`): es un `UPDATE` que
+deja `deleted = true`, y eso es lo que el listener lee como `DELETED`. Como en un borrado directo, la
+fila ya no se puede recargar (`@SQLRestriction`), así que el payload sale de la entidad en memoria,
+dentro de la transacción. Las agujas de un aislador se borran con él, pero no publican: viajan dentro
+del evento de su aislador.
+
+Dos límites, los dos a propósito:
+
+- el evento del **padre** no se publica porque cambie un hijo. Una ménsula modificada dentro de
+  `PUT /tracks/{id}` publica `cantilever` y `track` (la raíz); su perfil, que la lleva en
+  `cantilevers`, no publica si su fila no cambia. Es lo mismo que pasa con `PUT /cantilevers/{id}`;
+- lo que se escribe **sin pasar por un servicio** sigue sin publicar nada.
 
 #### Cambios en el contrato del evento `profile`
 

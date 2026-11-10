@@ -109,7 +109,11 @@ public abstract class TrackMapper implements BaseMapper<TrackDTO, Track> {
                     resolved.add(referenceResolver.resolve(id, Station.class));
                 }
             }
-            entity.setStations(resolved);
+            // Solo si cambian: sustituir el conjunto por otro igual reescribe la tabla de union y
+            // sube la version de la via, que saldria como modificada sin serlo.
+            if (!sameEntities(resolved, entity.getStations())) {
+                entity.setStations(resolved);
+            }
         }
     }
 

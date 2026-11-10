@@ -125,7 +125,7 @@ class ExecutionPackageChildMergeIT extends AbstractChildMergeIT {
                 List.of(viaDto(primeraViaId, "VIA PRINCIPAL"), viaDto(segundaViaId, "VIA 2")),
                 List.of(estacionDto(estacionId, "ATOCHA"))));
 
-        assertThat(contarFilas("track")).isEqualTo(2);
+        assertThat(contarVivas("track")).isEqualTo(2);
         assertThat(em.find(Track.class, primeraViaId).getName()).isEqualTo("VIA PRINCIPAL");
     }
 
@@ -141,9 +141,9 @@ class ExecutionPackageChildMergeIT extends AbstractChildMergeIT {
                     List.of(estacionDto(estacionId, "ATOCHA"))));
         }
 
-        assertThat(contarFilas("track")).isEqualTo(2);
-        assertThat(contarFilas("station")).isEqualTo(1);
-        assertThat(contarFilas("profile")).as("tres niveles abajo tampoco crece").isEqualTo(1);
+        assertThat(contarVivas("track")).isEqualTo(2);
+        assertThat(contarVivas("station")).isEqualTo(1);
+        assertThat(contarVivas("profile")).as("tres niveles abajo tampoco crece").isEqualTo(1);
     }
 
     private static ProfileDTO perfilDto(Long id, String profileId, String kp) {
@@ -166,7 +166,7 @@ class ExecutionPackageChildMergeIT extends AbstractChildMergeIT {
 
         assertThat(em.find(Track.class, primeraViaId).getName()).isEqualTo("VIA PRINCIPAL");
         assertThat(em.find(Profile.class, perfilId).getProfileId()).isEqualTo("P-001-BIS");
-        assertThat(contarFilas("profile")).isEqualTo(1);
+        assertThat(contarVivas("profile")).isEqualTo(1);
     }
 
     @Test
@@ -176,9 +176,9 @@ class ExecutionPackageChildMergeIT extends AbstractChildMergeIT {
                 List.of(viaDto(primeraViaId, "VIA PRINCIPAL"), viaDto(null, "VIA 3")),
                 List.of(estacionDto(estacionId, "ATOCHA"), estacionDto(null, "CHAMARTIN"))));
 
-        assertThat(contarFilas("track")).isEqualTo(2);
+        assertThat(contarVivas("track")).isEqualTo(2);
         assertThat(em.find(Track.class, segundaViaId)).as("la via 2 no venia: se borra").isNull();
-        assertThat(contarFilas("station")).isEqualTo(2);
+        assertThat(contarVivas("station")).isEqualTo(2);
     }
 
     @Test
@@ -189,7 +189,10 @@ class ExecutionPackageChildMergeIT extends AbstractChildMergeIT {
                 List.of(estacionDto(estacionId, "ATOCHA"))));
 
         assertThat(em.find(Track.class, primeraViaId)).isNull();
-        assertThat(contarFilas("profile")).as("el perfil se va con su via").isZero();
+        assertThat(contarVivas("profile")).as("el perfil se va con su via").isZero();
+        // En logico, los dos: las filas siguen en la tabla.
+        assertThat(estaBorrada("track", primeraViaId)).isTrue();
+        assertThat(contarFilas("profile")).isEqualTo(1);
     }
 
     @Test

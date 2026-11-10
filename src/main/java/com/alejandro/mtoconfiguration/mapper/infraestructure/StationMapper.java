@@ -156,6 +156,12 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
                 continue;
             }
             Track ligada = childDto.getId() == null ? null : ligadas.get(childDto.getId());
+            if (ligada != null && ligada.isDeleted()) {
+                // La misma peticion acaba de quitarla de su paquete (un PUT del paquete trae cada
+                // via dos veces: en «tracks» y dentro de sus estaciones). Ya esta borrada, con su
+                // rama: volcar encima la copia de la estacion la reescribiria despues de borrada.
+                continue;
+            }
             if (ligada != null) {
                 trackChildMapper.updateEntityFromDTO(childDto, ligada);
                 // El lado dueño es Track.stations, asi que el vinculo se afirma ahi tambien. Es

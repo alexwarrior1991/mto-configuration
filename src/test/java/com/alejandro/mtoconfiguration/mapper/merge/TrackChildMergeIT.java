@@ -118,7 +118,7 @@ class TrackChildMergeIT extends AbstractChildMergeIT {
                 perfilDto(primerPerfilId, "P-001-BIS", "11.000"),
                 perfilDto(segundoPerfilId, "P-002", "20.000"))));
 
-        assertThat(contarFilas("profile")).isEqualTo(2);
+        assertThat(contarVivas("profile")).isEqualTo(2);
         assertThat(em.find(Profile.class, primerPerfilId).getProfileId()).isEqualTo("P-001-BIS");
     }
 
@@ -132,8 +132,8 @@ class TrackChildMergeIT extends AbstractChildMergeIT {
             aplicar(peticion(List.of(primero, perfilDto(segundoPerfilId, "P-002", "20.000"))));
         }
 
-        assertThat(contarFilas("profile")).isEqualTo(2);
-        assertThat(contarFilas("cantilever")).as("el subarbol tampoco crece").isEqualTo(1);
+        assertThat(contarVivas("profile")).isEqualTo(2);
+        assertThat(contarVivas("cantilever")).as("el subarbol tampoco crece").isEqualTo(1);
     }
 
     @Test
@@ -144,17 +144,24 @@ class TrackChildMergeIT extends AbstractChildMergeIT {
 
         aplicar(peticion(List.of(primero, perfilDto(segundoPerfilId, "P-002", "20.000"))));
 
-        assertThat(contarFilas("cantilever")).isEqualTo(1);
+        assertThat(contarVivas("cantilever")).isEqualTo(1);
         assertThat(em.find(Cantilever.class, mensulaId).getCwHeight()).isEqualByComparingTo("9.999");
     }
 
     @Test
-    @DisplayName("quitar un perfil lo borra a el y en cascada a sus mensulas")
+    @DisplayName("quitar un perfil lo borra en logico a el y en cascada a sus mensulas, y las filas se quedan")
     void borradoEnCascada() {
         aplicar(peticion(List.of(perfilDto(segundoPerfilId, "P-002", "20.000"))));
 
         assertThat(em.find(Profile.class, primerPerfilId)).isNull();
-        assertThat(contarFilas("cantilever")).as("la mensula se va con su perfil").isZero();
+        assertThat(contarVivas("cantilever")).as("la mensula se va con su perfil").isZero();
+        // Borrado logico, como el DELETE directo: antes orphanRemoval quitaba las filas, sin
+        // evento y sin historial. La via ya no lo trae, y la fila sigue en la tabla.
+        assertThat(estaBorrada("profile", primerPerfilId)).isTrue();
+        assertThat(contarFilas("profile")).isEqualTo(2);
+        assertThat(contarFilas("cantilever")).as("la fila de la mensula tambien se queda").isEqualTo(1);
+        assertThat(em.find(Track.class, viaId).getProfiles())
+                .extracting(perfil -> perfil.getId()).containsExactly(segundoPerfilId);
     }
 
     @Test
@@ -174,8 +181,8 @@ class TrackChildMergeIT extends AbstractChildMergeIT {
                 perfilDto(segundoPerfilId, "P-002", "20.000"),
                 nuevo)));
 
-        assertThat(contarFilas("profile")).isEqualTo(3);
-        assertThat(contarFilas("cantilever")).as("la del perfil viejo mas la del nuevo").isEqualTo(2);
+        assertThat(contarVivas("profile")).isEqualTo(3);
+        assertThat(contarVivas("cantilever")).as("la del perfil viejo mas la del nuevo").isEqualTo(2);
     }
 
     @Test
@@ -188,8 +195,8 @@ class TrackChildMergeIT extends AbstractChildMergeIT {
                 perfilDto(primerPerfilId, "P-001", "10.000"),   // sin cantilevers
                 perfilDto(segundoPerfilId, "P-002", "20.000"))));
 
-        assertThat(contarFilas("profile")).isEqualTo(2);
-        assertThat(contarFilas("cantilever")).as("la mensula omitida se borra").isZero();
+        assertThat(contarVivas("profile")).isEqualTo(2);
+        assertThat(contarVivas("cantilever")).as("la mensula omitida se borra").isZero();
     }
 
     @Test
@@ -197,7 +204,8 @@ class TrackChildMergeIT extends AbstractChildMergeIT {
     void listaVaciaBorraTodo() {
         aplicar(peticion(List.of()));
 
-        assertThat(contarFilas("profile")).isZero();
-        assertThat(contarFilas("cantilever")).isZero();
+        assertThat(contarVivas("profile")).isZero();
+        assertThat(contarVivas("cantilever")).isZero();
+        assertThat(contarFilas("profile")).as("marcados, no quitados").isEqualTo(2);
     }
 }

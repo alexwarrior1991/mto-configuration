@@ -144,7 +144,9 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
                     resolved.add(anchorage);
                 }
             }
-            entity.setAnchorages(resolved);
+            if (!sameEntities(resolved, entity.getAnchorages())) { // ver BaseMapper.sameEntities
+                entity.setAnchorages(resolved);
+            }
         }
         if (dto.getAnchorageFoundation() != null) {
             entity.setAnchorageFoundation(masterDataService.getAnchorageFoundationByCode(dto.getAnchorageFoundation().getCode()));
@@ -184,7 +186,9 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
                     resolved.add(sectioning);
                 }
             }
-            entity.setSectionings(resolved);
+            if (!sameEntities(resolved, entity.getSectionings())) { // ver BaseMapper.sameEntities
+                entity.setSectionings(resolved);
+            }
         }
         if (dto.getSectioningFeedings() != null) {
             Set<DisconnectorFunction> resolved = new LinkedHashSet<>();
@@ -198,7 +202,9 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
                     resolved.add(function);
                 }
             }
-            entity.setSectioningFeedings(resolved);
+            if (!sameEntities(resolved, entity.getSectioningFeedings())) { // ver BaseMapper.sameEntities
+                entity.setSectioningFeedings(resolved);
+            }
         }
 
         // 2. Reconciliación de la colección de Cantilevers.

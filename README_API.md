@@ -178,8 +178,19 @@ decide qué hacer con cada hijo según traiga `id` o no:
 |---|---|
 | hijo **con `id`** que ya existe | **UPDATE** de esa fila |
 | hijo **sin `id`** | **INSERT** de fila nueva |
-| hijo que existe y **no mandas** | **DELETE** de esa fila |
+| hijo que existe y **no mandas** | se **borra**, él y lo que cuelga de él, igual que con su `DELETE` |
 | hijo con un `id` que no es de este padre | se **ignora** |
+
+El borrado es **lógico**, como el de `DELETE $BASE/{recurso}/{id}`: la fila se queda marcada, con su
+`id` y su historial, y deja de salir en las lecturas. A diferencia del `DELETE` directo, que no toca
+lo que cuelga de un maestro, quitar un hijo de su padre se lleva su rama: quitar una vía del `PUT` de
+su paquete borra sus perfiles, las ménsulas de esos perfiles y sus brazos (no sus seccionadores, sus
+aisladores ni sus puntos de acceso, que no son hijos de la vía).
+
+**Cada hijo publica su propio evento**, en la misma transacción que el del padre
+(README_MESSAGING.md §2.4): `DELETED` el que se quita y cada entidad de su rama, `CREATED` el que
+llega sin `id` y `UPDATED` el que llega con cambios. Un hijo que devuelves tal como lo leíste no se
+escribe, no cambia de `versionNumber` y no publica nada.
 
 ### Ejemplo completo
 
@@ -214,8 +225,11 @@ Resultado:
 id=1     UPDATE  cw_height=9.999    <- venía con id: se actualiza
 id=2     UPDATE  cw_height=6.000    <- venía con id: se actualiza (sin cambios reales)
 id=57    INSERT  cw_height=7.777    <- venía sin id: fila nueva
-                                       la 3 no venía: BORRADA
+                                       la 3 no venía: BORRADA (deleted = true)
 ```
+
+Y en el outbox, además del `UPDATED` del perfil 7: `UPDATED` de la ménsula 1, `CREATED` de la 57 y
+`DELETED` de la 3. La 2 no ha cambiado y no publica.
 
 ### Los dos errores que cuestan datos
 
@@ -262,7 +276,12 @@ ZIC que no la menciona la borrara, se la llevaría por delante también a BIN y 
 perfiles. Para dar de baja una vía de verdad está `DELETE $BASE/tracks/{id}`.
 
 Y **anida**: en un `PUT $BASE/execution-packages/{id}` puedes traer vías, y dentro de cada vía sus
-perfiles, y dentro de cada perfil sus ménsulas. Cada nivel se reconcilia con la misma regla.
+perfiles, y dentro de cada perfil sus ménsulas. Cada nivel se reconcilia con la misma regla, y cada
+entidad que cambia publica su evento, a cualquier profundidad.
+
+El paquete trae cada vía dos veces, en `tracks` y dentro de cada una de sus `stations`. La que
+quitas de `tracks` queda borrada aunque siga dentro de una estación del mismo cuerpo: esa copia se
+ignora.
 
 ### En qué orden te llegan los hijos
 
@@ -285,7 +304,7 @@ necesitas mover un perfil dentro de la vía, lo que se cambia es su `kp`.
 La relación 1:1 va aparte, y no funciona igual en los dos casos:
 
 - **`cantilevers.steadyArm`**: mandar el objeto crea el brazo o lo actualiza, y mandar `null` lo
-  quita. Una ménsula lleva un brazo vivo como mucho (un segundo es 409 `BUS-002`), y uno borrado
+  quita: se borra en lógico y publica su `DELETED`, como un hijo de una colección. Una ménsula lleva un brazo vivo como mucho (un segundo es 409 `BUS-002`), y uno borrado
   no cuenta (`V30`): tras `DELETE $BASE/steady-arms/{id}` se puede dar de alta otro en la misma
   ménsula, con `POST $BASE/steady-arms` y su `cantileverId` o dentro del `PUT` de la ménsula.
 - **`profiles.disconnectors`** (y `profiles.disconnector`): son **solo de salida**, como `profileCode`

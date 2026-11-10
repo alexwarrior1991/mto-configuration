@@ -96,6 +96,9 @@ public abstract class CantileverMapper implements BaseMapper<CantileverDTO, Cant
         SteadyArm current = entity.getSteadyArm();
 
         if (dto == null) {
+            // Quitarlo es borrarlo en logico, como su DELETE directo, y publica su evento
+            // (BaseMapper.removeChild). El brazo conserva su mensula sin ocuparla (V30).
+            removeChild(current);
             entity.setSteadyArm(null);
             return;
         }

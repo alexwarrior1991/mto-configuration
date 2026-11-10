@@ -119,7 +119,7 @@ class ProfileChildMergeIT extends AbstractChildMergeIT {
                 mensulaDto(segundaMensulaId, "6.000"),
                 mensulaDto(terceraMensulaId, "6.500"))));
 
-        assertThat(contarFilas("cantilever")).isEqualTo(3);
+        assertThat(contarVivas("cantilever")).isEqualTo(3);
         assertThat(em.find(Cantilever.class, primeraMensulaId).getCwHeight()).isEqualByComparingTo("9.999");
     }
 
@@ -134,19 +134,20 @@ class ProfileChildMergeIT extends AbstractChildMergeIT {
                     mensulaDto(terceraMensulaId, "6.500"))));
         }
 
-        assertThat(contarFilas("cantilever")).isEqualTo(3);
+        assertThat(contarVivas("cantilever")).isEqualTo(3);
         assertThat(em.find(Cantilever.class, primeraMensulaId).getCwHeight()).isEqualByComparingTo("6.300");
     }
 
     @Test
-    @DisplayName("quitar una mensula de la peticion la BORRA de la tabla")
+    @DisplayName("quitar una mensula de la peticion la borra en logico: la fila se queda, marcada")
     void quitarBorraLaFila() {
         aplicar(peticion(List.of(
                 mensulaDto(primeraMensulaId, "5.500"),
                 mensulaDto(segundaMensulaId, "6.000"))));
 
-        assertThat(contarFilas("cantilever")).isEqualTo(2);
+        assertThat(contarVivas("cantilever")).isEqualTo(2);
         assertThat(em.find(Cantilever.class, terceraMensulaId)).isNull();
+        assertThat(estaBorrada("cantilever", terceraMensulaId)).isTrue();
     }
 
     @Test
@@ -160,7 +161,7 @@ class ProfileChildMergeIT extends AbstractChildMergeIT {
                 mensulaDto(segundaMensulaId, "6.000"),
                 mensulaDto(null, "7.777"))));
 
-        assertThat(contarFilas("cantilever")).isEqualTo(3);
+        assertThat(contarVivas("cantilever")).isEqualTo(3);
         assertThat(em.find(Cantilever.class, terceraMensulaId)).isNull();
     }
 
@@ -187,7 +188,7 @@ class ProfileChildMergeIT extends AbstractChildMergeIT {
                 mensulaDto(segundaMensulaId, "6.000"),   // sin tocar
                 mensulaDto(null, "7.777"))));            // nueva; la tercera no viene
 
-        assertThat(contarFilas("cantilever")).isEqualTo(3);
+        assertThat(contarVivas("cantilever")).isEqualTo(3);
         assertThat(em.find(Cantilever.class, primeraMensulaId).getCwHeight()).isEqualByComparingTo("9.999");
         assertThat(em.find(Cantilever.class, segundaMensulaId).getCwHeight()).isEqualByComparingTo("6.000");
         assertThat(em.find(Cantilever.class, terceraMensulaId)).isNull();
@@ -216,7 +217,7 @@ class ProfileChildMergeIT extends AbstractChildMergeIT {
     void listaVaciaBorraTodo() {
         aplicar(peticion(List.of()));
 
-        assertThat(contarFilas("cantilever")).isZero();
+        assertThat(contarVivas("cantilever")).isZero();
     }
 
     @Test

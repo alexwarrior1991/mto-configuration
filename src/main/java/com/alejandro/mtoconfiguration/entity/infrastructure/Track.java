@@ -1,5 +1,7 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
+import java.util.List;
+import java.util.Collection;
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
@@ -121,7 +123,7 @@ public class Track extends CRUDEntity {
      * moria con "Illegal null value for list index". Un 500 al abrir la via, provocado por una
      * peticion anterior que no habia fallado.
      */
-    @OneToMany(mappedBy = "track", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "track", cascade = CascadeType.ALL) // sin orphanRemoval: ver CRUDEntity.deleteCascade
     @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @OrderBy("orderInTrack ASC, kp ASC, id ASC")
     @Audited(targetAuditMode = NOT_AUDITED)
@@ -183,5 +185,11 @@ public class Track extends CRUDEntity {
         return Comparator.comparing(Track::getExecutionPackage, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(Track::getName, Comparator.nullsLast(Comparator.naturalOrder()))
                 .compare(this, other);
+    }
+
+    /** Lo que se borra con la via cuando una modificacion de su padre la quita (ver CRUDEntity). */
+    @Override
+    protected Collection<? extends CRUDEntity> ownedChildren() {
+        return getProfiles() == null ? List.of() : List.copyOf(getProfiles());
     }
 }

@@ -28,6 +28,11 @@
   propio `job.finished`— viajan agrupados bajo él. El MDC de la petición cruza al hilo de fondo por
   `MdcTaskDecorator` en el executor de la aplicación. Lo fijan `JobCorrelationTest`,
   `ProfileJobServiceTest` y `MdcTaskDecoratorTest`.
+- Publica cada entidad que una escritura cambia, no solo su raíz: el hijo creado, modificado o
+  quitado dentro del `PUT` de su padre deja su `CREATED`, `UPDATED` o `DELETED` (y el quitado, el de
+  cada entidad de su rama), con los mismos `values` que su escritura directa. Lo decide el flush de
+  Hibernate, no el mapper, así que lo que no cambia no publica (README_MESSAGING.md §2.4, ver
+  `services.md`). Lo fija `NestedChildEventsIT`.
 - El evento se escribe en el outbox dentro de la transacción de negocio
   (`MasterDataEntityChangedEventListener` es un `@EventListener` síncrono) y el relay lo publica
   después. Solo el relay habla con el broker (`OutboxRabbitPublisher`), y no arranca sin publisher

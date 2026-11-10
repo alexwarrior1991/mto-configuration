@@ -1,5 +1,8 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Collection;
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.configuration.BusinessEntity;
@@ -95,7 +98,7 @@ public class ExecutionPackage extends CRUDEntity {
         return company;
     }
 
-    @OneToMany(mappedBy = "executionPackage", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "executionPackage", cascade = CascadeType.ALL) // sin orphanRemoval: ver CRUDEntity.deleteCascade
     @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @Audited(targetAuditMode = NOT_AUDITED)
     public Set<Track> getTracks() {
@@ -120,7 +123,7 @@ public class ExecutionPackage extends CRUDEntity {
         return getTracks().contains(track);
     }
 
-    @OneToMany(mappedBy = "executionPackage", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "executionPackage", cascade = CascadeType.ALL) // sin orphanRemoval: ver CRUDEntity.deleteCascade
     @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @Audited(targetAuditMode = NOT_AUDITED)
     public Set<Station> getStations() {
@@ -180,5 +183,18 @@ public class ExecutionPackage extends CRUDEntity {
         return Comparator.comparing(ExecutionPackage::getStartDate, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(ExecutionPackage::getName, Comparator.nullsLast(Comparator.naturalOrder()))
                 .compare(this, other);
+    }
+
+    /** Lo que se borra con el paquete cuando una modificacion de su padre lo quita (ver CRUDEntity). */
+    @Override
+    protected Collection<? extends CRUDEntity> ownedChildren() {
+        List<CRUDEntity> children = new ArrayList<>();
+        if (getTracks() != null) {
+            children.addAll(getTracks());
+        }
+        if (getStations() != null) {
+            children.addAll(getStations());
+        }
+        return children;
     }
 }

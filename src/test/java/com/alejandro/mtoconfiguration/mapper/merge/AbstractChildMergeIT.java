@@ -33,8 +33,8 @@ import java.util.Optional;
  * <p>Los tests unitarios de los mappers demuestran que el objeto queda bien <b>en memoria</b>:
  * la instancia existente se reutiliza, no aparecen copias y los hijos apuntan a su padre. Lo que
  * no pueden demostrar es lo unico que le importa al usuario: el SQL que Hibernate emite al hacer
- * flush. Que el UPDATE caiga en la fila correcta, que {@code orphanRemoval} borre exactamente la
- * que se quito, que no se cuele ningun INSERT de mas y que el orden de la coleccion siga siendo el
+ * flush. Que el UPDATE caiga en la fila correcta, que se marque como borrada exactamente la
+ * que se quito (y su rama, y ninguna fila desaparezca), que no se cuele ningun INSERT de mas y que el orden de la coleccion siga siendo el
  * esperado tras sacar un hijo del medio son cosas que solo se ven contra una base de datos.
  *
  * <p>Por eso cada test sigue siempre el mismo guion: persistir el estado inicial, vaciar el
@@ -103,6 +103,22 @@ public abstract class AbstractChildMergeIT {
     /** Numero de filas de una tabla, leido directamente en SQL para no pasar por el contexto. */
     protected long contarFilas(String tabla) {
         return ((Number) em.createNativeQuery("select count(*) from " + tabla).getSingleResult()).longValue();
+    }
+
+    /**
+     * Las filas que siguen vivas. El hijo que se quita de su padre ya no desaparece de la tabla:
+     * se borra en logico ({@code CRUDEntity.deleteCascade}), asi que "se ha borrado" es
+     * {@code deleted = true} y la fila sigue ahi, con su id y su historial.
+     */
+    protected long contarVivas(String tabla) {
+        return ((Number) em.createNativeQuery("select count(*) from " + tabla + " where deleted = false")
+                .getSingleResult()).longValue();
+    }
+
+    /** Si la fila esta marcada como borrada; falla si no existe, que es justo lo que no debe pasar. */
+    protected boolean estaBorrada(String tabla, Long id) {
+        return (Boolean) em.createNativeQuery("select deleted from " + tabla + " where id = " + id)
+                .getSingleResult();
     }
 
     @TestConfiguration

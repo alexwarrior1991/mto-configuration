@@ -250,6 +250,44 @@ class BaseMapperTest {
         }
 
         @Test
+        @DisplayName("el hijo que no llega se borra en logico, con su rama; el que llega, no")
+        void elQueNoLlegaSeBorraEnLogico() {
+            // Antes solo salia de la coleccion y orphanRemoval quitaba la fila, sin evento. Marcado,
+            // Hibernate lo escribe como un UPDATE y el servicio publica su DELETED y el de su rama.
+            Parent parent = new Parent();
+            Child nieto = new Child(30L);
+            Child quitado = new Child(1L) {
+                @Override
+                protected java.util.Collection<? extends CRUDEntity> ownedChildren() {
+                    return List.of(nieto);
+                }
+            };
+            Child conservado = new Child(2L);
+            List<Child> entities = new ArrayList<>(List.of(quitado, conservado));
+
+            mapper.mergeCollection(List.of(new TestDTO(2L)), entities, parent,
+                    dto -> new Child(null), (dto, child) -> { }, Child::setParent);
+
+            assertThat(entities).containsExactly(conservado);
+            assertThat(quitado.isDeleted()).isTrue();
+            assertThat(nieto.isDeleted()).as("lo que cuelga del quitado se borra con el").isTrue();
+            assertThat(conservado.isDeleted()).isFalse();
+        }
+
+        @Test
+        @DisplayName("dos colecciones son las mismas filas si coinciden sus ids, sin mirar el orden")
+        void mismasFilas() {
+            assertThat(mapper.sameEntities(List.of(new Child(1L), new Child(2L)),
+                    Set.of(new Child(2L), new Child(1L)))).isTrue();
+            assertThat(mapper.sameEntities(List.<Child>of(), new HashSet<Child>())).isTrue();
+            assertThat(mapper.sameEntities(List.of(new Child(1L)), List.of(new Child(2L)))).isFalse();
+            assertThat(mapper.sameEntities(List.of(new Child(1L)), List.of(new Child(1L), new Child(2L)))).isFalse();
+            assertThat(mapper.sameEntities(List.of(new Child(1L)), null)).isFalse();
+            assertThat(mapper.sameEntities(List.of(new Child(null)), List.of(new Child(null))))
+                    .as("sin id no se sabe si es la misma").isFalse();
+        }
+
+        @Test
         @DisplayName("una lista nula no toca la coleccion")
         void listaNulaNoToca() {
             // null NO es lo mismo que vacia: es "de esta coleccion no se ha dicho nada". El

@@ -1,5 +1,8 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Collection;
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
@@ -62,10 +65,10 @@ public class Station extends CRUDEntity {
      * Vias que pasan por la estacion. Lado INVERSO de la N:M: la duena es
      * {@code Track.stations}, que es la que tiene la tabla de union.
      *
-     * <p>Sin {@code orphanRemoval} y sin {@code CascadeType.REMOVE}, a diferencia de los
+     * <p>Sin {@code CascadeType.REMOVE}, y fuera de {@code ownedChildren()}, a diferencia de los
      * seccionadores y los aisladores de aqui abajo, y no es un descuido: una via puede
      * pertenecer a tres estaciones, asi que quitarla de esta coleccion tiene que desligarla,
-     * nunca borrarla. Con {@code orphanRemoval} un PUT sobre ZIC que no mencionara 'TRACK 1'
+     * nunca borrarla. Tratada como un hijo, un PUT sobre ZIC que no mencionara 'TRACK 1'
      * habria borrado la via entera, con sus perfiles, tambien para BIN y para HAD.
      *
      * <p>{@code PERSIST} y {@code MERGE} si se quedan: sin ellos, una via NUEVA creada dentro
@@ -97,7 +100,7 @@ public class Station extends CRUDEntity {
     }
 
 
-    @OneToMany(mappedBy = "station", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "station", cascade = CascadeType.ALL) // sin orphanRemoval: ver CRUDEntity.deleteCascade
     @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @Audited(targetAuditMode = NOT_AUDITED)
     public Set<Disconnector> getDisconnectors() {
@@ -122,7 +125,7 @@ public class Station extends CRUDEntity {
         return getDisconnectors().contains(disconnector);
     }
 
-    @OneToMany(mappedBy = "station", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "station", cascade = CascadeType.ALL) // sin orphanRemoval: ver CRUDEntity.deleteCascade
     @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @Audited(targetAuditMode = NOT_AUDITED)
     public Set<SectionInsulator> getSectionInsulators() {
@@ -182,5 +185,14 @@ public class Station extends CRUDEntity {
         return Comparator.comparing(Station::getExecutionPackage, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(Station::getName, Comparator.nullsLast(Comparator.naturalOrder()))
                 .compare(this, other);
+    }
+
+    /** Lo que se borra con la estacion cuando una modificacion de su padre la quita (ver CRUDEntity). */
+    @Override
+    protected Collection<? extends CRUDEntity> ownedChildren() {
+        // Las vias no: son N:M, y una via existe sin esta estacion.
+        List<CRUDEntity> children = new ArrayList<>(getDisconnectors());
+        children.addAll(getSectionInsulators());
+        return children;
     }
 }

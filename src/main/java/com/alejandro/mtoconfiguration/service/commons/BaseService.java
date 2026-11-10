@@ -15,6 +15,7 @@ import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.CriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeApplicationEvent;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeOperation;
+import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeTracker;
 import com.alejandro.mtoconfiguration.utils.Utils;
 import com.alejandro.mtoconfiguration.validator.commons.Validator;
 import com.querydsl.core.BooleanBuilder;
@@ -125,7 +126,36 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
             return;
         }
 
+        EntityChangeTracker.markPublished(entity);
+
         applicationEventPublisher.publishEvent(new EntityChangeApplicationEvent<>(entity, operation));
+    }
+
+    /**
+     * Ejecuta una escritura apuntando lo que Hibernate escribe ademas de la raiz: los hijos que el
+     * mapper crea, modifica o quita dentro de la peticion de su padre (ver
+     * {@link EntityChangeTracker}).
+     */
+    private <R> R trackingNestedChanges(Supplier<R> write) {
+        try (EntityChangeTracker.Scope ignored = EntityChangeTracker.open()) {
+            return write.get();
+        }
+    }
+
+    /**
+     * Publica el evento de cada entidad que la escritura ha creado, modificado o borrado ademas
+     * de su raiz, por el mismo camino que una escritura directa: el evento de aplicacion que
+     * {@code MasterDataEntityChangedEventListener} convierte en fila del outbox, en esta misma
+     * transaccion, si la entidad lleva {@code @PublishMasterDataEvent}.
+     *
+     * <p>Se llama <b>despues del flush</b> y de publicar la raiz: hasta el flush no se sabe que
+     * filas cambian de verdad, y lo que se escribiera despues de esta llamada no publicaria.
+     */
+    private void publishNestedChanges() {
+        for (EntityChangeTracker.Change change : EntityChangeTracker.drain()) {
+            applicationEventPublisher.publishEvent(
+                    new EntityChangeApplicationEvent<>(change.entity(), change.operation()));
+        }
     }
 
     /**
@@ -212,7 +242,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
             rollbackOn = {ValidationException.class, Exception.class}
     )
     public T create(T dto) throws BaseException {
-        return Optional.ofNullable(dto)
+        return trackingNestedChanges(() -> Optional.ofNullable(dto)
                 .map(d -> {
                     validateBeforeCreate(d);
                     return d;
@@ -230,11 +260,12 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
                     publishEntityCreatedEvent(savedEntity);
+                    publishNestedChanges();
                     getMapper().updateDTOFromEntity(savedEntity, dto);
                     publishCacheEvictionEvent();
                     return dto;
                 })
-                .orElseThrow(() -> new BaseException("No se puede crear un objeto nulo"));
+                .orElseThrow(() -> new BaseException("No se puede crear un objeto nulo")));
 
     }
 
@@ -242,7 +273,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
             rollbackOn = {ValidationException.class, Exception.class}
     )
     public List<T> bulkCreate(List<T> dtoList) throws BaseException {
-        return Optional.ofNullable(dtoList)
+        return trackingNestedChanges(() -> Optional.ofNullable(dtoList)
                 .filter(CollectionUtils::isNotEmpty)
                 .map(list -> {
                     validateBeforeBulkCreate(list);
@@ -253,17 +284,18 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(savedEntities -> {
                     getRepository().flush();
                     savedEntities.forEach(this::publishEntityCreatedEvent);
+                    publishNestedChanges();
                     publishCacheEvictionEvent();
                     return getMapper().toListDTO(savedEntities);
                 })
-                .orElseGet(Collections::emptyList);
+                .orElseGet(Collections::emptyList));
     }
 
     @Transactional(
             rollbackOn = {ValidationException.class, ConcurrencyException.class, Exception.class}
     )
     public T update(T dto) throws BaseException {
-        return Optional.ofNullable(dto)
+        return trackingNestedChanges(() -> Optional.ofNullable(dto)
                 .filter(Utils::exists)
                 .map(d -> {
                     validateBeforeUpdate(d);
@@ -290,18 +322,19 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
                     publishEntityUpdatedEvent(savedEntity);
+                    publishNestedChanges();
                     getMapper().updateDTOFromEntity(savedEntity, dto);
                     publishCacheEvictionEvent();
                     return dto;
                 })
-                .orElseThrow(() -> new BaseException("No se puede actualizar un objeto nulo o sin ID"));
+                .orElseThrow(() -> new BaseException("No se puede actualizar un objeto nulo o sin ID")));
     }
 
     @Transactional(
             rollbackOn = {ValidationException.class, ConcurrencyException.class, Exception.class}
     )
     public List<T> bulkUpdate(List<T> dtoList) throws BaseException {
-        return Optional.ofNullable(dtoList)
+        return trackingNestedChanges(() -> Optional.ofNullable(dtoList)
                 .filter(CollectionUtils::isNotEmpty)
                 .map(list -> {
                     validateBeforeBulkUpdate(list);
@@ -335,10 +368,11 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(savedEntities -> {
                     getRepository().flush();
                     savedEntities.forEach(this::publishEntityUpdatedEvent);
+                    publishNestedChanges();
                     publishCacheEvictionEvent();
                     return getMapper().toListDTO(savedEntities);
                 })
-                .orElseGet(Collections::emptyList);
+                .orElseGet(Collections::emptyList));
     }
 
 
@@ -346,7 +380,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
             rollbackOn = {ValidationException.class, ConcurrencyException.class, Exception.class}
     )
     public T cancel(T dto) throws BaseException {
-        return Optional.ofNullable(dto)
+        return trackingNestedChanges(() -> Optional.ofNullable(dto)
                 .filter(Utils::exists)
                 .map(T::getId)
                 .map(getRepository()::getReferenceById)
@@ -367,11 +401,12 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
                     publishEntityUpdatedEvent(savedEntity);
+                    publishNestedChanges();
                     getMapper().updateDTOFromEntity(savedEntity, dto);
                     publishCacheEvictionEvent();
                     return dto;
                 })
-                .orElseThrow(() -> new BaseException("No se puede cancelar un objeto nulo o sin ID"));
+                .orElseThrow(() -> new BaseException("No se puede cancelar un objeto nulo o sin ID")));
     }
 
     /**

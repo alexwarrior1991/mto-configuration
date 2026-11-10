@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
+import java.util.Collection;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.enums.infrastructure.SectionInsulatorInstallationType;
 import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEvent;
@@ -139,7 +140,7 @@ public class SectionInsulator extends CRUDEntity {
      * kilometración reiniciada que ordenar por KP pudiera mezclar. El id desempata, y PostgreSQL
      * deja los nulos al final con {@code asc}, que es donde deben ir.
      */
-    @OneToMany(mappedBy = "sectionInsulator", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "sectionInsulator", cascade = CascadeType.ALL) // sin orphanRemoval: ver CRUDEntity.deleteCascade
     @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @OrderBy("kp ASC, id ASC")
     @Audited(targetAuditMode = NOT_AUDITED)
@@ -204,5 +205,11 @@ public class SectionInsulator extends CRUDEntity {
     @Override
     public int hashCode() {
         return SectionInsulator.class.hashCode();
+    }
+
+    /** Lo que se borra con el aislador cuando una modificacion de su padre lo quita (ver CRUDEntity). */
+    @Override
+    protected Collection<? extends CRUDEntity> ownedChildren() {
+        return getSwitches() == null ? List.of() : List.copyOf(getSwitches());
     }
 }

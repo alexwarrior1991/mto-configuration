@@ -1,11 +1,13 @@
 package com.alejandro.mtoconfiguration.mapper.commons;
 
+import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.commons.IEntity;
 import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
 import org.mapstruct.MappingTarget;
 import org.springframework.data.domain.Page;
 
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -191,7 +193,8 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
      *
      * <ol>
      *   <li>se retiran los hijos existentes cuyo id no viene en la peticion (el cliente los ha
-     *       quitado; {@code orphanRemoval} los borrara);</li>
+     *       quitado): se borran en logico, con su rama, y publican su {@code DELETED}
+     *       ({@link #removeChild});</li>
      *   <li>cada DTO con id se vuelca sobre el hijo que ya esta en la coleccion, de modo que la
      *       fila se actualiza en lugar de duplicarse;</li>
      *   <li>cada DTO sin id se mapea a un hijo nuevo y se añade.</li>
@@ -241,7 +244,16 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
 
         // 1. Los que el cliente ha quitado. Solo se miran los que ya tienen id: un hijo sin id es
         //    uno recien añadido en esta misma peticion y no puede estar en la lista de ids.
-        entities.removeIf(entity -> entity.getId() != null && !incomingIds.contains(entity.getId()));
+        //    Se borran en logico, con su rama, y salen de la coleccion en memoria, que es lo que
+        //    se devuelve y lo que lee el evento del padre.
+        for (Iterator<C> each = entities.iterator(); each.hasNext(); ) {
+            C entity = each.next();
+
+            if (entity.getId() != null && !incomingIds.contains(entity.getId())) {
+                removeChild(entity);
+                each.remove();
+            }
+        }
 
         Map<Long, C> byId = entities.stream()
                 .filter(entity -> entity.getId() != null)
@@ -272,6 +284,39 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
         entities.forEach(child -> linker.accept(child, parent));
     }
 
+
+    /**
+     * Lo que le pasa al hijo que el cliente ha quitado de su padre: se borra en logico, el y lo que
+     * cuelga de el ({@code CRUDEntity.deleteCascade}), igual que con su {@code DELETE} directo.
+     *
+     * <p>Antes lo borraba {@code orphanRemoval}, en fisico y sin evento. Marcado, Hibernate lo
+     * escribe como un {@code UPDATE}, el listener de {@code BaseEntity} lo apunta y el servicio
+     * publica su {@code DELETED} y el de cada entidad de su rama (ver {@code EntityChangeTracker}).
+     * Todos los hijos del modelo son {@code CRUDEntity}; uno que no lo fuera se quedaria en la
+     * base, porque ya nada lo borra al salir de la coleccion.
+     */
+    default void removeChild(IEntity child) {
+        if (child instanceof CRUDEntity removed) {
+            removed.deleteCascade();
+        }
+    }
+
+    /**
+     * Si dos colecciones de entidades son las mismas filas, comparando ids. Sirve para no
+     * sustituir un conjunto por otro igual: Hibernate trata el conjunto nuevo como otra coleccion,
+     * borra y reinserta sus filas de union y sube la version del dueño, y ese {@code UPDATE} de
+     * una entidad que no ha cambiado se publicaria como una modificacion.
+     */
+    default boolean sameEntities(Collection<? extends IEntity> left, Collection<? extends IEntity> right) {
+        if (left == null || right == null) {
+            return false;
+        }
+
+        Set<Long> leftIds = left.stream().map(IEntity::getId).collect(Collectors.toSet());
+        Set<Long> rightIds = right.stream().map(IEntity::getId).collect(Collectors.toSet());
+
+        return !leftIds.contains(null) && left.size() == right.size() && leftIds.equals(rightIds);
+    }
 
     default <D extends BaseDTO, C extends IEntity, P extends IEntity> void linkManyToMany(
             Collection<D> dtos,
