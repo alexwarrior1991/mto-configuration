@@ -686,6 +686,22 @@ class KpYNotasDeUnaHojaDeVia(unittest.TestCase):
             self.assertFalse(bpm.is_kp_note(poste), poste)
 
 
+class KpCeroEnElOrigen(unittest.TestCase):
+    """Un 0 en el KP es un hueco, salvo en el primer perfil de la via: alli es su origen."""
+
+    def test_el_primer_perfil_en_el_cero_esta_en_el_origen(self):
+        self.assertEqual(bpm.origin_kp(0, 0), bpm.Decimal("0.000"))
+        self.assertEqual(bpm.origin_kp(0.0, 0), bpm.Decimal("0.000"))
+
+    def test_un_cero_en_otra_fila_sigue_siendo_un_hueco(self):
+        self.assertIsNone(bpm.origin_kp(0, 1))
+        self.assertIsNone(bpm.origin_kp(0, 7))
+
+    def test_un_cero_escrito_como_texto_o_un_vacio_no_es_un_kp(self):
+        for valor in ("0", None, "", False):
+            self.assertIsNone(bpm.origin_kp(valor, 0), repr(valor))
+
+
 class KpSupuestoDeUnPerfil(unittest.TestCase):
     """Un perfil sin KP entre dos que lo tienen toma la media de los dos."""
 
@@ -931,6 +947,11 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
             self.assertEqual(perfil["KP"], kp, clave)
             self.assertEqual((perfil["ENABLED"], perfil["REVISAR"]), ("SI", "SI"), clave)
         self.assertNotIn(("EP11B", "TRACK 1", "T1:27+130"), perfiles, "es una nota, no un poste")
+
+    def test_el_primer_poste_de_una_via_puede_estar_en_el_cero(self):
+        perfiles = {(p["EP"], p["VIA"], p["PROFILE_ID"]): p for p in self.profiles}
+        origen = perfiles[("EP11A", "TRACK 4 MOM", "0-4M.02")]
+        self.assertEqual((origen["KP"], origen["ENABLED"]), (0, "SI"))
 
     def test_el_kp_negativo_entra(self):
         perfiles = {(p["EP"], p["VIA"], p["PROFILE_ID"]): p for p in self.profiles}

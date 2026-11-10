@@ -263,6 +263,21 @@ def supposed_kps(entries):
     return supposed
 
 
+def origin_kp(value, index):
+    """El KP 0 del PRIMER perfil de una via es su origen, no una celda vacia.
+
+    El '0' es el marcador de hueco del origen en todas las columnas (fit_numeric), tambien
+    en la del KP. Pero el primer poste de una via puede estar justo en el origen de su
+    kilometracion: '0-4M.02' de EP11A esta en el 0, y el KP de los siguientes sale de el
+    (=C6+G7). En los workbooks no hay ningun otro perfil con un 0 escrito en el KP, asi
+    que la excepcion es solo esa posicion: un 0 en cualquier otra fila sigue siendo un hueco.
+    """
+    if index == 0 and isinstance(value, (int, float, Decimal)) and not isinstance(value, bool) \
+            and value == 0:
+        return Decimal("0.000")
+    return None
+
+
 def apply_supposed_kp(supposed, index, *, code, ep, sheet, row, master: Master):
     """El KP supuesto del perfil ``index`` (o None), anotado en DESCARTADOS con sus vecinos."""
     if index not in supposed:
@@ -623,6 +638,7 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
             continue
         raw_kp = track_kp(cell(rows[offset], single.get("KP")))
         kp, _ = fit_numeric("KP", raw_kp, ep=ep, sheet=sheet, row=offset + 1, master=Master())
+        kp = kp if kp is not None else origin_kp(raw_kp, len(entries))
         entry_of[offset] = len(entries)
         entries.append((code, kp, is_blank(raw_kp)))
     supposed = supposed_kps(entries)
@@ -651,8 +667,10 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
                            fila=number, detalle=code)
             review = True
 
-        kp, bad = fit_numeric("KP", track_kp(cell(row, single.get("KP"))), ep=ep, sheet=sheet,
-                              row=number, master=master)
+        raw_kp = track_kp(cell(row, single.get("KP")))
+        kp, bad = fit_numeric("KP", raw_kp, ep=ep, sheet=sheet, row=number, master=master)
+        if kp is None:
+            kp = origin_kp(raw_kp, entry_of[offset])
         if kp is None:
             kp = apply_supposed_kp(supposed, entry_of[offset], code=code, ep=ep, sheet=sheet,
                                    row=number, master=master)
@@ -921,6 +939,7 @@ def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
         kp_value = item["kp"] if item["kp"] is not None else item["kp_raw"]
         kp, _ = fit_numeric("KP", kp_value, ep=ep, sheet=sheet, row=item["number"],
                             master=Master())
+        kp = kp if kp is not None else origin_kp(kp_value, len(entries))
         entry_of[position_in_block] = len(entries)
         entries.append((item["code"], kp, is_blank(kp_value)))
     supposed = supposed_kps(entries)
@@ -949,6 +968,8 @@ def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
         # la celda tal cual para que fit_numeric diga que no es un numero.
         kp_value = item["kp"] if item["kp"] is not None else item["kp_raw"]
         kp, bad = fit_numeric("KP", kp_value, ep=ep, sheet=sheet, row=number, master=master)
+        if kp is None:
+            kp = origin_kp(kp_value, entry_of[position_in_block])
         if kp is None:
             kp = apply_supposed_kp(supposed, entry_of[position_in_block], code=code, ep=ep,
                                    sheet=sheet, row=number, master=master)
@@ -1199,7 +1220,8 @@ READ_ME = [
     ("HOJA_ORIGEN / FILA_ORIGEN",
      "Hoja y numero de fila del workbook, tal como los enseña Excel, para poder ir a la celda."),
     ("KP", "En metros y con signo: un poste de antes del origen de la kilometracion va en "
-           "negativo. Un perfil sin KP entre dos que lo tienen toma la media de los dos (los "
+           "negativo, y un 0 en el primer perfil de una via es su origen (en cualquier otra fila "
+           "es un hueco). Un perfil sin KP entre dos que lo tienen toma la media de los dos (los "
            "postes 'Bis'), con REVISAR=SI y en DESCARTADOS como 'KP supuesto', con sus vecinos."),
     ("SPAN", "Vano HASTA EL PERFIL SIGUIENTE, en metros. En el origen vive en la fila intermedia."),
     ("ARM_ANGLE", "Lo calcula la macro ab() del workbook. Donde el libro lo guardo como #NAME? "
