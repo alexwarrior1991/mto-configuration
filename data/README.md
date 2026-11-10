@@ -394,7 +394,11 @@ El tipo supuesto sale de la columna `Supports` de la misma fila cuando ésta lo 
   rígida). Son las 58 de `EP6 / HR Track 1 TSA-THA` y `HR Track 2 TSA-THA`. **No hace
   falta un código nuevo**: `OCR` ya está en el catálogo, con 23 usos en `EP9B`, que sí lo
   escribe en la columna del tipo. Darle otro nombre partiría en dos una sola cosa.
-- **El resto** → **`UNKNOWN`**, 159, casi todas de `EP14A`.
+  La celda se lee de la columna `Supports` que el perfil guarda como `SUPPORT_TYPE`
+  (`row_support`). Cuando esa columna dejó de ir a `NO_MAPEADO`, la regla siguió
+  buscándola allí, no la encontraba y las 58 salieron `UNKNOWN` hasta que se corrigió.
+- **El resto** → **`UNKNOWN`**: 165 en las hojas de vía, 123 de ellas de `EP14A`, y 5 en
+  el sinóptico de RUBI.
 
 `UNKNOWN` es el único código que **no sale de ningún workbook**: lo declara
 `synthetic_codes` en `aliases.yml` y el generador lo emite con **`ORIGEN=MTO`**, que lo
@@ -402,7 +406,7 @@ distingue a simple vista de `BOQ`, `LEGEND` y `TRACK`. Es deliberado que se vea:
 que el origen no nombra tiene que poder auditarse. Las ménsulas que lo llevan salen todas
 con `REVISAR=SI`.
 
-Las 217 quedan anotadas en `DESCARTADOS` con el motivo `tipo de mensula supuesto: …`, su
+Todas quedan anotadas en `DESCARTADOS` con el motivo `tipo de mensula supuesto: …`, su
 hoja, su fila y el tipo que se les puso. Rellenar el tipo en el workbook las saca de esa
 lista sin tocar nada aquí.
 
@@ -653,6 +657,12 @@ corregido en `EP9B.xlsm`:
   seccionadores DLOD-29, DLOD-30 y DLOD-31 cuelgan de `110-8.38` y `110-8.38B`, y con la errata
   no encontraban su poste. Las hojas que copian esos identificadores con una fórmula guardan
   también el valor corregido.
+
+Tres identificadores de poste llevaban una coma en vez del punto: `111-3,25` (`HR Track 3
+LOD_S`, fila 115), `110-21D,21` y `110-21D,22` (`HR Track 21 LOD_D`, filas 19 y 21), entre
+`111-3.24`/`111-3.26` y `110-21D.20`/`110-21D.24`. Ahora son `111-3.25`, `110-21D.21` y
+`110-21D.22`, y el seccionador `DP6-TE1` del libro de revisión, que cuelga del último, lo
+nombra igual.
 
 ## Códigos en la columna de otro catálogo
 
