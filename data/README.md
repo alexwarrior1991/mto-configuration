@@ -148,12 +148,13 @@ regenera y se lleva por delante cualquier edición manual; en `aliases.yml` qued
 revisable en el PR.
 
 Lo que no está aceptado se queda con `ENABLED=NO` y `REVISAR=SI`, que es exactamente el estado
-«pendiente de decidir»: a la vista, sin romper la generación. Hoy quedan ahí 14 códigos repartidos
-entre `AnchorageFoundation`, `Foundation`, `Portal`, `ReturnSupport` y `SupportType`, y ninguno es
-una familia: son casos de uno en uno. **De esos 14, sólo uno le quita el valor a un perfil**
-(`MP-ISusp` en `Portal`); los otros trece están en filas que no son perfil —el cosechador recorre
-la columna entera, el generador de perfiles sólo lee filas de perfil—, así que decidirlos es
-limpieza de catálogo, no dato perdido.
+«pendiente de decidir»: a la vista, sin romper la generación. Hoy quedan ahí 13 códigos repartidos
+entre `AnchorageFoundation`, `Foundation`, `Portal` y `ReturnSupport`, y ninguno es una familia:
+son casos de uno en uno. **Ninguno le quita el valor a un perfil**: están en filas que no son
+perfil —el cosechador recorre la columna entera, el generador de perfiles sólo lee filas de
+perfil—, así que decidirlos es limpieza de catálogo, no dato perdido. El último que sí lo hacía,
+`MP-ISusp` en la columna `Portals` de `110-2.26`, se quitó del workbook (ver «Códigos en la columna
+de otro catálogo»).
 
 **Aceptar no es la única salida, ni siempre la correcta.** Un código que el origen escribe en la
 columna de otro catálogo no se acepta, se corrige en el workbook: dar de alta `B7` en `SupportType`
@@ -358,13 +359,15 @@ lo que impide que el catálogo y las referencias de los perfiles discrepen:
 | `T-SIGN FOUND.` | `T-SIGN FOUND.` | ninguna de sus partes es código: **no** se parte |
 
 La condición no cambia: se acepta la partición **solo si todas las partes son códigos** de
-la misma entidad. `AnMP T A/S-Diag` lleva una `T` que nadie ha identificado, así que la
-celda entera sale en `NO_RECONOCIDO` en vez de cargarse a medias.
+la misma entidad. Una celda con una parte que no es código sale entera en `NO_RECONOCIDO` en
+vez de cargarse a medias: pasó con `AnMP T A/S-Diag`, cuya `T` era la de túnel (`AnMP/Tunnel`), y
+se corrigió en el workbook.
 
 **Códigos de `Anchorage` en la columna `SECTIONNING`.** `AnRW`, `AnFW` e `IO` los declara
 la leyenda en `ANCHORAGE`, no en `SECTIONNING`. Están fuera del catálogo de seccionamiento
 (`code_reassignment` con `to: null`), así que la celda que los trae sale nombrada con su
-hoja y su fila: es un error del workbook, y ahí es donde hay que corregirlo.
+hoja y su fila: es un error del workbook, y ahí es donde hay que corregirlo. Los de los postes ya
+están corregidos (ver «Códigos en la columna de otro catálogo»).
 
 ### El tipo de ménsula cuando el origen no lo escribe
 
@@ -649,6 +652,32 @@ corregido en `EP9B.xlsm`:
   seccionadores DLOD-29, DLOD-30 y DLOD-31 cuelgan de `110-8.38` y `110-8.38B`, y con la errata
   no encontraban su poste. Las hojas que copian esos identificadores con una fórmula guardan
   también el valor corregido.
+
+## Códigos en la columna de otro catálogo
+
+`NO_RECONOCIDO` del maestro de perfiles traía 22 valores en 40 celdas de poste, y casi todos eran
+un código bueno escrito en la columna de al lado. Se han corregido en los workbooks, que es donde
+estaba el error (`code_reassignment` de `aliases.yml` los mantiene fuera del catálogo equivocado,
+para que no vuelvan a colarse):
+
+| Lo que había | Dónde | Lo que queda |
+|---|---|---|
+| `AnRW`, `AnRW2`, `AnRW/Tunnel`, `AnFW` e `IO` en `Sectionning` | 19 postes de EP5, EP6, EP7, EP9A, EP9B y EP14A | En `Anchorage`, que es su catálogo (la leyenda los declara anclajes; `IO` es *Insulated Overlap*). Lo demás de la celda se queda en `Sectionning` (`S/A IO S/A` → `S/A` + `IO`) |
+| `S/A A/S AnRW1 AnRW2` en `Sectionning` | EP11B `20-6.16` | `S/A A/S`: `AnRW2` ya estaba en `Anchorage`, y `AnRW1` no existe |
+| `AnMP T A/S-Diag` | EP11B `17-1.20`, en túnel | `AnMP/Tunnel A/S-Diag` |
+| `POLE TRACK 14S` en `Sectionning` | EP9B, siete postes de `HR Track 13 LOD_S` | Vacío: es una anotación, no un código |
+| `FS/PP2`, `FS1` y `SECT-I` en `Supports` | EP4 `59-1.15A` y `59-1.15B`, EP7 `11-INT.01` y `11-INT.02` | En `Sectioning Feeding`, como `FS/PP-2`, `FS-1` y `SECT-I` |
+| `B7` en `Supports` | EP4 `45-2.22` | En `Portals`: es un semipórtico |
+| `TRACK 5` en `Anchorage` | EP6 `82-4.11` | Vacío: dice la vía, no un anclaje |
+| `RW2` y `RW2T-C` en `Return Support`, que admite uno | EP6 `13-2.14` | `RW2T-C` |
+| `PHQ-1150` en `Sectioning Feeding` | EP6 `88-4.14` | Vacío: es su brazo, que ya está en `Arm Type` |
+| `FP` en `Sectioning Feeding` | EP9A `9-1.07`, el poste de las alimentaciones HSA-FP | `FS-1`, la función de sus seccionadores |
+| `MP-ISusp` en `Portals` | EP9B `110-2.26`, que ya lleva `S1` en `Supports` | Vacío |
+
+Dos de esas celdas tienen una copia por fórmula en otra hoja (`HR Track 1 RIS-HER` copia `82-4.11`
+de `HR Track 4 HER`, y `HR Track 4 THA-HOLON` copia `96-5.16` de `HR Track 5 THA-HOLON`). Como el
+generador lee lo que la fórmula guardó la última vez, el valor guardado de esas copias se ha puesto
+también al día.
 
 ## Generar
 

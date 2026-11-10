@@ -932,8 +932,6 @@ track_accepted:
     - P85
     - P85(CS)
     - P90(TgS)
-    - POLE TRACK 14S
-    - S/A A/S AnRW1 AnRW2
     - SA
     # --- Sinoptico (RUBI): traducciones inglesas de la seccion 'synoptic'. El sinoptico
     # no trae BOQ ni leyenda, asi que todos sus codigos llegan como ORIGEN=TRACK.
@@ -1020,14 +1018,17 @@ code_reassignment:
   # Fugas de la columna 'Sectioning Feeding' dentro de 'Supports'. SECT-I es un aislador
   # de seccion y FS-1 / FS/PP-2 son alimentaciones: los tres son aparatos, no soportes.
   # Fuera del catalogo de soportes para que la celda salga nombrada con su hoja y su
-  # fila, que es lo que hay que corregir, en el workbook.
+  # fila, que es lo que hay que corregir, en el workbook. Las de los postes ya estan
+  # corregidas (data/README.md, «Codigos en la columna de otro catalogo»); quedan las de
+  # filas intermedias, que el generador de perfiles no lee.
   - {from: SupportType, regex: "^(SECT-I|FS1|FS/PP2)$", to: null}
 
   # Fugas de la columna Anchorage dentro de SECTIONNING. La leyenda de los workbooks
   # declara AnRW (Return Anchor), AnFW (Feeder Anchor) e IO (Insulated Overlap) en
   # ANCHORAGE. Fuera del catalogo de seccionamiento: asi la celda que los trae sale en
   # NO_RECONOCIDO con su hoja y su fila —que es lo que hay que corregir, en el workbook—
-  # en vez de cargarse como si fuera un seccionamiento.
+  # en vez de cargarse como si fuera un seccionamiento. Las de los postes ya estan
+  # corregidas, como las de 'Supports'; quedan las de filas intermedias.
   - {from: Sectioning, regex: "ANRW|ANFW|(^|\\s)IO($|\\s)", to: null}
   # 'POLE TRACK 14S' es una anotacion, no un codigo: hay que vaciar la celda. Y en
   # 'AnMP T A/S-Diag' la 'T' no es nada, pero 'AnMP' es un ANCLAJE: la celda no se puede
