@@ -658,11 +658,34 @@ corregido en `EP9B.xlsm`:
   no encontraban su poste. Las hojas que copian esos identificadores con una fórmula guardan
   también el valor corregido.
 
+**El KP de `110-1D.36`** (`HR Track 1 LOD_D`, C16) era `110559`, por debajo del anterior
+(`110574`) y con un vano de −15 m: es `110599`, el de `110-2D.36` de la vía 2, que lleva los
+mismos KP poste a poste. Con él se han recalculado los dos vanos que salen de esa celda (G15 y
+G17: 25 y 32 m) y los tres ángulos del brazo que los leen (AT14, AT16 y AT18, con
+`arm_angle.py`).
+
 Tres identificadores de poste llevaban una coma en vez del punto: `111-3,25` (`HR Track 3
 LOD_S`, fila 115), `110-21D,21` y `110-21D,22` (`HR Track 21 LOD_D`, filas 19 y 21), entre
 `111-3.24`/`111-3.26` y `110-21D.20`/`110-21D.24`. Ahora son `111-3.25`, `110-21D.21` y
 `110-21D.22`, y el seccionador `DP6-TE1` del libro de revisión, que cuelga del último, lo
 nombra igual.
+
+## Medidas con la coma o la unidad equivocadas
+
+Se han corregido en los workbooks, porque el valor que falta se deduce sin dudas:
+
+- **La altura de catenaria (m) escrita sin la coma**: `18` es 1,8 m, como las de al lado (1,2 a
+  2,3 m). EP14B `HR Track 2` X602 (18 → 1,8); EP5 `HR Track 2` Y421 (14 → 1,4) y X617 (18 →
+  1,8; `HR Track 3 SFM` X9 la copia y guarda también el valor nuevo); EP7 `HR Track INT SOUTH
+  (4(6)-1)` W510 (12 → 1,2); EP9B `HR Track 14 LOD_S` W45 (14 → 1,4).
+- **La elevación del hilo (m) escrita en centímetros**: las del resto del maestro van de 0,2 a
+  0,6 m. EP6 `HR Track 1 BBR-TUN` y `HR Track 2 BBR-TUN` (Z53, Z55, AA57 y AA59: 40, 20, 20 y
+  40 → 0,40, 0,20, 0,20 y 0,40), `HR Track 5 BBR-HER` (Z6, Z8, AA10 y AA12: 45, 25, 25 y 45 →
+  0,45, 0,25, 0,25 y 0,45) y EP11B `HR Track 5` Z13 (100 → 1,00).
+
+Lo que **no** se ha tocado, porque no hay un número que recuperar: `MPW` en la elevación de
+EP5 `HR Track 4 NET` (Z23 y Z27) y el `.` de EP6 `HR Track 1 HER-TSA` Z162. Siguen en
+`DESCARTADOS` como «no es un numero» y la ménsula entra sin esa medida.
 
 ## Códigos en la columna de otro catálogo
 
@@ -828,6 +851,11 @@ Más casos de la columna del perfil y de la del KP:
   y deshabilitados (`KP: negativo`); ahora entran, y la API los admite (`KpText`, el del perfil y
   el de un seccionador sin poste). El de un aislador, el de sus agujas y el de un punto de acceso
   siguen sin signo.
+- **Un 0 en el KP del primer perfil de una vía es su origen** (`origin_kp`). El `0` es el
+  marcador de hueco en todas las columnas, también en la del KP, pero `0-4M.02` de EP11A está
+  justo en el origen de `HR Track 4 MOM`, y el KP de los siguientes sale de él (`=C6+G7`). Es el
+  único perfil de los workbooks con un 0 escrito en el KP, así que la excepción es solo esa
+  posición: en cualquier otra fila, un 0 sigue siendo un hueco.
 - **Un perfil sin KP entre dos que lo tienen toma la media de los dos** (`supposed_kps`). Es el
   poste `Bis`, que se mete entre dos que ya estaban y la hoja deja sin KP: `25-1.01Bis` de EP11B
   entra en el 25055, entre `25-1.01` (25026) y `25-1.02` (25084). Entra con `REVISAR=SI` y en
