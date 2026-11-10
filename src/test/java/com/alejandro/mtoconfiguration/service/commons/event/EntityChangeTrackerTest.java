@@ -5,6 +5,7 @@ import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeTracker.
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -136,6 +137,50 @@ class EntityChangeTrackerTest {
                     .join();
 
             assertThat(EntityChangeTracker.drain()).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("las propiedades cambiadas de una fila se suman, sobreviven al drenado y no existen sin ambito")
+    void propiedadesCambiadas() {
+        Row via = new Row(1L);
+
+        EntityChangeTracker.recordChangedProperties(via, List.of("name"));
+        assertThat(EntityChangeTracker.changedProperties(via)).isEmpty();
+
+        try (EntityChangeTracker.Scope ignored = EntityChangeTracker.open()) {
+            EntityChangeTracker.record(via, EntityChangeOperation.UPDATED);
+            EntityChangeTracker.recordChangedProperties(via, List.of("name"));
+            EntityChangeTracker.recordChangedProperties(new Row(1L), List.of("stations"));
+            EntityChangeTracker.recordChangedProperties(new OtherRow(1L), List.of("enabled"));
+            EntityChangeTracker.drain();
+
+            assertThat(EntityChangeTracker.changedProperties(via)).containsExactlyInAnyOrder("name", "stations");
+            assertThat(EntityChangeTracker.changedProperties(new Row(2L))).isEmpty();
+        }
+
+        assertThat(EntityChangeTracker.changedProperties(via)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("publica su propio evento lo que es raiz publicada, lo apuntado y lo ya drenado; lo demas no")
+    void publicaSuPropioEvento() {
+        assertThat(EntityChangeTracker.publishesItsOwnEvent(Row.class, 1L)).isFalse();
+
+        try (EntityChangeTracker.Scope ignored = EntityChangeTracker.open()) {
+            EntityChangeTracker.markPublished(new Row(1L));
+            EntityChangeTracker.record(new Row(2L), EntityChangeOperation.UPDATED);
+            EntityChangeTracker.record(new Row(3L), EntityChangeOperation.CREATED);
+
+            assertThat(EntityChangeTracker.publishesItsOwnEvent(Row.class, 1L)).isTrue();
+            assertThat(EntityChangeTracker.publishesItsOwnEvent(Row.class, 2L)).isTrue();
+
+            EntityChangeTracker.drain();
+
+            assertThat(EntityChangeTracker.publishesItsOwnEvent(Row.class, 2L)).isTrue();
+            assertThat(EntityChangeTracker.publishesItsOwnEvent(Row.class, 3L)).isTrue();
+            assertThat(EntityChangeTracker.publishesItsOwnEvent(Row.class, 4L)).isFalse();
+            assertThat(EntityChangeTracker.publishesItsOwnEvent(OtherRow.class, 2L)).isFalse();
         }
     }
 }

@@ -4,6 +4,37 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ `profile`, `disconnector` y `section-insulator` también llegan cuando cambia lo que copian de su vía o de su estación
+
+Ninguna clave nueva, renombrada ni quitada, y ningún evento nuevo: **llegan `UPDATED` que faltaban**.
+El evento `profile` copia de su vía el nombre, `enabled`, sus estaciones y su paquete
+(`track.executionPackageId`); `disconnector` y `section-insulator`, el nombre de su vía, el de la
+conectada y el de su estación. Hasta ahora, cambiar esos datos en la vía o en la estación solo
+publicaba la vía o la estación (y sus puntos de acceso): **pasar una vía a otro paquete** dejaba a
+`mto-maintenance`, que guarda el paquete de cada activo, con el viejo hasta un republicado a mano.
+
+Ahora, en la misma transacción que el cambio (`CopiedDataRepublisher`, §2.4):
+
+| Cambia | Llega un `UPDATED` de |
+|---|---|
+| el paquete de una vía | cada perfil de la vía, con el `track.executionPackageId` nuevo, y **detrás** los seccionadores de sus postes o con ella como vía propia y los aisladores de esa vía |
+| el nombre de una vía | cada perfil de la vía, y los seccionadores y aisladores que la nombran en `track` o `connectedTrack` |
+| `enabled` o las estaciones de una vía | cada perfil de la vía |
+| el nombre de una estación | sus seccionadores y sus aisladores |
+
+Solo cuando ese dato **cambia de verdad**: un `PUT` que devuelve la vía como estaba sigue siendo un
+evento. Lo que cambia para un consumidor es el volumen —renombrar o mover una vía grande son miles de
+`profile.updated` en una transacción, como quitarla de su paquete— y lo que tiene que hacer es nada si
+ya trata el `UPDATED` de cada entidad:
+
+- `mto-maintenance` recibe el paquete nuevo en cada `profile`, y lo pasa a los seccionadores y
+  aisladores como ya hacía. Los `disconnector` y `section-insulator` que llegan detrás no traen el
+  paquete (no lo llevan), pero le hacen recalcularlo de la vía.
+- Lo que se movió **antes** de este cambio sigue allí con el paquete viejo: se arregla con un
+  republicado de perfiles de esa vía (§2.5), una vez.
+- `mto-stock`, `mto-notification` y `mto-resources` reciben, o ignoran, más eventos con la misma forma.
+  `track-access-point` no cambia: sigue saliendo con cada `UPDATED` de su vía o su estación.
+
 ## ⚠️ Los hijos escritos dentro de su padre publican su evento, también el `DELETED` de los que se quitan
 
 Ninguna clave nueva, renombrada ni quitada, y ningún nombre de entidad ni clave de enrutado nuevos:
@@ -538,6 +569,63 @@ de la estación no: el acceso sigue vivo, como todo lo que cuelga de un maestro,
 desactiva aparte. Uno nuevo no se puede colgar de una vía o una estación que no existe o está borrada:
 es un 400 `BUS-001` sobre `trackId` o `stationId` (`TrackAccessPointMapper`).
 
+#### Lo que copia datos de su vía o de su estación se vuelve a publicar con ellas
+
+Tres eventos llevan datos que no son de su fila, y `mto-maintenance` no escucha `track` (solo su
+`DELETED`) ni `station`:
+
+| Evento | Copia de la vía | Copia de la estación |
+|---|---|---|
+| `profile` | `track.name`, `track.enabled`, `track.stationIds`, `track.executionPackageId` | — (solo ids) |
+| `disconnector` | `track.name` y `connectedTrack.name` (la del poste no viaja) | `station.name` |
+| `section-insulator` | `track.name` y `connectedTrack.name` | `station.name` |
+
+`CopiedDataRepublisher` escucha el mismo evento de aplicación que el outbox y, tras el `UPDATED` de
+una vía o de una estación, publica un `UPDATED` de cada dependiente vivo cuyo evento copia **lo que
+ha cambiado**, en la misma transacción:
+
+- nombre de la vía: sus perfiles, y los seccionadores y aisladores que la tienen como `track` o
+  `connectedTrack`;
+- paquete de la vía: sus perfiles y, **detrás**, los seccionadores que están en ella (en uno de sus
+  postes, o sin poste con ella como vía propia) y los aisladores cuya vía principal es. El evento de
+  estos dos no lleva el paquete, pero el consumidor lo deduce de la vía cuando los recibe, y tienen
+  que llegar después de los perfiles;
+- `enabled` o estaciones de la vía: sus perfiles;
+- nombre de la estación: sus seccionadores y sus aisladores.
+
+Qué ha cambiado lo dice Hibernate, no el DTO: `core.audit.ChangedPropertiesListener`, un listener
+nativo, apunta en `EntityChangeTracker` las propiedades distintas de cada `UPDATE` y las colecciones
+que se reescriben (las estaciones de una vía están en su tabla de unión). Un `PUT` que devuelve la vía
+como estaba, o que solo cambia a sus hijos, no vuelve a publicar nada; tampoco un cambio que nadie
+copia (el paquete de una estación). Vale igual para una vía o una estación modificadas dentro del
+`PUT` de su paquete.
+
+No se publica dos veces lo que la escritura ya publica: un perfil modificado dentro del `PUT` que
+renombra su vía sale una vez, con su propio evento (que ya lleva el nombre nuevo).
+
+**Volumen.** Una vía tiene cientos o miles de perfiles, y cada uno es una fila de outbox en la
+transacción del `PUT`. Se leen los ids y se cargan por lotes de 200 con el mismo grafo que
+`findByIdForMessaging` (`findAllByIdForMessaging`: una sentencia por lote, no una por perfil ni por
+relación), y se escriben con `MasterDataEventPublisher`, como hace el republicado. Los perfiles
+cargados se quedan en el contexto de persistencia hasta que acaba la transacción.
+
+Lo que **no** hace, a propósito:
+
+- **el paquete mismo.** Los eventos `track` y `station` copian de su paquete `name`, `initialPackage`
+  y `enabled`, y renombrar un paquete no los vuelve a publicar: ningún consumidor guarda esos datos
+  (`mto-stock` hace su proyecto del evento `execution-package`; `mto-maintenance` solo trata el
+  `DELETED` de `track`), y cada `track` arrastra la lista de sus perfiles. `profile`, `disconnector` y
+  `section-insulator` solo llevan el **id** del paquete, que no cambia al renombrarlo;
+- **el perfil de un seccionador.** `disconnector.profile` copia `profileId` y `kp` del poste, y un
+  cambio de esos no vuelve a publicar el seccionador (hoy tampoco). `mto-maintenance` lo cubre: el
+  evento `profile` le hace pasar su vía y su paquete a sus seccionadores;
+- **borrar** una vía o una estación no publica nada de lo que se queda colgando, como hasta ahora;
+- los **puntos de acceso** siguen con `TrackAccessPointRepublisher`, que no mira qué cambió: salen
+  con cada `UPDATED` de su vía o de su estación.
+
+Lo fijan `CopiedDataRepublisherTest`, `EntityChangeTrackerTest` y, contra PostgreSQL,
+`CopiedDataRepublishIT`.
+
 ### 2.5. Republicado de lo que ya existe
 
 Los eventos de esta sección solo nacen cuando algo pasa por la capa de servicio. Un consumidor que se
@@ -563,6 +651,10 @@ simultánea. Cada lote lee y escribe dentro de la misma transacción, lo que est
 todo el trabajo a un lote, pero sin bloqueo pesimista una edición confirmada entre la lectura y el
 `INSERT` todavía puede acabar con un `sequence_number` menor que el del republicado y perder frente
 a él en la marca de agua del consumidor (§11.4). Conviene lanzarlo en una ventana sin ediciones.
+
+No hace falta republicar después de mover una vía de paquete, de renombrarla o de renombrar una
+estación: esos cambios ya vuelven a publicar lo que copia el dato (§2.4). Sí para lo que se movió
+antes de que existiera eso.
 
 ### 2.6. Eventos propios: `job.finished`
 

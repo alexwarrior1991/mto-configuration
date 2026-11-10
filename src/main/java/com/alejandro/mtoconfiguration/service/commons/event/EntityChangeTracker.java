@@ -4,8 +4,11 @@ import com.alejandro.mtoconfiguration.entity.commons.IEntity;
 import org.hibernate.Hibernate;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,6 +35,13 @@ import java.util.Set;
  * <p>Un ambito abierto dentro de otro (un servicio que llama a otro en el mismo hilo) comparte lo
  * apuntado, y solo el de fuera lo publica: asi la raiz del de fuera, que el flush del de dentro
  * tambien escribe, no sale dos veces.
+ *
+ * <p>Ademas de <i>que</i> filas se escriben, el ambito guarda <i>que propiedades</i> de cada una
+ * han cambiado ({@link #changedProperties}), que apunta {@code core.audit.ChangedPropertiesListener}
+ * con lo que Hibernate encontro distinto al hacer flush. Lo lee
+ * {@code masterdata.messaging.CopiedDataRepublisher}, que vuelve a publicar lo que copia datos de
+ * una via o de una estacion solo cuando cambia uno de los datos copiados, y que pregunta aqui
+ * ({@link #publishesItsOwnEvent}) para no publicar dos veces lo que esta escritura ya publica.
  */
 public final class EntityChangeTracker {
 
@@ -91,6 +101,10 @@ public final class EntityChangeTracker {
     private static final class State {
         private final Map<Key, Change> changes = new LinkedHashMap<>();
         private final Set<Key> published = new HashSet<>();
+        /** Lo que {@link #drain()} ya entrego para publicar: su evento sale en esta escritura. */
+        private final Set<Key> drained = new HashSet<>();
+        /** Las propiedades que el flush encontro cambiadas en cada fila; no se vacia al drenar. */
+        private final Map<Key, Set<String>> changedProperties = new HashMap<>();
         private int depth;
     }
 
@@ -98,6 +112,51 @@ public final class EntityChangeTracker {
         private static Key of(IEntity entity) {
             return new Key(Hibernate.getClass(entity), entity.getId());
         }
+    }
+
+    /**
+     * Apunta las propiedades de una fila que Hibernate ha escrito distintas (las columnas de un
+     * {@code UPDATE}, o una coleccion suya, como las estaciones de una via). Sin ambito no hace nada.
+     */
+    public static void recordChangedProperties(Object entity, Collection<String> properties) {
+        State state = CURRENT.get();
+
+        if (state == null || properties == null || properties.isEmpty()
+                || !(entity instanceof IEntity changed) || changed.getId() == null) {
+            return;
+        }
+
+        state.changedProperties.computeIfAbsent(Key.of(changed), key -> new LinkedHashSet<>()).addAll(properties);
+    }
+
+    /**
+     * Las propiedades de esta fila que han cambiado en la escritura en curso; vacio si no cambio
+     * ninguna, y tambien sin ambito: fuera de una escritura de servicio no se sabe que cambio.
+     */
+    public static Set<String> changedProperties(IEntity entity) {
+        State state = CURRENT.get();
+
+        if (state == null || entity == null || entity.getId() == null) {
+            return Set.of();
+        }
+
+        return Set.copyOf(state.changedProperties.getOrDefault(Key.of(entity), Set.of()));
+    }
+
+    /**
+     * Si el evento de esta fila ya sale en la escritura en curso: es una raiz publicada, o Hibernate
+     * la ha escrito y el servicio la publicara (o la esta publicando) con sus cambios anidados.
+     */
+    public static boolean publishesItsOwnEvent(Class<? extends IEntity> type, Long id) {
+        State state = CURRENT.get();
+
+        if (state == null || type == null || id == null) {
+            return false;
+        }
+
+        Key key = new Key(type, id);
+
+        return state.published.contains(key) || state.drained.contains(key) || state.changes.containsKey(key);
     }
 
     /** La raiz de una escritura, cuyo evento publica el servicio por su cuenta. */
@@ -125,6 +184,7 @@ public final class EntityChangeTracker {
         state.changes.forEach((key, change) -> {
             if (!state.published.contains(key)) {
                 pending.add(change);
+                state.drained.add(key);
             }
         });
         state.changes.clear();

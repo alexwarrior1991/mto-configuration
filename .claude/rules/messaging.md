@@ -33,6 +33,17 @@
   cada entidad de su rama), con los mismos `values` que su escritura directa. Lo decide el flush de
   Hibernate, no el mapper, así que lo que no cambia no publica (README_MESSAGING.md §2.4, ver
   `services.md`). Lo fija `NestedChildEventsIT`.
+- Lo que copia datos de su vía o de su estación se vuelve a publicar cuando cambian
+  (`CopiedDataRepublisher`, README_MESSAGING.md §2.4): los perfiles de una vía con su nombre,
+  `enabled`, sus estaciones o su paquete; los seccionadores y aisladores con el nombre de su vía o
+  de su estación, y también, detrás de los perfiles, con el paquete de su vía (no lo llevan, pero
+  `mto-maintenance` lo recalcula al recibirlos). Solo si el dato cambió: lo dice Hibernate
+  (`core.audit.ChangedPropertiesListener` → `EntityChangeTracker.changedProperties`), nunca el DTO, y
+  sin repetir lo que la escritura ya publica (`publishesItsOwnEvent`). Una clave nueva en un payload
+  que copie otro dato de la vía, de la estación o del paquete añade ese dato aquí. Carga por lotes
+  con `findAllByIdForMessaging`, que repite el grafo de `findByIdForMessaging`: una relación nueva
+  en uno va en los dos. Los puntos de acceso siguen con `TrackAccessPointRepublisher`, que no mira
+  qué cambió. Lo fijan `CopiedDataRepublisherTest` y `CopiedDataRepublishIT`.
 - El evento se escribe en el outbox dentro de la transacción de negocio
   (`MasterDataEntityChangedEventListener` es un `@EventListener` síncrono) y el relay lo publica
   después. Solo el relay habla con el broker (`OutboxRabbitPublisher`), y no arranca sin publisher
