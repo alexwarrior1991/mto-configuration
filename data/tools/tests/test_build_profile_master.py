@@ -622,6 +622,29 @@ class SeccionamientoDesdeElLibroRevisado(unittest.TestCase):
         self.assertIsNone(sheets["SECTION_INSULATORS"][0]["KP"], "sin agujas en su fila, tal cual")
 
 
+class KpYNotasDeUnaHojaDeVia(unittest.TestCase):
+    """El KP escrito como texto y las notas de la leyenda en la columna del perfil."""
+
+    def test_la_kilometracion_con_signo_mas_es_un_kp(self):
+        self.assertEqual(bpm.track_kp("30+719"), Decimal("30719"))
+        self.assertEqual(bpm.track_kp("1+118,8"), Decimal("1118.8"))
+
+    def test_lo_demas_pasa_tal_cual(self):
+        self.assertEqual(bpm.track_kp(30719.0), 30719.0)
+        self.assertEqual(bpm.track_kp("-"), "-")
+        self.assertEqual(bpm.track_kp("abc"), "abc", "fit_numeric dira que no es un numero")
+
+    def test_una_nota_de_la_leyenda_no_es_un_perfil(self):
+        for nota in ("Possible Signalling Interface Detected", "Not For Construction",
+                     'Sorted out by using "L"foundation', "Sorted out by reducing gauge up to 2.90m"):
+            self.assertTrue(bpm.is_legend_note(nota), nota)
+
+    def test_un_poste_con_texto_al_lado_si_es_un_perfil(self):
+        for poste in ("8-1.12", "0-EXT.04 (00-01.04)", "21-2.01/21-4.01 prov", "58-4.24 BIS",
+                      "PROFILE 2"):
+            self.assertFalse(bpm.is_legend_note(poste), poste)
+
+
 class KpDeUnAislador(unittest.TestCase):
     """El KP de un aislador sale de sus agujas cuando no se escribe a mano."""
 
@@ -794,9 +817,10 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         # RUBI (566 de catenaria rigida deducidas del soporte, como en EP6). 157 de las
         # ferroviarias vienen del libro de EP13: el principio de las vias 12 y 22 de EP14B y
         # sus dos vias de Pleshet. Otras 35, de Add_Tracks_EP14_A: el final de las vias 1 y 2
-        # de EP14A, hasta la zona neutra de Ashkelon.
+        # de EP14A, hasta la zona neutra de Ashkelon. Cinco cargables mas desde que se lee el
+        # KP escrito '30+719': las de los cuatro postes de EP11B que lo traen asi.
         self.assertEqual(len(self.cantilevers), 15622)
-        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15612)
+        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15617)
 
     def test_el_sinoptico_de_rubi_entra_con_sus_dos_vias(self):
         """Una hoja, dos vias, ocho estaciones y codigos solo en ingles."""

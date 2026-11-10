@@ -799,6 +799,19 @@ importa igual.
    identificador del perfil. Tratarlo como un valor metería ~320 perfiles fantasma y
    miles de medidas de cero inventadas.
 
+Dos casos más de la columna del perfil y de la del KP:
+
+- **El KP escrito como texto con la kilometración** (`30+719`) son 30719 m (`track_kp`, con la
+  misma lectura que el sinóptico). Así lo escribe EP11B en `30-1.16b`, `30-1.23b`, `30-2.16b` y
+  `30-2.23B`, que hasta ahora salían sin KP y no se cargaban; los seccionadores HRL-NS1 y HRL-NS2
+  cuelgan de los dos primeros.
+- **Las notas de la leyenda no son perfiles** (`is_legend_note`). Bajo los datos, las hojas de
+  EP9A llevan la leyenda de colores con sus notas en la columna del perfil («Possible Signalling
+  Interface Detected», «Not For Construction»…). Salían como perfiles deshabilitados sin KP; ahora
+  van a `DESCARTADOS` como «nota de la leyenda». La regla: tres palabras o más y la primera de
+  letras. Un poste empieza por una cifra (`8-1.12`, `0-EXT.04 (00-01.04)`), y `PROFILE 2` (un
+  poste por numerar) no es una nota.
+
 ## El brazo viene con la longitud dentro
 
 La columna `Arm Type` trae tipo y longitud juntos (`PH-1150`, `BTC-1651`) pero el
