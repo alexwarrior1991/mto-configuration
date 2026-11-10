@@ -152,6 +152,13 @@ class NumerosQueTienenQueCaberEnSuColumna(unittest.TestCase):
         self.assertIsNone(value)
         self.assertTrue(bad)
 
+    def test_el_kp_admite_signo(self):
+        # Los postes de antes del origen de la kilometracion: la cabecera de EP11A.
+        value, bad = self.fit("KP", -77.96)
+        self.assertEqual(value, Decimal("-77.960"))
+        self.assertFalse(bad)
+        self.assertEqual(self.master.discarded, [])
+
     def test_la_distancia_carril_poste_si_admite_signo(self):
         # El signo indica a que lado de la via queda el poste.
         value, bad = self.fit("RAIL_POLE_DISTANCE", -4960)
@@ -644,6 +651,68 @@ class KpYNotasDeUnaHojaDeVia(unittest.TestCase):
                       "PROFILE 2"):
             self.assertFalse(bpm.is_legend_note(poste), poste)
 
+    def test_una_anotacion_de_kp_no_es_un_perfil(self):
+        # EP11B apunta 'T1:27+130' debajo de 27-1.03, que esta en el KP 27130.
+        self.assertTrue(bpm.is_kp_note("T1:27+130"))
+        self.assertTrue(bpm.is_kp_note("T2 : 27+160,5"))
+        for poste in ("27-1.03", "25-1.01Bis", "84-T.17", "PROFILE 2", "0-EXT.04 (00-01.04)"):
+            self.assertFalse(bpm.is_kp_note(poste), poste)
+
+
+class KpSupuestoDeUnPerfil(unittest.TestCase):
+    """Un perfil sin KP entre dos que lo tienen toma la media de los dos."""
+
+    @staticmethod
+    def kps(*entries):
+        return {index: value[0] for index, value in bpm.supposed_kps(list(entries)).items()}
+
+    def test_un_poste_bis_entre_dos_toma_la_media(self):
+        self.assertEqual(self.kps(("25-1.01", Decimal("25026.000"), False),
+                                  ("25-1.01Bis", None, True),
+                                  ("25-1.02", Decimal("25084.000"), False)),
+                         {1: Decimal("25055.000")})
+
+    def test_la_media_redondea_la_mitad_hacia_arriba(self):
+        self.assertEqual(self.kps(("A", Decimal("0.001"), False), ("B", None, True),
+                                  ("C", Decimal("0.002"), False)), {1: Decimal("0.002")})
+
+    def test_vale_con_kp_negativos(self):
+        self.assertEqual(self.kps(("0-1.01", Decimal("-77.960"), False), ("X", None, True),
+                                  ("0-1.02", Decimal("-48.260"), False)), {1: Decimal("-63.110")})
+
+    def test_sin_los_dos_vecinos_no_se_supone_nada(self):
+        # El primero, el ultimo y una racha: 'PROFILE 2' a 'PROFILE 12' de EP9B.
+        self.assertEqual(self.kps(("A", None, True), ("B", Decimal("10"), False)), {})
+        self.assertEqual(self.kps(("A", Decimal("10"), False), ("B", None, True)), {})
+        self.assertEqual(self.kps(("A", Decimal("10"), False), ("B", None, True),
+                                  ("C", None, True), ("D", Decimal("90"), False)), {})
+
+    def test_un_kp_que_no_es_un_numero_no_se_tapa(self):
+        # Sigue siendo un error del origen, y fit_numeric ya lo ha dicho.
+        self.assertEqual(self.kps(("A", Decimal("10"), False), ("B", None, False),
+                                  ("C", Decimal("60"), False)), {})
+
+    def test_con_los_vecinos_lejos_no_se_supone_y_se_dice(self):
+        # Un tramo que reinicia la kilometracion: la media no seria ningun sitio.
+        entries = [("5-1.30", Decimal("6950"), False), ("X", None, True),
+                   ("5-1.01", Decimal("5017"), False)]
+        self.assertEqual(self.kps(*entries), {1: None})
+        master = bpm.Master()
+        self.assertIsNone(bpm.apply_supposed_kp(bpm.supposed_kps(entries), 1, code="X",
+                                                ep="EP9A", sheet="H", row=7, master=master))
+        self.assertIn("mas de 300 m", master.discarded[0]["motivo"])
+
+    def test_el_supuesto_queda_anotado_con_sus_vecinos(self):
+        master = bpm.Master()
+        supposed = bpm.supposed_kps([("8-1.01", Decimal("8038"), False),
+                                     ("8-1.01Bis", None, True),
+                                     ("8-1.02", Decimal("8088"), False)])
+        kp = bpm.apply_supposed_kp(supposed, 1, code="8-1.01Bis", ep="EP9A",
+                                   sheet="HR Track 1", row=101, master=master)
+        self.assertEqual(kp, Decimal("8063.000"))
+        self.assertEqual(master.discarded[0]["motivo"], "KP supuesto: media de los perfiles contiguos")
+        self.assertIn("8-1.01 en 8038 y 8-1.02 en 8088", master.discarded[0]["detalle"])
+
 
 class KpDeUnAislador(unittest.TestCase):
     """El KP de un aislador sale de sus agujas cuando no se escribe a mano."""
@@ -690,6 +759,7 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
             cls.profiles = sheet("PROFILES")
             cls.cantilevers = sheet("CANTILEVERS")
             cls.unknown = sheet("NO_RECONOCIDO")
+            cls.discarded = sheet("DESCARTADOS")
         finally:
             wb.close()
 
@@ -818,9 +888,41 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         # ferroviarias vienen del libro de EP13: el principio de las vias 12 y 22 de EP14B y
         # sus dos vias de Pleshet. Otras 35, de Add_Tracks_EP14_A: el final de las vias 1 y 2
         # de EP14A, hasta la zona neutra de Ashkelon. Cinco cargables mas desde que se lee el
-        # KP escrito '30+719': las de los cuatro postes de EP11B que lo traen asi.
-        self.assertEqual(len(self.cantilevers), 15622)
-        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15617)
+        # KP escrito '30+719': las de los cuatro postes de EP11B que lo traen asi. Una menos
+        # desde que 'T1:27+130' es una nota y no un poste, y tres cargables mas desde que el
+        # KP admite signo (dos de la cabecera de EP11A) y se supone el de un poste entre dos
+        # (84-T.17 de EP6).
+        self.assertEqual(len(self.cantilevers), 15621)
+        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15620)
+
+    def test_los_postes_sin_kp_entre_dos_toman_la_media_y_salen_senalados(self):
+        perfiles = {(p["EP"], p["VIA"], p["PROFILE_ID"]): p for p in self.profiles}
+        for clave, kp in ((("EP9A", "TRACK 1", "8-1.01Bis"), 8063),
+                          (("EP11B", "TRACK 2", "25-2.07Bis"), 25254),
+                          (("EP6", "TRACK 4 HERZLIYA", "84-T.17"), 84802.51)):
+            perfil = perfiles[clave]
+            self.assertEqual(perfil["KP"], kp, clave)
+            self.assertEqual((perfil["ENABLED"], perfil["REVISAR"]), ("SI", "SI"), clave)
+        self.assertNotIn(("EP11B", "TRACK 1", "T1:27+130"), perfiles, "es una nota, no un poste")
+
+    def test_el_kp_negativo_entra(self):
+        perfiles = {(p["EP"], p["VIA"], p["PROFILE_ID"]): p for p in self.profiles}
+        for clave, kp in ((("EP11A", "TRACK 1", "0-1.01"), -77.96),
+                          (("RUBI", "TRACK 2", "1-00.02"), -2.84)):
+            self.assertEqual(perfiles[clave]["KP"], kp, clave)
+            self.assertEqual(perfiles[clave]["ENABLED"], "SI", clave)
+
+    def test_los_angulos_de_ep7_estan_calculados(self):
+        # Las dos hojas SOUTH guardaban #NAME?: el ab() de la macro, calculado sin macros.
+        # Ahora llevan el valor que da la macro (data/README.md, «El angulo del brazo»).
+        sin_numero = [d for d in self.discarded
+                      if d["EP"] == "EP7" and d["MOTIVO"] == "ARM_ANGLE: no es un numero"]
+        self.assertEqual(sin_numero, [])
+        angulos = [c["ARM_ANGLE"] for c in self.cantilevers if c["EP"] == "EP7"
+                   and c["VIA"] in ("TRACK INT SOUTH", "TRACK EXT SOUTH")
+                   and c["ARM_ANGLE"] is not None]
+        self.assertGreaterEqual(len(angulos), 275)
+        self.assertTrue(all(-90 <= a <= 90 for a in angulos))
 
     def test_el_sinoptico_de_rubi_entra_con_sus_dos_vias(self):
         """Una hoja, dos vias, ocho estaciones y codigos solo en ingles."""

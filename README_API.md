@@ -56,8 +56,8 @@ opcionales, y como el resto de la fila, un `PUT` que no los lleva los deja sin d
 como se leyeron (§4, «devuélvelo entero»).
 
 **Uno sin poste lleva su propio KP y su vía** (`V26`): `kp`, en metros y como texto (`"98375.5"`),
-igual que el del perfil, y `trackId`. El KP propio es solo sin poste: en uno con `profileId` es el de
-su perfil, y mandarlo es un 400 `BUS-001` sobre `kp`. Al colgar de un poste un seccionador que no lo
+igual que el del perfil (con signo: «El `kp` admite signo», §4 ter), y `trackId`. El KP propio es
+solo sin poste: en uno con `profileId` es el de su perfil, y mandarlo es un 400 `BUS-001` sobre `kp`. Al colgar de un poste un seccionador que no lo
 estaba, se manda a `null`.
 
 **Con poste, `trackId` es la vía que maniobra cuando no es la del poste.** En un haz de vías
@@ -358,6 +358,12 @@ al dejar de partir las vías con dos tramos: cada tramo se numeró por su cuenta
 existe **dos veces** en `EP9A / TRACK 1` — uno en el KP 5421 y otro en el 5017, dos mástiles
 distintos. Un `PUT` que quiera modificar un perfil concreto tiene que mandar su `kp`; mandarlo
 cambiado crea uno nuevo en vez de modificar el que había.
+
+**El `kp` admite signo.** Viaja como texto, en metros y con punto decimal (`"10.500"`), y un poste
+de antes del origen de la kilometración va en negativo (`"-77.960"`, la cabecera de `EP11A`). El
+patrón es `-?\d+(\.\d+)?`, con la precisión de la columna (9 enteros y 3 decimales): `+5`, `12,5`
+o `1e5` son un 400 sobre `kp`. Lo mismo vale para el `kp` propio de un seccionador sin poste; el de
+un aislador, el de sus agujas y el de un punto de acceso a la vía siguen sin signo.
 
 **La vía tiene la suya propia** (`V17`): `stationId` pasa a `stationIds`, porque una vía larga
 atraviesa varias estaciones sin dejar de ser una vía —`TRACK 1` de EP4 pasa por ZIC, por BIN y

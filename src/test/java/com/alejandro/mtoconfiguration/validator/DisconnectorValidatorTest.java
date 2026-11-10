@@ -156,6 +156,9 @@ class DisconnectorValidatorTest {
         assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_INVALID_FORMAT, "kp");
         dto.setKp("98375.1234");
         assertError(validator.validateBeforeSave(dto), ErrorCodes.VALIDATION_OUT_OF_RANGE, "kp");
+        dto.setKp("-12.5");
+        dto.setTrackId(3L);
+        assertNoErrors(validator.validateBeforeSave(dto));
     }
 
     @Test

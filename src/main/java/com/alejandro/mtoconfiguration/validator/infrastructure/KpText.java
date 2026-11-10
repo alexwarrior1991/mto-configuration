@@ -10,8 +10,12 @@ import java.math.BigDecimal;
  */
 final class KpText {
 
-    /** En metros, sin signo y con punto decimal: {@code 98375} o {@code 98375.5}. */
-    static final String PATTERN = "\\d+(\\.\\d+)?";
+    /**
+     * En metros y con punto decimal: {@code 98375} o {@code 98375.5}. Con signo, porque un poste de
+     * antes del origen de la kilometración —la cabecera de EP11A, Casa da Música en RUBI— está en un
+     * KP negativo ({@code -77.960}) y ese es su sitio.
+     */
+    static final String PATTERN = "-?\\d+(\\.\\d+)?";
 
     private KpText() {
     }

@@ -122,8 +122,8 @@ public class Profile extends CRUDEntity {
         return profileId;
     }
 
+    /** KP en metros, con signo: un poste de antes del origen de la kilometración va en negativo. */
     @NotNull
-    @PositiveOrZero
     @Digits(integer = KP_INTEGER_DIGITS, fraction = KP_FRACTION_DIGITS)
     @Column(name = "KILOMETRIC_POINT",
             precision = KP_INTEGER_DIGITS + KP_FRACTION_DIGITS,

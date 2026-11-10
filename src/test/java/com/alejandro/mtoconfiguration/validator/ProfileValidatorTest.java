@@ -55,8 +55,8 @@ class ProfileValidatorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"no soy un numero", "12,5", "1.2.3", "-5", "12abc", "1e5"})
-    @DisplayName("el kp viaja como texto pero la columna es NUMERIC y @PositiveOrZero")
+    @ValueSource(strings = {"no soy un numero", "12,5", "1.2.3", "+5", "--5", "- 5", "12abc", "1e5"})
+    @DisplayName("el kp viaja como texto pero la columna es NUMERIC: un número con punto decimal")
     void rechazaKpNoNumerico(String kp) {
         ProfileDTO dto = ValidDtos.rootProfile();
         dto.setKp(kp);
@@ -65,7 +65,8 @@ class ProfileValidatorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"0", "0.000", "12345.678", "999999999.999", "007.5"})
+    @ValueSource(strings = {"0", "0.000", "12345.678", "999999999.999", "007.5", "-77.960", "-999999999.999"})
+    @DisplayName("el kp admite signo: un poste de antes del origen de la kilometración va en negativo")
     void aceptaKpNumerico(String kp) {
         ProfileDTO dto = ValidDtos.rootProfile();
         dto.setKp(kp);
@@ -74,7 +75,7 @@ class ProfileValidatorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"1234567890", "1.2345"})
+    @ValueSource(strings = {"1234567890", "1.2345", "-1234567890"})
     @DisplayName("el kp respeta NUMERIC(12,3): 9 enteros y 3 decimales")
     void rechazaKpConPrecisionExcesiva(String kp) {
         ProfileDTO dto = ValidDtos.rootProfile();

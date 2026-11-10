@@ -8,7 +8,6 @@ import com.alejandro.mtoconfiguration.masterdata.messaging.PublishMasterDataEven
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Setter;
 import org.hibernate.envers.Audited;
 
@@ -126,9 +125,8 @@ public class Disconnector extends CRUDEntity {
     /**
      * KP en metros, <b>solo</b> de un seccionador sin poste: el de uno en un poste es el de su
      * perfil, y guardarlo dos veces dejaría dos datos que pueden contradecirse (V26). Lo exige
-     * {@code DisconnectorValidator}.
+     * {@code DisconnectorValidator}. Con signo, como el del perfil.
      */
-    @PositiveOrZero
     @Digits(integer = KP_INTEGER_DIGITS, fraction = KP_FRACTION_DIGITS)
     @Column(name = "KILOMETRIC_POINT",
             precision = KP_INTEGER_DIGITS + KP_FRACTION_DIGITS,
