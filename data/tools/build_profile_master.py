@@ -75,7 +75,9 @@ CANTILEVER_SLOTS = 3
 # admite la columna solo cambia el 400 con el campo señalado por un 500 del driver.
 #   campo: (enteros, decimales, minimo o None)
 NUMERIC_LIMITS = {
-    "KP": (9, 3, Decimal(0)),
+    # Con signo: los postes de antes del origen de la kilometracion —los de la cabecera de
+    # EP11A, los de Casa da Musica en RUBI— estan en un KP negativo, y es su sitio.
+    "KP": (9, 3, None),
     "SPAN": (3, 3, Decimal(0)),
     "HEIGHT_CANTILEVER_SUPPORT": (6, 0, Decimal(0)),
     "POLE_GAUGE_LOCATION": (6, 0, Decimal(0)),
@@ -217,6 +219,64 @@ def is_legend_note(code):
     poste por numerar.
     """
     return len(code.split()) >= 3 and re.match(r"[A-Za-z]{3,}\b", code) is not None
+
+
+def is_kp_note(code):
+    """True si en la columna del perfil hay una anotacion de KP, no un poste.
+
+    EP11B escribe 'T1:27+130' en la fila de debajo de 27-1.03, que esta justo en el KP
+    27130: es la via y el KP de ese poste apuntados al lado. Leida como perfil, la regla del
+    KP supuesto le daba la media de sus vecinos e inventaba un mastil en el 27152,5.
+    """
+    return re.fullmatch(r"T\d+\s*:\s*\d+\+\d+(?:[.,]\d+)?", code) is not None
+
+
+# Un perfil sin KP cuyos DOS vecinos lo tienen toma la media de los dos. Es el poste 'Bis',
+# que se mete entre dos que ya estaban y que la hoja deja sin KP (25-1.01Bis, 7-1.17Bis...).
+# Mas separados que esto los vecinos no son dos postes seguidos —el vano mas largo no llega
+# a 70 m—, sino un tramo que reinicia la kilometracion, y su media no seria ningun sitio.
+PROFILE_KP_MAX_GAP_M = Decimal(300)
+
+
+def supposed_kps(entries):
+    """KP supuesto de los perfiles sin KP de un tramo: {indice: (kp, anterior, siguiente)}.
+
+    ``entries`` son los perfiles del tramo en su orden, cada uno (codigo, kp, celda_vacia),
+    con el kp ya leido (None si no hay o no vale). Solo se supone el de una celda VACIA —un
+    KP que no es un numero sigue siendo un error del origen— y solo con los dos vecinos
+    inmediatos con KP: una racha de perfiles sin KP no se reparte ('PROFILE 2' a
+    'PROFILE 12' de EP9B), porque de ella solo se sabe donde empieza y donde acaba. Con los
+    vecinos demasiado lejos, el kp devuelto es None y el llamador lo dice.
+    """
+    supposed = {}
+    for index, (_, kp, blank) in enumerate(entries):
+        if kp is not None or not blank or index == 0 or index + 1 == len(entries):
+            continue
+        before, after = entries[index - 1], entries[index + 1]
+        if before[1] is None or after[1] is None:
+            continue
+        middle = None
+        if abs(after[1] - before[1]) <= PROFILE_KP_MAX_GAP_M:
+            middle = ((before[1] + after[1]) / 2).quantize(Decimal("0.001"),
+                                                           rounding=ROUND_HALF_UP)
+        supposed[index] = (middle, before, after)
+    return supposed
+
+
+def apply_supposed_kp(supposed, index, *, code, ep, sheet, row, master: Master):
+    """El KP supuesto del perfil ``index`` (o None), anotado en DESCARTADOS con sus vecinos."""
+    if index not in supposed:
+        return None
+    middle, before, after = supposed[index]
+    vecinos = f"{before[0]} en {before[1]} y {after[0]} en {after[1]}"
+    if middle is None:
+        master.discard(motivo=f"KP sin valor: los contiguos estan a mas de "
+                              f"{PROFILE_KP_MAX_GAP_M} m", ep=ep, hoja=sheet, fila=row,
+                       detalle=f"{code}: {vecinos}")
+        return None
+    master.discard(motivo="KP supuesto: media de los perfiles contiguos", ep=ep, hoja=sheet,
+                   fila=row, detalle=f"{code} -> {middle} ({vecinos})")
+    return middle
 
 
 def fit_numeric(field, value, *, ep, sheet, row, master: Master):
@@ -552,6 +612,21 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
     # tramos concatenados el KP no vale, porque el segundo reinicia la kilometracion.
     position = 0
 
+    # Primera pasada, solo para el KP: el de un perfil sin KP sale de sus DOS vecinos, y el
+    # siguiente aun no se ha leido cuando se llega a el. Lo que se anote aqui no cuenta:
+    # la pasada de verdad vuelve a leer cada KP y dice lo que haya que decir.
+    entries, entry_of = [], {}
+    for offset in range(start, end):
+        code = squash(cell(rows[offset], single["PROFILE_ID"]))
+        if (is_blank(cell(rows[offset], single["PROFILE_ID"])) or is_noise(code)
+                or is_legend_note(code) or is_kp_note(code)):
+            continue
+        raw_kp = track_kp(cell(rows[offset], single.get("KP")))
+        kp, _ = fit_numeric("KP", raw_kp, ep=ep, sheet=sheet, row=offset + 1, master=Master())
+        entry_of[offset] = len(entries)
+        entries.append((code, kp, is_blank(raw_kp)))
+    supposed = supposed_kps(entries)
+
     for offset in range(start, end):
         row = rows[offset]
         raw_id = cell(row, single["PROFILE_ID"])
@@ -564,6 +639,10 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
             master.discard(motivo="nota de la leyenda, no es un perfil", ep=ep, hoja=sheet,
                            fila=number, detalle=code)
             continue
+        if is_kp_note(code):
+            master.discard(motivo="nota de KP, no es un perfil", ep=ep, hoja=sheet,
+                           fila=number, detalle=code)
+            continue
         review = False
         record = {"EP": ep, "VIA": track_name, "PROFILE_ID": code[:50],
                   "HOJA_ORIGEN": sheet, "FILA_ORIGEN": number}
@@ -574,6 +653,10 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
 
         kp, bad = fit_numeric("KP", track_kp(cell(row, single.get("KP"))), ep=ep, sheet=sheet,
                               row=number, master=master)
+        if kp is None:
+            kp = apply_supposed_kp(supposed, entry_of[offset], code=code, ep=ep, sheet=sheet,
+                                   row=number, master=master)
+            bad = bad or kp is not None       # entra, pero senalado: el KP no es del origen
         record["KP"] = kp
         review = review or bad
 
@@ -814,8 +897,21 @@ def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
     seen_keys, position = set(), 0
     profiles = cantilevers = 0
     block = layout.blocks[block_name]
+    records = synoptic_records(layout, block_name, cfg)
 
-    for item in synoptic_records(layout, block_name, cfg):
+    # El KP supuesto, como en una hoja HR Track: la media de los dos apoyos contiguos.
+    entries, entry_of = [], {}
+    for position_in_block, item in enumerate(records):
+        if item["kind"] != "profile":
+            continue
+        kp_value = item["kp"] if item["kp"] is not None else item["kp_raw"]
+        kp, _ = fit_numeric("KP", kp_value, ep=ep, sheet=sheet, row=item["number"],
+                            master=Master())
+        entry_of[position_in_block] = len(entries)
+        entries.append((item["code"], kp, is_blank(kp_value)))
+    supposed = supposed_kps(entries)
+
+    for position_in_block, item in enumerate(records):
         number = item["number"]
         if item["kind"] == "landmark":
             master.discard(motivo="hito de trazado, no es un apoyo", ep=ep, hoja=sheet,
@@ -839,6 +935,10 @@ def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
         # la celda tal cual para que fit_numeric diga que no es un numero.
         kp_value = item["kp"] if item["kp"] is not None else item["kp_raw"]
         kp, bad = fit_numeric("KP", kp_value, ep=ep, sheet=sheet, row=number, master=master)
+        if kp is None:
+            kp = apply_supposed_kp(supposed, entry_of[position_in_block], code=code, ep=ep,
+                                   sheet=sheet, row=number, master=master)
+            bad = bad or kp is not None
         record["KP"] = kp
         review = review or bad
 
@@ -1084,7 +1184,13 @@ READ_ME = [
     ("REVISAR", "SI cuando hace falta una decision humana. La fila sale resaltada."),
     ("HOJA_ORIGEN / FILA_ORIGEN",
      "Hoja y numero de fila del workbook, tal como los enseña Excel, para poder ir a la celda."),
+    ("KP", "En metros y con signo: un poste de antes del origen de la kilometracion va en "
+           "negativo. Un perfil sin KP entre dos que lo tienen toma la media de los dos (los "
+           "postes 'Bis'), con REVISAR=SI y en DESCARTADOS como 'KP supuesto', con sus vecinos."),
     ("SPAN", "Vano HASTA EL PERFIL SIGUIENTE, en metros. En el origen vive en la fila intermedia."),
+    ("ARM_ANGLE", "Lo calcula la macro ab() del workbook. Donde el libro lo guardo como #NAME? "
+                  "(recalculado sin macros) lo escribe data/tools/arm_angle.py con la misma "
+                  "formula; el que la macro no puede calcular (#VALUE!) va vacio."),
     ("SLOT", "1, 2 o 3. Posicion de la mensula dentro del perfil (columnas M1/M2/M3)."),
     ("Un slot sin tipo no sale",
      "Si la celda de tipo de mensula viene vacia o con '-', ahi no hay mensula: el slot "

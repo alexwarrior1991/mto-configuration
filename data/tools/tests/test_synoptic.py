@@ -258,11 +258,12 @@ class LecturaDeUnaVia(unittest.TestCase):
         self.assertIn(("hito de trazado, no es un apoyo", 3), motivos)
         self.assertIn(("fila fuera del bloque de datos", 15), motivos)
 
-    def test_el_kp_negativo_deja_el_perfil_sin_cargar(self):
+    def test_el_kp_negativo_es_un_kp(self):
+        # Los dos apoyos de Casa da Musica estan antes del origen de la kilometracion.
         perfil = self.by_id["1-00.01"]
-        self.assertIsNone(perfil["KP"])
-        self.assertEqual((perfil["ENABLED"], perfil["REVISAR"]), ("NO", "SI"))
-        self.assertIn(("KP: negativo", 4), {(d["motivo"], d["fila"]) for d in self.master.discarded})
+        self.assertEqual(perfil["KP"], Decimal("-2.840"))
+        self.assertEqual((perfil["ENABLED"], perfil["REVISAR"]), ("SI", "NO"))
+        self.assertNotIn(4, {d["fila"] for d in self.master.discarded if d["motivo"].startswith("KP")})
 
     def test_el_vano_y_el_seccionamento_vienen_de_la_fila_intermedia(self):
         perfil = self.by_id["3504CCA19"]
@@ -334,7 +335,7 @@ class LecturaDeUnaVia(unittest.TestCase):
                          [(1, "DELTA", Decimal("20"), Decimal("3.800")),
                           (2, "FLEXIBLE ARM", Decimal("10"), Decimal("3.840"))])
         self.assertEqual(por_perfil["3505CCA01A"], [(1, "FLEXIBLE ARM", Decimal("10"), Decimal("3.830"))])
-        # El apoyo con KP negativo no carga sus mensulas: solo traia la altura, sin evidencia.
+        # El apoyo de KP negativo no carga mensula: solo traia la altura, sin evidencia.
         self.assertNotIn("1-00.01", por_perfil)
         self.assertEqual(self.cantilevers, len(self.master.cantilevers))
 

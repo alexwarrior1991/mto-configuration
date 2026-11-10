@@ -4,6 +4,19 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ El `kp` de `profile` y de `disconnector` puede llegar negativo
+
+Ninguna clave nueva, renombrada ni quitada: cambia el **rango** de un valor. Un poste de antes del
+origen de la kilometración —la cabecera de `EP11A`, los dos primeros apoyos de Casa da Música en
+`RUBI`— está en un KP negativo (`-77.960`), y hasta ahora el maestro lo dejaba sin cargar. El `kp`
+del perfil, y por tanto el del seccionador que cuelga de él, y el propio de un seccionador sin
+poste admiten signo. El de un aislador, el de sus agujas y el de un punto de acceso a la vía
+siguen sin él (§2.4).
+
+`mto-maintenance` guarda el KP en una columna `numeric(12,3)` con signo y no lo compara con cero,
+así que no hay que tocarlo; `mto-stock`, `mto-notification` y `mto-resources` no leen el `kp` del
+perfil ni del seccionador.
+
 ## ⚠️ El evento `profile` gana `disconnectors`: un poste puede llevar varios seccionadores
 
 Un cambio compatible hacia atrás: **una clave nueva, ninguna renombrada ni quitada** (`V29`).
@@ -319,6 +332,12 @@ necesita el código para interpretarlo sin resolver la referencia. Ambos apuntan
 Que salga con código obliga a que la relación venga inicializada, así que `sectioningFeeding` entra
 en el `@EntityGraph` de `ProfileRepository.findByIdForMessaging`. Es un join a-uno, no multiplica
 filas, y `MasterDataPayloadContractIT` sigue exigiendo **una** sentencia por evento.
+
+#### El `kp`, con signo
+
+El `kp` del perfil y el propio del seccionador sin poste pueden ser negativos: el poste está antes
+del origen de la kilometración. Sigue siendo un número en metros con tres decimales; solo deja de
+ser `>= 0`. El del aislador y sus agujas, y el del punto de acceso a la vía, siguen sin signo.
 
 #### Varios seccionadores en el poste: `disconnectors` (`V29`)
 

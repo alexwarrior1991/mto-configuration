@@ -13,6 +13,7 @@ data/
 │   ├── build_lov_master.py     # Generador del catálogo de LOVs
 │   ├── build_profile_master.py # Generador de los datos de infraestructura
 │   ├── build_sectioning_review.py # Seccionadores y aisladores desde el plano DXF (libro de revisión)
+│   ├── arm_angle.py            # La macro ab() del ángulo del brazo, sin Excel (ver «El ángulo del brazo»)
 │   ├── aliases.yml             # Tablas de mapeo — se amplía aquí, no en los scripts
 │   ├── topology.yml            # Lo que solo puede decir una persona (ver más abajo)
 │   └── tests/                  # Pruebas de las reglas de mapeo (unittest, sin dependencias)
@@ -799,7 +800,7 @@ importa igual.
    identificador del perfil. Tratarlo como un valor metería ~320 perfiles fantasma y
    miles de medidas de cero inventadas.
 
-Dos casos más de la columna del perfil y de la del KP:
+Más casos de la columna del perfil y de la del KP:
 
 - **El KP escrito como texto con la kilometración** (`30+719`) son 30719 m (`track_kp`, con la
   misma lectura que el sinóptico). Así lo escribe EP11B en `30-1.16b`, `30-1.23b`, `30-2.16b` y
@@ -811,6 +812,25 @@ Dos casos más de la columna del perfil y de la del KP:
   van a `DESCARTADOS` como «nota de la leyenda». La regla: tres palabras o más y la primera de
   letras. Un poste empieza por una cifra (`8-1.12`, `0-EXT.04 (00-01.04)`), y `PROFILE 2` (un
   poste por numerar) no es una nota.
+- **El KP admite signo.** Los postes de antes del origen de la kilometración están en un KP
+  negativo, y es su sitio: la cabecera de EP11A (`0-1.01` en −77,96, `0-1.02`, `0-2.01`, `0-2.02`,
+  `0-1M.02`) y los dos primeros apoyos de Casa da Música en RUBI (−2,84). Hasta ahora salían sin KP
+  y deshabilitados (`KP: negativo`); ahora entran, y la API los admite (`KpText`, el del perfil y
+  el de un seccionador sin poste). El de un aislador, el de sus agujas y el de un punto de acceso
+  siguen sin signo.
+- **Un perfil sin KP entre dos que lo tienen toma la media de los dos** (`supposed_kps`). Es el
+  poste `Bis`, que se mete entre dos que ya estaban y la hoja deja sin KP: `25-1.01Bis` de EP11B
+  entra en el 25055, entre `25-1.01` (25026) y `25-1.02` (25084). Entra con `REVISAR=SI` y en
+  `DESCARTADOS` como «KP supuesto: media de los perfiles contiguos», con los dos vecinos. Solo con
+  la celda **vacía** (un KP que no es un número sigue siendo un error) y solo con los **dos**
+  vecinos inmediatos con KP: una racha sin KP no se reparte, porque de ella solo se sabe dónde
+  empieza y dónde acaba (`PROFILE 2` a `PROFILE 12` de EP9B siguen sin KP). Con los vecinos a más
+  de 300 m no son dos postes seguidos sino un tramo que reinicia la kilometración, y no se supone
+  nada. Hoy son 17: los 16 `Bis` de EP9A y EP11B y `84-T.17` de EP6.
+- **Una anotación de KP no es un perfil** (`is_kp_note`). EP11B escribe `T1:27+130` en la fila de
+  debajo de `27-1.03`, que está justo en el 27130: es la vía y el KP de ese poste apuntados al lado.
+  Va a `DESCARTADOS` como «nota de KP»; leída como perfil, la regla de arriba le daba la media de
+  sus vecinos e inventaba un mástil en el 27152,5.
 
 ## El brazo viene con la longitud dentro
 
@@ -822,6 +842,45 @@ longitud», y necesita la lista `steady_arm_types` de `aliases.yml` porque `PH-C
 De las 14.653 ménsulas del maestro: 4.087 traen tipo y longitud, 5.838 solo el tipo y
 4.728 no traen brazo. **Que falte la longitud no es un error**: no se conoce, y por eso
 `steady_arm.length` es opcional.
+
+## El ángulo del brazo lo calcula una macro
+
+La columna `Arm Angle` es una fórmula, `=+ab($T$14,$T$12,$T$16,$G$13,$G$15, 1*$F$14,1200)`, y
+`ab` es una función de la macro de cada `.xlsm`, la misma en los once:
+
+```vba
+Function ab(d, d1, d2, vano1, vano2, R, T)
+    If (R = 0) Then R = 1000000000
+    Pi = 3.1416 : dp1 = 3
+    fb = T * ((d - d1) / 100 / vano1 + (d - d2) / 100 / vano2 + (vano1 + vano2) / 2 / R)
+    ab = (Atn((0.818 + 1.067 * dp1) / fb)) * 180 / Pi
+End Function
+```
+
+El generador no recalcula: lee lo que el libro guardó. Si el libro se recalcula con las macros
+desactivadas, `ab` no existe y lo guardado es `#NAME?`. Así llegaron las dos hojas SOUTH de EP7
+(`INT SOUTH (4(6)-1)`, 254 celdas, y `EXT SOUTH (3(4)-2)`, 21), y esas 275 ménsulas entraban sin
+ángulo.
+
+`tools/arm_angle.py` es la macro en Python, con `Pi = 3.1416` y la aritmética de VBA (una celda
+vacía vale 0; un texto, aunque sea `inf`, es un error):
+
+```bash
+python3 data/tools/arm_angle.py check data/workbook          # el port contra lo que guardó Excel
+python3 data/tools/arm_angle.py fill data/workbook/EP7.xlsm  # escribe lo que falta
+```
+
+`check` lo compara con las **9.453** celdas que Excel sí calculó, y coinciden todas (la mayor
+diferencia es de 1,4·10⁻¹⁴, ruido de coma flotante); donde Excel guardó `#VALUE!` el port también
+falla. `fill` escribe el resultado solo en las celdas `ab()` que guardan `#NAME?`, en su valor
+guardado: la fórmula, la macro y el resto del libro quedan como estaban, y abrirlo en Excel con
+las macros da lo mismo. Con él se escribieron los 275 de EP7.
+
+Lo que la macro no puede calcular se queda sin ángulo, como en Excel (`#VALUE!`), y en
+`DESCARTADOS` como «ARM_ANGLE: no es un numero»: un argumento `#REF!` (la fórmula apunta a una
+fila borrada), un vano o una desviación vacíos de los que divide, o un texto (`R95 = 'inf'` en
+EP9A). Las otras dos funciones de la macro que guardan `#NAME?` en EP7 (`FL_1` y `FL_2`, en la
+columna AQ) no van al maestro y no se tocan.
 
 ## Qué se importa y qué no
 
@@ -927,8 +986,9 @@ escribe la grafía del catálogo.
 - **El KP es el P.K. de línea de cada vía** (`P.K. (vía 1)` / `P.K. (vía 2)`), en metros, y
   admite la kilometración con signo más (`1+118,8` son 1118,8 m). El P.K. absoluto de la red
   (`P.K. Abs.vía 1`, decreciente y solo de la vía 1) se conserva en `NO_MAPEADO`. Los dos primeros
-  apoyos de Casa da Música tienen KP negativo (−2,84) y se quedan `ENABLED=NO` con el motivo
-  `KP: negativo`, la misma regla que los demás EPs.
+  apoyos de Casa da Música están en un KP negativo (−2,84), antes del origen, y entran con él: el
+  KP admite signo, como en los demás EPs. Un apoyo sin KP entre dos que lo tienen toma la media,
+  como en una hoja HR Track.
 - `Implantação (m)` es la distancia carril-poste, en metros: el campo `RAIL_POLE_DISTANCE` va en
   milímetros (`1,77` → `1770`).
 
