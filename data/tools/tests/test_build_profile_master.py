@@ -671,64 +671,16 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
             wb.close()
 
     # Huecos conocidos del maestro que hay hoy en data/. La lista NO es una excusa: es lo
-    # que queda por cerrar, y tiene que llegar a cero.
-    #
-    # Son codigos sueltos que el catalogo no tiene. No queda ninguna familia: son casos
-    # de uno en uno. Los huecos de topology.yml —estaciones sin declarar, hojas sin
-    # declarar— ya estan todos cerrados.
+    # que queda por cerrar, y tiene que llegar a cero. Ya esta en cero: los ultimos 22 eran
+    # codigos escritos en la columna de otro catalogo (anclajes en 'Sectionning', aparatos
+    # en 'Supports', un brazo en 'Sectioning Feeding'...) y se corrigieron en los workbooks
+    # (data/README.md, «Codigos en la columna de otro catalogo»).
     #
     # Lo que este test protege es que no aparezca NINGUNO NUEVO. Un valor sin reconocer que
     # no este aqui listado hace fallar el test, que es justo lo que se perdia si se dejaba
-    # el assertEqual(..., []) 'temporalmente' comentado.
-    HUECOS_CONOCIDOS = {
-        # Soportes. La columna 'Supports' es un campo del perfil desde V20, asi que sus
-        # codigos se comprueban contra el catalogo. Los nueve que describian un soporte
-        # de verdad ya estan habilitados en track_accepted; estos cuatro no lo estan
-        # porque NO son soportes:
-        #   'SECT-I', 'FS1' y 'FS/PP2' son aparatos de 'Sectioning Feeding', y
-        #   'B7' es un semiportico, codigo de Portal (plano 6127, 140 usos en su columna).
-        # Los cuatro se corrigen en el workbook, no habilitandolos: el soporte sobre el
-        # semiportico B7 ya tiene codigo propio, 'S1/B7', con 119 usos.
-        ('codigo sin SupportType habilitado', 'B7'),
-        ('codigo sin SupportType habilitado', 'FS/PP2'),
-        ('codigo sin SupportType habilitado', 'FS1'),
-        ('codigo sin SupportType habilitado', 'SECT-I'),
-
-        # Anclaje. 'TRACK 5' es una anotacion de via, no un anclaje: quitandole la palabra
-        # y el numero no queda codigo ninguno, asi que la celda sale nombrada en vez de
-        # colarse en el catalogo como el codigo 'TRACK 5', que es lo que hacia antes.
-        ('codigo sin Anchorage habilitado', 'TRACK 5'),
-
-        # Codigos de otros catalogos que el origen escribe en la columna equivocada. Se
-        # corrigen en el workbook: reencaminarlos aqui recuperaria el valor, pero dejaria
-        # el Excel mal Y sin aviso. La fila entra igual, sin ese valor.
-        #   'FP' es un anclaje y 'PHQ-1150' un brazo, los dos en 'Sectioning Feeding'.
-        #   'MP-ISusp' es una suspension aislada —un SOPORTE— escrita en 'Portals'.
-        #   'RW2 RW2T-C' son dos soportes de retorno en una celda, y la columna admite uno.
-        ('codigo sin DisconnectorFunction habilitado', 'FP'),
-        ('codigo sin DisconnectorFunction habilitado', 'PHQ-1150'),
-        ('codigo sin Portal habilitado', 'MP-ISusp'),
-        ('codigo sin ReturnSupport habilitado', 'RW2 RW2T-C'),
-
-        # Seccionamiento. Casi todos son codigos de ANCHORAGE escritos en la columna
-        # SECTIONNING: la leyenda declara AnRW (Return Anchor), AnFW (Feeder Anchor) e IO
-        # (Insulated Overlap) en el otro catalogo. Se corrigen en el workbook, no aqui.
-        # 'POLE TRACK 14S' es una anotacion y la 'T' de 'AnMP T A/S-Diag' no es nada, pero
-        # 'AnMP' si es un anclaje, asi que esa celda tampoco se puede cargar entera.
-        ('codigo sin Sectioning habilitado', 'A/S-Diag AnRW'),
-        ('codigo sin Sectioning habilitado', 'AnFW AnFW'),
-        ('codigo sin Sectioning habilitado', 'AnMP AnRw'),
-        ('codigo sin Sectioning habilitado', 'AnMP T A/S-Diag'),
-        ('codigo sin Sectioning habilitado', 'AnRW'),
-        ('codigo sin Sectioning habilitado', 'AnRW/Tunnel'),
-        ('codigo sin Sectioning habilitado', 'AnRW2'),
-        ('codigo sin Sectioning habilitado', 'IO'),
-        ('codigo sin Sectioning habilitado', 'P120(Tg) S/A IO'),
-        ('codigo sin Sectioning habilitado', 'POLE TRACK 14S'),
-        ('codigo sin Sectioning habilitado', 'S/A A/S AnRW1 AnRW2'),
-        ('codigo sin Sectioning habilitado', 'S/A IO'),
-        ('codigo sin Sectioning habilitado', 'S/A IO S/A'),
-    }
+    # el assertEqual(..., []) 'temporalmente' comentado. Si un dia hay que convivir con uno,
+    # va aqui con el porque.
+    HUECOS_CONOCIDOS = set()
 
     def test_no_aparece_ningun_hueco_nuevo(self):
         aparecidos = {(r["TIPO"], r["VALOR"]) for r in self.unknown}
