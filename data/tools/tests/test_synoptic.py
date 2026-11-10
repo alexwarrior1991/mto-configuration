@@ -232,6 +232,31 @@ class KilometracionDelSinoptico(unittest.TestCase):
         self.assertEqual(synoptic.parse_kp("1+118,8"), Decimal("1118.8"))
         self.assertEqual(synoptic.parse_kp("6 392,5"), Decimal("6392.5"))
 
+    def test_el_signo_de_la_kilometracion_es_el_del_kp_entero(self):
+        # El signo va delante de los kilometros pero es de todo el KP: se aplica a
+        # km * 1000 + m. Con '-0' no habia signo que heredar (salia +10) y con '-1' los
+        # metros se sumaban en vez de restarse (salia -800).
+        self.assertEqual(synoptic.parse_kp("-0+010"), Decimal("-10"))
+        self.assertEqual(synoptic.parse_kp("-1+200"), Decimal("-1200"))
+        self.assertEqual(synoptic.parse_kp("-0+077,96"), Decimal("-77.96"))
+        self.assertEqual(synoptic.parse_kp(" -0 + 077,96 "), Decimal("-77.96"))
+        self.assertEqual(synoptic.parse_kp("-12+005.5"), Decimal("-12005.5"))
+
+    def test_la_kilometracion_positiva_no_cambia(self):
+        self.assertEqual(synoptic.parse_kp("0+010"), Decimal("10"))
+        self.assertEqual(synoptic.parse_kp("+0+010"), Decimal("10"))
+        self.assertEqual(synoptic.parse_kp("1+200"), Decimal("1200"))
+        self.assertEqual(synoptic.parse_kp("+1+200"), Decimal("1200"))
+        self.assertEqual(synoptic.parse_kp("30+719"), Decimal("30719"))
+        self.assertEqual(synoptic.parse_kp("0+000"), Decimal("0"))
+        self.assertFalse(synoptic.parse_kp("-0+000").is_signed())
+        self.assertEqual(synoptic.parse_kp("-10"), Decimal("-10"))
+        self.assertEqual(synoptic.parse_kp("-77,96"), Decimal("-77.96"))
+
+    def test_el_kp_de_una_hoja_hr_track_hereda_el_signo(self):
+        self.assertEqual(bpm.track_kp("-0+010"), Decimal("-10"))
+        self.assertEqual(bpm.track_kp("30+719"), Decimal("30719"))
+
     def test_los_huecos_no_son_un_kp(self):
         for value in (None, "", "??", "-", "abc", True):
             self.assertIsNone(synoptic.parse_kp(value), repr(value))

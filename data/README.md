@@ -1022,7 +1022,8 @@ escribe la grafía del catálogo.
   código y un KP donde iría un apoyo (`3703CCA36` en la fila 942); salen en `DESCARTADOS` como
   `fila fuera del bloque de datos`, con su fila.
 - **El KP es el P.K. de línea de cada vía** (`P.K. (vía 1)` / `P.K. (vía 2)`), en metros, y
-  admite la kilometración con signo más (`1+118,8` son 1118,8 m). El P.K. absoluto de la red
+  admite la kilometración con signo más (`1+118,8` son 1118,8 m; el signo de delante es el del
+  KP entero: `-0+010` son −10 m y `-1+200`, −1200 m). El P.K. absoluto de la red
   (`P.K. Abs.vía 1`, decreciente y solo de la vía 1) se conserva en `NO_MAPEADO`. Los dos primeros
   apoyos de Casa da Música están en un KP negativo (−2,84), antes del origen, y entran con él: el
   KP admite signo, como en los demás EPs. Un apoyo sin KP entre dos que lo tienen toma la media,
