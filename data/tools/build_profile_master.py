@@ -690,8 +690,8 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
         profiles += 1
 
         cantilevers += read_cantilevers(row, multi, cfg, record, ep, sheet,
-                                        number, master, support=column_value(
-                                            row, unmapped_cols, "Supports"))
+                                        number, master,
+                                        support=row_support(row, single, unmapped_cols))
         collect_unmapped(rows, offset, end, unmapped_cols, record, master)
 
     return profiles, cantilevers
@@ -775,13 +775,27 @@ def fallback_cantilever_type(values, support, cfg, ep, sheet, number, master: Ma
 def column_value(row, columns, header):
     """Valor de una columna del origen buscada por su cabecera, sin importar mayusculas.
 
-    Sirve para leer una columna que NO tiene campo en el maestro —hoy 'Supports', que
-    va a NO_MAPEADO— cuando hace falta para decidir sobre otra que si lo tiene.
+    Sirve para leer una columna que NO tiene campo en el maestro cuando hace falta para
+    decidir sobre otra que si lo tiene.
     """
     for name, index in columns.items():
         if squash(name).upper() == header.upper():
             return cell(row, index)
     return None
+
+
+def row_support(row, single, unmapped):
+    """Lo que escribe la columna 'Supports' en la fila, tal cual.
+
+    Es el tipo de soporte del perfil (SUPPORT_TYPE) desde que dejo de ir a NO_MAPEADO, y
+    buscarla solo entre las columnas sin mapear dejo de encontrarla: la regla de la
+    catenaria rigida no actuaba, y las 58 mensulas de EP6 / TSA-THA con 'OCR SUPPORT'
+    salian UNKNOWN en vez de OCR. Se lee la celda y no el codigo resuelto, porque la regla
+    compara con lo que escribe el origen. Sin esa columna, la sin mapear de antes.
+    """
+    if "SUPPORT_TYPE" in single:
+        return cell(row, single["SUPPORT_TYPE"])
+    return column_value(row, unmapped, "Supports")
 
 
 def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master,

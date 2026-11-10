@@ -10,6 +10,7 @@ no esta.
     python3 -m unittest discover -s data/tools/tests
 """
 
+import collections
 import importlib.util
 import os
 import unittest
@@ -369,6 +370,32 @@ class LecturaDeUnaHojaDeTrazado(unittest.TestCase):
         rows[5][16] = "OCR SUPPORT"        # la columna Supports de esa misma fila
         master, _, _ = self.leer_con_fallback(rows)
 
+        tercera = [c for c in master.cantilevers if c["SLOT"] == 3][0]
+        self.assertEqual(tercera["CANTILEVER_TYPE"], "OCR")
+        self.assertEqual(tercera["REVISAR"], "SI")
+
+    def test_la_catenaria_rigida_con_supports_como_tipo_de_soporte(self):
+        """Como en aliases.yml: 'Supports' es el SUPPORT_TYPE del perfil, no una columna sin
+        mapear. La regla solo la buscaba entre las sin mapear, y en el maestro real no
+        actuaba: las 58 mensulas de catenaria rigida de EP6 salian UNKNOWN.
+        """
+        columns = dict(CFG["profile_columns"])
+        columns["profile"] = dict(columns["profile"], supports="SUPPORT_TYPE")
+        columns["unmapped"] = ["survey", "soil found"]
+        cfg = dict(CFG, profile_columns=columns,
+                   cantilever_type_fallback=self.CFG_FALLBACK,
+                   lov_catalog={"CantileverType": {"UNKNOWN": "UNKNOWN", "OCR": "OCR",
+                                                   "EMT-1": "EMT-1", "EMT-T": "EMT-T",
+                                                   "EMT-2T": "EMT-2T"},
+                                "SupportType": {"OCR SUPPORT": "OCR SUPPORT"}})
+        rows = self.sheet_rows()
+        rows[5] = pad([None, "30-1.16", 30716, None, "S/A", "S1T",
+                       "EMT-1", "EMT-T", None, 15, -30, 40, "PH", "PHQ", "BC-1200"])
+        rows[5][16] = "OCR SUPPORT"
+        master, _, _ = self.read(rows, cfg=cfg)
+
+        perfil = [p for p in master.profiles if p["PROFILE_ID"] == "30-1.16"][0]
+        self.assertEqual(perfil["SUPPORT_TYPE"], "OCR SUPPORT")
         tercera = [c for c in master.cantilevers if c["SLOT"] == 3][0]
         self.assertEqual(tercera["CANTILEVER_TYPE"], "OCR")
         self.assertEqual(tercera["REVISAR"], "SI")
@@ -911,6 +938,15 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
                           (("RUBI", "TRACK 2", "1-00.02"), -2.84)):
             self.assertEqual(perfiles[clave]["KP"], kp, clave)
             self.assertEqual(perfiles[clave]["ENABLED"], "SI", clave)
+
+    def test_la_catenaria_rigida_de_las_hojas_de_via_es_ocr(self):
+        """Ninguna mensula de un perfil con Supports = 'OCR SUPPORT' sale UNKNOWN: es OCR."""
+        rigidos = {(p["EP"], p["VIA"], p["ORDEN"]) for p in self.profiles
+                   if p["SUPPORT_TYPE"] == "OCR SUPPORT"}
+        tipos = collections.Counter(c["CANTILEVER_TYPE"] for c in self.cantilevers
+                                    if (c["EP"], c["VIA"], c["ORDEN"]) in rigidos)
+        self.assertNotIn("UNKNOWN", tipos)
+        self.assertGreaterEqual(tipos["OCR"], 58 + 602, "EP6 / TSA-THA y RUBI")
 
     def test_los_angulos_de_ep7_estan_calculados(self):
         # Las dos hojas SOUTH guardaban #NAME?: el ab() de la macro, calculado sin macros.
