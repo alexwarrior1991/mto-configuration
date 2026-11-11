@@ -383,6 +383,17 @@ enseña a quien consulta, para que un trabajo difunto no aparezca eternamente co
 segura con varias réplicas precisamente por el latido: la versión ingenua —marcar `RUNNING` como
 fallidos al arrancar— habría matado los trabajos vivos de las demás.
 
+**Lo que el reaper cierra, cerrado queda.** Un trabajo puede dejar de latir sin que su proceso haya
+muerto (una pausa larga, la base sin responder al latido), y su hilo sigue trabajando después de que
+el reaper lo haya dado por `FAILED`. Antes ese hilo escribía encima su `RUNNING`, sus contadores o su
+`COMPLETED`: el trabajo resucitaba, con un `job.finished` que contradecía lo ya enseñado y quizá con
+otro igual ya relanzado en su hueco. Ahora **toda escritura de estado** (`markRunning`,
+`saveProgress`, `markFinished`) empieza por un `UPDATE … WHERE id = ? AND status IN ('PENDING',
+'RUNNING')` (`AsyncJobRepository.claimActive`) cuya respuesta es el número de filas: con 0 no se
+escribe nada ni se publica `job.finished`, y queda un `WARN`; con 1 la fila queda bloqueada hasta el
+commit, así que el reaper que llegue en ese momento espera y ya no la ve activa. Vale igual para un
+segundo cierre de un trabajo ya terminado. Lo fija `AsyncJobSlotIT`.
+
 ## 5. Purga
 
 `async_job` solo crece y el directorio de exportación acumula CSV para siempre. De los dos, **el
@@ -591,6 +602,11 @@ Cuatro decisiones que sostienen el resto:
   volver a lanzarlo; el progreso parcial de una carga masiva ya está confirmado, así que relanzarla
   reintenta también lo que ya se hizo. Y ese cierre lo hace el reaper con un `UPDATE` masivo, sin
   pasar por `markFinished`, así que **no publica `job.finished`**: quien lo lanzó no recibe aviso.
+- **Un trabajo que el reaper cerró estando vivo sigue hasta acabar, pero ya no lo cuenta.** Su hilo no
+  se interrumpe: lo que haga a partir de ahí (perfiles escritos, eventos de datos maestros) es real
+  y queda confirmado, y su fila se queda en `FAILED` «dejó de dar señales de vida» sin contadores
+  nuevos ni `job.finished` (§4). Es el precio de no resucitarlo; que no ocurra depende de que
+  `app.jobs.heartbeat.timeout` sea holgado frente al intervalo del latido.
 
 ## 11. Cambios en lo que ya existía
 

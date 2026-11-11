@@ -196,7 +196,7 @@ public class AsyncJobStore {
     /** Marca el arranque efectivo en el hilo de fondo. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markRunning(UUID jobId) {
-        repository.findById(jobId).ifPresent(job -> {
+        findStillActive(jobId, "arrancar").ifPresent(job -> {
             Instant now = Instant.now();
 
             job.setStatus(JobStatus.RUNNING);
@@ -212,7 +212,7 @@ public class AsyncJobStore {
     /** Refresca los contadores de un trabajo en curso, sin tocar su estado. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveProgress(UUID jobId, ProfileJobProgress progress) {
-        repository.findById(jobId).ifPresent(job -> {
+        findStillActive(jobId, "volcar su progreso").ifPresent(job -> {
             applyCounters(job, progress);
             repository.saveAndFlush(job);
 
@@ -237,13 +237,16 @@ public class AsyncJobStore {
      * o se confirman el estado terminal y su evento, o ninguno de los dos. Un evento que anunciara
      * un final que hizo rollback, o un final sin evento, romperian lo que el consumidor cuenta con
      * ello; y es la misma garantia con la que salen los eventos de datos maestros.</p>
+     *
+     * <p>Solo cierra un trabajo que sigue activo. Si el reaper ya lo cerro (o ya se cerro antes),
+     * no se escribe nada <b>ni se publica el evento</b>: el estado que ya se enseño es el que vale.</p>
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markFinished(UUID jobId,
                              JobStatus status,
                              ProfileJobProgress progress,
                              String errorMessage) {
-        repository.findById(jobId).ifPresent(job -> {
+        findStillActive(jobId, "cerrar como " + status).ifPresent(job -> {
             if (progress != null) {
                 applyCounters(job, progress);
                 job.setFileName(progress.getOutputFileName());
@@ -262,6 +265,28 @@ public class AsyncJobStore {
                     jobId, job.getType(), status, job.getProcessedItems(),
                     job.getSuccessfulItems(), job.getFailedItems());
         });
+    }
+
+    /**
+     * El trabajo, solo si sigue activo, y con su fila ya bloqueada para esta transaccion.
+     *
+     * <p>Toda escritura de estado pasa por aqui. Un trabajo que dejo de latir un rato sin que su
+     * proceso muriera (una pausa larga, la base sin responder) es cerrado como FAILED por el reaper,
+     * y su hilo, que sigue, escribia despues RUNNING, sus contadores o su COMPLETED encima: el
+     * trabajo resucitaba, con un {@code job.finished} que contradecia lo que ya se habia enseñado y
+     * quiza con otro igual ya relanzado en su hueco. La condicion va en el {@code UPDATE}
+     * ({@link AsyncJobRepository#claimActive}), nunca en una lectura previa.</p>
+     */
+    private Optional<AsyncJob> findStillActive(UUID jobId, String intent) {
+        int active = repository.claimActive(jobId, AsyncJobRepository.ACTIVE_STATUSES, Instant.now());
+
+        if (active == 0) {
+            log.warn("Trabajo jobId={} ya cerrado (o inexistente): no se puede {}. Su estado no cambia.",
+                    jobId, intent);
+            return Optional.empty();
+        }
+
+        return repository.findById(jobId);
     }
 
     @Transactional(readOnly = true)

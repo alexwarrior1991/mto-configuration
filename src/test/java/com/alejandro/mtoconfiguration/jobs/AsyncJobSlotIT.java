@@ -9,6 +9,8 @@ import com.alejandro.mtoconfiguration.service.infraestructure.jobs.AsyncJobMetri
 import com.alejandro.mtoconfiguration.service.infraestructure.jobs.AsyncJobProperties;
 import com.alejandro.mtoconfiguration.service.infraestructure.jobs.AsyncJobReaper;
 import com.alejandro.mtoconfiguration.service.infraestructure.jobs.AsyncJobStore;
+import com.alejandro.mtoconfiguration.service.infraestructure.jobs.JobFinishedEventPublisher;
+import com.alejandro.mtoconfiguration.service.infraestructure.jobs.ProfileJobProgress;
 import com.alejandro.mtoconfiguration.support.PostgresTestDatabase;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -23,6 +25,7 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Propagation;
@@ -38,6 +41,12 @@ import java.util.concurrent.Future;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 /**
  * Reparto de cupo contra PostgreSQL de verdad.
@@ -93,6 +102,10 @@ class AsyncJobSlotIT {
 
     @Autowired
     private MeterRegistry meterRegistry;
+
+    /** El outbox no entra aqui: lo que se mira es si el cierre llega a pedir su evento. */
+    @MockitoBean
+    private JobFinishedEventPublisher finishedEventPublisher;
 
     @DynamicPropertySource
     static void datasourceProperties(DynamicPropertyRegistry registry) {
@@ -258,6 +271,76 @@ class AsyncJobSlotIT {
         assertThat(store.countAlive(JobSlotGroup.EXPORT)).isEqualTo(2);
         assertThat(store.countAlive(JobSlotGroup.BULK)).isZero();
         assertThat(store.maxConcurrencyOf(JobSlotGroup.EXPORT)).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("el hilo que seguia trabajando no resucita el trabajo que el reaper ya cerro")
+    void elTrabajoCerradoPorElReaperNoResucita() {
+        AsyncJob job = claimBulk();
+        store.markRunning(job.getId());
+        enfriarLatido(job, Duration.ofMinutes(10));
+        reaper.failStaleJobs();
+
+        // El proceso no habia muerto: solo dejo de latir un rato (una pausa larga, la base sin
+        // responder). Su hilo sigue y escribe lo que escribiria cualquier trabajo vivo.
+        ProfileJobProgress progress = unElementoProcesado();
+        store.markRunning(job.getId());
+        store.saveProgress(job.getId(), progress);
+        store.markFinished(job.getId(), JobStatus.COMPLETED, progress, null);
+
+        AsyncJob cerrado = repository.findById(job.getId()).orElseThrow();
+        assertThat(cerrado.getStatus())
+                .as("lo que ya se enseño como FAILED, y por lo que quiza ya se relanzo, no cambia")
+                .isEqualTo(JobStatus.FAILED);
+        assertThat(cerrado.getErrorMessage()).contains("dejo de dar señales de vida");
+        assertThat(cerrado.getProcessedItems()).isZero();
+        verifyNoInteractions(finishedEventPublisher);
+    }
+
+    @Test
+    @DisplayName("un trabajo ya terminado no se vuelve a cerrar ni publica otro evento")
+    void unTrabajoTerminadoNoSeCierraDosVeces() {
+        AsyncJob job = claimBulk();
+        store.markRunning(job.getId());
+        store.markFinished(job.getId(), JobStatus.COMPLETED, null, null);
+
+        store.markFinished(job.getId(), JobStatus.FAILED, null, "tarde");
+
+        AsyncJob cerrado = repository.findById(job.getId()).orElseThrow();
+        assertThat(cerrado.getStatus()).isEqualTo(JobStatus.COMPLETED);
+        assertThat(cerrado.getErrorMessage()).isNull();
+        verify(finishedEventPublisher, times(1)).publish(any());
+    }
+
+    @Test
+    @DisplayName("un trabajo vivo arranca, avanza y se cierra con su evento")
+    void unTrabajoVivoEscribeSuEstado() {
+        AsyncJob job = claimBulk();
+        ProfileJobProgress progress = unElementoProcesado();
+
+        store.markRunning(job.getId());
+        store.saveProgress(job.getId(), progress);
+        assertThat(repository.findById(job.getId()).orElseThrow())
+                .satisfies(enCurso -> {
+                    assertThat(enCurso.getStatus()).isEqualTo(JobStatus.RUNNING);
+                    assertThat(enCurso.getProcessedItems()).isEqualTo(1);
+                });
+
+        store.markFinished(job.getId(), JobStatus.COMPLETED, progress, null);
+
+        assertThat(repository.findById(job.getId()).orElseThrow().getStatus()).isEqualTo(JobStatus.COMPLETED);
+        verify(finishedEventPublisher).publish(any());
+    }
+
+    /** Lo que lleva contado un trabajo de diez elementos tras procesar bien el primero. */
+    private static ProfileJobProgress unElementoProcesado() {
+        ProfileJobProgress progress = mock(ProfileJobProgress.class);
+        when(progress.getTotalItems()).thenReturn(10);
+        when(progress.getProcessedItems()).thenReturn(1);
+        when(progress.getSuccessfulItems()).thenReturn(1);
+        when(progress.getFailedItems()).thenReturn(0);
+        when(progress.getItemErrors()).thenReturn(List.of());
+        return progress;
     }
 
     private void enfriarLatido(AsyncJob job, Duration antiguedad) {

@@ -62,6 +62,30 @@ public interface AsyncJobRepository extends JpaRepository<AsyncJob, UUID>, Query
                   @Param("now") Instant now);
 
     /**
+     * Comprueba que el trabajo sigue activo y se queda con su fila hasta el fin de la transaccion.
+     *
+     * <p>Es la puerta de <b>toda</b> escritura de estado de un trabajo (arrancar, volcar progreso,
+     * cerrar). El hilo que lo ejecuta no sabe si el reaper lo dio por muerto mientras el seguia:
+     * leer el estado y escribir despues dejaria pasar justo ese caso, asi que la pregunta va dentro
+     * de la sentencia y la respuesta es el numero de filas. Con 1, ademas, la fila queda bloqueada:
+     * el reaper que llegue ahora espera al commit y ya no la ve activa (o la ve latiendo).</p>
+     *
+     * <p>Refresca el latido porque quien escribe estado esta, por definicion, vivo.</p>
+     *
+     * @return 1 si el trabajo seguia activo, 0 si ya estaba cerrado (o no existe)
+     */
+    @Modifying
+    @Query("""
+            update AsyncJob job
+               set job.heartbeatAt = :now
+             where job.id = :id
+               and job.status in :activeStatuses
+            """)
+    int claimActive(@Param("id") UUID id,
+                    @Param("activeStatuses") Collection<JobStatus> activeStatuses,
+                    @Param("now") Instant now);
+
+    /**
      * Cierra como fallidos los trabajos que dejaron de latir.
      *
      * <p>No corre prisa: el hueco ya quedo libre en cuanto el latido se enfrio, porque

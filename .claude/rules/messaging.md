@@ -21,8 +21,11 @@
   (`{entityName, entityId, eventName, values}`), nunca por el de datos maestros: quien escucha
   `mto.master-data.#` no recibe nada que no sea un dato maestro. Hoy hay un evento,
   `mto.configuration.job.finished` (`JobFinishedEventPublisher`), escrito en la misma transacción
-  `REQUIRES_NEW` que el estado terminal del trabajo. Lo fijan `JobFinishedEventPublisherTest` y
-  `ConfigurationRabbitMqNamesTest`.
+  `REQUIRES_NEW` que el estado terminal del trabajo, y solo si ese cierre cambió la fila: toda
+  escritura de estado de un trabajo pasa por `AsyncJobRepository.claimActive` (un `UPDATE`
+  condicional a `PENDING`/`RUNNING`, el número de filas como respuesta), así que el trabajo que el
+  reaper ya cerró no resucita ni publica (`AsyncJobSlotIT`). Lo fijan `JobFinishedEventPublisherTest`
+  y `ConfigurationRabbitMqNamesTest`.
 - Un trabajo en segundo plano corre con su `jobId` como `correlationId` (`JobCorrelation.wrap`, al
   encolar), así que todos los eventos que escribe —los de datos maestros de una importación y su
   propio `job.finished`— viajan agrupados bajo él. El MDC de la petición cruza al hilo de fondo por
