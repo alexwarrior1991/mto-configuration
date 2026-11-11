@@ -15,6 +15,7 @@ import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.CriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeApplicationEvent;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeOperation;
+import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeTracker;
 import com.alejandro.mtoconfiguration.utils.Utils;
 import com.alejandro.mtoconfiguration.validator.commons.Validator;
 import com.querydsl.core.BooleanBuilder;
@@ -37,6 +38,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.*;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
 
@@ -125,7 +127,36 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
             return;
         }
 
+        EntityChangeTracker.markPublished(entity);
+
         applicationEventPublisher.publishEvent(new EntityChangeApplicationEvent<>(entity, operation));
+    }
+
+    /**
+     * Ejecuta una escritura apuntando lo que Hibernate escribe ademas de la raiz: los hijos que el
+     * mapper crea, modifica o quita dentro de la peticion de su padre (ver
+     * {@link EntityChangeTracker}).
+     */
+    private <R> R trackingNestedChanges(Supplier<R> write) {
+        try (EntityChangeTracker.Scope ignored = EntityChangeTracker.open()) {
+            return write.get();
+        }
+    }
+
+    /**
+     * Publica el evento de cada entidad que la escritura ha creado, modificado o borrado ademas
+     * de su raiz, por el mismo camino que una escritura directa: el evento de aplicacion que
+     * {@code MasterDataEntityChangedEventListener} convierte en fila del outbox, en esta misma
+     * transaccion, si la entidad lleva {@code @PublishMasterDataEvent}.
+     *
+     * <p>Se llama <b>despues del flush</b> y de publicar la raiz: hasta el flush no se sabe que
+     * filas cambian de verdad, y lo que se escribiera despues de esta llamada no publicaria.
+     */
+    private void publishNestedChanges() {
+        for (EntityChangeTracker.Change change : EntityChangeTracker.drain()) {
+            applicationEventPublisher.publishEvent(
+                    new EntityChangeApplicationEvent<>(change.entity(), change.operation()));
+        }
     }
 
     /**
@@ -212,7 +243,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
             rollbackOn = {ValidationException.class, Exception.class}
     )
     public T create(T dto) throws BaseException {
-        return Optional.ofNullable(dto)
+        return trackingNestedChanges(() -> Optional.ofNullable(dto)
                 .map(d -> {
                     validateBeforeCreate(d);
                     return d;
@@ -230,11 +261,12 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
                     publishEntityCreatedEvent(savedEntity);
+                    publishNestedChanges();
                     getMapper().updateDTOFromEntity(savedEntity, dto);
                     publishCacheEvictionEvent();
                     return dto;
                 })
-                .orElseThrow(() -> new BaseException("No se puede crear un objeto nulo"));
+                .orElseThrow(() -> new BaseException("No se puede crear un objeto nulo")));
 
     }
 
@@ -242,28 +274,73 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
             rollbackOn = {ValidationException.class, Exception.class}
     )
     public List<T> bulkCreate(List<T> dtoList) throws BaseException {
-        return Optional.ofNullable(dtoList)
+        return trackingNestedChanges(() -> Optional.ofNullable(dtoList)
                 .filter(CollectionUtils::isNotEmpty)
                 .map(list -> {
                     validateBeforeBulkCreate(list);
                     return list;
                 })
-                .map(getMapper()::toListEntity)
+                .map(this::toEntitiesByPosition)
                 .map(getRepository()::saveAll)
                 .map(savedEntities -> {
                     getRepository().flush();
                     savedEntities.forEach(this::publishEntityCreatedEvent);
+                    publishNestedChanges();
                     publishCacheEvictionEvent();
                     return getMapper().toListDTO(savedEntities);
                 })
-                .orElseGet(Collections::emptyList);
+                .orElseGet(Collections::emptyList));
+    }
+
+    /** Un elemento de una modificacion en lote, con su posicion para el error que de el mapper. */
+    private E updateInBulk(T dto, int index) {
+        return Optional.ofNullable(dto)
+                                .filter(Utils::exists)
+                                .map(T::getId)
+                                .map(id -> getRepository().findById(id)
+                                        .orElseThrow(() -> notFound(id))
+                                )
+                                .map(entity -> {
+                                    entity.validateVersion(dto.getVersionNumber());
+
+                                    Optional.ofNullable(getBusiness())
+                                            .ifPresent(b -> b.preMapperDTOToEntity(dto, entity));
+
+                                    // El error que de el mapper dice su posicion en el lote.
+                                    BaseMapper.atField("[" + index + "]", () -> {
+                                        getMapper().updateEntityFromDTO(dto, entity);
+                                        return entity;
+                                    });
+
+                                    Optional.ofNullable(getBusiness())
+                                            .ifPresent(b -> b.postValidationDTOToEntity(dto, entity));
+
+                                    return entity;
+                                })
+                                .orElseThrow(() -> new BaseException("No se puede actualizar un objeto nulo o sin ID"));
+    }
+
+    /**
+     * Las entidades de un alta en lote, una a una, para que el error que de el mapper (una referencia
+     * a catalogo que no existe) diga en que elemento esta: {@code [1].poleType}, como el validador.
+     */
+    private List<E> toEntitiesByPosition(List<T> dtos) {
+        List<E> entities = new ArrayList<>(dtos.size());
+
+        for (int index = 0; index < dtos.size(); index++) {
+            T dto = dtos.get(index);
+
+            entities.add(BaseMapper.atField("[" + index + "]", () -> getMapper().toEntity(dto)));
+        }
+
+        return entities;
     }
 
     @Transactional(
             rollbackOn = {ValidationException.class, ConcurrencyException.class, Exception.class}
     )
     public T update(T dto) throws BaseException {
-        return Optional.ofNullable(dto)
+        return trackingNestedChanges(() -> Optional.ofNullable(dto)
                 .filter(Utils::exists)
                 .map(d -> {
                     validateBeforeUpdate(d);
@@ -290,55 +367,37 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
                     publishEntityUpdatedEvent(savedEntity);
+                    publishNestedChanges();
                     getMapper().updateDTOFromEntity(savedEntity, dto);
                     publishCacheEvictionEvent();
                     return dto;
                 })
-                .orElseThrow(() -> new BaseException("No se puede actualizar un objeto nulo o sin ID"));
+                .orElseThrow(() -> new BaseException("No se puede actualizar un objeto nulo o sin ID")));
     }
 
     @Transactional(
             rollbackOn = {ValidationException.class, ConcurrencyException.class, Exception.class}
     )
     public List<T> bulkUpdate(List<T> dtoList) throws BaseException {
-        return Optional.ofNullable(dtoList)
+        return trackingNestedChanges(() -> Optional.ofNullable(dtoList)
                 .filter(CollectionUtils::isNotEmpty)
                 .map(list -> {
                     validateBeforeBulkUpdate(list);
                     return list;
                 })
-                .map(list -> list.stream()
-                        .map(dto -> Optional.ofNullable(dto)
-                                .filter(Utils::exists)
-                                .map(T::getId)
-                                .map(id -> getRepository().findById(id)
-                                        .orElseThrow(() -> notFound(id))
-                                )
-                                .map(entity -> {
-                                    entity.validateVersion(dto.getVersionNumber());
-
-                                    Optional.ofNullable(getBusiness())
-                                            .ifPresent(b -> b.preMapperDTOToEntity(dto, entity));
-
-                                    getMapper().updateEntityFromDTO(dto, entity);
-
-                                    Optional.ofNullable(getBusiness())
-                                            .ifPresent(b -> b.postValidationDTOToEntity(dto, entity));
-
-                                    return entity;
-                                })
-                                .orElseThrow(() -> new BaseException("No se puede actualizar un objeto nulo o sin ID"))
-                        )
+                .map(list -> IntStream.range(0, list.size())
+                        .mapToObj(index -> updateInBulk(list.get(index), index))
                         .toList()
                 )
                 .map(getRepository()::saveAll)
                 .map(savedEntities -> {
                     getRepository().flush();
                     savedEntities.forEach(this::publishEntityUpdatedEvent);
+                    publishNestedChanges();
                     publishCacheEvictionEvent();
                     return getMapper().toListDTO(savedEntities);
                 })
-                .orElseGet(Collections::emptyList);
+                .orElseGet(Collections::emptyList));
     }
 
 
@@ -346,7 +405,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
             rollbackOn = {ValidationException.class, ConcurrencyException.class, Exception.class}
     )
     public T cancel(T dto) throws BaseException {
-        return Optional.ofNullable(dto)
+        return trackingNestedChanges(() -> Optional.ofNullable(dto)
                 .filter(Utils::exists)
                 .map(T::getId)
                 .map(getRepository()::getReferenceById)
@@ -367,11 +426,12 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
                     publishEntityUpdatedEvent(savedEntity);
+                    publishNestedChanges();
                     getMapper().updateDTOFromEntity(savedEntity, dto);
                     publishCacheEvictionEvent();
                     return dto;
                 })
-                .orElseThrow(() -> new BaseException("No se puede cancelar un objeto nulo o sin ID"));
+                .orElseThrow(() -> new BaseException("No se puede cancelar un objeto nulo o sin ID")));
     }
 
     /**

@@ -73,6 +73,7 @@ public abstract class ExecutionPackageMapper implements BaseMapper<ExecutionPack
 
         // 1. Vias
         mergeCollection(
+                "tracks",
                 dto.getTracks(),
                 entity.getTracks(),
                 entity,
@@ -83,6 +84,7 @@ public abstract class ExecutionPackageMapper implements BaseMapper<ExecutionPack
 
         // 2. Estaciones
         mergeCollection(
+                "stations",
                 dto.getStations(),
                 entity.getStations(),
                 entity,

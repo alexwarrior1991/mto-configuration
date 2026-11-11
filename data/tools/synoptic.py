@@ -247,7 +247,8 @@ def parse_kp(value):
     """KP de una celda del sinoptico, en metros, o None si no es un KP.
 
     Ademas del numero admite la kilometracion con signo mas —'1+118,8' son 1118,8 m—
-    y la coma decimal. '??' y '-' son huecos.
+    y la coma decimal. '??' y '-' son huecos. El signo de delante es el del KP entero, no
+    el de los kilometros: '-0+010' son -10 m y '-1+200', -1200 m (antes del origen).
     """
     if value is None or isinstance(value, bool):
         return None
@@ -256,10 +257,11 @@ def parse_kp(value):
     text = squash(value).replace(" ", "")
     if not text:
         return None
-    match = re.fullmatch(r"([-+]?\d+)\+(\d+(?:[.,]\d+)?)", text)
+    match = re.fullmatch(r"([-+]?)(\d+)\+(\d+(?:[.,]\d+)?)", text)
     if match:
-        kilometres, metres = match.groups()
-        return Decimal(kilometres) * 1000 + Decimal(metres.replace(",", "."))
+        sign, kilometres, metres = match.groups()
+        distance = Decimal(kilometres) * 1000 + Decimal(metres.replace(",", "."))
+        return -distance if sign == "-" else distance
     try:
         return Decimal(text.replace(",", "."))
     except InvalidOperation:

@@ -33,6 +33,14 @@ paths:
 
   Lo que se escribe sin pasar por el servicio no publica ninguno de los dos. Por eso importadores y
   trabajos escriben a través de los servicios.
+- El evento de entidad no es solo el de la raíz. Los hijos que una escritura crea, modifica o quita
+  dentro de su padre publican el suyo (README_MESSAGING.md §2.4): `EntityListener`, el listener JPA
+  de `BaseEntity`, apunta en `EntityChangeTracker` cada fila que el flush escribe de verdad, y
+  `BaseService` las publica (`publishNestedChanges`) **después del flush** y del evento de la raíz,
+  que no sale dos veces. Una escritura nueva en `BaseService` se envuelve en
+  `trackingNestedChanges`, y lo que escriba después de `publishNestedChanges` no publica. Un hijo
+  devuelto sin cambios no genera `UPDATE` y no publica. Lo fijan `EntityChangeTrackerTest`,
+  `EntityListenerTest`, `BaseServiceTest` y `NestedChildEventsIT`.
 - El validador devuelve `List<Alert>` y nunca lanza; si hay alertas, `BaseService` lanza
   `ValidationException` (400 `VAL-000`, ver `controllers.md`). Los validadores de maestro extienden
   `NormalEntityValidator` y reparten el trabajo en `validateRequiredFields` (siempre),
@@ -42,7 +50,8 @@ paths:
   `*ValidatorTest`, `ChildIdentityTest`, `BulkValidationTest` y `ValidatorBeanContractTest`
   (validadores sin estado y registrados en Spring).
 - Una colección de hijos en un `PUT` es el estado final (README_API.md §4). La reconcilian los
-  mappers, no el servicio (ver `mappers.md`).
+  mappers, no el servicio (ver `mappers.md`). El hijo que no llega se borra en lógico con su rama
+  (`CRUDEntity.deleteCascade`), a diferencia del `DELETE` directo, que no toca lo que cuelga.
 - Bloqueo optimista: `update` y `bulkUpdate` (y los de `AbstractLovCrudService`) comparan el
   `versionNumber` del DTO con el guardado antes de tocar nada (`BaseEntity.validateVersion`), porque
   el `@Version` de JPA no ve el conflicto cuando la entidad se carga en la misma transacción. Si no

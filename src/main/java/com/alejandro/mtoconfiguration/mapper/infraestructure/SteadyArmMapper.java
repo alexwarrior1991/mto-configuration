@@ -55,15 +55,25 @@ public abstract class SteadyArmMapper implements BaseMapper<SteadyArmDTO, Steady
     protected void mapDtoToEntity(SteadyArmDTO dto, @MappingTarget SteadyArm entity) {
 
         // 2. Resolución del LOV: SteadyArmType (por código)
-        if (dto.getSteadyArmType() != null && dto.getSteadyArmType().getCode() != null) {
-            entity.setSteadyArmType(
-                    masterDataService.getSteadyArmTypeByCode(dto.getSteadyArmType().getCode())
-            );
+        if (dto.getSteadyArmType() != null) {
+            // Vacia (sin codigo y sin id) se ignora: no se puede quitar. Informada, tiene que existir.
+            var resolved = resolveLov(dto.getSteadyArmType(), "steadyArmType",
+                    masterDataService::getSteadyArmTypeByCode, masterDataService::getSteadyArmTypeByIdAndMapToDTO);
+            if (resolved != null) {
+                entity.setSteadyArmType(resolved);
+            }
         }
 
         // 3. Sincronización de la relación 1:1 con Cantilever (Bidireccional)
-        // Aseguramos que si existe el padre, la relación sea íntegra
-        linkEntity(entity.getCantilever(), entity, Cantilever::setSteadyArm);
+        // Aseguramos que si existe el padre, la relación sea íntegra. Solo con un brazo que ya
+        // existe: el de un alta todavía no es la instancia gestionada (el repositorio lo guarda con
+        // merge, que devuelve OTRA), y colgarlo de una ménsula gestionada hacía que la cascada de
+        // la ménsula lo insertara por segunda vez. POST /steady-arms acababa siempre en 409
+        // BUS-002, por el único de cantilever_id. El dueño del vínculo es el brazo
+        // (cantilever_id), así que el alta no necesita el lado inverso. Lo fija SteadyArmLinkIT.
+        if (entity.getId() != null) {
+            linkEntity(entity.getCantilever(), entity, Cantilever::setSteadyArm);
+        }
 
     }
 

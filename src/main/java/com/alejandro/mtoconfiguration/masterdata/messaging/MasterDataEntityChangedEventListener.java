@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +23,12 @@ public class MasterDataEntityChangedEventListener {
     private final MasterDataEventPublisher masterDataEventPublisher;
     private final MasterDataRepositoryResolver repositoryResolver;
 
+    /**
+     * Antes que los que escuchan el mismo evento para volver a publicar lo que depende de la entidad
+     * ({@code TrackAccessPointRepublisher}, {@code CopiedDataRepublisher}): el evento de la via va
+     * delante de los de sus perfiles.
+     */
+    @Order(0)
     @EventListener
     public void onEntityChanged(EntityChangeApplicationEvent<? extends IEntity> event){
         IEntity entity = event.entity();

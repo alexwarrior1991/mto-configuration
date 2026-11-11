@@ -135,7 +135,7 @@ class StationChildMergeIT extends AbstractChildMergeIT {
                 List.of(seccionadorDto(seccionadorId, "SECC-1")),
                 List.of()));
 
-        assertThat(contarFilas("track")).isEqualTo(2);
+        assertThat(contarVivas("track")).isEqualTo(2);
         assertThat(em.find(Track.class, primeraViaId).getName()).isEqualTo("VIA PRINCIPAL");
     }
 
@@ -149,8 +149,8 @@ class StationChildMergeIT extends AbstractChildMergeIT {
                     List.of()));
         }
 
-        assertThat(contarFilas("track")).isEqualTo(2);
-        assertThat(contarFilas("disconnector")).isEqualTo(1);
+        assertThat(contarVivas("track")).isEqualTo(2);
+        assertThat(contarVivas("disconnector")).isEqualTo(1);
     }
 
     @Test
@@ -164,7 +164,7 @@ class StationChildMergeIT extends AbstractChildMergeIT {
 
         // Tres vias, no dos: VIA 2 no viene en la peticion y con la N:M de V17 eso la DESLIGA
         // de ATOCHA, no la borra. La que se crea es VIA 3.
-        assertThat(contarFilas("track")).isEqualTo(3);
+        assertThat(contarVivas("track")).isEqualTo(3);
         assertThat(em.find(Track.class, primeraViaId).getName()).isEqualTo("VIA PRINCIPAL");
         assertThat(em.find(Track.class, segundaViaId))
                 .as("la via que no viene sobrevive, solo pierde el vinculo")
@@ -173,7 +173,7 @@ class StationChildMergeIT extends AbstractChildMergeIT {
                 .as("quedan ligadas VIA PRINCIPAL y VIA 3")
                 .isEqualTo(2);
         assertThat(em.find(Disconnector.class, seccionadorId).getName()).isEqualTo("SECC-RENOMBRADO");
-        assertThat(contarFilas("section_insulator")).isEqualTo(1);
+        assertThat(contarVivas("section_insulator")).isEqualTo(1);
     }
 
     @Test
@@ -204,9 +204,9 @@ class StationChildMergeIT extends AbstractChildMergeIT {
                 List.of(seccionadorDto(seccionadorId, "SECC-1")),
                 List.of()));
 
-        assertThat(contarFilas("track")).as("las vias siguen existiendo").isEqualTo(2);
+        assertThat(contarVivas("track")).as("las vias siguen existiendo").isEqualTo(2);
         assertThat(contarFilas("track_station")).as("lo que se va es el vinculo").isZero();
-        assertThat(contarFilas("disconnector")).as("el seccionador sigue ahi").isEqualTo(1);
+        assertThat(contarVivas("disconnector")).as("el seccionador sigue ahi").isEqualTo(1);
     }
 
     @Test
@@ -229,7 +229,7 @@ class StationChildMergeIT extends AbstractChildMergeIT {
         mapper.updateEntityFromDTO(dto, gestionada);
         flushAndClear();
 
-        assertThat(contarFilas("track")).as("sigue habiendo dos vias, no tres").isEqualTo(2);
+        assertThat(contarVivas("track")).as("sigue habiendo dos vias, no tres").isEqualTo(2);
         assertThat(contarFilas("track_station"))
                 .as("VIA 1 en dos estaciones, VIA 2 en una")
                 .isEqualTo(3);
@@ -253,7 +253,7 @@ class StationChildMergeIT extends AbstractChildMergeIT {
                 List.of(seccionadorDto(seccionadorId, "SECC-1")),
                 List.of(aisladorDto(aisladorId, "AISL-RENOMBRADO"))));
 
-        assertThat(contarFilas("section_insulator")).isEqualTo(1);
+        assertThat(contarVivas("section_insulator")).isEqualTo(1);
         assertThat(em.find(SectionInsulator.class, aisladorId).getName()).isEqualTo("AISL-RENOMBRADO");
     }
 }

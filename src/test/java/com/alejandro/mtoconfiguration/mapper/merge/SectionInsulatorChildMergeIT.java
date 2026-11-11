@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.tuple;
  *
  * <p>Los tests unitarios del mapper demuestran que el objeto queda bien en memoria. Lo que solo se
  * ve contra PostgreSQL es lo que importa aqui: que el UPDATE caiga en la fila correcta, que
- * {@code orphanRemoval} borre exactamente la aguja que se quito, que no se cuele ningun INSERT de
+ * se marque como borrada exactamente la aguja que se quito, que no se cuele ningun INSERT de
  * mas, y que dos agujas nuevas en la misma peticion sobrevivan las dos —el fallo que el equals
  * constante de {@code SectionInsulatorSwitch} existe para evitar—.
  */
@@ -144,7 +144,7 @@ class SectionInsulatorChildMergeIT extends AbstractChildMergeIT {
                 agujaDto(primeraAgujaId, "W31", "110176.000", 12),
                 agujaDto(segundaAgujaId, "W41", "110249.000", 9))));
 
-        assertThat(contarFilas("section_insulator_switch")).isEqualTo(2);
+        assertThat(contarVivas("section_insulator_switch")).isEqualTo(2);
         assertThat(em.find(SectionInsulatorSwitch.class, primeraAgujaId).getTurnoutDenominator())
                 .isEqualTo(12);
     }
@@ -158,16 +158,17 @@ class SectionInsulatorChildMergeIT extends AbstractChildMergeIT {
                     agujaDto(segundaAgujaId, "W41", "110249.000", 9))));
         }
 
-        assertThat(contarFilas("section_insulator_switch")).isEqualTo(2);
+        assertThat(contarVivas("section_insulator_switch")).isEqualTo(2);
     }
 
     @Test
-    @DisplayName("la aguja que no viene en la peticion se borra: orphanRemoval")
+    @DisplayName("la aguja que no viene en la peticion se borra en logico")
     void laAgujaQueNoVieneSeBorra() {
         aplicar(peticion(List.of(agujaDto(primeraAgujaId, "W31", "110176.000", 9))));
 
-        assertThat(contarFilas("section_insulator_switch")).isEqualTo(1);
+        assertThat(contarVivas("section_insulator_switch")).isEqualTo(1);
         assertThat(em.find(SectionInsulatorSwitch.class, segundaAgujaId)).isNull();
+        assertThat(estaBorrada("section_insulator_switch", segundaAgujaId)).isTrue();
     }
 
     @Test
@@ -179,7 +180,7 @@ class SectionInsulatorChildMergeIT extends AbstractChildMergeIT {
                 agujaDto(null, "W45", "110315.000", 8),
                 agujaDto(null, "W47", "110339.000", 8))));
 
-        assertThat(contarFilas("section_insulator_switch")).isEqualTo(4);
+        assertThat(contarVivas("section_insulator_switch")).isEqualTo(4);
     }
 
     @Test
@@ -216,6 +217,6 @@ class SectionInsulatorChildMergeIT extends AbstractChildMergeIT {
     void listaVaciaBorraTodas() {
         aplicar(peticion(List.of()));
 
-        assertThat(contarFilas("section_insulator_switch")).isZero();
+        assertThat(contarVivas("section_insulator_switch")).isZero();
     }
 }

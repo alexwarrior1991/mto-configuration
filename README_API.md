@@ -151,7 +151,7 @@ existe responde 404, igual al modificar que al borrar.
 **Las referencias a catálogo se resuelven por su `code`** (`poleType`, `profileStatus`,
 `cantileverType`, `disconnectorFunction`…); el resto del objeto no cuenta, así que devolver la que
 leíste la deja como está. En un perfil, una referencia a `null` (o que no viaja) es «no la toques»,
-y para quitar una opcional se manda **sin código**:
+y para quitar una opcional se manda **vacía**, sin código y sin id:
 
 ```jsonc
 {
@@ -163,8 +163,26 @@ y para quitar una opcional se manda **sin código**:
 }
 ```
 
-La `disconnectorFunction` de un seccionador no se puede quitar: sin código se ignora. Y en los dos,
-un código que el catálogo no tiene no da error: deja la referencia vacía.
+La `disconnectorFunction` de un seccionador no se puede quitar: es obligatoria, y vacía se rechaza.
+
+**Una referencia informada tiene que existir.** Si trae `code`, se busca por él (el `id` que lo
+acompañe no cuenta); si solo trae `id`, por el id. Si el catálogo no la tiene, la petición se
+rechaza entera con un **400** y el error en su campo, con el código `BUS-001`:
+
+```jsonc
+// PUT /disconnectors/9 con "disconnectorFunction": { "id": 4, "code": "SurgA" }   (es «SurgeA»)
+{
+  "status": 400, "code": "VAL-000",
+  "errors": [ { "field": "disconnectorFunction", "code": "BUS-001", "message": "…" } ]
+}
+```
+
+Vale para todas las referencias a catálogo de todos los maestros, en altas, modificaciones y lotes
+(`[1].poleType`), para los elementos de las listas del perfil (`sectionings[1]`, §4 ter) y para los
+hijos anidados (`cantilevers[1].cantileverType`, `cantilevers[0].steadyArm.steadyArmType`,
+`disconnectors[0].disconnectorFunction` dentro de su estación). Antes no daba error: dejaba la
+referencia vacía con un 200, y un código mal escrito borraba el dato. `null` y `{}` no cambian: la
+primera no toca nada y la segunda vacía una opcional del perfil.
 
 ---
 
@@ -178,8 +196,19 @@ decide qué hacer con cada hijo según traiga `id` o no:
 |---|---|
 | hijo **con `id`** que ya existe | **UPDATE** de esa fila |
 | hijo **sin `id`** | **INSERT** de fila nueva |
-| hijo que existe y **no mandas** | **DELETE** de esa fila |
+| hijo que existe y **no mandas** | se **borra**, él y lo que cuelga de él, igual que con su `DELETE` |
 | hijo con un `id` que no es de este padre | se **ignora** |
+
+El borrado es **lógico**, como el de `DELETE $BASE/{recurso}/{id}`: la fila se queda marcada, con su
+`id` y su historial, y deja de salir en las lecturas. A diferencia del `DELETE` directo, que no toca
+lo que cuelga de un maestro, quitar un hijo de su padre se lleva su rama: quitar una vía del `PUT` de
+su paquete borra sus perfiles, las ménsulas de esos perfiles y sus brazos (no sus seccionadores, sus
+aisladores ni sus puntos de acceso, que no son hijos de la vía).
+
+**Cada hijo publica su propio evento**, en la misma transacción que el del padre
+(README_MESSAGING.md §2.4): `DELETED` el que se quita y cada entidad de su rama, `CREATED` el que
+llega sin `id` y `UPDATED` el que llega con cambios. Un hijo que devuelves tal como lo leíste no se
+escribe, no cambia de `versionNumber` y no publica nada.
 
 ### Ejemplo completo
 
@@ -214,8 +243,11 @@ Resultado:
 id=1     UPDATE  cw_height=9.999    <- venía con id: se actualiza
 id=2     UPDATE  cw_height=6.000    <- venía con id: se actualiza (sin cambios reales)
 id=57    INSERT  cw_height=7.777    <- venía sin id: fila nueva
-                                       la 3 no venía: BORRADA
+                                       la 3 no venía: BORRADA (deleted = true)
 ```
+
+Y en el outbox, además del `UPDATED` del perfil 7: `UPDATED` de la ménsula 1, `CREATED` de la 57 y
+`DELETED` de la 3. La 2 no ha cambiado y no publica.
 
 ### Los dos errores que cuestan datos
 
@@ -262,7 +294,12 @@ ZIC que no la menciona la borrara, se la llevaría por delante también a BIN y 
 perfiles. Para dar de baja una vía de verdad está `DELETE $BASE/tracks/{id}`.
 
 Y **anida**: en un `PUT $BASE/execution-packages/{id}` puedes traer vías, y dentro de cada vía sus
-perfiles, y dentro de cada perfil sus ménsulas. Cada nivel se reconcilia con la misma regla.
+perfiles, y dentro de cada perfil sus ménsulas. Cada nivel se reconcilia con la misma regla, y cada
+entidad que cambia publica su evento, a cualquier profundidad.
+
+El paquete trae cada vía dos veces, en `tracks` y dentro de cada una de sus `stations`. La que
+quitas de `tracks` queda borrada aunque siga dentro de una estación del mismo cuerpo: esa copia se
+ignora.
 
 ### En qué orden te llegan los hijos
 
@@ -285,7 +322,9 @@ necesitas mover un perfil dentro de la vía, lo que se cambia es su `kp`.
 La relación 1:1 va aparte, y no funciona igual en los dos casos:
 
 - **`cantilevers.steadyArm`**: mandar el objeto crea el brazo o lo actualiza, y mandar `null` lo
-  quita.
+  quita: se borra en lógico y publica su `DELETED`, como un hijo de una colección. Una ménsula lleva un brazo vivo como mucho (un segundo es 409 `BUS-002`), y uno borrado
+  no cuenta (`V30`): tras `DELETE $BASE/steady-arms/{id}` se puede dar de alta otro en la misma
+  ménsula, con `POST $BASE/steady-arms` y su `cantileverId` o dentro del `PUT` de la ménsula.
 - **`profiles.disconnectors`** (y `profiles.disconnector`): son **solo de salida**, como `profileCode`
   y `profileKp` en el seccionador. `disconnectors` trae todos los seccionadores vivos del poste, por
   nombre: casi siempre uno, a veces dos (`V29`); `[]` si no lleva ninguno. `disconnector` es el
@@ -396,9 +435,10 @@ Como el resto de colecciones de esta API (§4), **mandar la lista reemplaza el c
 entero**: el seccionamiento que no mandas se quita. Mandar `[]` los deja todos fuera; omitir
 el campo no toca nada.
 
-Un código que el catálogo no tenga **no se inventa ni rompe la petición**: se ignora, y el
-resto se guarda. Quien quiera que un código desconocido sea un error, lo tiene en la
-importación (`InfrastructureUpsertService`), que sí rechaza la fila y nombra el código.
+Un código que el catálogo no tenga **rechaza la petición**: 400, con el error en la posición del
+elemento (`sectionings[1]`, `BUS-001`), como cualquier otra referencia a catálogo (§3) y como la
+importación, que rechaza la fila y nombra el código. Antes se ignoraba y el resto se guardaba, de
+modo que una errata quitaba el seccionamiento sin avisar. Un elemento vacío (`{}`) no cuenta.
 
 Dos efectos secundarios que conviene tener presentes:
 
@@ -877,6 +917,7 @@ validación no, hasta que cambies el cuerpo.
 | `400` | `VAL-000` | validación fallida, o cuerpo mal formado |
 | `401` / `403` | — | sin token, o sin el rol necesario |
 | `404` | `NOT-001` | el recurso no existe: al leerlo, al modificarlo o al borrarlo |
+| `400` | `VAL-000` con `BUS-001` en `errors[]` | una referencia que no existe: una vía, una estación, o una entrada de catálogo informada por `code` o por `id` (§3) |
 | `409` | `CON-001` | conflicto de concurrencia: el `versionNumber` que mandas no es el guardado |
 | `409` | `BUS-002` | un valor único repetido (el `code` de un catálogo), o al borrar, una fila que otro registro usa |
 | `429` | — | sin hueco para el trabajo |

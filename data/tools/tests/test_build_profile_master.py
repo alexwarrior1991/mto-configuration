@@ -753,8 +753,59 @@ class KpSupuestoDeUnPerfil(unittest.TestCase):
         kp = bpm.apply_supposed_kp(supposed, 1, code="8-1.01Bis", ep="EP9A",
                                    sheet="HR Track 1", row=101, master=master)
         self.assertEqual(kp, Decimal("8063.000"))
-        self.assertEqual(master.discarded[0]["motivo"], "KP supuesto: media de los perfiles contiguos")
+        self.assertEqual(master.discarded[0]["motivo"],
+                         "KP supuesto: media de los perfiles contiguos; "
+                         "desactivado hasta tener su KP real")
         self.assertIn("8-1.01 en 8038 y 8-1.02 en 8088", master.discarded[0]["detalle"])
+
+    # El importador casa un perfil por (via, profileId, kp): cargado activo con un KP
+    # supuesto, el dia que el origen traiga el real se daria de alta OTRO y este se quedaria.
+    @staticmethod
+    def lee(kp_del_bis):
+        filas = [["TRACK 1"], HEADER, [None] * len(HEADER)]
+        for numero, kp in (("8-1.01", 8038), ("8-1.01Bis", kp_del_bis), ("8-1.02", 8088)):
+            filas.append([None, numero, kp, None, "A/S", "S1T", "EMT-2T",
+                          None, None, 20, None, None, "PH-950"])
+            filas.append([None, None, None, 25])
+        master = bpm.Master()
+        bpm.read_track(FakeSheet("HR Track 1", [pad(r) for r in filas]),
+                       "EP9A", {"name": "TRACK 1"}, CFG, master)
+        return master
+
+    def test_el_poste_con_kp_supuesto_sale_desactivado_y_por_revisar_con_su_motivo(self):
+        master = self.lee(None)
+        bis = master.profiles[1]
+        self.assertEqual((bis["PROFILE_ID"], bis["KP"]), ("8-1.01Bis", Decimal("8063.000")))
+        self.assertEqual((bis["ENABLED"], bis["REVISAR"]), ("NO", "SI"))
+        motivos = [d for d in master.discarded if d["motivo"].startswith("KP supuesto")]
+        self.assertEqual(len(motivos), 1)
+        self.assertIn("desactivado hasta tener su KP real", motivos[0]["motivo"])
+        self.assertIn("8-1.01Bis -> 8063.000", motivos[0]["detalle"])
+
+    def test_los_vecinos_con_kp_real_no_cambian(self):
+        master = self.lee(None)
+        for vecino in (master.profiles[0], master.profiles[2]):
+            self.assertEqual((vecino["ENABLED"], vecino["REVISAR"]), ("SI", "NO"),
+                             vecino["PROFILE_ID"])
+        self.assertEqual([p["ORDEN"] for p in master.profiles], [1, 2, 3],
+                         "el desactivado sigue ocupando su sitio en la via")
+
+    def test_las_mensulas_del_poste_con_kp_supuesto_salen_desactivadas_con_el(self):
+        # El mismo criterio que con cualquier perfil ENABLED=NO: el importador solo escribe
+        # las mensulas del perfil que carga, asi que no pueden decir que son cargables.
+        master = self.lee(None)
+        estado = {c["PROFILE_ID"]: (c["ENABLED"], c["REVISAR"]) for c in master.cantilevers}
+        self.assertEqual(estado, {"8-1.01": ("SI", "NO"), "8-1.01Bis": ("NO", "SI"),
+                                  "8-1.02": ("SI", "NO")})
+
+    def test_con_el_kp_real_el_poste_entra_activo_y_sin_anotar(self):
+        # Lo que pasa al escribir el KP en el origen y regenerar.
+        master = self.lee(8061)
+        bis = master.profiles[1]
+        self.assertEqual(bis["KP"], Decimal("8061.000"))
+        self.assertEqual((bis["ENABLED"], bis["REVISAR"]), ("SI", "NO"))
+        self.assertEqual([c["ENABLED"] for c in master.cantilevers], ["SI", "SI", "SI"])
+        self.assertEqual([d for d in master.discarded if "KP supuesto" in d["motivo"]], [])
 
 
 class KpDeUnAislador(unittest.TestCase):
@@ -932,21 +983,40 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         # sus dos vias de Pleshet. Otras 35, de Add_Tracks_EP14_A: el final de las vias 1 y 2
         # de EP14A, hasta la zona neutra de Ashkelon. Cinco cargables mas desde que se lee el
         # KP escrito '30+719': las de los cuatro postes de EP11B que lo traen asi. Una menos
-        # desde que 'T1:27+130' es una nota y no un poste, y tres cargables mas desde que el
-        # KP admite signo (dos de la cabecera de EP11A) y se supone el de un poste entre dos
-        # (84-T.17 de EP6).
+        # desde que 'T1:27+130' es una nota y no un poste, y dos cargables mas desde que el
+        # KP admite signo (las de la cabecera de EP11A). La de 84-T.17 de EP6, cuyo KP es
+        # supuesto, esta pero no es cargable: su poste sale desactivado hasta tener su KP.
         self.assertEqual(len(self.cantilevers), 15621)
-        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15620)
+        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15619)
 
-    def test_los_postes_sin_kp_entre_dos_toman_la_media_y_salen_senalados(self):
+    def test_los_postes_sin_kp_entre_dos_toman_la_media_y_salen_desactivados(self):
         perfiles = {(p["EP"], p["VIA"], p["PROFILE_ID"]): p for p in self.profiles}
         for clave, kp in ((("EP9A", "TRACK 1", "8-1.01Bis"), 8063),
                           (("EP11B", "TRACK 2", "25-2.07Bis"), 25254),
                           (("EP6", "TRACK 4 HERZLIYA", "84-T.17"), 84802.51)):
             perfil = perfiles[clave]
             self.assertEqual(perfil["KP"], kp, clave)
-            self.assertEqual((perfil["ENABLED"], perfil["REVISAR"]), ("SI", "SI"), clave)
+            self.assertEqual((perfil["ENABLED"], perfil["REVISAR"]), ("NO", "SI"), clave)
         self.assertNotIn(("EP11B", "TRACK 1", "T1:27+130"), perfiles, "es una nota, no un poste")
+
+    def test_los_perfiles_desactivados_son_los_que_no_tienen_kp_del_origen_o_lo_repiten(self):
+        """Un guardian de recuento: 43 perfiles desactivados, todos por revisar.
+
+        24 sin KP, 2 que repiten identificador y KP dentro de su via y los 17 de KP supuesto
+        (los 16 'Bis' de EP9A y EP11B y 84-T.17 de EP6), que son los unicos desactivados con
+        un KP que no esta repetido: cada uno con su linea 'KP supuesto' en DESCARTADOS.
+        """
+        desactivados = [p for p in self.profiles if p["ENABLED"] == "NO"]
+        self.assertEqual(len(desactivados), 43)
+        self.assertTrue(all(p["REVISAR"] == "SI" for p in desactivados))
+        self.assertEqual(sum(1 for p in desactivados if p["KP"] is None), 24)
+        supuestos = {(d["EP"], d["HOJA"], d["FILA"]) for d in self.discarded
+                     if str(d["MOTIVO"]).startswith("KP supuesto")}
+        self.assertEqual(len(supuestos), 17)
+        con_kp_supuesto = [p for p in self.profiles
+                           if (p["EP"], p["HOJA_ORIGEN"], p["FILA_ORIGEN"]) in supuestos]
+        self.assertEqual(len(con_kp_supuesto), 17)
+        self.assertEqual({p["ENABLED"] for p in con_kp_supuesto}, {"NO"})
 
     def test_el_primer_poste_de_una_via_puede_estar_en_el_cero(self):
         perfiles = {(p["EP"], p["VIA"], p["PROFILE_ID"]): p for p in self.profiles}

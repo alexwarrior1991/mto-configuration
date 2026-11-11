@@ -91,7 +91,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30");
     }
 
     /**
@@ -315,6 +315,31 @@ class FlywayMigrationIT {
         assertThat(existeColumna("profile_sectioning_aud", "revtype")).isTrue();
         assertThat(existeColumna("profile_sectioning_aud", "profile_id")).isTrue();
         assertThat(existeColumna("profile_sectioning_aud", "sectioning_id")).isTrue();
+    }
+
+    /**
+     * V30: una mensula admite un solo brazo VIVO.
+     *
+     * <p>El {@code unique} de {@code steady_arm.cantilever_id} de V1 contaba tambien las filas
+     * borradas, y el borrado logico conserva la mensula: un brazo borrado la dejaba ocupada para
+     * siempre. Ahora es un indice unico parcial, como las claves naturales.
+     */
+    @Test
+    void unaMensulaAdmiteUnSoloBrazoVivo() {
+        List<String> indices = jdbc().queryForList("select indexdef from pg_indexes"
+                + " where schemaname = ? and indexname = 'ux_steady_arm_cantilever_id'", String.class, SCHEMA);
+        assertThat(indices).singleElement(org.assertj.core.api.InstanceOfAssertFactories.STRING)
+                .contains("UNIQUE")
+                .contains("(cantilever_id)")
+                .contains("deleted = false");
+
+        Integer restriccionesUnicas = jdbc().queryForObject("""
+                select count(*) from pg_constraint c
+                  join pg_class t on t.oid = c.conrelid
+                  join pg_namespace n on n.oid = t.relnamespace
+                 where n.nspname = ? and t.relname = 'steady_arm' and c.contype = 'u'
+                """, Integer.class, SCHEMA);
+        assertThat(restriccionesUnicas).as("el unique de V1 ya no existe").isZero();
     }
 
     @Test

@@ -91,6 +91,7 @@ public abstract class TrackMapper implements BaseMapper<TrackDTO, Track> {
         // Un perfil que el cliente devuelve con su id actualiza ESA fila; añadirlo insertaba una
         // copia sin id junto a la original y dejaba la original sin los cambios.
         mergeCollection(
+                "profiles",
                 dto.getProfiles(),
                 entity.getProfiles(),
                 entity,
@@ -109,7 +110,11 @@ public abstract class TrackMapper implements BaseMapper<TrackDTO, Track> {
                     resolved.add(referenceResolver.resolve(id, Station.class));
                 }
             }
-            entity.setStations(resolved);
+            // Solo si cambian: sustituir el conjunto por otro igual reescribe la tabla de union y
+            // sube la version de la via, que saldria como modificada sin serlo.
+            if (!sameEntities(resolved, entity.getStations())) {
+                entity.setStations(resolved);
+            }
         }
     }
 

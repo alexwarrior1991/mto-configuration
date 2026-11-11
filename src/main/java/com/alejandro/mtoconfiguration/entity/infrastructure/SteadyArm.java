@@ -73,7 +73,10 @@ public class SteadyArm extends CRUDEntity {
     }
 
     @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "CANTILEVER_ID", unique = true) // unique=true asegura que sea 1 a 1
+    // unique = true describe el 1:1, pero quien lo guarda es el esquema, y solo entre los vivos:
+    // ux_steady_arm_cantilever_id es un indice unico parcial (V30, WHERE deleted = false), asi que
+    // un brazo borrado conserva su mensula sin ocuparla. ddl-auto es validate: esto no crea nada.
+    @JoinColumn(name = "CANTILEVER_ID", unique = true)
     public Cantilever getCantilever() {
         return cantilever;
     }

@@ -856,19 +856,88 @@ Más casos de la columna del perfil y de la del KP:
   justo en el origen de `HR Track 4 MOM`, y el KP de los siguientes sale de él (`=C6+G7`). Es el
   único perfil de los workbooks con un 0 escrito en el KP, así que la excepción es solo esa
   posición: en cualquier otra fila, un 0 sigue siendo un hueco.
-- **Un perfil sin KP entre dos que lo tienen toma la media de los dos** (`supposed_kps`). Es el
-  poste `Bis`, que se mete entre dos que ya estaban y la hoja deja sin KP: `25-1.01Bis` de EP11B
-  entra en el 25055, entre `25-1.01` (25026) y `25-1.02` (25084). Entra con `REVISAR=SI` y en
-  `DESCARTADOS` como «KP supuesto: media de los perfiles contiguos», con los dos vecinos. Solo con
-  la celda **vacía** (un KP que no es un número sigue siendo un error) y solo con los **dos**
+- **Un perfil sin KP entre dos que lo tienen toma la media de los dos, y sale desactivado**
+  (`supposed_kps`). Es el poste `Bis`, que se mete entre dos que ya estaban y la hoja deja sin
+  KP: `25-1.01Bis` de EP11B sale en el 25055, entre `25-1.01` (25026) y `25-1.02` (25084). Solo
+  con la celda **vacía** (un KP que no es un número sigue siendo un error) y solo con los **dos**
   vecinos inmediatos con KP: una racha sin KP no se reparte, porque de ella solo se sabe dónde
   empieza y dónde acaba (`PROFILE 2` a `PROFILE 12` de EP9B siguen sin KP). Con los vecinos a más
   de 300 m no son dos postes seguidos sino un tramo que reinicia la kilometración, y no se supone
-  nada. Hoy son 17: los 16 `Bis` de EP9A y EP11B y `84-T.17` de EP6.
+  nada. Hoy son 17: los 16 `Bis` de EP9A y EP11B y `84-T.17` de EP6. Ver «Los postes con el KP
+  supuesto» más abajo.
 - **Una anotación de KP no es un perfil** (`is_kp_note`). EP11B escribe `T1:27+130` en la fila de
   debajo de `27-1.03`, que está justo en el 27130: es la vía y el KP de ese poste apuntados al lado.
   Va a `DESCARTADOS` como «nota de KP»; leída como perfil, la regla de arriba le daba la media de
   sus vecinos e inventaba un mástil en el 27152,5.
+
+## Los postes con el KP supuesto
+
+**Un poste con el KP supuesto sale desactivado, y no se carga hasta tener su KP real.** Sale en
+el maestro con el KP de la media, en su sitio de la vía (`ORDEN`), con **`ENABLED = NO`** y
+`REVISAR = SI`, y en
+`DESCARTADOS` con el motivo «KP supuesto: media de los perfiles contiguos; desactivado hasta
+tener su KP real» y sus dos vecinos: se ve y se revisa, pero el importador se lo salta.
+
+El motivo es la clave natural con la que el importador casa un perfil, `(vía, profileId, kp)`.
+Cargado activo con un KP inventado, el día que el origen trajera el de verdad el reimport no lo
+encontraría por esa clave: daría de alta **otro** perfil y el del KP supuesto se quedaría al
+lado, activo, sin que nada lo señalara.
+
+Sus hijos siguen el criterio de cualquier perfil con `ENABLED = NO`, sin regla propia:
+
+- **Ménsulas y brazos**: salen también con `ENABLED = NO` y `REVISAR = SI`. El importador solo
+  escribe las ménsulas del perfil que está cargando, así que no pueden decir que son cargables.
+  De los 17 solo `84-T.17` lleva una.
+- **Seccionadores**: no se tocan (los decide quien revisa el libro del plano). Uno que nombrara
+  uno de estos postes saldría en el informe de la importación, «su poste … no se ha podido
+  cargar», como con cualquier poste desactivado. Hoy ninguno cuelga de ellos.
+
+Las cifras del maestro, con los 17:
+
+| | Antes | Ahora |
+|---|---|---|
+| Perfiles (`PROFILES`) | 12.863 | 12.863 |
+| con `ENABLED = SI` | 12.837 | 12.820 |
+| con `ENABLED = NO` | 26 | 43 |
+| con `REVISAR = SI` | 44 | 44 |
+| Ménsulas (`CANTILEVERS`) | 15.621 | 15.621 |
+| con `ENABLED = SI` | 15.620 | 15.619 |
+| con `REVISAR = SI` | 878 | 879 |
+
+Los 43 desactivados son 24 sin KP, 2 que repiten identificador y KP en su vía (`78-1.17` de EP5
+y `8-1.12` de EP9A) y los 17 del KP supuesto. `REVISAR = SI` no cambia en los perfiles porque
+los 17 ya salían señalados; el que queda con `ENABLED = SI` y `REVISAR = SI` es `3713CCA09` de
+RUBI.
+
+**Cuando llegue el KP real**: se escribe en la celda del KP de ese poste en su workbook
+(`data/workbook/`, la fila que dice `DESCARTADOS`) y se regenera el maestro. El poste deja de ser
+supuesto: entra con `ENABLED = SI`, sin `REVISAR` y sin línea en `DESCARTADOS`, y la carga lo da
+de alta con su clave definitiva. No hay que poner `ENABLED = SI` a mano en el maestro: la
+siguiente regeneración se lo llevaría, y con el KP supuesto es justo lo que no se quiere cargar.
+
+**Si ya se cargaron** (un maestro generado entre el `73b615d` y este cambio los traía con
+`ENABLED = SI`): reimportar el maestro nuevo **no los quita ni los desactiva**. El importador se
+salta la fila de un perfil con `ENABLED = NO` (la cuenta en `omitidos`) sin buscarlo en la base
+ni escribir nada: `ENABLED` decide si la fila se carga, y el importador no borra nunca lo que la
+hoja deja de traer. Tampoco hay a qué estado pasarlo: un perfil no tiene `enabled` propio (el
+`enabled` de su evento es el de su vía), así que «desactivado» en el maestro quiere decir «no se
+carga», y en la base un perfil o está o está borrado. Esos 17 perfiles (y la ménsula de
+`84-T.17`) hay que borrarlos a mano, y **antes** de cargar su KP real, o quedarán los dos:
+
+```sql
+-- Candidatos: los 'Bis' y 84-T.17 que la base tiene vivos.
+SELECT p.id, t.name AS via, p.profile_id, p.kilometric_point
+  FROM profile p JOIN track t ON t.id = p.track_id
+ WHERE p.deleted = false
+   AND (upper(p.profile_id) LIKE '%BIS' OR p.profile_id = '84-T.17');
+```
+
+De esa lista solo valen los que están en el KP supuesto que dice `DESCARTADOS` (el número tras
+la flecha: `25-1.01Bis -> 25055.000`): hay otros `Bis` con su KP del origen, que están bien. Se
+borran por la API, que es lo que publica su `DELETED` y deja su revisión
+(`DELETE /profiles/{id}`, borrado lógico; ver `README_API.md`). El `DELETE` directo no toca lo
+que cuelga, así que la ménsula de `84-T.17` se borra antes con `DELETE /cantilevers/{id}`. Un
+`UPDATE` directo en la base no avisaría a `mto-maintenance`, que los tiene como activos.
 
 ## El brazo viene con la longitud dentro
 
@@ -940,8 +1009,8 @@ Se usaba la pista y se tiraba la fuente.
 Es `@ManyToOne` y no una N:M como el seccionamiento o el anclaje, y no por comodidad: en
 las 2.038 celdas medidas **no hay ninguna con dos códigos**. Donde el origen escribe varios
 valores en una celda, el modelo lleva tabla de unión; aquí no los escribe. El maestro trae
-**2.033 perfiles con tipo de soporte**, de los cuales **2.032 son cargables** —el que falta va
-`ENABLED=NO` por otro motivo de su fila, no por el soporte—.
+**2.965 perfiles con tipo de soporte**, de los cuales **2.964 son cargables** —el que falta,
+`84-T.17` de EP6, va `ENABLED=NO` por su KP supuesto, no por el soporte—.
 
 Al pasar la columna por el catálogo salieron 13 grafías que nadie había revisado, porque hasta
 `V20` esa columna no se comprobaba contra nada. **Nueve describían un soporte** y se aceptan en
@@ -1022,11 +1091,12 @@ escribe la grafía del catálogo.
   código y un KP donde iría un apoyo (`3703CCA36` en la fila 942); salen en `DESCARTADOS` como
   `fila fuera del bloque de datos`, con su fila.
 - **El KP es el P.K. de línea de cada vía** (`P.K. (vía 1)` / `P.K. (vía 2)`), en metros, y
-  admite la kilometración con signo más (`1+118,8` son 1118,8 m). El P.K. absoluto de la red
+  admite la kilometración con signo más (`1+118,8` son 1118,8 m; el signo de delante es el del
+  KP entero: `-0+010` son −10 m y `-1+200`, −1200 m). El P.K. absoluto de la red
   (`P.K. Abs.vía 1`, decreciente y solo de la vía 1) se conserva en `NO_MAPEADO`. Los dos primeros
   apoyos de Casa da Música están en un KP negativo (−2,84), antes del origen, y entran con él: el
-  KP admite signo, como en los demás EPs. Un apoyo sin KP entre dos que lo tienen toma la media,
-  como en una hoja HR Track.
+  KP admite signo, como en los demás EPs. Un apoyo sin KP entre dos que lo tienen toma la media
+  y sale desactivado, como en una hoja HR Track (hoy, ninguno).
 - `Implantação (m)` es la distancia carril-poste, en metros: el campo `RAIL_POLE_DISTANCE` va en
   milímetros (`1,77` → `1770`).
 

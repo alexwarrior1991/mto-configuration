@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.repository.jpa.infrastructure;
 
+import java.util.Collection;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.CRUDRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.MessagingEntityGraphRepository;
@@ -181,6 +182,39 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
      * ({@code CantileverRepository.findForSchematic}, {@link #findSectioningCodesForSchematic})
      * para no multiplicar filas con dos colecciones.
      */
+    /**
+     * Los perfiles vivos de una via, para volver a publicarlos cuando cambia lo que su evento copia
+     * de ella ({@code CopiedDataRepublisher}). Solo los ids: se cargan despues por lotes.
+     */
+    @Query("select p.id from Profile p where p.track.id = :trackId order by p.id asc")
+    List<Long> findIdsByTrackId(@Param("trackId") Long trackId);
+
+    /**
+     * Un lote de perfiles con <b>el mismo grafo</b> que {@link #findByIdForMessaging}, en una sola
+     * sentencia: quien anade una relacion alli la anade aqui, o el mapper del payload la cargaria
+     * perfil a perfil. Lo comprueba {@code CopiedDataRepublishIT}, que saca el payload fuera de la sesion.
+     */
+    @EntityGraph(attributePaths = {
+            "track",
+            "track.stations",
+            "anchorages",
+            "anchorageFoundation",
+            "foundation",
+            "poleType",
+            "portal",
+            "profileStatus",
+            "returnSupport",
+            "sectionings",
+            "sectioningFeedings",
+            "supportType",
+            "assemblyConfiguration",
+            "cantilevers",
+            "cantilevers.steadyArm",
+            "disconnectors"
+    })
+    @Query("select p from Profile p where p.id in :ids order by p.id asc")
+    List<Profile> findAllByIdForMessaging(@Param("ids") Collection<Long> ids);
+
     @Query("""
             select p from Profile p
             left join fetch p.poleType

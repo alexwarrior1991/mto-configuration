@@ -74,10 +74,13 @@ public abstract class DisconnectorMapper implements BaseMapper<DisconnectorDTO, 
     @AfterMapping
     protected void mapDtoToEntity(DisconnectorDTO dto, @MappingTarget Disconnector entity) {
 
-        if (dto.getDisconnectorFunction() != null && dto.getDisconnectorFunction().getCode() != null) {
-            entity.setDisconnectorFunction(
-                    masterDataService.getDisconnectorFunctionByCode(dto.getDisconnectorFunction().getCode())
-            );
+        if (dto.getDisconnectorFunction() != null) {
+            // Vacia (sin codigo y sin id) se ignora: no se puede quitar. Informada, tiene que existir.
+            var resolved = resolveLov(dto.getDisconnectorFunction(), "disconnectorFunction",
+                    masterDataService::getDisconnectorFunctionByCode, masterDataService::getDisconnectorFunctionByIdAndMapToDTO);
+            if (resolved != null) {
+                entity.setDisconnectorFunction(resolved);
+            }
         }
 
         // 3. Sincronización de otras relaciones si existieran

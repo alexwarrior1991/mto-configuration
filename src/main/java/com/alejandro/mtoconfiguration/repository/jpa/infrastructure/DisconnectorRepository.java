@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.repository.jpa.infrastructure;
 
+import java.util.Collection;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.CRUDRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.MessagingEntityGraphRepository;
@@ -120,6 +121,36 @@ public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
      * perfil. {@code track} si: es la del propio seccionador cuando no esta en un poste (V26), y el
      * payload lleva su nombre. {@code connectedTrack} tambien, por lo mismo (V27).
      */
+    /**
+     * Los seccionadores cuyo evento lleva el <b>nombre</b> de esta via: la suya propia ({@code track})
+     * o la conectada. El de uno en un poste no nombra la via del poste.
+     */
+    @Query("select d.id from Disconnector d "
+            + "where d.track.id = :trackId or d.connectedTrack.id = :trackId order by d.id asc")
+    List<Long> findIdsNamingTrack(@Param("trackId") Long trackId);
+
+    /**
+     * Los seccionadores que <b>estan</b> en esta via, y por tanto en su paquete: en uno de sus postes,
+     * o sin poste y con ella como via propia.
+     */
+    @Query("select d.id from Disconnector d left join d.profile p "
+            + "where p.track.id = :trackId or d.track.id = :trackId order by d.id asc")
+    List<Long> findIdsLocatedOnTrack(@Param("trackId") Long trackId);
+
+    @Query("select d.id from Disconnector d where d.station.id = :stationId order by d.id asc")
+    List<Long> findIdsByStationId(@Param("stationId") Long stationId);
+
+    /** Un lote con el mismo grafo que {@link #findByIdForMessaging}, en una sentencia. */
+    @EntityGraph(attributePaths = {
+            "station",
+            "profile",
+            "track",
+            "connectedTrack",
+            "disconnectorFunction"
+    })
+    @Query("select d from Disconnector d where d.id in :ids order by d.id asc")
+    List<Disconnector> findAllByIdForMessaging(@Param("ids") Collection<Long> ids);
+
     @Override
     @EntityGraph(attributePaths = {
             "station",

@@ -175,8 +175,9 @@ class SoftDeleteIT extends AbstractCriteriaSearchIT {
     @Test
     @DisplayName("borrar el padre no borra a los hijos: hay que hacerlo explicitamente")
     void borrarElPadreNoBorraLosHijos() {
-        // Queda escrito porque es una asimetria facil de suponer al reves: orphanRemoval borra el
-        // hijo cuando se saca de la coleccion, pero marcar el padre como borrado no propaga nada.
+        // Queda escrito porque es una asimetria facil de suponer al reves: el hijo que una
+        // modificacion saca de la coleccion de su padre se borra con su rama (deleteCascade), pero
+        // marcar el padre como borrado, que es lo que hace su DELETE, no propaga nada.
         Track via = em.find(Track.class, viaVivaId);
         Profile perfil = new Profile();
         perfil.setProfileId("P-001");
@@ -321,9 +322,9 @@ class SoftDeleteIT extends AbstractCriteriaSearchIT {
     void elHijoBorradoNoSeBorraFisicamenteAlModificarElPadre() {
         // La consecuencia menos evidente de que la coleccion arrastrase hijos borrados: la
         // reconciliacion de los mappers retira lo que el cliente no manda, y el cliente no manda
-        // lo que no ve. Con el hijo borrado dentro de la coleccion, orphanRemoval lo habria
-        // borrado FISICAMENTE en la siguiente modificacion del padre, convirtiendo un borrado
-        // logico en uno definitivo.
+        // lo que no ve. Con el hijo borrado dentro de la coleccion, el orphanRemoval que hubo
+        // hasta que la reconciliacion paso a borrar en logico lo habria borrado FISICAMENTE en la
+        // siguiente modificacion del padre; hoy lo volveria a borrar y a publicar su DELETED.
         Track via = em.find(Track.class, viaVivaId);
         Profile perfil = new Profile();
         perfil.setProfileId("P-001");

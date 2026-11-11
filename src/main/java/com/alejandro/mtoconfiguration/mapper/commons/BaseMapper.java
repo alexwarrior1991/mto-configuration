@@ -1,17 +1,26 @@
 package com.alejandro.mtoconfiguration.mapper.commons;
 
+import com.alejandro.mtoconfiguration.core.exception.ValidationException;
+import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.commons.IEntity;
+import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
+import com.alejandro.mtoconfiguration.model.commons.LovDTO;
+import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import org.mapstruct.MappingTarget;
 import org.springframework.data.domain.Page;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
@@ -191,7 +200,8 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
      *
      * <ol>
      *   <li>se retiran los hijos existentes cuyo id no viene en la peticion (el cliente los ha
-     *       quitado; {@code orphanRemoval} los borrara);</li>
+     *       quitado): se borran en logico, con su rama, y publican su {@code DELETED}
+     *       ({@link #removeChild});</li>
      *   <li>cada DTO con id se vuelca sobre el hijo que ya esta en la coleccion, de modo que la
      *       fila se actualiza en lugar de duplicarse;</li>
      *   <li>cada DTO sin id se mapea a un hijo nuevo y se añade.</li>
@@ -211,6 +221,8 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
      * sigue borrando, como documenta {@code README_API.md} §4—, de modo que esto solo cambia lo
      * que ve quien construye el DTO en Java.
      *
+     * @param field          nombre de la coleccion en el DTO del padre ({@code cantilevers}), para
+     *                       que el error de un hijo diga su ruta ({@link #atField})
      * @param dtos           hijos que manda el cliente; {@code null} es "no viene la coleccion" y
      *                       no toca nada, una lista vacia si vacia la coleccion
      * @param entities       coleccion viva de la entidad padre, que se modifica en el sitio
@@ -220,6 +232,7 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
      * @param linker         establece el lado inverso de la relacion en cada hijo
      */
     default <D extends BaseDTO, C extends IEntity, P extends IEntity> void mergeCollection(
+            String field,
             Collection<D> dtos,
             Collection<C> entities,
             P parent,
@@ -232,6 +245,16 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
             return;
         }
 
+        // La posicion de cada hijo en lo que mando el cliente, para decir donde esta su error.
+        Map<D, Integer> positions = new IdentityHashMap<>();
+        int position = 0;
+        for (D dto : dtos) {
+            if (dto != null) {
+                positions.putIfAbsent(dto, position);
+            }
+            position++;
+        }
+
         List<D> incoming = dtos.stream().filter(Objects::nonNull).toList();
 
         Set<Long> incomingIds = incoming.stream()
@@ -241,16 +264,27 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
 
         // 1. Los que el cliente ha quitado. Solo se miran los que ya tienen id: un hijo sin id es
         //    uno recien añadido en esta misma peticion y no puede estar en la lista de ids.
-        entities.removeIf(entity -> entity.getId() != null && !incomingIds.contains(entity.getId()));
+        //    Se borran en logico, con su rama, y salen de la coleccion en memoria, que es lo que
+        //    se devuelve y lo que lee el evento del padre.
+        for (Iterator<C> each = entities.iterator(); each.hasNext(); ) {
+            C entity = each.next();
+
+            if (entity.getId() != null && !incomingIds.contains(entity.getId())) {
+                removeChild(entity);
+                each.remove();
+            }
+        }
 
         Map<Long, C> byId = entities.stream()
                 .filter(entity -> entity.getId() != null)
                 .collect(Collectors.toMap(IEntity::getId, entity -> entity, (a, b) -> a));
 
         for (D dto : incoming) {
+            String childField = field + "[" + positions.get(dto) + "]";
+
             if (dto.getId() == null) {
                 // 3. Alta: hijo nuevo.
-                C created = toNewEntity.apply(dto);
+                C created = atField(childField, () -> toNewEntity.apply(dto));
 
                 if (created != null) {
                     entities.add(created);
@@ -265,13 +299,120 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
 
             if (existing != null) {
                 checkVersion(dto, existing);
-                updateExisting.accept(dto, existing);
+                atField(childField, () -> {
+                    updateExisting.accept(dto, existing);
+                    return existing;
+                });
             }
         }
 
         entities.forEach(child -> linker.accept(child, parent));
     }
 
+    /**
+     * Ejecuta el mapeo de un hijo y, si rechaza la peticion con un error de campo, lo relanza con el
+     * campo como ruta desde el padre: {@code cantileverType} de la segunda mensula sale como
+     * {@code cantilevers[1].cantileverType}, igual que lo diria su validador (ver
+     * {@code controllers.md}). Cada nivel añade el suyo al subir.
+     */
+    static <R> R atField(String field, Supplier<R> mapping) {
+        try {
+            return mapping.get();
+        } catch (ValidationException rejected) {
+            List<Alert> alerts = new ArrayList<>();
+
+            for (Alert alert : rejected.getErrors()) {
+                List<String> fields = new ArrayList<>(alert.getFields());
+
+                if (fields.isEmpty()) {
+                    fields.add(field);
+                } else {
+                    String child = fields.getFirst();
+                    fields.set(0, child.startsWith("[") ? field + child : field + "." + child);
+                }
+
+                alerts.add(Alert.ofDanger(alert.getMessage(), alert.getDetails(), fields));
+            }
+
+            throw new ValidationException(alerts);
+        }
+    }
+
+    /**
+     * Resuelve una referencia a catalogo que viene en el DTO.
+     *
+     * <p>Una referencia <b>informada</b> se busca por su {@code code}, y si no lo trae, por su
+     * {@code id}; si el catalogo no la tiene, la peticion se rechaza con un 400 sobre su campo
+     * ({@code BUS-001}, como una via o una estacion que no existe). Antes devolvia {@code null} y la
+     * escritura seguia: un codigo mal escrito borraba la referencia con un 200, y el evento salia
+     * sin ella.
+     *
+     * <p>Devuelve {@code null} solo para la referencia <b>vacia</b>, sin codigo y sin id, que es como
+     * se pide quitar una opcional (README_API.md §3). Que hacer con ella lo decide quien llama; la
+     * referencia a {@code null}, que es «no la toques», no llega aqui.
+     *
+     * <p>Va en el mapper y no en el validador por lo mismo que las reglas de
+     * {@code DisconnectorMapper}: es el unico paso comun a todas las escrituras, y el que ya consulta
+     * el catalogo.
+     *
+     * @param byCode la entidad del catalogo por su codigo, o {@code null}
+     * @param byId   la entrada del catalogo por su id, o {@code null}
+     */
+    default <L, D extends LovDTO> L resolveLov(D reference, String field,
+                                               Function<String, L> byCode, Function<Long, D> byId) {
+        String code = reference.getCode();
+
+        if (code == null || code.isBlank()) {
+            if (reference.getId() == null) {
+                return null;
+            }
+
+            D found = byId.apply(reference.getId());
+            code = found == null ? null : found.getCode();
+        }
+
+        L resolved = code == null || code.isBlank() ? null : byCode.apply(code);
+
+        if (resolved == null) {
+            throw new ValidationException(List.of(Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, field)));
+        }
+
+        return resolved;
+    }
+
+
+    /**
+     * Lo que le pasa al hijo que el cliente ha quitado de su padre: se borra en logico, el y lo que
+     * cuelga de el ({@code CRUDEntity.deleteCascade}), igual que con su {@code DELETE} directo.
+     *
+     * <p>Antes lo borraba {@code orphanRemoval}, en fisico y sin evento. Marcado, Hibernate lo
+     * escribe como un {@code UPDATE}, el listener de {@code BaseEntity} lo apunta y el servicio
+     * publica su {@code DELETED} y el de cada entidad de su rama (ver {@code EntityChangeTracker}).
+     * Todos los hijos del modelo son {@code CRUDEntity}; uno que no lo fuera se quedaria en la
+     * base, porque ya nada lo borra al salir de la coleccion.
+     */
+    default void removeChild(IEntity child) {
+        if (child instanceof CRUDEntity removed) {
+            removed.deleteCascade();
+        }
+    }
+
+    /**
+     * Si dos colecciones de entidades son las mismas filas, comparando ids. Sirve para no
+     * sustituir un conjunto por otro igual: Hibernate trata el conjunto nuevo como otra coleccion,
+     * borra y reinserta sus filas de union y sube la version del dueño, y ese {@code UPDATE} de
+     * una entidad que no ha cambiado se publicaria como una modificacion.
+     */
+    default boolean sameEntities(Collection<? extends IEntity> left, Collection<? extends IEntity> right) {
+        if (left == null || right == null) {
+            return false;
+        }
+
+        Set<Long> leftIds = left.stream().map(IEntity::getId).collect(Collectors.toSet());
+        Set<Long> rightIds = right.stream().map(IEntity::getId).collect(Collectors.toSet());
+
+        return !leftIds.contains(null) && left.size() == right.size() && leftIds.equals(rightIds);
+    }
 
     default <D extends BaseDTO, C extends IEntity, P extends IEntity> void linkManyToMany(
             Collection<D> dtos,

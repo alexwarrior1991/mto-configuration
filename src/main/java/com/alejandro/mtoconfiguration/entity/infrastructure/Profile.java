@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
+import java.util.Collection;
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.lov.*;
@@ -364,7 +365,7 @@ public class Profile extends CRUDEntity {
      * que una mensula creada suelta ({@code POST /cantilevers} con un {@code profileId}) la dejaba
      * a null y rompia la siguiente lectura del perfil.
      */
-    @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL) // sin orphanRemoval: ver CRUDEntity.deleteCascade
     @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @OrderBy("id ASC")
     @Audited(targetAuditMode = NOT_AUDITED)
@@ -482,5 +483,12 @@ public class Profile extends CRUDEntity {
                 .thenComparing(Profile::getKp, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(Profile::getProfileId, Comparator.nullsLast(Comparator.naturalOrder()))
                 .compare(this, other);
+    }
+
+    /** Lo que se borra con el perfil cuando una modificacion de su padre lo quita (ver CRUDEntity). */
+    @Override
+    protected Collection<? extends CRUDEntity> ownedChildren() {
+        // Los seccionadores no: cuelgan del poste, pero no son hijos suyos (README_API.md §4).
+        return getCantilevers() == null ? List.of() : List.copyOf(getCantilevers());
     }
 }

@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.repository.jpa.infrastructure;
 
+import java.util.Collection;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.CRUDRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.MessagingEntityGraphRepository;
@@ -89,6 +90,29 @@ public interface SectionInsulatorRepository extends CRUDRepository<SectionInsula
      * de {@code ProfileRepository.findByIdForMessaging}, que ya trae {@code cantilevers} y
      * {@code cantilevers.steadyArm}.
      */
+    /** Los aisladores cuyo evento lleva el <b>nombre</b> de esta via: la principal o la conectada. */
+    @Query("select si.id from SectionInsulator si "
+            + "where si.track.id = :trackId or si.connectedTrack.id = :trackId order by si.id asc")
+    List<Long> findIdsNamingTrack(@Param("trackId") Long trackId);
+
+    /** Los aisladores que <b>estan</b> en esta via (su via principal), y por tanto en su paquete. */
+    @Query("select si.id from SectionInsulator si where si.track.id = :trackId order by si.id asc")
+    List<Long> findIdsLocatedOnTrack(@Param("trackId") Long trackId);
+
+    @Query("select si.id from SectionInsulator si where si.station.id = :stationId order by si.id asc")
+    List<Long> findIdsByStationId(@Param("stationId") Long stationId);
+
+    /** Un lote con el mismo grafo que {@link #findByIdForMessaging}, en una sentencia. */
+    @EntityGraph(attributePaths = {
+            "station",
+            "track",
+            "connectedTrack",
+            "switches",
+            "switches.track"
+    })
+    @Query("select si from SectionInsulator si where si.id in :ids order by si.id asc")
+    List<SectionInsulator> findAllByIdForMessaging(@Param("ids") Collection<Long> ids);
+
     @Override
     @EntityGraph(attributePaths = {
             "station",

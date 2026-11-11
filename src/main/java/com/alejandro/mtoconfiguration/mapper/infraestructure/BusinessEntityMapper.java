@@ -43,10 +43,13 @@ public abstract class BusinessEntityMapper implements BaseMapper<BusinessEntityD
     @AfterMapping
     protected void mapDtoToEntity(BusinessEntityDTO dto, @MappingTarget BusinessEntity entity) {
         // Resolución del LOV: ComercialEntityType
-        if (dto.getComercialEntityType() != null && dto.getComercialEntityType().getCode() != null) {
-            entity.setComercialEntityType(
-                    masterDataService.getComercialEntityTypeByCode(dto.getComercialEntityType().getCode())
-            );
+        if (dto.getComercialEntityType() != null) {
+            // Vacia (sin codigo y sin id) se ignora: no se puede quitar. Informada, tiene que existir.
+            var resolved = resolveLov(dto.getComercialEntityType(), "comercialEntityType",
+                    masterDataService::getComercialEntityTypeByCode, masterDataService::getComercialEntityTypeByIdAndMapToDTO);
+            if (resolved != null) {
+                entity.setComercialEntityType(resolved);
+            }
         }
     }
 
