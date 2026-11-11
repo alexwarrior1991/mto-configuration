@@ -17,7 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * La regla: un DTO que embebe otro DTO de ENTIDAD no se puede cachear, porque la
  * invalidacion es por servicio y no por id, de modo que su entrada queda obsoleta en
  * cuanto cambia cualquier hijo de cualquier registro. Los LOV embebidos no cuentan:
- * se editan casi nunca.
+ * se editan casi nunca, y al cambiar uno se vacian las caches de todo servicio
+ * cacheable (LovCacheEvictionListener, CacheEvictionListenerTest).
  * <p>
  * Sin este test la clasificacion se pudre en silencio: alguien anade un campo a
  * SteadyArmDTO dentro de seis meses, nadie toca isCacheable(), y vuelven los datos

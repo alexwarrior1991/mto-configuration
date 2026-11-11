@@ -193,7 +193,10 @@ Por lo mismo, las dos cachés de entidad (`DisconnectorService`, `SteadyArmServi
 también cuando escribe otro servicio que copia sus datos o escribe sus filas anidadas: el
 seccionador lleva `profileCode`/`profileKp` del perfil y se modifica dentro de un perfil o de una
 estación; el brazo, dentro de su ménsula. La tabla de quién arrastra a quién es
-`CacheEvictionListener.DEPENDENT_SERVICES`.
+`CacheEvictionListener.DEPENDENT_SERVICES`. Y también cuando cambia un catálogo: las dos llevan
+embebida una entrada entera (`disconnectorFunction`, `steadyArmType`), así que
+`LovCacheEvictionListener` vacía con cualquier escritura de catálogo las cachés de todo servicio que
+se declara cacheable, preguntándoselo a los servicios en vez de llevar una lista.
 
 Todo lo que vacía una escritura va por **una sola conexión** a Redis y respeta el cortocircuito de
 `RedisCacheAvailability`, como la lectura: con la caché degradada no se intenta nada, y un fallo

@@ -93,9 +93,19 @@ public class RedisCacheEvictService {
 
     /** Lo que vacia una escritura de catalogo, en una conexion: las claves del LOV y el esquema de via. */
     public void evictAfterLovWrite(String lovName) {
+        evictAfterLovWrite(lovName, List.of());
+    }
+
+    /**
+     * Lo que vacia una escritura de catalogo, en una conexion: las claves del LOV, las cuatro
+     * caches de cada servicio cuyo DTO cacheado embebe entradas de catalogo
+     * ({@code LovCacheEvictionListener}) y el esquema de via.
+     */
+    public void evictAfterLovWrite(String lovName, List<String> embeddingServiceNames) {
         List<String> patterns = new ArrayList<>(lovPatterns(lovName));
+        embeddingServiceNames.forEach(serviceName -> patterns.addAll(normalServicePatterns(serviceName)));
         patterns.add(trackSchematicPattern());
-        evictByPatterns("LOV " + lovName + " + track schematics", patterns);
+        evictByPatterns("LOV " + lovName + " + " + embeddingServiceNames + " + track schematics", patterns);
     }
 
     public void evictNormalServiceCaches(String serviceName) {

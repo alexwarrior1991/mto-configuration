@@ -40,7 +40,12 @@ paths:
 - Invalidación: cada escritura publica `CacheEvictionEvent` con el nombre del servicio (los catálogos,
   `LovCacheEvictionEvent`), y `CacheEvictionListener` y `LovCacheEvictionListener` vacían sus cachés y
   las del esquema de vía al confirmar la transacción (`AFTER_COMMIT`), con una sola conexión
-  (`RedisCacheEvictService`). Una escritura anidada solo publica el servicio padre: un DTO cacheable
+  (`RedisCacheEvictService`). Una escritura de catálogo vacía además las cuatro cachés de **todo
+  servicio que se declara cacheable**, porque su DTO lleva embebida la entrada de catálogo entera
+  (`DisconnectorDTO.disconnectorFunction`, `SteadyArmDTO.steadyArmType`): la lista no se escribe a
+  mano, `LovCacheEvictionListener` se la pregunta a los servicios (`isCacheable()`), así que uno
+  nuevo queda cubierto solo. Lo fija «Un cambio de catálogo» de `CacheEvictionListenerTest`, con los
+  servicios de verdad. Una escritura anidada solo publica el servicio padre: un DTO cacheable
   que copia campos de otra entidad, o cuya fila se escribe anidada desde otro servicio, necesita su
   entrada en `CacheEvictionListener.DEPENDENT_SERVICES`. Lo fija `CacheEvictionListenerTest`, que
   también comprueba que los nombres del mapa existen.
