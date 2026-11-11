@@ -237,6 +237,14 @@ def is_kp_note(code):
 # a 70 m—, sino un tramo que reinicia la kilometracion, y su media no seria ningun sitio.
 PROFILE_KP_MAX_GAP_M = Decimal(300)
 
+# Un poste con el KP supuesto entra DESACTIVADO (ENABLED = NO) hasta que el origen traiga el
+# suyo. La clave natural con la que el importador casa un perfil es (via, profileId, kp):
+# cargado activo con un KP inventado, el dia que el origen trajera el real el reimport daria
+# de alta OTRO perfil y el del KP supuesto se quedaria, activo, al lado. Asi el poste esta en
+# el maestro —se ve y se revisa— y no entra en la base de datos hasta tener su clave.
+SUPPOSED_KP_REASON = ("KP supuesto: media de los perfiles contiguos; "
+                      "desactivado hasta tener su KP real")
+
 
 def supposed_kps(entries):
     """KP supuesto de los perfiles sin KP de un tramo: {indice: (kp, anterior, siguiente)}.
@@ -289,7 +297,7 @@ def apply_supposed_kp(supposed, index, *, code, ep, sheet, row, master: Master):
                               f"{PROFILE_KP_MAX_GAP_M} m", ep=ep, hoja=sheet, fila=row,
                        detalle=f"{code}: {vecinos}")
         return None
-    master.discard(motivo="KP supuesto: media de los perfiles contiguos", ep=ep, hoja=sheet,
+    master.discard(motivo=SUPPOSED_KP_REASON, ep=ep, hoja=sheet,
                    fila=row, detalle=f"{code} -> {middle} ({vecinos})")
     return middle
 
@@ -671,10 +679,12 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
         kp, bad = fit_numeric("KP", raw_kp, ep=ep, sheet=sheet, row=number, master=master)
         if kp is None:
             kp = origin_kp(raw_kp, entry_of[offset])
+        supposed_kp = False
         if kp is None:
             kp = apply_supposed_kp(supposed, entry_of[offset], code=code, ep=ep, sheet=sheet,
                                    row=number, master=master)
-            bad = bad or kp is not None       # entra, pero senalado: el KP no es del origen
+            supposed_kp = kp is not None      # sale, pero desactivado: el KP no es del origen
+            bad = bad or supposed_kp
         record["KP"] = kp
         review = review or bad
 
@@ -704,7 +714,7 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
         position += 1
         emit_profile(record, code=code, kp=kp, review=review, seen_keys=seen_keys,
                      position=position, cfg=cfg, ep=ep, sheet=sheet, number=number,
-                     master=master)
+                     master=master, supposed_kp=supposed_kp)
         profiles += 1
 
         cantilevers += read_cantilevers(row, multi, cfg, record, ep, sheet,
@@ -716,12 +726,15 @@ def read_track(ws, ep, decl, cfg, master: Master, layout: TrackLayout = None):
 
 
 def emit_profile(record, *, code, kp, review, seen_keys, position, cfg, ep, sheet, number,
-                 master: Master):
+                 master: Master, supposed_kp=False):
     """Cierra un perfil y lo escribe en el maestro. Lo comparten los dos lectores.
 
     Aqui esta lo que no depende del formato del origen: la clave natural
     (via, profileId, kp), el orden dentro de la via, el estado por defecto y la decision
     de ENABLED / REVISAR.
+
+    ``supposed_kp`` dice que el KP no es del origen sino la media de sus vecinos: el perfil
+    sale con el, pero desactivado (ver SUPPOSED_KP_REASON), y sus mensulas con el.
     """
     key = (code.upper(), None if kp is None else str(kp))
     duplicated = key in seen_keys
@@ -734,7 +747,7 @@ def emit_profile(record, *, code, kp, review, seen_keys, position, cfg, ep, shee
     record["ORDEN"] = position
     record["PROFILE_STATUS"] = cfg_default_status(cfg, ep)
     record["ENABLED"] = ("SI" if (record["PROFILE_ID"] and kp is not None
-                                  and not duplicated) else "NO")
+                                  and not duplicated and not supposed_kp) else "NO")
     record["REVISAR"] = "SI" if review or record["ENABLED"] == "NO" else "NO"
     master.profiles.append(record)
 
@@ -970,10 +983,12 @@ def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
         kp, bad = fit_numeric("KP", kp_value, ep=ep, sheet=sheet, row=number, master=master)
         if kp is None:
             kp = origin_kp(kp_value, entry_of[position_in_block])
+        supposed_kp = False
         if kp is None:
             kp = apply_supposed_kp(supposed, entry_of[position_in_block], code=code, ep=ep,
                                    sheet=sheet, row=number, master=master)
-            bad = bad or kp is not None
+            supposed_kp = kp is not None
+            bad = bad or supposed_kp
         record["KP"] = kp
         review = review or bad
 
@@ -1033,7 +1048,7 @@ def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
         position += 1
         emit_profile(record, code=code, kp=kp, review=review, seen_keys=seen_keys,
                      position=position, cfg=cfg, ep=ep, sheet=sheet, number=number,
-                     master=master)
+                     master=master, supposed_kp=supposed_kp)
         profiles += 1
 
         # Las dos mensulas del apoyo, con el tipo ya traducido, por el mismo camino que
@@ -1222,7 +1237,10 @@ READ_ME = [
     ("KP", "En metros y con signo: un poste de antes del origen de la kilometracion va en "
            "negativo, y un 0 en el primer perfil de una via es su origen (en cualquier otra fila "
            "es un hueco). Un perfil sin KP entre dos que lo tienen toma la media de los dos (los "
-           "postes 'Bis'), con REVISAR=SI y en DESCARTADOS como 'KP supuesto', con sus vecinos."),
+           "postes 'Bis') y sale DESACTIVADO: ENABLED=NO y REVISAR=SI, con sus mensulas, y en "
+           "DESCARTADOS como 'KP supuesto', con sus vecinos. No se carga hasta que el origen "
+           "traiga su KP: el perfil se identifica por via, PROFILE_ID y KP, y cargado con un KP "
+           "supuesto se quedaria duplicado al llegar el de verdad."),
     ("SPAN", "Vano HASTA EL PERFIL SIGUIENTE, en metros. En el origen vive en la fila intermedia."),
     ("ARM_ANGLE", "Lo calcula la macro ab() del workbook. Donde el libro lo guardo como #NAME? "
                   "(recalculado sin macros) lo escribe data/tools/arm_angle.py con la misma "
