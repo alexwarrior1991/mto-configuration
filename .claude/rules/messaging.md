@@ -47,7 +47,12 @@
 - El evento se escribe en el outbox dentro de la transacción de negocio
   (`MasterDataEntityChangedEventListener` es un `@EventListener` síncrono) y el relay lo publica
   después. Solo el relay habla con el broker (`OutboxRabbitPublisher`), y no arranca sin publisher
-  confirms (`OutboxWiringTest`).
+  confirms (`OutboxWiringTest`). El relay renueva el reclamo de cada mensaje antes de publicarlo y no
+  publica el que ya no es suyo, cuenta el intento al reclamar (el mensaje que lo tumba también acaba en
+  `FAILED`) y vacía lo que hay dentro de `pass-time-budget`; los plazos que se contradicen impiden
+  arrancar (README_MESSAGING.md §11.6, `OutboxRelayIT`, `OutboxPublisherSchedulerTest`). `core/outbox`
+  lo copian `mto-maintenance`, `mto-stock`, `mto-field` y `mto-resources`: un cambio aquí se lleva a los
+  cuatro.
 - Cada entidad publicada tiene su mapper de payload explícito. Sin él cae en la serialización genérica
   de la entidad JPA, que entra en recursión con las relaciones bidireccionales
   (`MasterDataPayloadMapperCoverageTest`). Su repositorio tiene `findByIdForMessaging`, cuyo
