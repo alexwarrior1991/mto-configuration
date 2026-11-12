@@ -1367,9 +1367,46 @@ Con este criterio, el libro de hoy (`data/sectioning-review.xlsx`) tiene:
 | `DISCONNECTORS` | 711 | 198 | 513 | 0 | 711 |
 | `SECTION_INSULATORS` | 276 | 26 | 207 | 43 | 276 |
 
-Es decir, se cargan 513 seccionadores y 250 aisladores que el libro no da por revisados. Las 43 sin
+Es decir, se cargan 513 seccionadores y 250 aisladores que el libro no da por revisados: son las 763
+filas de su hoja `PENDIENTE` (ver «`RESUMEN` y `PENDIENTE`»). Las 43 sin
 marcar son los aisladores añadidos a mano (no llevan `HANDLE`: no salieron del plano). Si esas filas
 ya se miraron, cerrarlas es escribir `NO` en su `REVISAR`; eso es de quien revisó, no del generador.
+
+## `RESUMEN` y `PENDIENTE`
+
+Son las dos hojas **calculadas** del libro: salen de las hojas de datos y de nada más, y no se
+editan. `RESUMEN` cuenta (`summary_lines`); `PENDIENTE` lista, fila a fila, lo que no está revisado
+(`pending_rows`): las de `REVISAR = SI` con su motivo y las de `REVISAR` vacío, separadas en las que
+ya se cargan (`ENABLED = SI`) y las que no, y al final las revisadas que se cargan y a las que les
+falta un dato. `FILA` lleva a la fila en su hoja, y `COMPLETAR` dice el dato que falta en ella
+(`missing_data`: la estación, el nombre, on-load o la función de un seccionador, la vía conectada de
+uno de puesta en paralelo; la estación, el nombre, la vía o el KP de un aislador, y el código de una
+aguja que trae KP o tangente). No es todo lo que comprueba el importador, que además abre el maestro.
+
+**No llevan fórmulas.** Las llevaba `RESUMEN`, y por eso dejó de casar con los datos: contaba los
+`HANDLE` y no las filas (233 aisladores, cuando la hoja tiene 276: los 43 añadidos a mano no vienen
+del plano), contaba las agujas en la hoja `SECTION_INSULATOR_SWITCHES`, que desde que van en la fila
+de su aislador está vacía (420 guardadas, 0 al recalcular; son 453), y lo que enseñaba era el valor
+de la última vez que alguien abrió el libro en Excel. `PENDIENTE` se escribió una vez, a mano, antes
+de la revisión: decía 165 seccionadores y 203 aisladores con `ENABLED = NO` cuando ya no queda
+ninguno. Ahora las dos se calculan con la misma regla al generar el libro y al refrescarlo.
+
+**Después de editar el libro, se refrescan:**
+
+```bash
+python3 data/tools/build_sectioning_review.py --refresh data/sectioning-review.xlsx
+python3 data/tools/build_sectioning_review.py --check data/sectioning-review.xlsx    # 0 si casan
+```
+
+`--refresh` no necesita el plano y **solo reescribe esas dos hojas**. El resto del libro no pasa por
+`openpyxl`, que al guardar pierde lo que no entiende (los desplegables que escribe Excel van en una
+extensión, y se quedaría sin ellos): se copia parte a parte del `.xlsx`, byte a byte, y lo único que
+cambia fuera de las dos hojas es el rango del filtro de `PENDIENTE` en `xl/workbook.xml`. Lo que
+alguien ha escrito en las hojas de datos no se toca, y refrescar dos veces da el mismo fichero.
+
+`--check` (y `check_review`) dice si lo escrito en las dos hojas es lo que dan los datos. Lo corre el
+test `test_the_versioned_workbook_agrees_with_its_data` sobre `data/sectioning-review.xlsx`, en el
+paso de CI de `data/tools/tests`: **un libro editado y sin refrescar no pasa**.
 
 ## Los desplegables
 
@@ -1402,7 +1439,9 @@ distinta y los dos postes al mismo KP), el KP propio solo sin poste, y los despl
 cercanos con el de la fila primero, el KP del poste propuesto, los rótulos sueltos como nombre, el
 orden del catálogo de funciones y el libro con sus listas; y la vía conectada: la propuesta, la
 ambigua, la que falta en amarillo y la función `PP` de uno de la B entre dos vías; cuándo una fila está
-revisada (`ReviewStateTest`); y las agujas en la
+revisada (`ReviewStateTest`); `RESUMEN` y `PENDIENTE` (`SummaryAndPendingTest`: lo que cuentan y lo
+que listan, un libro generado que casa consigo mismo, uno editado que no pasa hasta refrescarlo y
+conserva el resto byte a byte, y el libro versionado); y las agujas en la
 fila de su aislador, con la fórmula de `KP` de esa fila, el KP escrito de un seccionador que lo
 puentea y el de un aislador sin agujas, y un libro generado que `build_profile_master.py` lee hasta
 sacar sus agujas y su KP. El módulo importa
