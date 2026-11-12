@@ -21,8 +21,11 @@
   (`{entityName, entityId, eventName, values}`), nunca por el de datos maestros: quien escucha
   `mto.master-data.#` no recibe nada que no sea un dato maestro. Hoy hay un evento,
   `mto.configuration.job.finished` (`JobFinishedEventPublisher`), escrito en la misma transacción
-  `REQUIRES_NEW` que el estado terminal del trabajo. Lo fijan `JobFinishedEventPublisherTest` y
-  `ConfigurationRabbitMqNamesTest`.
+  `REQUIRES_NEW` que el estado terminal del trabajo, y solo si ese cierre cambió la fila: toda
+  escritura de estado de un trabajo pasa por `AsyncJobRepository.claimActive` (un `UPDATE`
+  condicional a `PENDING`/`RUNNING`, el número de filas como respuesta), así que el trabajo que el
+  reaper ya cerró no resucita ni publica (`AsyncJobSlotIT`). Lo fijan `JobFinishedEventPublisherTest`
+  y `ConfigurationRabbitMqNamesTest`.
 - Un trabajo en segundo plano corre con su `jobId` como `correlationId` (`JobCorrelation.wrap`, al
   encolar), así que todos los eventos que escribe —los de datos maestros de una importación y su
   propio `job.finished`— viajan agrupados bajo él. El MDC de la petición cruza al hilo de fondo por
@@ -47,7 +50,12 @@
 - El evento se escribe en el outbox dentro de la transacción de negocio
   (`MasterDataEntityChangedEventListener` es un `@EventListener` síncrono) y el relay lo publica
   después. Solo el relay habla con el broker (`OutboxRabbitPublisher`), y no arranca sin publisher
-  confirms (`OutboxWiringTest`).
+  confirms (`OutboxWiringTest`). El relay renueva el reclamo de cada mensaje antes de publicarlo y no
+  publica el que ya no es suyo, cuenta el intento al reclamar (el mensaje que lo tumba también acaba en
+  `FAILED`) y vacía lo que hay dentro de `pass-time-budget`; los plazos que se contradicen impiden
+  arrancar (README_MESSAGING.md §11.6, `OutboxRelayIT`, `OutboxPublisherSchedulerTest`). `core/outbox`
+  lo copian `mto-maintenance`, `mto-stock`, `mto-field` y `mto-resources`: un cambio aquí se lleva a los
+  cuatro.
 - Cada entidad publicada tiene su mapper de payload explícito. Sin él cae en la serialización genérica
   de la entidad JPA, que entra en recursión con las relaciones bidireccionales
   (`MasterDataPayloadMapperCoverageTest`). Su repositorio tiene `findByIdForMessaging`, cuyo

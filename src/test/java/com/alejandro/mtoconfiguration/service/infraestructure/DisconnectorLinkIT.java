@@ -20,6 +20,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import com.alejandro.mtoconfiguration.configuration.cache.LovCacheEvictionListener;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
@@ -96,6 +97,17 @@ class DisconnectorLinkIT {
     private DisconnectorRepository disconnectorRepository;
     @Autowired
     private PlatformTransactionManager transactionManager;
+    @Autowired
+    private LovCacheEvictionListener lovCacheEvictionListener;
+
+    @Test
+    @DisplayName("con el contexto de verdad, un cambio de catalogo vacia las caches del seccionador y del brazo")
+    void unCatalogoVaciaLasCachesDeLosServiciosCacheables() {
+        // El listener se lo pregunta a los servicios del contexto, que llegan envueltos en su
+        // proxy: aqui se ve que los encuentra y que los nombra como se nombran sus claves.
+        assertThat(lovCacheEvictionListener.cacheableServiceNames())
+                .containsExactly("DisconnectorService", "SteadyArmService");
+    }
 
     @BeforeEach
     void inserta() {

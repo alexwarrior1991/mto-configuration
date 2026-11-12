@@ -91,8 +91,9 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
      * a servir nada.
      * <p>
      * Solo devuelven true los servicios cuyo DTO no embebe otros DTO de entidad.
-     * Los LOV que si embeben no cuentan: se editan casi nunca y su TTL acota la
-     * ventana.
+     * Los LOV que si embeben no impiden cachear: se editan casi nunca, y cuando uno
+     * cambia, LovCacheEvictionListener vacia las caches de todos los servicios que
+     * devuelven true aqui (se lo pregunta a ellos, no hay lista que mantener).
      * <p>
      * Y no basta con no embeber: un DTO cacheable tampoco puede copiar campos planos
      * de OTRA entidad (DisconnectorDTO.profileCode y profileKp salen del perfil), ni

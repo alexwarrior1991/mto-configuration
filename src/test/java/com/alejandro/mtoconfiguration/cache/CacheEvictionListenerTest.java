@@ -5,6 +5,13 @@ import com.alejandro.mtoconfiguration.configuration.cache.CacheEvictionListener;
 import com.alejandro.mtoconfiguration.configuration.cache.LovCacheEvictionEvent;
 import com.alejandro.mtoconfiguration.configuration.cache.LovCacheEvictionListener;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheEvictService;
+import com.alejandro.mtoconfiguration.model.commons.LovDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SteadyArmDTO;
+import com.alejandro.mtoconfiguration.service.commons.BaseService;
+import com.alejandro.mtoconfiguration.service.infraestructure.DisconnectorService;
+import com.alejandro.mtoconfiguration.service.infraestructure.ProfileService;
+import com.alejandro.mtoconfiguration.service.infraestructure.SteadyArmService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -13,16 +20,23 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import org.springframework.core.type.filter.AssignableTypeFilter;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 /**
@@ -45,6 +59,19 @@ class CacheEvictionListenerTest {
         return new CacheEvictionListener(evictService);
     }
 
+    /** El listener de catalogos con los servicios que habria en el contexto. */
+    private LovCacheEvictionListener lovListener(BaseService<?, ?>... servicios) {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<BaseService<?, ?>> provider = mock(ObjectProvider.class);
+        when(provider.stream()).thenAnswer(invocation -> Stream.of(servicios));
+        return new LovCacheEvictionListener(evictService, provider);
+    }
+
+    /** Un servicio sin sus dependencias: de el solo se usa lo que declara, isCacheable(). */
+    private static <S extends BaseService<?, ?>> S servicio(Class<S> type) {
+        return mock(type, CALLS_REAL_METHODS);
+    }
+
     @Test
     @DisplayName("una escritura de un maestro vacia sus cachés y el esquema de via, en una sola llamada")
     void unaEscrituraVaciaLoSuyoYElEsquema() {
@@ -55,13 +82,95 @@ class CacheEvictionListenerTest {
         verifyNoMoreInteractions(evictService);
     }
 
-    @Test
-    @DisplayName("un cambio de catalogo vacia ese LOV y el esquema, que lleva sus codigos, en una sola llamada")
-    void unCatalogoVaciaElLovYElEsquema() {
-        new LovCacheEvictionListener(evictService).onLovCacheEviction(new LovCacheEvictionEvent("PoleType"));
+    @Nested
+    @DisplayName("Un cambio de catalogo")
+    class Catalogos {
 
-        verify(evictService).evictAfterLovWrite("PoleType");
-        verifyNoMoreInteractions(evictService);
+        @Test
+        @DisplayName("vacia ese LOV, los servicios cacheables (su DTO embebe la entrada) y el esquema, en una sola llamada")
+        void unCatalogoVaciaElLovLosCacheablesYElEsquema() {
+            lovListener(servicio(DisconnectorService.class), servicio(ProfileService.class),
+                    servicio(SteadyArmService.class))
+                    .onLovCacheEviction(new LovCacheEvictionEvent("DisconnectorFunction"));
+
+            // Sin los dos servicios, un seccionador leido tras corregir la descripcion de su
+            // funcion seguia saliendo con la vieja hasta seis horas (normal:item).
+            verify(evictService).evictAfterLovWrite("DisconnectorFunction",
+                    List.of("DisconnectorService", "SteadyArmService"));
+            verifyNoMoreInteractions(evictService);
+        }
+
+        @Test
+        @DisplayName("sin ningun servicio cacheable solo vacia el LOV y el esquema")
+        void sinCacheablesSoloElLovYElEsquema() {
+            lovListener(servicio(ProfileService.class))
+                    .onLovCacheEviction(new LovCacheEvictionEvent("PoleType"));
+
+            verify(evictService).evictAfterLovWrite("PoleType", List.of());
+            verifyNoMoreInteractions(evictService);
+        }
+
+        @Test
+        @DisplayName("guardian: todo servicio que se declara cacheable se vacia con cualquier catalogo")
+        void todoServicioCacheableSeVaciaConUnCatalogo() {
+            // Los servicios de verdad, tal como responden a isCacheable(). Uno nuevo que pase a
+            // cachearse entra aqui solo; si el listener dejara de preguntarselo a los servicios y
+            // volviera a una lista escrita a mano, este test es el que lo dice.
+            List<BaseService<?, ?>> servicios = serviciosDeInfraestructura();
+            List<String> cacheables = servicios.stream()
+                    .filter(BaseService::isCacheable)
+                    .map(servicio -> servicio.getClass().getSimpleName())
+                    .sorted()
+                    .toList();
+
+            lovListener(servicios.toArray(BaseService[]::new))
+                    .onLovCacheEviction(new LovCacheEvictionEvent("SteadyArmType"));
+
+            assertThat(cacheables)
+                    .as("los dos DTO cacheables embeben una entrada de catalogo")
+                    .contains("DisconnectorService", "SteadyArmService");
+            verify(evictService).evictAfterLovWrite("SteadyArmType", cacheables);
+        }
+
+        @Test
+        @DisplayName("guardian: los DTO cacheables que embeben un catalogo son de servicios que se vacian")
+        void losDtoCacheablesConCatalogoSonDeServiciosCacheables() {
+            // La otra mitad: que la regla "se vacian los cacheables" cubre de verdad a quien embebe
+            // un catalogo. Un DTO con una entrada de catalogo cuyo servicio no se declarase
+            // cacheable pero se cacheara por otro camino no estaria en la lista.
+            List<BaseService<?, ?>> servicios = serviciosDeInfraestructura();
+
+            assertThat(servicios)
+                    .filteredOn(BaseService::isCacheable)
+                    .extracting(servicio -> servicio.getClass().getSimpleName())
+                    .containsExactlyInAnyOrder("DisconnectorService", "SteadyArmService");
+            assertThat(embebeCatalogo(DisconnectorDTO.class)).isTrue();
+            assertThat(embebeCatalogo(SteadyArmDTO.class)).isTrue();
+        }
+
+        private boolean embebeCatalogo(Class<?> dto) {
+            return java.util.Arrays.stream(dto.getDeclaredFields())
+                    .anyMatch(field -> LovDTO.class.isAssignableFrom(field.getType()));
+        }
+
+        /** Todos los servicios concretos de infraestructura, sin contexto: solo importa isCacheable(). */
+        @SuppressWarnings("unchecked")
+        private List<BaseService<?, ?>> serviciosDeInfraestructura() {
+            var scanner = new ClassPathScanningCandidateComponentProvider(false);
+            scanner.addIncludeFilter(new AssignableTypeFilter(BaseService.class));
+
+            return scanner.findCandidateComponents("com.alejandro.mtoconfiguration.service.infraestructure")
+                    .stream()
+                    .map(definition -> {
+                        try {
+                            return (Class<? extends BaseService<?, ?>>) Class.forName(definition.getBeanClassName());
+                        } catch (ClassNotFoundException e) {
+                            throw new IllegalStateException(e);
+                        }
+                    })
+                    .<BaseService<?, ?>>map(CacheEvictionListenerTest::servicio)
+                    .toList();
+        }
     }
 
     @Test

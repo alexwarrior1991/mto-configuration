@@ -162,6 +162,40 @@ class RedisCacheEvictServiceTest {
     }
 
     @Nested
+    @DisplayName("Lo que embebe un catalogo")
+    class EmbebenCatalogo {
+
+        @Test
+        @DisplayName("una escritura de catalogo barre su LOV, las cuatro caches de cada servicio que lo embebe y el esquema")
+        void catalogoMasServiciosMasEsquema() {
+            service.evictAfterLovWrite("DisconnectorFunction", List.of("DisconnectorService", "SteadyArmService"));
+
+            assertThat(patronesUsados())
+                    .contains(
+                            APP + "::normal:item::DisconnectorService:*",
+                            APP + "::normal:list::DisconnectorService:*",
+                            APP + "::normal:page::DisconnectorService:*",
+                            APP + "::normal:search::DisconnectorService:*",
+                            APP + "::normal:item::SteadyArmService:*",
+                            APP + "::normal:list::SteadyArmService:*",
+                            APP + "::normal:page::SteadyArmService:*",
+                            APP + "::normal:search::SteadyArmService:*",
+                            APP + "::normal:item::TrackSchematicService:*")
+                    // Las seis de siempre (cinco del LOV y el esquema) mas cuatro por servicio.
+                    .hasSize(14);
+        }
+
+        @Test
+        @DisplayName("sin servicios que lo embeban barre lo de siempre")
+        void sinServicios() {
+            service.evictAfterLovWrite("PoleType", List.of());
+            List<String> conLista = patronesUsados();
+
+            assertThat(conLista).hasSize(6).last().isEqualTo(APP + "::normal:item::TrackSchematicService:*");
+        }
+    }
+
+    @Nested
     @DisplayName("Prefijos comunes")
     class Prefijos {
 

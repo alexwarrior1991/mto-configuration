@@ -326,10 +326,10 @@ Implementa la persistencia y el reenvío de mensajes.
     Ofrece el método `save()` para persistir eventos. **Debe llamarse siempre dentro de una transacción `@Transactional`**.
 
 *   **`OutboxPublisherScheduler`**:
-    El motor del sistema. Se ejecuta cada pocos segundos (configurable): reclama un lote, lo publica y cierra el estado de cada mensaje. **No es transaccional**: la I/O contra RabbitMQ nunca debe retener una conexión de base de datos.
+    El motor del sistema. Se ejecuta cada pocos segundos (configurable) y, mientras haya trabajo, reclama un lote tras otro, publica cada mensaje y cierra su estado, hasta que no queda nada, se cumple `pass-time-budget` o de un lote no sale nada (§11.6). **No es transaccional**: la I/O contra RabbitMQ nunca debe retener una conexión de base de datos.
 
 *   **`OutboxRelayService`**:
-    La única frontera transaccional del relay, siempre con transacciones cortas. `claimBatch()` reclama un lote con `FOR UPDATE SKIP LOCKED` y lo deja invisible para el resto de réplicas durante `claim-visibility-timeout`; `markPublished()` y `markFailed()` cierran cada mensaje.
+    La única frontera transaccional del relay, siempre con transacciones cortas. `claimBatch()` reclama un lote con `FOR UPDATE SKIP LOCKED`, **cuenta el intento** y lo deja invisible para el resto de réplicas durante `claim-visibility-timeout`; `renewClaim()` comprueba y prorroga el reclamo de un mensaje justo antes de publicarlo; `markPublished()` y `markFailed()` lo cierran, y `releaseClaim()` suelta el que la pasada no llegó a intentar. Renovar, aplazar, agotar y soltar son escrituras condicionales al reclamo (§11.6).
 
 *   **`OutboxRabbitPublisher`**:
     Publica y **espera la confirmación del broker**. Detecta las dos formas de fracaso silencioso: el `nack` y el mensaje no enrutable (`basic.return`, que llega siempre antes del ack). Sin publisher confirms configurados, la aplicación no arranca.
@@ -753,12 +753,12 @@ El flujo de un evento en este módulo sigue un camino estrictamente controlado p
 
 ### Fase 2: El Relay (Envío al Broker)
 5.  **Scheduler**: El `OutboxPublisherScheduler` despierta cada N segundos.
-6.  **Reclamo** (transacción corta): `FOR UPDATE SKIP LOCKED` se lleva un lote **disjunto** del que se lleve cualquier otra réplica. Las filas pasan a `IN_PROGRESS` y quedan invisibles durante `claim-visibility-timeout`. Si el proceso muere antes de cerrarlas, otra réplica las recupera al expirar ese plazo.
-7.  **Publicación** (fuera de transacción): se envía el JSON al exchange de la fila (`mto.master-data.exchange` o `mto.configuration.exchange`) y se **espera el publisher confirm**.
+6.  **Reclamo** (transacción corta): `FOR UPDATE SKIP LOCKED` se lleva un lote **disjunto** del que se lleve cualquier otra réplica. Las filas pasan a `IN_PROGRESS` y quedan invisibles durante `claim-visibility-timeout`. El intento se cuenta aquí, al reclamar. Si el proceso muere antes de cerrarlas, otra réplica las recupera al expirar ese plazo, con ese intento ya gastado.
+7.  **Publicación** (fuera de transacción): justo antes, el relay **renueva el reclamo** del mensaje; si ya no es suyo, no lo publica. Después se envía el JSON al exchange de la fila (`mto.master-data.exchange` o `mto.configuration.exchange`) y se **espera el publisher confirm**.
 8.  **Cierre** (transacción corta):
     *   **Éxito**: con el `ack` del broker el mensaje pasa a `PUBLISHED`.
     *   **Fallo temporal**: `nack`, mensaje no enrutable, o sin respuesta dentro de `confirm-timeout`. Vuelve a `PENDING` con el siguiente intento aplazado por backoff exponencial.
-    *   **Fallo definitivo**: agotados los intentos, queda en `FAILED`. **No es terminal**: `POST /actuator/outbox` lo devuelve a `PENDING` una vez corregida la causa.
+    *   **Fallo definitivo**: agotados los intentos, queda en `FAILED`; también el mensaje que se reclamó `max-attempts` veces sin que nadie llegara a cerrarlo (tumba al relay, o su cierre falla siempre). **No es terminal**: `POST /actuator/outbox` lo devuelve a `PENDING` una vez corregida la causa.
 
 ### Fase 3: Enrutado y Consumo
 9.  **Distribución**: El Exchange recibe el mensaje y, basándose en la Routing Key, lo deposita en la cola de cada consumidor cuyo binding coincida.
@@ -827,9 +827,12 @@ app:
     retry-jitter: 0.2
     publisher-fixed-delay: 5s
     batch-size: 50
-    # Tiempo que un mensaje reclamado queda invisible para el resto de replicas
+    # Tiempo que un mensaje reclamado queda invisible para el resto de replicas.
+    # Al arrancar se exige >= 2 * confirm-timeout y >= pass-time-budget + confirm-timeout
     claim-visibility-timeout: 5m
     confirm-timeout: 10s
+    # Tiempo que una pasada sigue reclamando lotes mientras haya trabajo
+    pass-time-budget: 30s
 
 spring:
   rabbitmq:
@@ -888,6 +891,7 @@ Devuelve a `PENDING` los `FAILED` más antiguos con el contador de intentos a ce
 | `outbox_messages_in_progress` | Reclamados por un relay y aún sin cerrar. |
 | `outbox_messages_failed` | Han agotado los reintentos y esperan un redrive. Debería ser 0. |
 | `outbox_publish_total{result="success"\|"failure"}` | Ritmo de publicación y de fallos. |
+| `outbox_claim_lost_total` | Mensajes que un relay no publicó porque su reclamo ya era de otro (o estaba cerrado). No es un error, es la comprobación funcionando; si crece de forma sostenida, los relojes de las réplicas difieren o `claim-visibility-timeout` es corto. |
 
 Los gauges se refrescan desde una foto periódica (`app.outbox.metrics-refresh-delay`), **no** en cada scrape: un gauge que consulta la base de datos cada vez que Prometheus pregunta convierte la observabilidad en carga. El total de `PUBLISHED` no se publica como gauge a propósito (contarlo recorre el grueso de la tabla); está bajo demanda en `/actuator/outbox`.
 
@@ -1124,7 +1128,7 @@ and not exists (
 Dos decisiones dentro de esa consulta:
 
 - **Solo retienen `PENDING` e `IN_PROGRESS`**, que son los que todavía van a llegar.
-- **Un `FAILED` no retiene.** Ya no se va a publicar por sí mismo, y dejarlo bloquear pararía el agregado de forma indefinida — peor que el desorden. Si luego se hace redrive de ese mensaje, vuelve a `PENDING` con su secuencia original, así que se ordena solo.
+- **Un `FAILED` no retiene.** Ya no se va a publicar por sí mismo, y dejarlo bloquear pararía el agregado de forma indefinida — peor que el desorden. Si luego se hace redrive de ese mensaje, vuelve a `PENDING` con su secuencia original, así que se ordena solo. Vale igual para el mensaje envenenado que agota sus intentos sin cerrarse nunca (§11.6): mientras gira retiene a su agregado, como cualquier `IN_PROGRESS`, y al quedar en `FAILED` lo suelta. Los siguientes salen sin él; el consumidor lo ve como un hueco, y si un redrive lo reenvía tarde, lo descarta por `sequenceNumber` (§11.4).
 
 El coste: un mensaje atascado frena a los de **su** agregado, solo a esos. El resto del circuito sigue. Se puede desactivar con `app.outbox.strict-ordering-per-aggregate: false` para vaciar un atasco a costa del orden, pero por defecto pesa más no corromper el dato.
 
@@ -1137,6 +1141,56 @@ Cada mensaje viaja con la cabecera `sequenceNumber`. El relay ya publica en orde
 `V5` sustituye el índice de reclamo (ahora sobre `sequence_number`) y añade `idx_outbox_message_aggregate` sobre `(aggregate_type, aggregate_id, sequence_number)`, que es el que resuelve la retención sin recorrer la tabla. Ambos parciales sobre `PENDING`/`IN_PROGRESS`, así que siguen siendo diminutos.
 
 ---
+
+### 11.6. El reclamo, los intentos y el vaciado
+
+Tres cosas que el relay garantiza por construcción y no por aritmética de la configuración.
+
+**Un mensaje solo lo publica quien tiene su reclamo.** Un lote se reclama de una vez, pero si el
+broker deja de confirmar cada mensaje cuesta `confirm-timeout`: con los valores por defecto, 50
+mensajes eran 500 s contra una visibilidad de 300 s, y los del final del lote los reclamaba otra
+réplica (o la pasada siguiente) mientras el primer relay seguía con ellos — duplicados y, con dos
+relays sobre el mismo agregado, desorden. Ahora:
+
+- `next_attempt_at` de un `IN_PROGRESS` es el **testigo** del reclamo. Solo se reclama lo que ya ha
+  vencido, así que cada reclamo escribe un instante estrictamente posterior al anterior y nunca
+  coinciden dos.
+- Antes de publicar **cada** mensaje, el relay renueva su reclamo con una escritura condicional
+  (`where status = 'IN_PROGRESS' and next_attempt_at = <su testigo>`), y la respuesta es el número de
+  filas. Con 0, el mensaje ya es de otro o está cerrado: no se publica (`outbox_claim_lost_total`).
+  Con 1, tiene una visibilidad entera para esa publicación.
+- Aplazar (`PENDING`), agotar (`FAILED`) y soltar llevan la misma condición: el relay que perdió un
+  reclamo no puede devolver a `PENDING` lo que otro está publicando.
+- La pasada tiene un plazo, `pass-time-budget` (30 s). Al cumplirse, lo reclamado sin empezar se
+  suelta —vuelve a `PENDING`, disponible ya y sin el intento que se le contó— en vez de dejarlo
+  caducar.
+- Al arrancar se comprueba que los plazos no se contradicen, y si no, **la aplicación no arranca**
+  y dice qué propiedad corregir: `claim-visibility-timeout >= 2 * confirm-timeout` (una publicación
+  cabe con holgura en su reclamo) y `pass-time-budget + confirm-timeout <= claim-visibility-timeout`
+  (el último mensaje que una pasada empieza termina con el reclamo de su lote vigente, aun sin
+  renovar). `batch-size` ya no entra en la cuenta.
+
+Queda una ventana que ningún relay puede cerrar solo: una publicación que, tras renovar, tarda más
+que `claim-visibility-timeout` entera (un `send` colgado en el socket más allá de `confirm-timeout`).
+La entrega sigue siendo *at-least-once*, y para eso está `sequenceNumber` (§11.4).
+
+**Un mensaje envenenado termina.** El intento se cuenta **al reclamar**, no al fallar: lo gasta
+también el mensaje que tumba al proceso, o cuyo fallo no se llega a apuntar porque la base no
+responde. Antes ese mensaje se recuperaba al expirar su visibilidad una y otra vez, sin llegar
+nunca a `FAILED`, y con el orden por agregado tenía parado a su agregado para siempre. Ahora, al ir
+a reclamarlo con los intentos ya agotados, queda en `FAILED` en esa misma transacción (con
+`last_error` «Reclamado N veces sin que ningún relay llegara a cerrarlo»), sale en
+`outbox_messages_failed` y en `/actuator/outbox`, y se reencola con el redrive como cualquier otro.
+`attempts` es, por tanto, el número del intento en curso; `max-attempts` sigue siendo el total. Qué
+pasa con los siguientes de su agregado es lo de siempre con un `FAILED` (§11.3): dejan de estar
+retenidos.
+
+**Una pasada vacía lo que hay.** Con el orden por agregado un lote lleva como mucho **un** mensaje
+de cada agregado, y el relay hacía un lote por pasada: N eventos de una vía salían uno cada
+`publisher-fixed-delay`. La pasada sigue reclamando lotes hasta que no queda trabajo, se cumple
+`pass-time-budget` o de un lote entero no sale nada (el broker no está: insistir solo gastaría los
+intentos del resto). El orden no cambia: el siguiente de un agregado solo se reclama cuando el
+anterior está `PUBLISHED`.
 
 ## 12. Latencia y configuración del consumidor
 
