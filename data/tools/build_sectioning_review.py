@@ -1650,6 +1650,36 @@ INSULATOR_COLUMNS = (
 # primera. La misma regla que build_profile_master.insulator_kp, que la vuelve a aplicar al cargar.
 SWITCH_KP_MAX_GAP_M = 300
 
+# Cuando una fila esta revisada. Lo dice una sola celda, REVISAR, y un solo valor, NO: el
+# generador la escribe en SI con su motivo en MOTIVO_REVISAR (o en NO, si no tiene nada que
+# preguntar), y quien revisa la fila contra el plano la pasa a NO. Cualquier otra cosa es
+# pendiente: SI, y tambien vacia, que es como llega una fila añadida a mano y como quedaria un
+# olvido. ENABLED no lo dice: decide si la fila se carga, y una fila puede cargarse con una duda
+# abierta (una nota que no bloquea) o estar revisada y no cargarse.
+REVIEW_SHEETS = ("DISCONNECTORS", "SECTION_INSULATORS")
+REVIEWED, TO_REVIEW, UNMARKED = "REVISADA", "PENDIENTE", "SIN MARCAR"
+
+
+def flag(value):
+    """Una celda SI/NO como la lee el importador: sin espacios y en mayusculas; vacia, ''."""
+    return "" if value is None else str(value).strip().upper()
+
+
+def review_state(row):
+    """REVISADA (REVISAR = NO), PENDIENTE (REVISAR = SI) o SIN MARCAR (vacia u otro valor).
+
+    Solo REVISADA cuenta como revisada: las otras dos salen en la hoja PENDIENTE.
+    """
+    value = flag(row.get("REVISAR"))
+    if value == "NO":
+        return REVIEWED
+    return TO_REVIEW if value == "SI" else UNMARKED
+
+
+def is_reviewed(row):
+    return review_state(row) == REVIEWED
+
+
 # Motivos que dejan la fila en ENABLED = NO aunque tenga todos los datos.
 BLOCKING = (
     "el poste esta a",
@@ -2584,8 +2614,15 @@ README = [
     (
         "QUE EDITAR",
         "Amarillo = falta; naranja = propuesta del generador, a confirmar. Revisa cada fila con "
-        "REVISAR = SI segun MOTIVO_REVISAR, corrige lo necesario y pon ENABLED = SI. Solo las "
-        "filas con ENABLED = SI se cargarian.",
+        "REVISAR = SI segun MOTIVO_REVISAR, corrige lo necesario, pon ENABLED = SI si se carga y "
+        "REVISAR = NO cuando la des por revisada. Solo las filas con ENABLED = SI se cargarian.",
+    ),
+    (
+        "FILA REVISADA",
+        "Una fila de DISCONNECTORS o de SECTION_INSULATORS esta revisada cuando su REVISAR dice "
+        "NO, y solo entonces. Con SI esta pendiente, y vacia tambien (una fila añadida a mano se "
+        "marca igual). ENABLED no lo dice: decide si la fila se carga, y una fila puede cargarse "
+        "con una duda abierta. MOTIVO_REVISAR se deja como esta: es por que se pregunto.",
     ),
     (
         "NOMBRE Y KP",

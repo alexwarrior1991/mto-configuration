@@ -1330,6 +1330,47 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
   postes con seccionador al mismo KP, uno por vía, y la vía del plano no dice cuál es, la fila lo
   dice («vía sin comprobar»).
 
+## Cuándo una fila está revisada
+
+**Una fila de `DISCONNECTORS` o de `SECTION_INSULATORS` está revisada cuando su celda `REVISAR` dice
+`NO`, y solo entonces** (`is_reviewed` en `build_sectioning_review.py`; sin distinguir mayúsculas ni
+espacios, como lee el importador un `SI`/`NO`).
+
+| `REVISAR` | Estado | Quién lo escribe |
+|---|---|---|
+| `NO` | revisada | El generador, en la fila de la que no tiene nada que preguntar; quien revisa, al dar la fila por buena contra el plano |
+| `SI` | pendiente | El generador, con el porqué en `MOTIVO_REVISAR` |
+| vacía (u otro valor) | sin marcar: cuenta como pendiente | Nadie: así llega una fila añadida a mano, y así quedaría un olvido |
+
+Revisar una fila es, entonces: mirarla contra el plano según `MOTIVO_REVISAR`, corregir lo que haga
+falta, decidir `ENABLED` y escribir `REVISAR = NO`. `MOTIVO_REVISAR` se deja como está: es el porqué
+de la pregunta, y sirve para saber qué se miró.
+
+**`ENABLED` no dice si la fila está revisada**: decide si se carga, como en el resto de `data/`. Las
+dos columnas son independientes a propósito. Una fila puede cargarse con una duda abierta (el
+generador deja `ENABLED = SI` con una nota que no bloquea: «vía distinta», «rótulo sin KP»), y puede
+estar revisada y no cargarse. Hasta ahora el libro solo decía «corrige y pon `ENABLED = SI`», así que
+`ENABLED = SI` hacía de las dos cosas, y con todo activado ya no se distinguía la fila mirada de la
+activada en bloque.
+
+En `ESTACION_POR_PREFIJO` no hay filas que revisar: `ESTACION_CORRECTA` es un atajo que se rellena
+**solo si la propuesta no vale**, y vacía quiere decir «la estación de cada fila es la que lleva la
+fila». Lo que cuenta es la `ESTACION` de cada seccionador.
+
+El criterio es de este libro. El maestro de perfiles no copia `REVISAR` ni lo mira: carga lo que
+tenga `ENABLED = SI`, revisado o no.
+
+Con este criterio, el libro de hoy (`data/sectioning-review.xlsx`) tiene:
+
+| Hoja | Filas | Revisadas (`NO`) | Pendientes (`SI`) | Sin marcar (vacía) | Con `ENABLED = SI` |
+|---|---|---|---|---|---|
+| `DISCONNECTORS` | 711 | 198 | 513 | 0 | 711 |
+| `SECTION_INSULATORS` | 276 | 26 | 207 | 43 | 276 |
+
+Es decir, se cargan 513 seccionadores y 250 aisladores que el libro no da por revisados. Las 43 sin
+marcar son los aisladores añadidos a mano (no llevan `HANDLE`: no salieron del plano). Si esas filas
+ya se miraron, cerrarlas es escribir `NO` en su `REVISAR`; eso es de quien revisó, no del generador.
+
 ## Los desplegables
 
 Lo que se elige lleva desplegable, así que revisar es elegir y no ir a buscar al maestro:
@@ -1360,7 +1401,8 @@ listas para cargar (las de otra capa dentro de un EP, la de Haifa, la que no tie
 distinta y los dos postes al mismo KP), el KP propio solo sin poste, y los desplegables: los postes
 cercanos con el de la fila primero, el KP del poste propuesto, los rótulos sueltos como nombre, el
 orden del catálogo de funciones y el libro con sus listas; y la vía conectada: la propuesta, la
-ambigua, la que falta en amarillo y la función `PP` de uno de la B entre dos vías; y las agujas en la
+ambigua, la que falta en amarillo y la función `PP` de uno de la B entre dos vías; cuándo una fila está
+revisada (`ReviewStateTest`); y las agujas en la
 fila de su aislador, con la fórmula de `KP` de esa fila, el KP escrito de un seccionador que lo
 puentea y el de un aislador sin agujas, y un libro generado que `build_profile_master.py` lee hasta
 sacar sus agujas y su KP. El módulo importa

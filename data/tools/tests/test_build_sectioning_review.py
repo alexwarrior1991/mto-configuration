@@ -732,6 +732,38 @@ class InsulatorSwitchesTest(unittest.TestCase):
                          [("W8", 39991, 12, "TRACK 1"), ("W7", 40081, 12, "TRACK 2")])
 
 
+class ReviewStateTest(unittest.TestCase):
+    """Cuando una fila esta revisada: REVISAR = NO, y nada mas."""
+
+    def test_only_no_is_reviewed(self):
+        self.assertTrue(bsr.is_reviewed({"REVISAR": "NO"}))
+        self.assertTrue(bsr.is_reviewed({"REVISAR": " no "}), "como lo lee el importador")
+        for value in ("SI", "", None, "OK", "revisada", 0):
+            self.assertFalse(bsr.is_reviewed({"REVISAR": value}), repr(value))
+        self.assertFalse(bsr.is_reviewed({}), "sin la columna, nada esta revisado")
+
+    def test_an_empty_cell_is_not_a_review(self):
+        # Una fila añadida a mano llega sin REVISAR, y un olvido deja la celda igual: ninguna de
+        # las dos pasa por revisada, pero se distinguen de la que el generador pregunto.
+        self.assertEqual(bsr.review_state({"REVISAR": "SI"}), bsr.TO_REVIEW)
+        self.assertEqual(bsr.review_state({"REVISAR": None}), bsr.UNMARKED)
+        self.assertEqual(bsr.review_state({"REVISAR": "quiza"}), bsr.UNMARKED)
+        self.assertEqual(bsr.review_state({"REVISAR": "NO"}), bsr.REVIEWED)
+
+    def test_enabled_does_not_say_it(self):
+        # Se carga y sigue pendiente (una nota que no bloquea); revisada y no se carga.
+        self.assertFalse(bsr.is_reviewed({"ENABLED": "SI", "REVISAR": "SI"}))
+        self.assertTrue(bsr.is_reviewed({"ENABLED": "NO", "REVISAR": "NO"}))
+
+    def test_the_generator_asks_or_does_not(self):
+        # Lo que sale del generador lleva siempre SI o NO: vacia solo llega una fila hecha a mano.
+        rows, _ = bsr.disconnector_rows(
+            [DisconnectorRowsTest.record(DisconnectorRowsTest())], DisconnectorRowsTest.MASTER
+        )
+        self.assertIn(rows[0]["REVISAR"], ("SI", "NO"))
+        self.assertEqual(bsr.is_reviewed(rows[0]), not rows[0]["MOTIVO_REVISAR"])
+
+
 class DropDownTest(unittest.TestCase):
     """Los desplegables del libro: las opciones de las celdas amarillas y naranjas."""
 
