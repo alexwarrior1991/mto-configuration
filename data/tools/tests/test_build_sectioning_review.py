@@ -1003,6 +1003,79 @@ class SummaryAndPendingTest(unittest.TestCase):
         )
 
 
+class PlanTest(unittest.TestCase):
+    """El plano DXF no esta en el repositorio: sin el, el generador lo dice y no escribe nada."""
+
+    def setUp(self):
+        import tempfile
+
+        self.folder = tempfile.mkdtemp()
+
+    def write(self, name, content):
+        path = os.path.join(self.folder, name)
+        with open(path, "wb") as handle:
+            handle.write(content)
+        return path
+
+    def test_a_missing_plan_says_which_file_is_expected(self):
+        for path in (None, "", os.path.join(self.folder, "no-esta.dxf")):
+            problem = bsr.plan_problem(path)
+            self.assertIn(bsr.PLAN_NAME, problem)
+            self.assertIn("no esta en el repositorio", problem)
+            self.assertIn("--refresh", problem, "lo que si se puede hacer sin el")
+        self.assertIn("no-esta.dxf", bsr.plan_problem(os.path.join(self.folder, "no-esta.dxf")))
+
+    def test_what_is_not_a_dxf(self):
+        self.assertIn("DWG", bsr.plan_problem(self.write("plano.dwg", b"AC1032\x00\x00\x00\x00")))
+        self.assertIn("no parece un DXF", bsr.plan_problem(self.write("plano.dxf", b"PK\x03\x04")))
+        self.assertIsNone(bsr.plan_problem(self.write("ok.dxf", b"  0\r\nSECTION\r\n  2\r\nHEADER")))
+        self.assertIsNone(bsr.plan_problem(self.write("bin.dxf", b"AutoCAD Binary DXF\r\n\x1a\x00")))
+
+    def test_the_script_stops_without_writing(self):
+        import contextlib
+        import io
+
+        output = os.path.join(self.folder, "libro.xlsx")
+        for argv in ([], ["-o", output], [os.path.join(self.folder, "no-esta.dxf"), "-o", output]):
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                self.assertEqual(bsr.main(argv), 2)
+            self.assertIn("plano DXF", stderr.getvalue())
+        self.assertFalse(os.path.exists(output))
+
+    def test_the_reviewed_workbook_is_not_overwritten(self):
+        import contextlib
+        import io
+
+        if not os.path.exists(bsr.REVIEWED_BOOK):
+            raise unittest.SkipTest("data/sectioning-review.xlsx no esta")
+        plan = self.write("plano.dxf", b"  0\nSECTION\n  2\nHEADER\n")
+        with open(bsr.REVIEWED_BOOK, "rb") as handle:
+            before = handle.read()
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            # Antes de leer el plano: no hace falta ezdxf para negarse.
+            self.assertEqual(bsr.main([plan, "-o", bsr.REVIEWED_BOOK]), 2)
+        self.assertIn("ya revisado", stderr.getvalue())
+        with open(bsr.REVIEWED_BOOK, "rb") as handle:
+            self.assertEqual(handle.read(), before)
+
+    def test_the_fingerprint_goes_to_the_workbook(self):
+        import hashlib
+
+        content = b"  0\nSECTION\n  2\nHEADER\n  0\nENDSEC\n  0\nEOF\n"
+        fingerprint = bsr.plan_fingerprint(self.write("Operational disconnectors.dxf", content))
+
+        self.assertEqual(fingerprint["name"], "Operational disconnectors.dxf")
+        self.assertEqual(fingerprint["bytes"], len(content))
+        self.assertEqual(fingerprint["sha256"], hashlib.sha256(content).hexdigest())
+        self.assertRegex(fingerprint["modified"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        key, text = bsr.plan_readme(fingerprint)
+        self.assertEqual(key, "PLANO")
+        for part in ("Operational disconnectors.dxf", str(len(content)), fingerprint["sha256"]):
+            self.assertIn(part, text)
+
+
 class DropDownTest(unittest.TestCase):
     """Los desplegables del libro: las opciones de las celdas amarillas y naranjas."""
 

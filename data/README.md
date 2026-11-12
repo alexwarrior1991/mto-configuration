@@ -1191,8 +1191,10 @@ dato dudoso señalado para que lo complete una persona.
 
 ```bash
 pip install ezdxf scipy openpyxl
-python3 data/tools/build_sectioning_review.py plano.dxf -o sectioning-review.xlsx
+python3 data/tools/build_sectioning_review.py RUTA/plano.dxf -o libro-nuevo.xlsx
 ```
+
+El plano no viaja con el repositorio (ver «El plano no está en el repositorio»).
 
 **Del libro revisado al maestro.** Una vez revisado, el libro se guarda como
 `data/sectioning-review.xlsx` y `build_profile_master.py` escribe con él las tres hojas del maestro
@@ -1225,7 +1227,41 @@ aplicar. Un número escrito en `KP` manda: el que el libro trae escrito cuando u
 puentea el aislador, hasta que se borre, y el de un aislador sin agujas, que se escribe a mano. Las
 dos herramientas comparten las columnas y el umbral, y un test lo comprueba.
 
-El DXF no está en el repositorio: son 46 MB más de binarios (ver «El tamaño de `workbook/`»).
+## El plano no está en el repositorio
+
+**El DXF no está versionado**, ni aquí ni en Git LFS, y nada en el repositorio dice dónde vive: son
+46 MB más de binarios (ver «El tamaño de `workbook/`»). Lo que se sabe de él es su título, el del
+cajetín: «Operational disconnectors 28.07.25 (based on OCS-SCADA_PD_R38)», exportado a DXF desde
+AutoCAD. Hay que pedirlo a quien mantiene el seccionamiento.
+
+Lo que eso quiere decir:
+
+- **El libro de revisión no se puede reproducir desde el repositorio.** `build_sectioning_review.py`
+  espera el plano como primer argumento, con el nombre que tenga (`RUTA/plano.dxf`). Sin él, con una
+  ruta que no existe, con un `.dwg` o con un fichero que no empieza como un DXF, lo dice, explica qué
+  fichero falta y termina con código 2, sin escribir nada (`plan_problem`). Además del plano necesita
+  `ezdxf` y `scipy`, que CI no instala.
+- **La huella del plano de julio de 2025 no está apuntada en ningún sitio**: ni su sha256, ni su
+  tamaño exacto, ni su fecha están en el libro, en este documento o en el historial. No se puede
+  comprobar que un DXF que aparezca sea aquel con el que se generó `data/sectioning-review.xlsx`. Desde
+  ahora el generador la escribe: al leer el plano imprime su nombre, su tamaño y su sha256, y los deja
+  en la fila `PLANO` de la hoja `LEEME` del libro que genera (`plan_fingerprint`). El día que se
+  vuelva a generar, esa fila se copia aquí.
+- **`data/sectioning-review.xlsx` no es la salida del generador: es esa salida, revisada a mano.**
+  Tiene filas cambiadas, 43 aisladores añadidos y 121 seccionadores menos: los que su inventario
+  (`SECCIONADORES_DXF`) sitúa en un EP del maestro y no están en `DISCONNECTORS` (los de los
+  prefijos `KFH`, `MSD`, `KAF`, `MOS`, `YAM`…). Generar otro libro, aun con el mismo plano, no
+  trae nada de eso: no hay un paso que pase la revisión de un libro a otro. Por eso el generador se
+  niega a escribir encima de `data/sectioning-review.xlsx` (`-o` a otra ruta), y lo que sí se puede
+  rehacer sin el plano son sus dos hojas calculadas (ver «`RESUMEN` y `PENDIENTE`»).
+
+Qué se puede hacer sin el plano: leer el libro, editarlo, refrescar y comprobar `RESUMEN` y
+`PENDIENTE`, y pasar el libro al maestro (`build_profile_master.py`). Qué no: generar el libro,
+comprobar una fila contra el dibujo, o saber si una regla nueva del generador cambia lo que sale.
+
+Si algún día se versiona, lo que se dice en «El tamaño de `workbook/`» vale igual para él: es
+**entrada** de un generador y la aplicación no lo abre nunca, así que su sitio natural es fuera del
+árbol (un almacén de artefactos, o LFS hecho entero), con su ruta y su sha256 escritos aquí.
 
 ## Qué lee del plano
 
@@ -1439,7 +1475,8 @@ distinta y los dos postes al mismo KP), el KP propio solo sin poste, y los despl
 cercanos con el de la fila primero, el KP del poste propuesto, los rótulos sueltos como nombre, el
 orden del catálogo de funciones y el libro con sus listas; y la vía conectada: la propuesta, la
 ambigua, la que falta en amarillo y la función `PP` de uno de la B entre dos vías; cuándo una fila está
-revisada (`ReviewStateTest`); `RESUMEN` y `PENDIENTE` (`SummaryAndPendingTest`: lo que cuentan y lo
+revisada (`ReviewStateTest`); lo que dice sin el plano y la huella que apunta de él (`PlanTest`);
+`RESUMEN` y `PENDIENTE` (`SummaryAndPendingTest`: lo que cuentan y lo
 que listan, un libro generado que casa consigo mismo, uno editado que no pasa hasta refrescarlo y
 conserva el resto byte a byte, y el libro versionado); y las agujas en la
 fila de su aislador, con la fórmula de `KP` de esa fila, el KP escrito de un seccionador que lo

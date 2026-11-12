@@ -36,7 +36,10 @@ Uso
     python3 data/tools/build_sectioning_review.py --refresh data/sectioning-review.xlsx
     python3 data/tools/build_sectioning_review.py --check data/sectioning-review.xlsx
 
-El DXF no esta en el repositorio (46 MB; ver "El tamaño de workbook/" en data/README.md).
+El DXF no esta en el repositorio (46 MB; ver "El plano no esta en el repositorio" en
+data/README.md): sin el no se puede generar el libro, y el script lo dice y termina. El libro
+versionado, data/sectioning-review.xlsx, no es la salida de este script sino esa salida ya
+revisada a mano: generarlo otra vez no trae la revision, y por eso no se escribe encima.
 """
 
 from __future__ import annotations
@@ -3214,7 +3217,68 @@ README = [
 ]
 
 
-def main():
+PLAN_NAME = "Operational disconnectors 28.07.25 (based on OCS-SCADA_PD_R38)"
+REVIEWED_BOOK = os.path.join(DATA, "sectioning-review.xlsx")
+
+
+def plan_problem(path):
+    """Por que no se puede leer el plano, o None. El plano no viaja con el repositorio."""
+    where = (
+        "El plano de operacion de seccionadores (%r, exportado a DXF desde AutoCAD) no esta en el "
+        "repositorio: pesa 46 MB y hay que pedirlo a quien mantiene el seccionamiento. Se pasa como primer "
+        "argumento:\n    python3 data/tools/build_sectioning_review.py RUTA/plano.dxf -o libro.xlsx\n"
+        "Sin el no se puede generar el libro de revision. Lo que si se puede sin el plano: "
+        "recalcular RESUMEN y PENDIENTE de un libro ya escrito (--refresh LIBRO) y comprobarlas "
+        "(--check LIBRO)." % PLAN_NAME
+    )
+    if not path:
+        return "Falta el plano DXF. " + where
+    if not os.path.isfile(path):
+        return "No existe el plano DXF %r. %s" % (path, where)
+    with open(path, "rb") as handle:
+        head = handle.read(4096)
+    # Un DXF de texto empieza por el par '0 / SECTION' (o un comentario 999); uno binario, por su
+    # firma. Un .dwg, que es lo que guarda AutoCAD, no vale: hay que exportarlo.
+    if head.startswith(b"AC10") and b"SECTION" not in head:
+        return "%r es un DWG, no un DXF: exportalo a DXF desde AutoCAD (DXFOUT). %s" % (path, where)
+    if not (head.startswith(b"AutoCAD Binary DXF") or b"SECTION" in head):
+        return "%r no parece un DXF (no empieza por una seccion). %s" % (path, where)
+    return None
+
+
+def plan_fingerprint(path):
+    """La huella del plano con el que se genera un libro: nombre, tamaño, fecha y sha256.
+
+    Va al LEEME del libro (PLANO): con ella se sabe despues de que fichero salio, que es lo unico
+    que permite repetirlo. El libro revisado de 2026 se genero antes de que se apuntara.
+    """
+    import datetime
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    stat = os.stat(path)
+    modified = datetime.datetime.fromtimestamp(stat.st_mtime, datetime.timezone.utc)
+    return {
+        "name": os.path.basename(path),
+        "bytes": stat.st_size,
+        "modified": modified.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "sha256": digest.hexdigest(),
+    }
+
+
+def plan_readme(fingerprint):
+    return (
+        "PLANO",
+        "Generado desde %(name)s: %(bytes)d bytes, modificado el %(modified)s, sha256 %(sha256)s. "
+        "El plano no esta en el repositorio; con esta huella se comprueba que el que se tiene es "
+        "el mismo." % fingerprint,
+    )
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("dxf", nargs="?", help="plano de seccionamiento en DXF")
     parser.add_argument(
@@ -3244,7 +3308,7 @@ def main():
     parser.add_argument(
         "-o", "--output", default="sectioning-review.xlsx", help="libro de revision a escribir"
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.refresh or args.check:
         if args.dxf:
@@ -3264,10 +3328,20 @@ def main():
             )
             return 1
         return 0
-    if not args.dxf:
-        parser.error("falta el plano DXF (o --refresh LIBRO / --check LIBRO)")
+    problem = plan_problem(args.dxf)
+    if problem:
+        print(problem, file=sys.stderr)
+        return 2
+    if os.path.exists(args.output) and os.path.samefile(args.output, REVIEWED_BOOK):
+        print(
+            "%s es el libro ya revisado: lo que hay en el esta escrito a mano y generar otro lo "
+            "pisaria. Escribe el nuevo en otra ruta (-o) y pasa a el la revision." % args.output,
+            file=sys.stderr,
+        )
+        return 2
 
-    print("Leyendo %s ..." % args.dxf)
+    fingerprint = plan_fingerprint(args.dxf)
+    print("Leyendo %(name)s (%(bytes)d bytes, sha256 %(sha256)s) ..." % fingerprint)
     drawing = read_dxf(args.dxf)
     labels = match_labels(drawing)
     tracks = Tracks(drawing)
@@ -3515,7 +3589,7 @@ def main():
     ]
     functions = read_disconnector_functions(args.lovs, master["profiles"])
     choices = {"lists": review_lists(master, functions), "columns": review_choices()}
-    write_review(args.output, sheets, README, choices)
+    write_review(args.output, sheets, README + [plan_readme(fingerprint)], choices)
 
     print("\n%-34s%8s%10s" % ("HOJA", "FILAS", "ENABLED"))
     print(
