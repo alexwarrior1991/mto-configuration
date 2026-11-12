@@ -842,9 +842,16 @@ Más casos de la columna del perfil y de la del KP:
 - **Las notas de la leyenda no son perfiles** (`is_legend_note`). Bajo los datos, las hojas de
   EP9A llevan la leyenda de colores con sus notas en la columna del perfil («Possible Signalling
   Interface Detected», «Not For Construction»…). Salían como perfiles deshabilitados sin KP; ahora
-  van a `DESCARTADOS` como «nota de la leyenda». La regla: tres palabras o más y la primera de
-  letras. Un poste empieza por una cifra (`8-1.12`, `0-EXT.04 (00-01.04)`), y `PROFILE 2` (un
-  poste por numerar) no es una nota.
+  van a `DESCARTADOS` como «nota de la leyenda». Son una **lista cerrada**, `LEGEND_NOTES`, con
+  las cinco que hay (63 celdas en 16 hojas de EP9A): «Special and particular solution to be
+  applied», «Sorted out by reducing gauge up to 2.90m», «Possible Signalling Interface Detected»,
+  «Sorted out by using "L"foundation» y «Not For Construction», sin distinguir mayúsculas ni
+  espacios de más. Antes era una regla por la forma del texto (tres palabras o más y la primera de
+  letras), y con ella un poste de verdad llamado `PROFILE 2 BIS` se habría descartado como nota;
+  `PROFILE 2` (un poste por numerar) se salvaba solo por tener dos palabras. Una nota nueva que no
+  esté en la lista no se pierde: sale como un perfil sin KP, desactivado y con `REVISAR = SI`, y
+  se añade a `LEGEND_NOTES`. El cambio no mueve nada en el maestro de hoy: regenerado, sale
+  idéntico hoja a hoja.
 - **El KP admite signo.** Los postes de antes del origen de la kilometración están en un KP
   negativo, y es su sitio: la cabecera de EP11A (`0-1.01` en −77,96, `0-1.02`, `0-2.01`, `0-2.02`,
   `0-1M.02`) y los dos primeros apoyos de Casa da Música en RUBI (−2,84). Hasta ahora salían sin KP
