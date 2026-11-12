@@ -1419,6 +1419,13 @@ falta un dato. `FILA` lleva a la fila en su hoja, y `COMPLETAR` dice el dato que
 uno de puesta en paralelo; la estación, el nombre, la vía o el KP de un aislador, y el código de una
 aguja que trae KP o tangente). No es todo lo que comprueba el importador, que además abre el maestro.
 
+`RESUMEN` cuenta también lo que el libro **ha dejado de traer**: los símbolos a los que el inventario
+(`SECCIONADORES_DXF`, `AISLADORES_DXF`) da un EP del maestro y que no están ni en su hoja del maestro
+ni en la de «fuera del maestro». El generador no deja ninguno así («nunca descartar en silencio»);
+los que hay se quitaron después, al revisar. Hoy son 121 seccionadores (78 dibujados en servicio, 24
+como futuros, 11 en vía no electrificada y 8 de la zona neutra deshabilitada; por eso `DISCONNECTORS`
+ya no tiene ninguno que no esté en servicio) y 17 aisladores, todos en servicio.
+
 **No llevan fórmulas.** Las llevaba `RESUMEN`, y por eso dejó de casar con los datos: contaba los
 `HANDLE` y no las filas (233 aisladores, cuando la hoja tiene 276: los 43 añadidos a mano no vienen
 del plano), contaba las agujas en la hoja `SECTION_INSULATOR_SWITCHES`, que desde que van en la fila

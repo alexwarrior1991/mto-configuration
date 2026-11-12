@@ -2500,6 +2500,20 @@ def summary_lines(data):
             ),
         ]
 
+    def dropped(inventory, *sheets):
+        # "Nunca descartar en silencio": un simbolo al que el inventario da un EP del maestro
+        # tiene que estar en su hoja del maestro o en la de fuera. El que no esta en ninguna se
+        # quito despues de generar el libro, y solo se ve aqui.
+        kept = {r.get("HANDLE") for sheet in sheets for r in rows(sheet)}
+        with_ep = [r for r in rows(inventory) if filled(r.get("EP"))]
+        return [
+            ("  con un EP del maestro en el inventario", len(with_ep)),
+            (
+                "    y que no estan en %s" % " ni en ".join(sheets),
+                sum(1 for r in with_ep if r.get("HANDLE") not in kept),
+            ),
+        ]
+
     in_service = lambda r: r.get("ESTADO_DIBUJO") == EN_SERVICE  # noqa: E731
     switches = [
         (r.get(code), r.get(kp), r.get(tangent))
@@ -2515,6 +2529,9 @@ def summary_lines(data):
                 "  futuros, deshabilitados, en via no electrificada o del deposito de Haifa",
                 count("SECCIONADORES_DXF", lambda r: not in_service(r)),
             ),
+        ]
+        + dropped("SECCIONADORES_DXF", "DISCONNECTORS", "SECCIONADORES_FUERA_MAESTRO")
+        + [
             ("En los EP del maestro (hoja DISCONNECTORS)", len(rows("DISCONNECTORS"))),
             (
                 "  dibujados como futuros, deshabilitados o en via no electrificada",
@@ -2545,6 +2562,9 @@ def summary_lines(data):
                 len(rows("SECCIONADORES_FUERA_MAESTRO")),
             ),
             ("Aisladores dibujados (todos)", len(rows("AISLADORES_DXF"))),
+        ]
+        + dropped("AISLADORES_DXF", "SECTION_INSULATORS", "AISLADORES_FUERA_MAESTRO")
+        + [
             ("En los EP del maestro (hoja SECTION_INSULATORS)", len(rows("SECTION_INSULATORS"))),
             (
                 "  salidos del plano (con HANDLE)",

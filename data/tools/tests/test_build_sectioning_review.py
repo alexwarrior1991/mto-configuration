@@ -877,6 +877,16 @@ class SummaryAndPendingTest(unittest.TestCase):
                 {"PREFIJO": "KAF", "ESTACION_CORRECTA": None, "_row": 2},
                 {"PREFIJO": "TN3", "ESTACION_CORRECTA": "SIN ESTACION", "_row": 3},
             ],
+            # El inventario: H2 y H3 estan en DISCONNECTORS y H8 en la hoja de fuera; H9 tiene EP
+            # y no esta en ninguna (alguien quito su fila), y H7, sin EP, no tenia que estar.
+            "SECCIONADORES_DXF": [
+                {"HANDLE": "H2", "EP": "EP6", "ESTADO_DIBUJO": bsr.EN_SERVICE},
+                {"HANDLE": "H3", "EP": "EP6", "ESTADO_DIBUJO": "FUTURO"},
+                {"HANDLE": "H8", "EP": "EP6", "ESTADO_DIBUJO": bsr.EN_SERVICE},
+                {"HANDLE": "H9", "EP": "EP6", "ESTADO_DIBUJO": bsr.EN_SERVICE},
+                {"HANDLE": "H7", "EP": None, "ESTADO_DIBUJO": bsr.HAIFA_STATUS},
+            ],
+            "SECCIONADORES_FUERA_MAESTRO": [{"HANDLE": "H8"}],
         }
 
         lines = bsr.summary_lines(data)
@@ -885,6 +895,11 @@ class SummaryAndPendingTest(unittest.TestCase):
         i = labels.index("En los EP del maestro (hoja SECTION_INSULATORS)")
         of = lambda start, label: next(v for k, v in lines[start:] if k.strip() == label)  # noqa: E731
 
+        self.assertEqual(lines[0], ("Seccionadores dibujados (todos)", 5))
+        self.assertEqual(of(0, "con un EP del maestro en el inventario"), 4)
+        self.assertEqual(
+            of(0, "y que no estan en DISCONNECTORS ni en SECCIONADORES_FUERA_MAESTRO"), 1
+        )
         self.assertEqual(lines[d][1], 2)
         self.assertEqual(of(d, "dibujados como futuros, deshabilitados o en via no electrificada"), 1)
         self.assertEqual(of(d, "con poste (PROFILE_ID)"), 1)
