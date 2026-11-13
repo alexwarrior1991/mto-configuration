@@ -58,7 +58,8 @@ paths:
   `VAL-000` con `errors[{field, code, message}]`, donde `field` es la ruta desde la raíz del cuerpo
   (`cantilevers[1].cwHeight`; `[0].name` en un lote). Una referencia a catálogo informada que no
   existe sale igual, con `BUS-001` en su campo, pero la lanza el mapper (ver `mappers.md`). Un `IllegalArgumentException` es 400 `VAL-000`,
-  y un valor único repetido (`DataIntegrityViolationException`), 409 `BUS-002`. Lo fija
+  y un valor único repetido, 409 `BUS-002`: el de un índice único (`DataIntegrityViolationException`)
+  y el que detecta un servicio (`BaseException` con `BUS-002`, la clave del seccionador). Lo fija
   `RestExceptionHandlerTest`.
 
 ## Seguridad

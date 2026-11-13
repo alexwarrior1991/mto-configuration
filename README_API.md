@@ -74,6 +74,16 @@ ser la suya (400 `BUS-001` sobre `connectedTrackId`; con poste y sin `trackId` s
 del perfil). Con `trackId`, la del poste sí puede ser la conectada: el que une la vía del poste con la
 que maniobra. Es opcional y, como el resto de la fila, un `PUT` que no la lleva la quita.
 
+**El nombre de un seccionador es único dentro de su paquete**, sin distinguir mayúsculas. Es la
+clave con la que el importador del maestro lo reconoce (`data/README.md`): el paquete de su
+estación, el de la vía de su poste o el de su vía propia, lo que tenga, porque la estación es
+opcional. Un segundo con el mismo nombre en el mismo paquete es un **409 `BUS-002`** («El valor del
+campo 'name' está repetido»), también en otra estación del paquete, en un lote y dentro del `PUT` de
+su estación; en otro paquete sí entra, y uno borrado no ocupa su nombre.
+
+**El nombre de un aislador de sección es único dentro de su estación** (`V31`), igual: 409
+`BUS-002`, y uno borrado no cuenta (§4 quater).
+
 El borrado es **lógico**: marca la fila (`deleted = true`) y deja de aparecer en las consultas. No
 hay endpoint para restaurarla.
 
@@ -461,6 +471,12 @@ medio de una sola vía. Eso es lo que declara `installationType`:
 |---|---|
 | `TRACK_CONNECTION` | Separa las catenarias de **dos** vías que conectan por una aguja. Lleva `trackId` y `connectedTrackId`, y son obligatorias y distintas |
 | `IN_TRACK` | Está en medio de **una** vía. `connectedTrackId` tiene que venir vacío |
+
+**El `name` es único dentro de su estación**, sin distinguir mayúsculas (`V31`): es la clave con la
+que el importador del maestro reconoce el aislador. Un repetido es 409 `BUS-002`, por su alta, su
+modificación, un lote o el `PUT` de su estación; uno borrado no cuenta. Como en cualquier colección
+de hijos (§4), un aislador que sigue en su estación se devuelve con su `id`: sin él sería otro nuevo
+con el mismo nombre, y no entra.
 
 `installationType` es **opcional**: los aisladores que ya estaban en base no lo traen, así que
 exigirlo habría convertido el despliegue en una migración de datos. Las dos reglas de arriba solo
@@ -986,7 +1002,7 @@ validación no, hasta que cambies el cuerpo.
 | `404` | `NOT-001` | el recurso no existe: al leerlo, al modificarlo o al borrarlo |
 | `400` | `VAL-000` con `BUS-001` en `errors[]` | una referencia que no existe: una vía, una estación, o una entrada de catálogo informada por `code` o por `id` (§3) |
 | `409` | `CON-001` | conflicto de concurrencia: el `versionNumber` que mandas no es el guardado |
-| `409` | `BUS-002` | un valor único repetido (el `code` de un catálogo), o al borrar, una fila que otro registro usa |
+| `409` | `BUS-002` | un valor único repetido (el `code` de un catálogo, el nombre de un maestro dentro de su padre: una estación o una vía en su paquete, un punto de acceso en su vía, un aislador en su estación, un seccionador en su paquete), o al borrar, una fila que otro registro usa |
 | `429` | — | sin hueco para el trabajo |
 | `500` | `TEC-999` | error inesperado; el `traceId` es lo que hay que dar en la incidencia |
 

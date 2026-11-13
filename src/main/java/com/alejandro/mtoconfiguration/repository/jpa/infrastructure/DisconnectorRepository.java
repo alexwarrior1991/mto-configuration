@@ -46,6 +46,33 @@ public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
     List<Disconnector> findByNameInPackage(@Param("name") String name, @Param("packageId") Long packageId);
 
     /**
+     * Los paquetes a los que pertenece un seccionador, por los mismos tres caminos por los que lo
+     * busca {@link #findByNameInPackage}: su estación, la vía de su poste y su vía propia. Lo usa
+     * {@code DisconnectorNaturalKeyGuard} para preguntar si su nombre ya está en alguno de ellos.
+     */
+    @Query("""
+            select s.executionPackage.id as stationPackageId,
+                   pt.executionPackage.id as poleTrackPackageId,
+                   t.executionPackage.id as trackPackageId
+            from Disconnector d
+            left join d.station s
+            left join d.profile p
+            left join p.track pt
+            left join d.track t
+            where d.id = :id
+            """)
+    Optional<PackageIds> findPackageIdsById(@Param("id") Long id);
+
+    /** Proyección de {@link #findPackageIdsById(Long)}. */
+    interface PackageIds {
+        Long getStationPackageId();
+
+        Long getPoleTrackPackageId();
+
+        Long getTrackPackageId();
+    }
+
+    /**
      * La estación, el poste, la vía propia, la vía conectada y la función del seccionador, sin
      * inicializar nada.
      *

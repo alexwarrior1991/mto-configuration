@@ -76,6 +76,29 @@ class EntityChangeTrackerTest {
     }
 
     @Test
+    @DisplayName("lo escrito se puede mirar despues del flush sin gastarlo: con la raiz, y hasta que se entrega para publicar")
+    void loEscritoSeMiraSinDrenar() {
+        Row raiz = new Row(1L);
+        Row creado = new Row(2L);
+
+        assertThat(EntityChangeTracker.written()).as("sin ambito").isEmpty();
+
+        try (EntityChangeTracker.Scope ignored = EntityChangeTracker.open()) {
+            EntityChangeTracker.record(creado, EntityChangeOperation.CREATED);
+            EntityChangeTracker.record(raiz, EntityChangeOperation.UPDATED);
+            EntityChangeTracker.markPublished(raiz);
+
+            assertThat(EntityChangeTracker.written()).containsExactly(
+                    new Change(creado, EntityChangeOperation.CREATED),
+                    new Change(raiz, EntityChangeOperation.UPDATED));
+            assertThat(EntityChangeTracker.written()).as("mirar no gasta").hasSize(2);
+
+            assertThat(EntityChangeTracker.drain()).containsExactly(new Change(creado, EntityChangeOperation.CREATED));
+            assertThat(EntityChangeTracker.written()).as("lo entregado ya no esta").isEmpty();
+        }
+    }
+
+    @Test
     @DisplayName("una entidad sin id, o que no es una entidad, no se apunta")
     void sinId() {
         try (EntityChangeTracker.Scope ignored = EntityChangeTracker.open()) {

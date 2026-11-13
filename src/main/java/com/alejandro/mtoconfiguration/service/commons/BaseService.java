@@ -18,6 +18,7 @@ import com.alejandro.mtoconfiguration.service.audit.AuditService;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeApplicationEvent;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeOperation;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeTracker;
+import com.alejandro.mtoconfiguration.service.commons.event.WrittenEntitiesCheck;
 import com.alejandro.mtoconfiguration.utils.Utils;
 import com.alejandro.mtoconfiguration.validator.commons.Validator;
 import com.querydsl.core.BooleanBuilder;
@@ -64,6 +65,10 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
 
     @Autowired
     private AuditService auditService;
+
+    /** Las reglas que se comprueban sobre lo escrito, despues de cada flush (puede no haber ninguna). */
+    @Autowired(required = false)
+    private List<WrittenEntitiesCheck> writtenEntitiesChecks = List.of();
 
     // Abstract methods to be implemented in concrete subclasses
     protected abstract BaseMapper<T, E> getMapper();
@@ -163,6 +168,24 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
         for (EntityChangeTracker.Change change : EntityChangeTracker.drain()) {
             applicationEventPublisher.publishEvent(
                     new EntityChangeApplicationEvent<>(change.entity(), change.operation()));
+        }
+    }
+
+    /**
+     * Comprueba lo que el flush acaba de escribir contra las reglas que dependen de otras filas
+     * ({@link WrittenEntitiesCheck}): la raiz y los hijos anidados, por cualquier camino. Va
+     * <b>justo despues del flush</b> y antes de publicar: si una lanza, la transaccion se deshace y
+     * ningun evento llega al outbox.
+     */
+    private void checkWrittenEntities() {
+        if (CollectionUtils.isEmpty(writtenEntitiesChecks)) {
+            return;
+        }
+
+        List<EntityChangeTracker.Change> written = EntityChangeTracker.written();
+
+        if (!written.isEmpty()) {
+            writtenEntitiesChecks.forEach(check -> check.afterFlush(written));
         }
     }
 
@@ -267,6 +290,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 })
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
+                    checkWrittenEntities();
                     publishEntityCreatedEvent(savedEntity);
                     publishNestedChanges();
                     getMapper().updateDTOFromEntity(savedEntity, dto);
@@ -291,6 +315,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(getRepository()::saveAll)
                 .map(savedEntities -> {
                     getRepository().flush();
+                    checkWrittenEntities();
                     savedEntities.forEach(this::publishEntityCreatedEvent);
                     publishNestedChanges();
                     publishCacheEvictionEvent();
@@ -373,6 +398,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 })
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
+                    checkWrittenEntities();
                     publishEntityUpdatedEvent(savedEntity);
                     publishNestedChanges();
                     getMapper().updateDTOFromEntity(savedEntity, dto);
@@ -399,6 +425,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 .map(getRepository()::saveAll)
                 .map(savedEntities -> {
                     getRepository().flush();
+                    checkWrittenEntities();
                     savedEntities.forEach(this::publishEntityUpdatedEvent);
                     publishNestedChanges();
                     publishCacheEvictionEvent();
@@ -432,6 +459,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                 })
                 .map(getRepository()::saveAndFlush)
                 .map(savedEntity -> {
+                    checkWrittenEntities();
                     publishEntityUpdatedEvent(savedEntity);
                     publishNestedChanges();
                     getMapper().updateDTOFromEntity(savedEntity, dto);

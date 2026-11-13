@@ -1,6 +1,8 @@
 package com.alejandro.mtoconfiguration.migration;
 
 import com.alejandro.mtoconfiguration.support.PostgresTestDatabase;
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.FlywayException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
@@ -23,6 +26,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Aplica las migraciones sobre un schema VACIO y deja que Hibernate valide el
@@ -91,7 +95,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31");
     }
 
     /**
@@ -239,13 +243,105 @@ class FlywayMigrationIT {
         }, SCHEMA);
 
         for (String nombre : List.of("ux_execution_package_name", "ux_station_ep_name",
-                "ux_track_ep_name", "ux_profile_track_profile_id_kp", "ux_track_access_point_track_name")) {
+                "ux_track_ep_name", "ux_profile_track_profile_id_kp", "ux_track_access_point_track_name",
+                "ux_section_insulator_station_name")) {
             assertThat(indices).containsKey(nombre);
             assertThat(indices.get(nombre))
                     .as("%s tiene que ser UNIQUE y parcial", nombre)
                     .contains("UNIQUE")
                     .contains("deleted = false");
         }
+    }
+
+    /**
+     * V31 sobre una base que ya tiene aisladores repetidos, que es lo que la API dejaba crear: la
+     * migracion no puede crear el indice, y lo que se fija aqui es <b>como</b> falla. Con el mensaje
+     * del motor ({@code could not create unique index}) solo se sabria de una pareja; el suyo dice
+     * todas, con sus ids, y que hacer. No deja nada a medias: arreglado el dato, la misma migracion
+     * entra. Los seccionadores repetidos no la paran (su clave no es un indice), solo se avisan.
+     *
+     * <p>Va en un schema propio, migrado a mano hasta V30: el del resto de la clase ya esta en la
+     * ultima version cuando arranca el contexto.
+     */
+    @Test
+    void v31DiceQueAisladoresEstanRepetidosEnVezDeFallarConElMensajeDelMotor() throws SQLException {
+        String schema = "flyway_v31_it";
+
+        try (Connection connection = DriverManager.getConnection(
+                PostgresTestDatabase.url(), PostgresTestDatabase.username(), PostgresTestDatabase.password());
+             Statement statement = connection.createStatement()) {
+            statement.execute("drop schema if exists " + schema + " cascade");
+
+            flyway(schema, "30").migrate();
+
+            statement.execute("set search_path to " + schema);
+            statement.execute("""
+                    insert into execution_package (id, name, enabled, deleted, initial_package, length,
+                            start_date, end_date, create_date, create_user, version_date, version_user, version_number)
+                    values (1, 'EP', true, false, false, 0, date '2020-01-01', date '2020-12-31',
+                            now(), 'test', now(), 'test', 1)
+                    """);
+            statement.execute("""
+                    insert into station (id, name, execution_package_id, deleted, create_date, create_user,
+                            version_date, version_user, version_number)
+                    values (10, 'ZIC', 1, false, now(), 'test', now(), 'test', 1)
+                    """);
+            for (String aislador : List.of("(101, 'SI-1', false)", "(102, 'si-1', false)", "(103, 'SI-1', true)",
+                    "(104, 'SI-2', false)")) {
+                statement.execute("insert into section_insulator (id, name, deleted, status, station_id,"
+                        + " create_date, create_user, version_date, version_user, version_number)"
+                        + " select v.id, v.name, v.deleted, true, 10, now(), 'test', now(), 'test', 1"
+                        + " from (values " + aislador + ") as v(id, name, deleted)");
+            }
+            for (String seccionador : List.of("(201, 'S-1')", "(202, 's-1')")) {
+                statement.execute("insert into disconnector (id, name, deleted, onload, station_id,"
+                        + " create_date, create_user, version_date, version_user, version_number)"
+                        + " select v.id, v.name, false, true, 10, now(), 'test', now(), 'test', 1"
+                        + " from (values " + seccionador + ") as v(id, name)");
+            }
+
+            assertThatThrownBy(() -> flyway(schema, null).migrate())
+                    .isInstanceOf(FlywayException.class)
+                    .hasMessageContaining("V31 no se puede aplicar")
+                    .hasMessageContaining("estacion 10, nombre SI-1 (ids 101, 102)")
+                    .hasMessageContaining("Renombra o borra en logico");
+
+            try (ResultSet indices = statement.executeQuery("select count(*) from pg_indexes where schemaname = '"
+                    + schema + "' and indexname = 'ux_section_insulator_station_name'")) {
+                indices.next();
+                assertThat(indices.getInt(1)).as("la migracion fallida no deja el indice a medias").isZero();
+            }
+
+            statement.execute("update section_insulator set name = 'SI-1B' where id = 102");
+
+            assertThatCode(() -> flyway(schema, null).migrate())
+                    .as("con el dato arreglado entra, aunque queden seccionadores repetidos y un aislador borrado con el mismo nombre")
+                    .doesNotThrowAnyException();
+
+            try (ResultSet indices = statement.executeQuery("select indexdef from pg_indexes where schemaname = '"
+                    + schema + "' and indexname = 'ux_section_insulator_station_name'")) {
+                assertThat(indices.next()).isTrue();
+                assertThat(indices.getString(1)).contains("UNIQUE").contains("deleted = false");
+            }
+
+            statement.execute("drop schema if exists " + schema + " cascade");
+        }
+    }
+
+    /** Flyway sobre un schema aparte, con las migraciones de verdad, hasta {@code target} (o todas). */
+    private static Flyway flyway(String schema, String target) {
+        var configuration = Flyway.configure()
+                .dataSource(PostgresTestDatabase.url(), PostgresTestDatabase.username(), PostgresTestDatabase.password())
+                .locations("classpath:db/migration")
+                .defaultSchema(schema)
+                .schemas(schema)
+                .createSchemas(true);
+
+        if (target != null) {
+            configuration.target(target);
+        }
+
+        return configuration.load();
     }
 
     /**

@@ -18,6 +18,7 @@ import com.alejandro.mtoconfiguration.service.commons.CrudServiceFixtures.TestSe
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeApplicationEvent;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeOperation;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeTracker;
+import com.alejandro.mtoconfiguration.service.commons.event.WrittenEntitiesCheck;
 import com.alejandro.mtoconfiguration.validator.commons.CRUDValidator;
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.dsl.Expressions;
@@ -328,6 +329,69 @@ class BaseServiceTest {
             // Y el ambito se cierra con la escritura: lo que se escriba despues no es de nadie.
             EntityChangeTracker.record(new TestEntity(9L), EntityChangeOperation.UPDATED);
             assertThat(EntityChangeTracker.drain()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("las reglas sobre lo escrito ven la raiz y los hijos justo despues del flush, antes de publicar nada")
+        void lasReglasVenLoEscritoAntesDePublicar() {
+            TestDTO dto = new TestDTO(5L);
+            TestEntity entity = new TestEntity(5L);
+            TestEntity creado = new TestEntity(7L);
+            WrittenEntitiesCheck regla = org.mockito.Mockito.mock(WrittenEntitiesCheck.class);
+            ReflectionTestUtils.setField(service, "writtenEntitiesChecks", List.of(regla));
+
+            when(repository.findById(5L)).thenReturn(Optional.of(entity));
+            when(repository.saveAndFlush(entity)).thenAnswer(invocation -> {
+                EntityChangeTracker.record(creado, EntityChangeOperation.CREATED);
+                EntityChangeTracker.record(entity, EntityChangeOperation.UPDATED);
+                return entity;
+            });
+
+            service.update(dto);
+
+            InOrder order = inOrder(repository, regla, publisher);
+            order.verify(repository).saveAndFlush(entity);
+            order.verify(regla).afterFlush(List.of(
+                    new EntityChangeTracker.Change(creado, EntityChangeOperation.CREATED),
+                    new EntityChangeTracker.Change(entity, EntityChangeOperation.UPDATED)));
+            order.verify(publisher, org.mockito.Mockito.atLeastOnce()).publishEvent(any(Object.class));
+        }
+
+        @Test
+        @DisplayName("una regla que rechaza lo escrito aborta la escritura: no se publica ningun evento, ni el de cache")
+        void unaReglaQueRechazaNoPublica() {
+            TestDTO dto = new TestDTO(5L);
+            TestEntity entity = new TestEntity(5L);
+            WrittenEntitiesCheck regla = written -> {
+                throw new BaseException(Alert.ofDanger("BUS-002", "name"));
+            };
+            ReflectionTestUtils.setField(service, "writtenEntitiesChecks", List.of(regla));
+
+            when(repository.findById(5L)).thenReturn(Optional.of(entity));
+            when(repository.saveAndFlush(entity)).thenAnswer(invocation -> {
+                EntityChangeTracker.record(entity, EntityChangeOperation.UPDATED);
+                return entity;
+            });
+
+            assertThatThrownBy(() -> service.update(dto)).isInstanceOf(BaseException.class);
+
+            verify(publisher, never()).publishEvent(any(Object.class));
+        }
+
+        @Test
+        @DisplayName("si el flush no escribe nada, las reglas no se consultan")
+        void sinEscriturasNoSeConsultanLasReglas() {
+            TestDTO dto = new TestDTO(5L);
+            TestEntity entity = new TestEntity(5L);
+            WrittenEntitiesCheck regla = org.mockito.Mockito.mock(WrittenEntitiesCheck.class);
+            ReflectionTestUtils.setField(service, "writtenEntitiesChecks", List.of(regla));
+
+            when(repository.findById(5L)).thenReturn(Optional.of(entity));
+            when(repository.saveAndFlush(entity)).thenReturn(entity);
+
+            service.update(dto);
+
+            verifyNoInteractions(regla);
         }
 
         @Test

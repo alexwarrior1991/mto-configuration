@@ -26,7 +26,15 @@ paths:
   solo los vivos. Lo fijan `SoftDeleteIT` y `DisconnectorLinkIT`.
 - Las claves naturales de infraestructura son índices únicos parciales `ux_…` con
   `WHERE deleted = false` (y `upper(...)` en los nombres), para que lo borrado no impida dar de alta
-  otra vez el mismo nombre. El perfil de un seccionador no es una clave: un poste lleva varios
+  otra vez el mismo nombre: el de un paquete, el de una estación y el de una vía en su paquete, el
+  perfil en su vía (V12, V18), el punto de acceso en su vía (V28) y el aislador en su estación
+  (`ux_section_insulator_station_name`, V31). Un repetido sale como 409 `BUS-002`. Una migración que
+  crea uno sobre una tabla que la API ya escribía comprueba antes que no haya repetidos y, si los
+  hay, falla diciendo cuáles (V31); nunca con el mensaje del motor. El seccionador es la excepción:
+  su clave es el nombre en su **paquete**, que no es una columna suya (sale de su estación, de la vía
+  de su poste o de su vía propia), así que no tiene índice y la comprueba
+  `DisconnectorNaturalKeyGuard` después del flush (ver `services.md`); `NaturalKeyIT`. El perfil de
+  un seccionador no es una clave: un poste lleva varios
   (`V29` quitó el `ux_disconnector_profile_id` de `V24`, y queda `idx_disconnector_profile_id` sobre
   los vivos). El brazo de una ménsula sí es 1:1, pero entre los vivos: `V30` cambió el `unique` de
   `steady_arm.cantilever_id` de `V1` por `ux_steady_arm_cantilever_id`, parcial, para que un brazo

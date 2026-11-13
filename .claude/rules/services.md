@@ -49,6 +49,16 @@ paths:
   `trackingNestedChanges`, y lo que escriba después de `publishNestedChanges` no publica. Un hijo
   devuelto sin cambios no genera `UPDATE` y no publica. Lo fijan `EntityChangeTrackerTest`,
   `EntityListenerTest`, `BaseServiceTest` y `NestedChildEventsIT`.
+- Una regla que depende de **otras filas** y tiene que valer por todos los caminos (el alta, el lote
+  y el hijo que viaja dentro del `PUT` de su padre, que no pasa por el servicio del hijo) no va en un
+  validador, que solo ve un DTO: es un `WrittenEntitiesCheck`, un bean que `BaseService` llama
+  **justo después de cada flush** y antes de publicar nada, con lo que el flush ha escrito de verdad
+  (`EntityChangeTracker.written()`, con la raíz). Si lanza, la transacción se deshace y no sale
+  ningún evento. Hoy hay una: `DisconnectorNaturalKeyGuard`, el nombre del seccionador único en su
+  paquete, con la misma consulta con la que lo busca el importador
+  (`DisconnectorRepository.findByNameInPackage`); lanza un `BaseException` con `BUS-002`, que es un
+  409. Lo que cabe en un índice único va en un índice (ver `persistence.md`), no aquí. Lo fijan
+  `BaseServiceTest`, `EntityChangeTrackerTest`, `DisconnectorNaturalKeyGuardTest` y `NaturalKeyIT`.
 - El validador devuelve `List<Alert>` y nunca lanza; si hay alertas, `BaseService` lanza
   `ValidationException` (400 `VAL-000`, ver `controllers.md`). Los validadores de maestro extienden
   `NormalEntityValidator` y reparten el trabajo en `validateRequiredFields` (siempre),
