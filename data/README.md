@@ -842,9 +842,16 @@ Más casos de la columna del perfil y de la del KP:
 - **Las notas de la leyenda no son perfiles** (`is_legend_note`). Bajo los datos, las hojas de
   EP9A llevan la leyenda de colores con sus notas en la columna del perfil («Possible Signalling
   Interface Detected», «Not For Construction»…). Salían como perfiles deshabilitados sin KP; ahora
-  van a `DESCARTADOS` como «nota de la leyenda». La regla: tres palabras o más y la primera de
-  letras. Un poste empieza por una cifra (`8-1.12`, `0-EXT.04 (00-01.04)`), y `PROFILE 2` (un
-  poste por numerar) no es una nota.
+  van a `DESCARTADOS` como «nota de la leyenda». Son una **lista cerrada**, `LEGEND_NOTES`, con
+  las cinco que hay (63 celdas en 16 hojas de EP9A): «Special and particular solution to be
+  applied», «Sorted out by reducing gauge up to 2.90m», «Possible Signalling Interface Detected»,
+  «Sorted out by using "L"foundation» y «Not For Construction», sin distinguir mayúsculas ni
+  espacios de más. Antes era una regla por la forma del texto (tres palabras o más y la primera de
+  letras), y con ella un poste de verdad llamado `PROFILE 2 BIS` se habría descartado como nota;
+  `PROFILE 2` (un poste por numerar) se salvaba solo por tener dos palabras. Una nota nueva que no
+  esté en la lista no se pierde: sale como un perfil sin KP, desactivado y con `REVISAR = SI`, y
+  se añade a `LEGEND_NOTES`. El cambio no mueve nada en el maestro de hoy: regenerado, sale
+  idéntico hoja a hoja.
 - **El KP admite signo.** Los postes de antes del origen de la kilometración están en un KP
   negativo, y es su sitio: la cabecera de EP11A (`0-1.01` en −77,96, `0-1.02`, `0-2.01`, `0-2.02`,
   `0-1M.02`) y los dos primeros apoyos de Casa da Música en RUBI (−2,84). Hasta ahora salían sin KP
@@ -1191,8 +1198,10 @@ dato dudoso señalado para que lo complete una persona.
 
 ```bash
 pip install ezdxf scipy openpyxl
-python3 data/tools/build_sectioning_review.py plano.dxf -o sectioning-review.xlsx
+python3 data/tools/build_sectioning_review.py RUTA/plano.dxf -o libro-nuevo.xlsx
 ```
+
+El plano no viaja con el repositorio (ver «El plano no está en el repositorio»).
 
 **Del libro revisado al maestro.** Una vez revisado, el libro se guarda como
 `data/sectioning-review.xlsx` y `build_profile_master.py` escribe con él las tres hojas del maestro
@@ -1225,7 +1234,41 @@ aplicar. Un número escrito en `KP` manda: el que el libro trae escrito cuando u
 puentea el aislador, hasta que se borre, y el de un aislador sin agujas, que se escribe a mano. Las
 dos herramientas comparten las columnas y el umbral, y un test lo comprueba.
 
-El DXF no está en el repositorio: son 46 MB más de binarios (ver «El tamaño de `workbook/`»).
+## El plano no está en el repositorio
+
+**El DXF no está versionado**, ni aquí ni en Git LFS, y nada en el repositorio dice dónde vive: son
+46 MB más de binarios (ver «El tamaño de `workbook/`»). Lo que se sabe de él es su título, el del
+cajetín: «Operational disconnectors 28.07.25 (based on OCS-SCADA_PD_R38)», exportado a DXF desde
+AutoCAD. Hay que pedirlo a quien mantiene el seccionamiento.
+
+Lo que eso quiere decir:
+
+- **El libro de revisión no se puede reproducir desde el repositorio.** `build_sectioning_review.py`
+  espera el plano como primer argumento, con el nombre que tenga (`RUTA/plano.dxf`). Sin él, con una
+  ruta que no existe, con un `.dwg` o con un fichero que no empieza como un DXF, lo dice, explica qué
+  fichero falta y termina con código 2, sin escribir nada (`plan_problem`). Además del plano necesita
+  `ezdxf` y `scipy`, que CI no instala.
+- **La huella del plano de julio de 2025 no está apuntada en ningún sitio**: ni su sha256, ni su
+  tamaño exacto, ni su fecha están en el libro, en este documento o en el historial. No se puede
+  comprobar que un DXF que aparezca sea aquel con el que se generó `data/sectioning-review.xlsx`. Desde
+  ahora el generador la escribe: al leer el plano imprime su nombre, su tamaño y su sha256, y los deja
+  en la fila `PLANO` de la hoja `LEEME` del libro que genera (`plan_fingerprint`). El día que se
+  vuelva a generar, esa fila se copia aquí.
+- **`data/sectioning-review.xlsx` no es la salida del generador: es esa salida, revisada a mano.**
+  Tiene filas cambiadas, 43 aisladores añadidos y 121 seccionadores menos: los que su inventario
+  (`SECCIONADORES_DXF`) sitúa en un EP del maestro y no están en `DISCONNECTORS` (los de los
+  prefijos `KFH`, `MSD`, `KAF`, `MOS`, `YAM`…). Generar otro libro, aun con el mismo plano, no
+  trae nada de eso: no hay un paso que pase la revisión de un libro a otro. Por eso el generador se
+  niega a escribir encima de `data/sectioning-review.xlsx` (`-o` a otra ruta), y lo que sí se puede
+  rehacer sin el plano son sus dos hojas calculadas (ver «`RESUMEN` y `PENDIENTE`»).
+
+Qué se puede hacer sin el plano: leer el libro, editarlo, refrescar y comprobar `RESUMEN` y
+`PENDIENTE`, y pasar el libro al maestro (`build_profile_master.py`). Qué no: generar el libro,
+comprobar una fila contra el dibujo, o saber si una regla nueva del generador cambia lo que sale.
+
+Si algún día se versiona, lo que se dice en «El tamaño de `workbook/`» vale igual para él: es
+**entrada** de un generador y la aplicación no lo abre nunca, así que su sitio natural es fuera del
+árbol (un almacén de artefactos, o LFS hecho entero), con su ruta y su sha256 escritos aquí.
 
 ## Qué lee del plano
 
@@ -1330,6 +1373,91 @@ cada uno, y lo que no está en servicio lleva una nota en `MOTIVO_REVISAR` que n
   postes con seccionador al mismo KP, uno por vía, y la vía del plano no dice cuál es, la fila lo
   dice («vía sin comprobar»).
 
+## Cuándo una fila está revisada
+
+**Una fila de `DISCONNECTORS` o de `SECTION_INSULATORS` está revisada cuando su celda `REVISAR` dice
+`NO`, y solo entonces** (`is_reviewed` en `build_sectioning_review.py`; sin distinguir mayúsculas ni
+espacios, como lee el importador un `SI`/`NO`).
+
+| `REVISAR` | Estado | Quién lo escribe |
+|---|---|---|
+| `NO` | revisada | El generador, en la fila de la que no tiene nada que preguntar; quien revisa, al dar la fila por buena contra el plano |
+| `SI` | pendiente | El generador, con el porqué en `MOTIVO_REVISAR` |
+| vacía (u otro valor) | sin marcar: cuenta como pendiente | Nadie: así llega una fila añadida a mano, y así quedaría un olvido |
+
+Revisar una fila es, entonces: mirarla contra el plano según `MOTIVO_REVISAR`, corregir lo que haga
+falta, decidir `ENABLED` y escribir `REVISAR = NO`. `MOTIVO_REVISAR` se deja como está: es el porqué
+de la pregunta, y sirve para saber qué se miró.
+
+**`ENABLED` no dice si la fila está revisada**: decide si se carga, como en el resto de `data/`. Las
+dos columnas son independientes a propósito. Una fila puede cargarse con una duda abierta (el
+generador deja `ENABLED = SI` con una nota que no bloquea: «vía distinta», «rótulo sin KP»), y puede
+estar revisada y no cargarse. Hasta ahora el libro solo decía «corrige y pon `ENABLED = SI`», así que
+`ENABLED = SI` hacía de las dos cosas, y con todo activado ya no se distinguía la fila mirada de la
+activada en bloque.
+
+En `ESTACION_POR_PREFIJO` no hay filas que revisar: `ESTACION_CORRECTA` es un atajo que se rellena
+**solo si la propuesta no vale**, y vacía quiere decir «la estación de cada fila es la que lleva la
+fila». Lo que cuenta es la `ESTACION` de cada seccionador.
+
+El criterio es de este libro. El maestro de perfiles no copia `REVISAR` ni lo mira: carga lo que
+tenga `ENABLED = SI`, revisado o no.
+
+Con este criterio, el libro de hoy (`data/sectioning-review.xlsx`) tiene:
+
+| Hoja | Filas | Revisadas (`NO`) | Pendientes (`SI`) | Sin marcar (vacía) | Con `ENABLED = SI` |
+|---|---|---|---|---|---|
+| `DISCONNECTORS` | 711 | 198 | 513 | 0 | 711 |
+| `SECTION_INSULATORS` | 276 | 26 | 207 | 43 | 276 |
+
+Es decir, se cargan 513 seccionadores y 250 aisladores que el libro no da por revisados: son las 763
+filas de su hoja `PENDIENTE` (ver «`RESUMEN` y `PENDIENTE`»). Las 43 sin
+marcar son los aisladores añadidos a mano (no llevan `HANDLE`: no salieron del plano). Si esas filas
+ya se miraron, cerrarlas es escribir `NO` en su `REVISAR`; eso es de quien revisó, no del generador.
+
+## `RESUMEN` y `PENDIENTE`
+
+Son las dos hojas **calculadas** del libro: salen de las hojas de datos y de nada más, y no se
+editan. `RESUMEN` cuenta (`summary_lines`); `PENDIENTE` lista, fila a fila, lo que no está revisado
+(`pending_rows`): las de `REVISAR = SI` con su motivo y las de `REVISAR` vacío, separadas en las que
+ya se cargan (`ENABLED = SI`) y las que no, y al final las revisadas que se cargan y a las que les
+falta un dato. `FILA` lleva a la fila en su hoja, y `COMPLETAR` dice el dato que falta en ella
+(`missing_data`: la estación, el nombre, on-load o la función de un seccionador, la vía conectada de
+uno de puesta en paralelo; la estación, el nombre, la vía o el KP de un aislador, y el código de una
+aguja que trae KP o tangente). No es todo lo que comprueba el importador, que además abre el maestro.
+
+`RESUMEN` cuenta también lo que el libro **ha dejado de traer**: los símbolos a los que el inventario
+(`SECCIONADORES_DXF`, `AISLADORES_DXF`) da un EP del maestro y que no están ni en su hoja del maestro
+ni en la de «fuera del maestro». El generador no deja ninguno así («nunca descartar en silencio»);
+los que hay se quitaron después, al revisar. Hoy son 121 seccionadores (78 dibujados en servicio, 24
+como futuros, 11 en vía no electrificada y 8 de la zona neutra deshabilitada; por eso `DISCONNECTORS`
+ya no tiene ninguno que no esté en servicio) y 17 aisladores, todos en servicio.
+
+**No llevan fórmulas.** Las llevaba `RESUMEN`, y por eso dejó de casar con los datos: contaba los
+`HANDLE` y no las filas (233 aisladores, cuando la hoja tiene 276: los 43 añadidos a mano no vienen
+del plano), contaba las agujas en la hoja `SECTION_INSULATOR_SWITCHES`, que desde que van en la fila
+de su aislador está vacía (420 guardadas, 0 al recalcular; son 453), y lo que enseñaba era el valor
+de la última vez que alguien abrió el libro en Excel. `PENDIENTE` se escribió una vez, a mano, antes
+de la revisión: decía 165 seccionadores y 203 aisladores con `ENABLED = NO` cuando ya no queda
+ninguno. Ahora las dos se calculan con la misma regla al generar el libro y al refrescarlo.
+
+**Después de editar el libro, se refrescan:**
+
+```bash
+python3 data/tools/build_sectioning_review.py --refresh data/sectioning-review.xlsx
+python3 data/tools/build_sectioning_review.py --check data/sectioning-review.xlsx    # 0 si casan
+```
+
+`--refresh` no necesita el plano y **solo reescribe esas dos hojas**. El resto del libro no pasa por
+`openpyxl`, que al guardar pierde lo que no entiende (los desplegables que escribe Excel van en una
+extensión, y se quedaría sin ellos): se copia parte a parte del `.xlsx`, byte a byte, y lo único que
+cambia fuera de las dos hojas es el rango del filtro de `PENDIENTE` en `xl/workbook.xml`. Lo que
+alguien ha escrito en las hojas de datos no se toca, y refrescar dos veces da el mismo fichero.
+
+`--check` (y `check_review`) dice si lo escrito en las dos hojas es lo que dan los datos. Lo corre el
+test `test_the_versioned_workbook_agrees_with_its_data` sobre `data/sectioning-review.xlsx`, en el
+paso de CI de `data/tools/tests`: **un libro editado y sin refrescar no pasa**.
+
 ## Los desplegables
 
 Lo que se elige lleva desplegable, así que revisar es elegir y no ir a buscar al maestro:
@@ -1360,7 +1488,11 @@ listas para cargar (las de otra capa dentro de un EP, la de Haifa, la que no tie
 distinta y los dos postes al mismo KP), el KP propio solo sin poste, y los desplegables: los postes
 cercanos con el de la fila primero, el KP del poste propuesto, los rótulos sueltos como nombre, el
 orden del catálogo de funciones y el libro con sus listas; y la vía conectada: la propuesta, la
-ambigua, la que falta en amarillo y la función `PP` de uno de la B entre dos vías; y las agujas en la
+ambigua, la que falta en amarillo y la función `PP` de uno de la B entre dos vías; cuándo una fila está
+revisada (`ReviewStateTest`); lo que dice sin el plano y la huella que apunta de él (`PlanTest`);
+`RESUMEN` y `PENDIENTE` (`SummaryAndPendingTest`: lo que cuentan y lo
+que listan, un libro generado que casa consigo mismo, uno editado que no pasa hasta refrescarlo y
+conserva el resto byte a byte, y el libro versionado); y las agujas en la
 fila de su aislador, con la fórmula de `KP` de esa fila, el KP escrito de un seccionador que lo
 puentea y el de un aislador sin agujas, y un libro generado que `build_profile_master.py` lee hasta
 sacar sus agujas y su KP. El módulo importa

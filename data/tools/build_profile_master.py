@@ -209,16 +209,29 @@ def track_kp(value):
     return value
 
 
+# Las notas de la leyenda de colores que las hojas de EP9A llevan bajo los datos, en la columna
+# del perfil. Es una lista cerrada, con las cinco que hay: una regla por la forma del texto
+# («tres palabras o mas y la primera de letras») se llevaba tambien un poste de verdad que se
+# llamara 'PROFILE 2 BIS'. Una nota nueva que no este aqui no se pierde: sale como un perfil sin
+# KP, desactivado y con REVISAR = SI, y entonces se añade.
+LEGEND_NOTES = frozenset(note.casefold() for note in (
+    "Special and particular solution to be applied",
+    "Sorted out by reducing gauge up to 2.90m",
+    "Possible Signalling Interface Detected",
+    'Sorted out by using "L"foundation',
+    "Not For Construction",
+))
+
+
 def is_legend_note(code):
     """True si el identificador de perfil es un texto de la leyenda, no un poste.
 
     Las hojas de EP9A llevan bajo los datos la leyenda de colores, con sus notas en la
     columna del perfil ('Possible Signalling Interface Detected', 'Not For Construction').
-    Un identificador de poste empieza por una cifra ('8-1.12', '0-EXT.04 (00-01.04)'); una
-    nota empieza por una palabra y lleva al menos tres. 'PROFILE 2' no es una nota: es un
-    poste por numerar.
+    Solo lo son las de LEGEND_NOTES, sin distinguir mayusculas ni espacios de mas: 'PROFILE 2'
+    y 'PROFILE 2 BIS' son postes por numerar, por muchas palabras que lleven.
     """
-    return len(code.split()) >= 3 and re.match(r"[A-Za-z]{3,}\b", code) is not None
+    return squash(code).casefold() in LEGEND_NOTES
 
 
 def is_kp_note(code):

@@ -678,6 +678,27 @@ class KpYNotasDeUnaHojaDeVia(unittest.TestCase):
                       "PROFILE 2"):
             self.assertFalse(bpm.is_legend_note(poste), poste)
 
+    def test_un_poste_de_tres_palabras_no_es_una_nota(self):
+        # La regla era «tres palabras o mas y la primera de letras», y con ella estos postes
+        # se iban a DESCARTADOS como notas de la leyenda sin que nada lo dijera.
+        for poste in ("PROFILE 2 BIS", "PROFILE 12 bis", "POLE TRACK 14S", "Portal B7 norte",
+                      "New pole (T1) provisional"):
+            self.assertFalse(bpm.is_legend_note(poste), poste)
+
+    def test_las_notas_son_una_lista_cerrada(self):
+        # Las cinco de la leyenda de colores de EP9A, como las escribe el origen.
+        self.assertEqual(len(bpm.LEGEND_NOTES), 5)
+        for nota in ("Special and particular solution to be applied",
+                     "Sorted out by reducing gauge up to 2.90m",
+                     "Possible Signalling Interface Detected",
+                     'Sorted out by using "L"foundation',
+                     "Not For Construction"):
+            self.assertTrue(bpm.is_legend_note(nota), nota)
+        # Sin distinguir mayusculas ni espacios de mas; otra frase, aunque lo parezca, no.
+        self.assertTrue(bpm.is_legend_note("NOT  FOR\nCONSTRUCTION"))
+        self.assertFalse(bpm.is_legend_note("Not For Construction yet"))
+        self.assertFalse(bpm.is_legend_note("Pending signalling interface review"))
+
     def test_una_anotacion_de_kp_no_es_un_perfil(self):
         # EP11B apunta 'T1:27+130' debajo de 27-1.03, que esta en el KP 27130.
         self.assertTrue(bpm.is_kp_note("T1:27+130"))

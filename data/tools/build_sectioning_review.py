@@ -32,7 +32,14 @@ Uso
     python3 data/tools/build_sectioning_review.py plano.dxf \
         [-m data/profile-master.xlsx] [-o salida.xlsx]
 
-El DXF no esta en el repositorio (46 MB; ver "El tamaño de workbook/" en data/README.md).
+    # Despues de editar el libro: RESUMEN y PENDIENTE, de sus hojas de datos. Sin el plano.
+    python3 data/tools/build_sectioning_review.py --refresh data/sectioning-review.xlsx
+    python3 data/tools/build_sectioning_review.py --check data/sectioning-review.xlsx
+
+El DXF no esta en el repositorio (46 MB; ver "El plano no esta en el repositorio" en
+data/README.md): sin el no se puede generar el libro, y el script lo dice y termina. El libro
+versionado, data/sectioning-review.xlsx, no es la salida de este script sino esa salida ya
+revisada a mano: generarlo otra vez no trae la revision, y por eso no se escribe encima.
 """
 
 from __future__ import annotations
@@ -1650,6 +1657,36 @@ INSULATOR_COLUMNS = (
 # primera. La misma regla que build_profile_master.insulator_kp, que la vuelve a aplicar al cargar.
 SWITCH_KP_MAX_GAP_M = 300
 
+# Cuando una fila esta revisada. Lo dice una sola celda, REVISAR, y un solo valor, NO: el
+# generador la escribe en SI con su motivo en MOTIVO_REVISAR (o en NO, si no tiene nada que
+# preguntar), y quien revisa la fila contra el plano la pasa a NO. Cualquier otra cosa es
+# pendiente: SI, y tambien vacia, que es como llega una fila añadida a mano y como quedaria un
+# olvido. ENABLED no lo dice: decide si la fila se carga, y una fila puede cargarse con una duda
+# abierta (una nota que no bloquea) o estar revisada y no cargarse.
+REVIEW_SHEETS = ("DISCONNECTORS", "SECTION_INSULATORS")
+REVIEWED, TO_REVIEW, UNMARKED = "REVISADA", "PENDIENTE", "SIN MARCAR"
+
+
+def flag(value):
+    """Una celda SI/NO como la lee el importador: sin espacios y en mayusculas; vacia, ''."""
+    return "" if value is None else str(value).strip().upper()
+
+
+def review_state(row):
+    """REVISADA (REVISAR = NO), PENDIENTE (REVISAR = SI) o SIN MARCAR (vacia u otro valor).
+
+    Solo REVISADA cuenta como revisada: las otras dos salen en la hoja PENDIENTE.
+    """
+    value = flag(row.get("REVISAR"))
+    if value == "NO":
+        return REVIEWED
+    return TO_REVIEW if value == "SI" else UNMARKED
+
+
+def is_reviewed(row):
+    return review_state(row) == REVIEWED
+
+
 # Motivos que dejan la fila en ENABLED = NO aunque tenga todos los datos.
 BLOCKING = (
     "el poste esta a",
@@ -2298,6 +2335,536 @@ def review_lists(master, functions):
     return lists
 
 
+# --------------------------------------------------------------------------------
+# RESUMEN y PENDIENTE: lo que dicen las hojas de datos, contado
+# --------------------------------------------------------------------------------
+#
+# Las dos hojas se calculan de las de datos y de nada mas, con una sola regla (summary_lines y
+# pending_rows), tanto al generar el libro desde el plano como al refrescarlo despues de que
+# alguien lo edite (--refresh). No llevan formulas: un recuento con formula cuenta lo que cuenta la
+# formula (los HANDLE, y no las filas añadidas a mano; una hoja que ya no se usa), y guarda el valor
+# de la ultima vez que alguien lo abrio en Excel. check_review dice si lo escrito sigue casando.
+
+SUMMARY_SHEET, PENDING_SHEET = "RESUMEN", "PENDIENTE"
+SUMMARY_COLUMNS = ["Concepto", "Cantidad"]
+PENDING_COLUMNS = [
+    "SECCION",
+    "HOJA",
+    "FILA",
+    "EP",
+    "ESTACION",
+    "VIA",
+    "NOMBRE",
+    "ENABLED",
+    "REVISAR",
+    "COMPLETAR",
+    "MOTIVO_REVISAR",
+]
+PENDING_HEADER_ROW = 4  # titulo, nota, leyenda y cabecera; los datos, desde la fila 5
+PENDING_TITLE = "Lo que falta por revisar del seccionamiento"
+PENDING_NOTE = (
+    "Calculada de DISCONNECTORS y SECTION_INSULATORS por build_sectioning_review.py: no se edita, y "
+    "despues de cambiar el libro se refresca con --refresh (data/README.md). Una fila esta "
+    "revisada cuando su REVISAR dice NO. Aqui salen las demas: las de REVISAR = SI, con su motivo, "
+    "y las de REVISAR vacio. Revisar una fila es mirarla contra el plano segun MOTIVO_REVISAR, "
+    "corregir lo que haga falta, decidir ENABLED y poner REVISAR = NO. COMPLETAR dice el dato que "
+    "falta en la fila."
+)
+PENDING_LEGEND = "FILA lleva a la fila en su hoja."
+PENDING_MISSING_LEGEND = "COMPLETAR: lo que falta"
+PENDING_UNMARKED = "REVISAR vacio: fila añadida a mano o sin marcar"
+PENDING_SECTIONS = {
+    ("DISCONNECTORS", True): "1. Seccionadores que ya se cargan (ENABLED = SI) sin revisar",
+    ("DISCONNECTORS", False): "2. Seccionadores sin revisar que no se cargan",
+    ("SECTION_INSULATORS", True): "3. Aisladores que ya se cargan (ENABLED = SI) sin revisar",
+    ("SECTION_INSULATORS", False): "4. Aisladores sin revisar que no se cargan",
+    None: "5. Revisadas que se cargan y a las que les falta un dato",
+}
+# El dato que le falta a una fila, y que se ve en la propia fila sin abrir el maestro. No es todo
+# lo que comprueba el importador (que el poste exista, que la via sea del EP...): eso lo dice su
+# informe.
+REQUIRED_DATA = {
+    "DISCONNECTORS": ("EP", "ESTACION", "NOMBRE", "ON_LOAD", "DISCONNECTOR_FUNCTION"),
+    "SECTION_INSULATORS": ("EP", "ESTACION", "NOMBRE", "VIA"),
+}
+
+
+def filled(value):
+    return value is not None and str(value).strip() != ""
+
+
+def is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def insulator_has_kp(row):
+    """El aislador tiene KP: uno escrito, o el de alguna de sus agujas (la formula de KP)."""
+    if is_number(row.get("KP")):
+        return True
+    return any(is_number(row.get(kp)) for _, kp, _ in INSULATOR_SWITCH_COLUMNS)
+
+
+def missing_data(sheet, row):
+    """Las columnas que le faltan a la fila (COMPLETAR), en el orden de la hoja."""
+    missing = [column for column in REQUIRED_DATA.get(sheet, ()) if not filled(row.get(column))]
+    if sheet == "DISCONNECTORS":
+        # Uno de puesta en paralelo (Disc/PP, LoadB/PP y sus -pr) une su via con otra: sin ella
+        # no dice cual. FS/PP es una alimentacion, no un seccionador entre dos vias.
+        function = str(row.get("DISCONNECTOR_FUNCTION") or "")
+        parallel = function.startswith(DISCONNECTOR_CODE_PREFIXES) and PARALLEL_FUNCTION in function
+        if parallel and not filled(row.get("VIA_CONECTADA")):
+            missing.append("VIA_CONECTADA")
+    if sheet == "SECTION_INSULATORS":
+        if not insulator_has_kp(row):
+            missing.append("KP")
+        for code, kp, tangent in INSULATOR_SWITCH_COLUMNS:
+            # Una aguja con KP o tangente y sin codigo no se carga: va a DESCARTADOS.
+            if not filled(row.get(code)) and (filled(row.get(kp)) or filled(row.get(tangent))):
+                missing.append(code)
+    return missing
+
+
+def pending_rows(data):
+    """Las filas de la hoja PENDIENTE: las no revisadas, y las revisadas que se cargan sin un dato.
+
+    data es {hoja: [fila]}, cada fila con sus columnas y su numero de fila en "_row".
+    """
+    found = []
+    for sheet in REVIEW_SHEETS:
+        for row in data.get(sheet, ()):
+            state = review_state(row)
+            loads = flag(row.get("ENABLED")) == "SI"
+            missing = missing_data(sheet, row)
+            if state == REVIEWED and not (loads and missing):
+                continue
+            reason = row.get("MOTIVO_REVISAR")
+            if state == UNMARKED and not filled(reason):
+                reason = PENDING_UNMARKED
+            found.append(
+                {
+                    "SECCION": PENDING_SECTIONS[None if state == REVIEWED else (sheet, loads)],
+                    "HOJA": sheet,
+                    "FILA": row["_row"],
+                    "EP": row.get("EP"),
+                    "ESTACION": row.get("ESTACION"),
+                    "VIA": row.get("VIA"),
+                    "NOMBRE": row.get("NOMBRE"),
+                    "ENABLED": row.get("ENABLED"),
+                    "REVISAR": row.get("REVISAR"),
+                    "COMPLETAR": ", ".join(missing),
+                    "MOTIVO_REVISAR": reason,
+                }
+            )
+    found.sort(key=lambda r: (r["SECCION"], REVIEW_SHEETS.index(r["HOJA"]), r["FILA"]))
+    return found
+
+
+def summary_lines(data):
+    """Las lineas de la hoja RESUMEN, (concepto, cantidad), contadas de las hojas de datos.
+
+    Un concepto sangrado es parte del anterior con menos sangria.
+    """
+
+    pending = pending_rows(data)
+
+    def rows(sheet):
+        return data.get(sheet, ())
+
+    def count(sheet, test):
+        return sum(1 for r in rows(sheet) if test(r))
+
+    def reviewing(sheet, indent):
+        loads = lambda r: flag(r.get("ENABLED")) == "SI"  # noqa: E731
+        return [
+            (indent + "se cargan (ENABLED = SI)", count(sheet, loads)),
+            (indent + "revisados (REVISAR = NO)", count(sheet, is_reviewed)),
+            (
+                indent + "sin revisar",
+                count(sheet, lambda r: not is_reviewed(r)),
+            ),
+            (
+                indent + "  con REVISAR = SI",
+                count(sheet, lambda r: review_state(r) == TO_REVIEW),
+            ),
+            (
+                indent + "  con REVISAR vacio (sin marcar)",
+                count(sheet, lambda r: review_state(r) == UNMARKED),
+            ),
+            (
+                indent + "  y ya se cargan (ENABLED = SI)",
+                count(sheet, lambda r: not is_reviewed(r) and loads(r)),
+            ),
+            (
+                indent + "en la hoja PENDIENTE con un dato que falta (COMPLETAR)",
+                sum(1 for r in pending if r["HOJA"] == sheet and r["COMPLETAR"]),
+            ),
+        ]
+
+    def dropped(inventory, *sheets):
+        # "Nunca descartar en silencio": un simbolo al que el inventario da un EP del maestro
+        # tiene que estar en su hoja del maestro o en la de fuera. El que no esta en ninguna se
+        # quito despues de generar el libro, y solo se ve aqui.
+        kept = {r.get("HANDLE") for sheet in sheets for r in rows(sheet)}
+        with_ep = [r for r in rows(inventory) if filled(r.get("EP"))]
+        return [
+            ("  con un EP del maestro en el inventario", len(with_ep)),
+            (
+                "    y que no estan en %s" % " ni en ".join(sheets),
+                sum(1 for r in with_ep if r.get("HANDLE") not in kept),
+            ),
+        ]
+
+    in_service = lambda r: r.get("ESTADO_DIBUJO") == EN_SERVICE  # noqa: E731
+    switches = [
+        (r.get(code), r.get(kp), r.get(tangent))
+        for r in rows("SECTION_INSULATORS")
+        for code, kp, tangent in INSULATOR_SWITCH_COLUMNS
+        if filled(r.get(code))
+    ]
+    return (
+        [
+            ("Seccionadores dibujados (todos)", len(rows("SECCIONADORES_DXF"))),
+            ("  en servicio", count("SECCIONADORES_DXF", in_service)),
+            (
+                "  futuros, deshabilitados, en via no electrificada o del deposito de Haifa",
+                count("SECCIONADORES_DXF", lambda r: not in_service(r)),
+            ),
+        ]
+        + dropped("SECCIONADORES_DXF", "DISCONNECTORS", "SECCIONADORES_FUERA_MAESTRO")
+        + [
+            ("En los EP del maestro (hoja DISCONNECTORS)", len(rows("DISCONNECTORS"))),
+            (
+                "  dibujados como futuros, deshabilitados o en via no electrificada",
+                count("DISCONNECTORS", lambda r: not in_service(r)),
+            ),
+            (
+                "  con poste (PROFILE_ID)",
+                count("DISCONNECTORS", lambda r: filled(r.get("PROFILE_ID"))),
+            ),
+            ("  sin poste", count("DISCONNECTORS", lambda r: not filled(r.get("PROFILE_ID")))),
+            (
+                "  que ponen dos vias en paralelo con su VIA_CONECTADA",
+                count("DISCONNECTORS", lambda r: filled(r.get("VIA_CONECTADA"))),
+            ),
+        ]
+        + reviewing("DISCONNECTORS", "  ")
+        + [
+            (
+                "Prefijos con estacion propuesta (hoja ESTACION_POR_PREFIJO)",
+                len(rows("ESTACION_POR_PREFIJO")),
+            ),
+            (
+                "  con ESTACION_CORRECTA escrita",
+                count("ESTACION_POR_PREFIJO", lambda r: filled(r.get("ESTACION_CORRECTA"))),
+            ),
+            (
+                "Seccionadores en lineas que el maestro no tiene (hoja SECCIONADORES_FUERA_MAESTRO)",
+                len(rows("SECCIONADORES_FUERA_MAESTRO")),
+            ),
+            ("Aisladores dibujados (todos)", len(rows("AISLADORES_DXF"))),
+        ]
+        + dropped("AISLADORES_DXF", "SECTION_INSULATORS", "AISLADORES_FUERA_MAESTRO")
+        + [
+            ("En los EP del maestro (hoja SECTION_INSULATORS)", len(rows("SECTION_INSULATORS"))),
+            (
+                "  salidos del plano (con HANDLE)",
+                count("SECTION_INSULATORS", lambda r: filled(r.get("HANDLE"))),
+            ),
+            (
+                "  añadidos a mano (sin HANDLE)",
+                count("SECTION_INSULATORS", lambda r: not filled(r.get("HANDLE"))),
+            ),
+            ("  con KP (escrito o de sus agujas)", count("SECTION_INSULATORS", insulator_has_kp)),
+        ]
+        + reviewing("SECTION_INSULATORS", "  ")
+        + [
+            (
+                "Aisladores en lineas que el maestro no tiene (hoja AISLADORES_FUERA_MAESTRO)",
+                len(rows("AISLADORES_FUERA_MAESTRO")),
+            ),
+            ("Agujas (en la fila de su aislador)", len(switches)),
+            ("  con KP", sum(1 for _, kp, _ in switches if is_number(kp))),
+            ("  con tangente", sum(1 for _, _, tangent in switches if is_number(tangent))),
+            ("Rotulos de seccionador sin simbolo", len(rows("ROTULOS_SIN_SIMBOLO"))),
+            ("Postes del maestro sin casar", len(rows("POSTES_SIN_CASAR"))),
+            ("Filas en la hoja PENDIENTE", len(pending)),
+        ]
+    )
+
+
+def read_review_data(path):
+    """Las hojas de datos del libro, {hoja: [fila]}, cada fila con su numero en "_row".
+
+    Lee lo escrito, no lo calculado: una formula llega como su texto (el KP de un aislador), que es
+    lo que distingue un numero puesto a mano del que sale de las agujas.
+    """
+    import openpyxl
+    import warnings
+
+    with warnings.catch_warnings():
+        # Los desplegables que guarda Excel van en una extension que openpyxl no lee, y lo avisa
+        # en cada hoja. Aqui solo se lee; quien escribe (refresh_review) no pasa por openpyxl, y
+        # por eso no los pierde.
+        warnings.simplefilter("ignore")
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=False)
+        try:
+            data = {}
+            for ws in wb.worksheets:
+                if ws.title in (SUMMARY_SHEET, PENDING_SHEET, "LEEME"):
+                    continue
+                values = ws.iter_rows(values_only=True)
+                header = [str(h).strip() if h is not None else "" for h in next(values, ())]
+                data[ws.title] = [
+                    dict(zip(header, row), _row=index)
+                    for index, row in enumerate(values, start=2)
+                    if any(filled(v) for v in row)
+                ]
+            return data
+        finally:
+            wb.close()
+
+
+def _sheet_values(path, sheet, first_row, width):
+    import openpyxl
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        try:
+            if sheet not in wb.sheetnames:
+                return None
+            found = []
+            for row in wb[sheet].iter_rows(min_row=first_row, values_only=True):
+                row = tuple(row[:width]) + (None,) * (width - len(row))
+                if any(filled(v) for v in row):
+                    found.append(tuple(None if not filled(v) else v for v in row))
+            return found
+        finally:
+            wb.close()
+
+
+def check_review(path):
+    """Lo que RESUMEN y PENDIENTE dicen y las hojas de datos no: una lista de diferencias.
+
+    Vacia si casan. Es lo que comprueba el test del libro versionado (data/sectioning-review.xlsx)
+    y --check: un libro editado y sin refrescar no pasa.
+    """
+    data = read_review_data(path)
+    problems = []
+
+    def compare(sheet, written, expected):
+        if written is None:
+            problems.append("falta la hoja %s" % sheet)
+            return
+        if len(written) != len(expected):
+            problems.append(
+                "%s: %d filas escritas y %d calculadas" % (sheet, len(written), len(expected))
+            )
+        for index, (a, b) in enumerate(zip(written, expected)):
+            if a != b:
+                problems.append("%s, linea %d: dice %r y los datos dan %r" % (sheet, index + 1, a, b))
+
+    clean = lambda row: tuple(None if not filled(v) else v for v in row)  # noqa: E731
+    compare(SUMMARY_SHEET, _sheet_values(path, SUMMARY_SHEET, 2, 2), summary_lines(data))
+    compare(
+        PENDING_SHEET,
+        _sheet_values(path, PENDING_SHEET, PENDING_HEADER_ROW + 1, len(PENDING_COLUMNS)),
+        [clean(row[c] for c in PENDING_COLUMNS) for row in pending_rows(data)],
+    )
+    return problems
+
+
+def _xml_cell(ref, value, style=None):
+    from xml.sax.saxutils import escape
+
+    s = "" if style is None else ' s="%s"' % style
+    if not filled(value):
+        return "" if style is None else '<c r="%s"%s/>' % (ref, s)
+    if is_number(value):
+        return '<c r="%s"%s><v>%r</v></c>' % (ref, s, value)
+    return '<c r="%s"%s t="inlineStr"><is><t xml:space="preserve">%s</t></is></c>' % (
+        ref,
+        s,
+        escape(str(value)),
+    )
+
+
+_SHEET_NS = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+)
+
+
+def _summary_xml(lines, styles):
+    """La hoja RESUMEN. styles: el estilo de la cabecera, de un concepto, de una parte y del numero."""
+    out = [
+        _SHEET_NS,
+        '<sheetViews><sheetView workbookViewId="0"/></sheetViews>',
+        '<cols><col min="1" max="1" width="84" customWidth="1"/>'
+        '<col min="2" max="2" width="12" customWidth="1"/></cols><sheetData>',
+        '<row r="1">%s%s</row>'
+        % tuple(
+            _xml_cell("%s1" % letter, h, styles.get("A1")) for letter, h in zip("AB", SUMMARY_COLUMNS)
+        ),
+    ]
+    for i, (label, value) in enumerate(lines, 2):
+        style = styles.get("A3") if label.startswith(" ") else styles.get("A2")
+        out.append(
+            '<row r="%d">%s%s</row>'
+            % (i, _xml_cell("A%d" % i, label, style), _xml_cell("B%d" % i, value, styles.get("B2")))
+        )
+    out.append("</sheetData></worksheet>")
+    return "".join(out)
+
+
+def _pending_xml(rows, styles):
+    """La hoja PENDIENTE: titulo, nota, leyenda, cabecera con filtro y una fila por pendiente."""
+    from openpyxl.utils import get_column_letter
+    from xml.sax.saxutils import quoteattr
+
+    letters = [get_column_letter(j) for j in range(1, len(PENDING_COLUMNS) + 1)]
+    last, head = letters[-1], PENDING_HEADER_ROW
+    link, missing = letters[PENDING_COLUMNS.index("FILA")], letters[PENDING_COLUMNS.index("COMPLETAR")]
+    widths = dict(zip(PENDING_COLUMNS, (58, 22, 7, 8, 16, 30, 24, 9, 9, 30, 110)))
+    out = [
+        _SHEET_NS,
+        '<sheetViews><sheetView workbookViewId="0"><pane ySplit="%d" topLeftCell="A%d" '
+        'activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>' % (head, head + 1),
+        "".join(
+            '<col min="%d" max="%d" width="%d" customWidth="1"/>' % (j, j, widths[c])
+            for j, c in enumerate(PENDING_COLUMNS, 1)
+        ),
+        "</cols><sheetData>",
+        '<row r="1">%s</row>' % _xml_cell("A1", PENDING_TITLE, styles.get("A1")),
+        '<row r="2" ht="64" customHeight="1">%s</row>' % _xml_cell("A2", PENDING_NOTE, styles.get("A2")),
+        '<row r="3">%s%s</row>'
+        % (
+            _xml_cell("%s3" % link, PENDING_LEGEND, styles.get("link")),
+            _xml_cell("%s3" % missing, PENDING_MISSING_LEGEND, styles.get("missing")),
+        ),
+        '<row r="%d">%s</row>'
+        % (
+            head,
+            "".join(
+                _xml_cell("%s%d" % (letter, head), c, styles.get("A4"))
+                for letter, c in zip(letters, PENDING_COLUMNS)
+            ),
+        ),
+    ]
+    links = []
+    for i, row in enumerate(rows, head + 1):
+        cells = []
+        for letter, column in zip(letters, PENDING_COLUMNS):
+            style = None
+            if column == "FILA":
+                style = styles.get("link")
+                links.append(
+                    '<hyperlink ref="%s%d" location=%s display="%d"/>'
+                    % (letter, i, quoteattr("'%s'!A%d" % (row["HOJA"], row["FILA"])), row["FILA"])
+                )
+            elif column == "COMPLETAR" and filled(row[column]):
+                style = styles.get("missing")
+            cells.append(_xml_cell("%s%d" % (letter, i), row[column], style))
+        out.append('<row r="%d">%s</row>' % (i, "".join(cells)))
+    out.append("</sheetData>")
+    out.append('<autoFilter ref="A%d:%s%d"/>' % (head, last, head + len(rows)))
+    out.append('<mergeCells count="1"><mergeCell ref="A2:%s2"/></mergeCells>' % last)
+    if links:
+        out.append("<hyperlinks>%s</hyperlinks>" % "".join(links))
+    out.append("</worksheet>")
+    return "".join(out)
+
+
+def refresh_review(path):
+    """Vuelve a escribir RESUMEN y PENDIENTE con lo que dicen las hojas de datos del libro.
+
+    Solo esas dos hojas. El resto del libro no pasa por openpyxl, que al guardar pierde lo que no
+    entiende (los desplegables que escribe Excel van en una extension): se copia tal cual, parte a
+    parte del .xlsx, y lo unico que cambia fuera de las dos hojas es el rango del filtro de
+    PENDIENTE en el libro. Lo que alguien ha rellenado en las hojas de datos no se toca.
+    """
+    import shutil
+    import tempfile
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    from openpyxl.utils import get_column_letter
+
+    data = read_review_data(path)
+    lines, pending = summary_lines(data), pending_rows(data)
+
+    rel = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+    main = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    package = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+    with zipfile.ZipFile(path) as source:
+        infos = source.infolist()
+        parts = {info.filename: source.read(info.filename) for info in infos}
+    targets = {
+        r.get("Id"): r.get("Target")
+        for r in ET.fromstring(parts["xl/_rels/workbook.xml.rels"]).iter(package + "Relationship")
+    }
+    sheets = {}
+    for sheet in ET.fromstring(parts["xl/workbook.xml"]).iter(main + "sheet"):
+        target = targets[sheet.get(rel)]
+        sheets[sheet.get("name")] = target.lstrip("/") if target.startswith("/") else "xl/" + target
+    for name in (SUMMARY_SHEET, PENDING_SHEET):
+        if name not in sheets:
+            raise SystemExit(
+                "%s no tiene la hoja %s: no es un libro de revision de este generador, o es de "
+                "antes de que la llevara. Se regenera desde el plano." % (path, name)
+            )
+        folder, _, filename = sheets[name].rpartition("/")
+        if "%s/_rels/%s.rels" % (folder, filename) in parts:
+            raise SystemExit(
+                "la hoja %s de %s lleva comentarios o dibujos, y es una hoja calculada: quitalos "
+                "antes de refrescarla." % (name, path)
+            )
+
+    def cell_styles(part):
+        return dict(re.findall(r'<c r="([A-Z]+\d+)"[^>]*?\bs="(\d+)"', parts[part].decode("utf-8")))
+
+    written = cell_styles(sheets[SUMMARY_SHEET])
+    parts[sheets[SUMMARY_SHEET]] = _summary_xml(lines, written).encode("utf-8")
+    written = cell_styles(sheets[PENDING_SHEET])
+    # La leyenda de la fila 3 guarda el estilo del enlace y el del dato que falta, para que
+    # sobrevivan a un libro sin nada pendiente. Un libro de antes los llevaba en su primera fila.
+    written["link"] = written.get("C3") or written.get("C5")
+    written["missing"] = written.get("J3") or written.get("I5")
+    parts[sheets[PENDING_SHEET]] = _pending_xml(pending, written).encode("utf-8")
+    # El filtro de una hoja es tambien un nombre oculto del libro, con su rango.
+    workbook = parts["xl/workbook.xml"].decode("utf-8")
+    workbook = re.sub(
+        r'(<definedName\b[^>]*name="_xlnm\._FilterDatabase"[^>]*>)\'?%s\'?![^<]*(</definedName>)'
+        % PENDING_SHEET,
+        lambda m: "%s%s!$A$%d:$%s$%d%s"
+        % (
+            m.group(1),
+            PENDING_SHEET,
+            PENDING_HEADER_ROW,
+            get_column_letter(len(PENDING_COLUMNS)),
+            PENDING_HEADER_ROW + len(pending),
+            m.group(2),
+        ),
+        workbook,
+    )
+    parts["xl/workbook.xml"] = workbook.encode("utf-8")
+
+    handle, temporary = tempfile.mkstemp(suffix=".xlsx", dir=os.path.dirname(os.path.abspath(path)))
+    os.close(handle)
+    try:
+        with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as target:
+            for info in infos:
+                target.writestr(info, parts[info.filename])
+        shutil.copymode(path, temporary)
+        shutil.move(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.remove(temporary)
+    return lines, pending
+
+
 def write_review(path, sheets_data, readme, choices=None):
     """El libro de revision.
 
@@ -2352,7 +2919,8 @@ def write_review(path, sheets_data, readme, choices=None):
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
     info = wb.create_sheet("LEEME")
-    summary = wb.create_sheet("RESUMEN")
+    pending = wb.create_sheet(PENDING_SHEET)
+    summary = wb.create_sheet(SUMMARY_SHEET)
     for title, columns, master_columns, required, data, comments in sheets_data:
         ws = wb.create_sheet(title)
         for j, h in enumerate(columns, 1):
@@ -2437,100 +3005,32 @@ def write_review(path, sheets_data, readme, choices=None):
             own.append([title, i, column] + list(values))
         own.sheet_state = "hidden"
 
-    # Recuentos con formula: se recalculan cuando se edita el libro. '?*' cuenta textos no
-    # vacios, cabecera incluida, de ahi el -1.
-    def col(sheet, header):
-        columns = next(c for t, c, *_ in sheets_data if t == sheet)
-        letter = get_column_letter(columns.index(header) + 1)
-        return "%s!$%s:$%s" % (sheet, letter, letter)
-
-    lines = [
-        ("Seccionadores dibujados (todos)", "=COUNTA(%s)-1" % col("SECCIONADORES_DXF", "HANDLE")),
-        (
-            "  en servicio",
-            '=COUNTIF(%s,"%s")' % (col("SECCIONADORES_DXF", "ESTADO_DIBUJO"), EN_SERVICE),
-        ),
-        (
-            "  futuros, deshabilitados, en via no electrificada o del deposito de Haifa",
-            "=COUNTA(%s)-1-B3" % col("SECCIONADORES_DXF", "HANDLE"),
-        ),
-        (
-            "En los EP del maestro (hoja DISCONNECTORS)",
-            "=COUNTA(%s)-1" % col("DISCONNECTORS", "HANDLE"),
-        ),
-        (
-            "  dibujados como futuros, deshabilitados o en via no electrificada",
-            '=COUNTA(%s)-1-COUNTIF(%s,"%s")'
-            % (col("DISCONNECTORS", "HANDLE"), col("DISCONNECTORS", "ESTADO_DIBUJO"), EN_SERVICE),
-        ),
-        (
-            "  con poste casado o propuesto (PROFILE_ID)",
-            '=COUNTIF(%s,"?*")-1' % col("DISCONNECTORS", "PROFILE_ID"),
-        ),
-        (
-            "  sin poste (a confirmar)",
-            '=COUNTA(%s)-COUNTIF(%s,"?*")'
-            % (col("DISCONNECTORS", "HANDLE"), col("DISCONNECTORS", "PROFILE_ID")),
-        ),
-        (
-            "  listos para cargar (ENABLED = SI)",
-            '=COUNTIF(%s,"SI")' % col("DISCONNECTORS", "ENABLED"),
-        ),
-        ("  a revisar (REVISAR = SI)", '=COUNTIF(%s,"SI")' % col("DISCONNECTORS", "REVISAR")),
-        (
-            "  que ponen dos vias en paralelo con su VIA_CONECTADA",
-            '=COUNTIF(%s,"?*")-1' % col("DISCONNECTORS", "VIA_CONECTADA"),
-        ),
-        (
-            "  prefijos con estacion propuesta (hoja ESTACION_POR_PREFIJO)",
-            "=COUNTA(%s)-1" % col("ESTACION_POR_PREFIJO", "PREFIJO"),
-        ),
-        (
-            "En lineas que el maestro no tiene (hoja SECCIONADORES_FUERA_MAESTRO)",
-            "=COUNTA(%s)-1" % col("SECCIONADORES_FUERA_MAESTRO", "HANDLE"),
-        ),
-        ("Aisladores dibujados (todos)", "=COUNTA(%s)-1" % col("AISLADORES_DXF", "HANDLE")),
-        (
-            "  en los EP del maestro (hoja SECTION_INSULATORS)",
-            "=COUNTA(%s)-1" % col("SECTION_INSULATORS", "HANDLE"),
-        ),
-        ("    con KP", '=COUNTIF(%s,">0")' % col("SECTION_INSULATORS", "KP")),
-        ("    ENABLED = SI", '=COUNTIF(%s,"SI")' % col("SECTION_INSULATORS", "ENABLED")),
-        (
-            "  en lineas que el maestro no tiene",
-            "=COUNTA(%s)-1" % col("AISLADORES_FUERA_MAESTRO", "HANDLE"),
-        ),
-        (
-            "Agujas (en la fila de su aislador)",
-            '=COUNTIF(%s,"?*")+COUNTIF(%s,"?*")-2'
-            % (col("SECTION_INSULATORS", "AGUJA_1"), col("SECTION_INSULATORS", "AGUJA_2")),
-        ),
-        (
-            "  con KP",
-            "=COUNT(%s)+COUNT(%s)"
-            % (col("SECTION_INSULATORS", "KP_AGUJA_1"), col("SECTION_INSULATORS", "KP_AGUJA_2")),
-        ),
-        (
-            "  con tangente",
-            "=COUNT(%s)+COUNT(%s)"
-            % (col("SECTION_INSULATORS", "TANGENTE_1"), col("SECTION_INSULATORS", "TANGENTE_2")),
-        ),
-        (
-            "Rotulos de seccionador sin simbolo",
-            "=COUNTA(%s)-1" % col("ROTULOS_SIN_SIMBOLO", "ROTULO"),
-        ),
-        ("Postes del maestro sin casar", "=COUNTA(%s)-1" % col("POSTES_SIN_CASAR", "PROFILE_ID")),
-    ]
-    for j, h in enumerate(("Concepto", "Cantidad"), 1):
+    # RESUMEN y PENDIENTE se calculan de las hojas de datos ya escritas (refresh_review, al final),
+    # con la misma regla que cuando alguien edita el libro y lo refresca. Aqui solo van sus
+    # estilos, en las celdas de donde refresh_review los toma.
+    for j, h in enumerate(SUMMARY_COLUMNS, 1):
         c = summary.cell(row=1, column=j, value=h)
         c.font, c.fill = header_font, master_fill
-    for i, (label, formula) in enumerate(lines, 2):
-        summary.cell(row=i, column=1, value=label).font = Font(
-            name=arial, size=10, bold=not label.startswith(" ")
-        )
-        summary.cell(row=i, column=2, value=formula).font = body
-    summary.column_dimensions["A"].width = 60
-    summary.column_dimensions["B"].width = 12
+    summary.cell(row=2, column=1, value="-").font = Font(name=arial, size=10, bold=True)
+    summary.cell(row=2, column=2, value=0).font = body
+    summary.cell(row=3, column=1, value=" -").font = body
+    pending.cell(row=1, column=1, value=PENDING_TITLE).font = Font(name=arial, size=14, bold=True)
+    note = pending.cell(row=2, column=1, value=PENDING_NOTE)
+    note.font, note.alignment = body, Alignment(wrap_text=True, vertical="top")
+    legend = pending.cell(row=3, column=PENDING_COLUMNS.index("FILA") + 1, value=PENDING_LEGEND)
+    legend.font = Font(name=arial, size=10, color="0563C1", underline="single")
+    legend = pending.cell(
+        row=3, column=PENDING_COLUMNS.index("COMPLETAR") + 1, value=PENDING_MISSING_LEGEND
+    )
+    legend.font, legend.fill = body, missing
+    for j, h in enumerate(PENDING_COLUMNS, 1):
+        c = pending.cell(row=PENDING_HEADER_ROW, column=j, value=h)
+        c.font, c.fill = header_font, master_fill
+    pending.auto_filter.ref = "A%d:%s%d" % (
+        PENDING_HEADER_ROW,
+        get_column_letter(len(PENDING_COLUMNS)),
+        PENDING_HEADER_ROW,
+    )
 
     info.column_dimensions["A"].width = 30
     info.column_dimensions["B"].width = 130
@@ -2556,6 +3056,7 @@ def write_review(path, sheets_data, readme, choices=None):
         info.cell(row=row, column=1).fill = fill
         info.cell(row=row, column=2, value=text).font = body
     wb.save(path)
+    refresh_review(path)
 
 
 README = [
@@ -2584,8 +3085,15 @@ README = [
     (
         "QUE EDITAR",
         "Amarillo = falta; naranja = propuesta del generador, a confirmar. Revisa cada fila con "
-        "REVISAR = SI segun MOTIVO_REVISAR, corrige lo necesario y pon ENABLED = SI. Solo las "
-        "filas con ENABLED = SI se cargarian.",
+        "REVISAR = SI segun MOTIVO_REVISAR, corrige lo necesario, pon ENABLED = SI si se carga y "
+        "REVISAR = NO cuando la des por revisada. Solo las filas con ENABLED = SI se cargarian.",
+    ),
+    (
+        "FILA REVISADA",
+        "Una fila de DISCONNECTORS o de SECTION_INSULATORS esta revisada cuando su REVISAR dice "
+        "NO, y solo entonces. Con SI esta pendiente, y vacia tambien (una fila añadida a mano se "
+        "marca igual). ENABLED no lo dice: decide si la fila se carga, y una fila puede cargarse "
+        "con una duda abierta. MOTIVO_REVISAR se deja como esta: es por que se pregunto.",
     ),
     (
         "NOMBRE Y KP",
@@ -2659,6 +3167,13 @@ README = [
         "tenga ENABLED = SI.",
     ),
     (
+        "RESUMEN Y PENDIENTE",
+        "Se calculan de las hojas de datos y no se editan: RESUMEN cuenta y PENDIENTE lista lo que "
+        "no esta revisado. No llevan formulas, asi que no se recalculan solas: despues de editar "
+        "el libro, build_sectioning_review.py --refresh data/sectioning-review.xlsx las vuelve a "
+        "escribir sin tocar ninguna otra hoja, y --check dice si casan.",
+    ),
+    (
         "SIN POSTE",
         "Los de alimentacion (FP en el nombre) van en el portico de la subestacion, y los de "
         "puesta a tierra solo van en un poste que el maestro marca con ED: sin el, salen sin "
@@ -2722,9 +3237,82 @@ README = [
 ]
 
 
-def main():
+PLAN_NAME = "Operational disconnectors 28.07.25 (based on OCS-SCADA_PD_R38)"
+REVIEWED_BOOK = os.path.join(DATA, "sectioning-review.xlsx")
+
+
+def plan_problem(path):
+    """Por que no se puede leer el plano, o None. El plano no viaja con el repositorio."""
+    where = (
+        "El plano de operacion de seccionadores (%r, exportado a DXF desde AutoCAD) no esta en el "
+        "repositorio: pesa 46 MB y hay que pedirlo a quien mantiene el seccionamiento. Se pasa como primer "
+        "argumento:\n    python3 data/tools/build_sectioning_review.py RUTA/plano.dxf -o libro.xlsx\n"
+        "Sin el no se puede generar el libro de revision. Lo que si se puede sin el plano: "
+        "recalcular RESUMEN y PENDIENTE de un libro ya escrito (--refresh LIBRO) y comprobarlas "
+        "(--check LIBRO)." % PLAN_NAME
+    )
+    if not path:
+        return "Falta el plano DXF. " + where
+    if not os.path.isfile(path):
+        return "No existe el plano DXF %r. %s" % (path, where)
+    with open(path, "rb") as handle:
+        head = handle.read(4096)
+    # Un DXF de texto empieza por el par '0 / SECTION' (o un comentario 999); uno binario, por su
+    # firma. Un .dwg, que es lo que guarda AutoCAD, no vale: hay que exportarlo.
+    if head.startswith(b"AC10") and b"SECTION" not in head:
+        return "%r es un DWG, no un DXF: exportalo a DXF desde AutoCAD (DXFOUT). %s" % (path, where)
+    if not (head.startswith(b"AutoCAD Binary DXF") or b"SECTION" in head):
+        return "%r no parece un DXF (no empieza por una seccion). %s" % (path, where)
+    return None
+
+
+def plan_fingerprint(path):
+    """La huella del plano con el que se genera un libro: nombre, tamaño, fecha y sha256.
+
+    Va al LEEME del libro (PLANO): con ella se sabe despues de que fichero salio, que es lo unico
+    que permite repetirlo. El libro revisado de 2026 se genero antes de que se apuntara.
+    """
+    import datetime
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    stat = os.stat(path)
+    modified = datetime.datetime.fromtimestamp(stat.st_mtime, datetime.timezone.utc)
+    return {
+        "name": os.path.basename(path),
+        "bytes": stat.st_size,
+        "modified": modified.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "sha256": digest.hexdigest(),
+    }
+
+
+def plan_readme(fingerprint):
+    return (
+        "PLANO",
+        "Generado desde %(name)s: %(bytes)d bytes, modificado el %(modified)s, sha256 %(sha256)s. "
+        "El plano no esta en el repositorio; con esta huella se comprueba que el que se tiene es "
+        "el mismo." % fingerprint,
+    )
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("dxf", help="plano de seccionamiento en DXF")
+    parser.add_argument("dxf", nargs="?", help="plano de seccionamiento en DXF")
+    parser.add_argument(
+        "--refresh",
+        metavar="LIBRO",
+        help="recalcula RESUMEN y PENDIENTE de un libro ya escrito, de sus hojas de datos, sin "
+        "tocar el resto; no necesita el plano",
+    )
+    parser.add_argument(
+        "--check",
+        metavar="LIBRO",
+        help="comprueba que RESUMEN y PENDIENTE de un libro casan con sus hojas de datos; termina "
+        "con codigo distinto de cero si no",
+    )
     parser.add_argument(
         "-m",
         "--master",
@@ -2740,9 +3328,40 @@ def main():
     parser.add_argument(
         "-o", "--output", default="sectioning-review.xlsx", help="libro de revision a escribir"
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    print("Leyendo %s ..." % args.dxf)
+    if args.refresh or args.check:
+        if args.dxf:
+            parser.error("--refresh y --check trabajan sobre un libro ya escrito: sobra el plano")
+        if args.refresh:
+            lines, pending = refresh_review(args.refresh)
+            print("%s: RESUMEN (%d lineas) y PENDIENTE (%d filas) recalculadas de sus hojas de "
+                  "datos." % (args.refresh, len(lines), len(pending)))
+        problems = check_review(args.check) if args.check else []
+        for problem in problems[:20]:
+            print(problem, file=sys.stderr)
+        if problems:
+            print(
+                "%s: RESUMEN o PENDIENTE no casan con las hojas de datos (%d diferencias). "
+                "Refrescalas con --refresh." % (args.check, len(problems)),
+                file=sys.stderr,
+            )
+            return 1
+        return 0
+    problem = plan_problem(args.dxf)
+    if problem:
+        print(problem, file=sys.stderr)
+        return 2
+    if os.path.exists(args.output) and os.path.samefile(args.output, REVIEWED_BOOK):
+        print(
+            "%s es el libro ya revisado: lo que hay en el esta escrito a mano y generar otro lo "
+            "pisaria. Escribe el nuevo en otra ruta (-o) y pasa a el la revision." % args.output,
+            file=sys.stderr,
+        )
+        return 2
+
+    fingerprint = plan_fingerprint(args.dxf)
+    print("Leyendo %(name)s (%(bytes)d bytes, sha256 %(sha256)s) ..." % fingerprint)
     drawing = read_dxf(args.dxf)
     labels = match_labels(drawing)
     tracks = Tracks(drawing)
@@ -2990,7 +3609,7 @@ def main():
     ]
     functions = read_disconnector_functions(args.lovs, master["profiles"])
     choices = {"lists": review_lists(master, functions), "columns": review_choices()}
-    write_review(args.output, sheets, README, choices)
+    write_review(args.output, sheets, README + [plan_readme(fingerprint)], choices)
 
     print("\n%-34s%8s%10s" % ("HOJA", "FILAS", "ENABLED"))
     print(

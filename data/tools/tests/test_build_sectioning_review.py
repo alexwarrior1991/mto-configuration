@@ -732,6 +732,365 @@ class InsulatorSwitchesTest(unittest.TestCase):
                          [("W8", 39991, 12, "TRACK 1"), ("W7", 40081, 12, "TRACK 2")])
 
 
+class ReviewStateTest(unittest.TestCase):
+    """Cuando una fila esta revisada: REVISAR = NO, y nada mas."""
+
+    def test_only_no_is_reviewed(self):
+        self.assertTrue(bsr.is_reviewed({"REVISAR": "NO"}))
+        self.assertTrue(bsr.is_reviewed({"REVISAR": " no "}), "como lo lee el importador")
+        for value in ("SI", "", None, "OK", "revisada", 0):
+            self.assertFalse(bsr.is_reviewed({"REVISAR": value}), repr(value))
+        self.assertFalse(bsr.is_reviewed({}), "sin la columna, nada esta revisado")
+
+    def test_an_empty_cell_is_not_a_review(self):
+        # Una fila añadida a mano llega sin REVISAR, y un olvido deja la celda igual: ninguna de
+        # las dos pasa por revisada, pero se distinguen de la que el generador pregunto.
+        self.assertEqual(bsr.review_state({"REVISAR": "SI"}), bsr.TO_REVIEW)
+        self.assertEqual(bsr.review_state({"REVISAR": None}), bsr.UNMARKED)
+        self.assertEqual(bsr.review_state({"REVISAR": "quiza"}), bsr.UNMARKED)
+        self.assertEqual(bsr.review_state({"REVISAR": "NO"}), bsr.REVIEWED)
+
+    def test_enabled_does_not_say_it(self):
+        # Se carga y sigue pendiente (una nota que no bloquea); revisada y no se carga.
+        self.assertFalse(bsr.is_reviewed({"ENABLED": "SI", "REVISAR": "SI"}))
+        self.assertTrue(bsr.is_reviewed({"ENABLED": "NO", "REVISAR": "NO"}))
+
+    def test_the_generator_asks_or_does_not(self):
+        # Lo que sale del generador lleva siempre SI o NO: vacia solo llega una fila hecha a mano.
+        rows, _ = bsr.disconnector_rows(
+            [DisconnectorRowsTest.record(DisconnectorRowsTest())], DisconnectorRowsTest.MASTER
+        )
+        self.assertIn(rows[0]["REVISAR"], ("SI", "NO"))
+        self.assertEqual(bsr.is_reviewed(rows[0]), not rows[0]["MOTIVO_REVISAR"])
+
+
+class SummaryAndPendingTest(unittest.TestCase):
+    """RESUMEN y PENDIENTE: lo que dicen las hojas de datos, y nada que no digan."""
+
+    REVIEW_BOOK = os.path.join(os.path.dirname(BASE), "sectioning-review.xlsx")
+
+    @staticmethod
+    def disconnector(row, **values):
+        base = {
+            "EP": "EP6",
+            "ESTACION": "TSA",
+            "VIA": "TRACK 1",
+            "NOMBRE": "TSA-%02d" % row,
+            "ON_LOAD": "SI",
+            "DISCONNECTOR_FUNCTION": "Disc/IO",
+            "ENABLED": "SI",
+            "REVISAR": "NO",
+            "MOTIVO_REVISAR": None,
+            "ESTADO_DIBUJO": bsr.EN_SERVICE,
+            "HANDLE": "H%d" % row,
+            "_row": row,
+        }
+        base.update(values)
+        return base
+
+    @staticmethod
+    def insulator(row, **values):
+        base = {
+            "EP": "EP6",
+            "ESTACION": "TSA",
+            "NOMBRE": "SI W%d" % row,
+            "KP": "=IF(...)",
+            "VIA": "TRACK 1",
+            "AGUJA_1": "W%d" % row,
+            "KP_AGUJA_1": 93000 + row,
+            "TANGENTE_1": 9,
+            "ENABLED": "SI",
+            "REVISAR": "NO",
+            "HANDLE": "A%d" % row,
+            "_row": row,
+        }
+        base.update(values)
+        return base
+
+    def test_what_is_pending(self):
+        data = {
+            "DISCONNECTORS": [
+                self.disconnector(2),
+                self.disconnector(3, REVISAR="SI", MOTIVO_REVISAR="via distinta"),
+                self.disconnector(4, REVISAR="SI", ENABLED="NO", MOTIVO_REVISAR="rotulo lejos"),
+                # Revisada y activa, pero el importador no la querria: tambien sale.
+                self.disconnector(5, ESTACION=None),
+                # Revisada y sin cargar: lo que le falte no es asunto de nadie.
+                self.disconnector(6, ESTACION=None, ENABLED="NO"),
+            ],
+            "SECTION_INSULATORS": [
+                self.insulator(2),
+                self.insulator(3, REVISAR=None, HANDLE=None),
+            ],
+        }
+
+        pending = bsr.pending_rows(data)
+
+        self.assertEqual(
+            [(r["SECCION"][:2], r["HOJA"], r["FILA"], r["COMPLETAR"]) for r in pending],
+            [
+                ("1.", "DISCONNECTORS", 3, ""),
+                ("2.", "DISCONNECTORS", 4, ""),
+                ("3.", "SECTION_INSULATORS", 3, ""),
+                ("5.", "DISCONNECTORS", 5, "ESTACION"),
+            ],
+        )
+        self.assertEqual(pending[0]["MOTIVO_REVISAR"], "via distinta")
+        self.assertEqual(pending[2]["MOTIVO_REVISAR"], bsr.PENDING_UNMARKED)
+
+    def test_what_a_row_is_missing(self):
+        missing = bsr.missing_data
+        self.assertEqual(missing("DISCONNECTORS", self.disconnector(2)), [])
+        self.assertEqual(
+            missing("DISCONNECTORS", self.disconnector(2, NOMBRE=" ", ON_LOAD=None)),
+            ["NOMBRE", "ON_LOAD"],
+        )
+        # Uno de puesta en paralelo sin la otra via; una alimentacion FS/PP no une dos vias.
+        parallel = self.disconnector(2, DISCONNECTOR_FUNCTION="LoadB/PP-pr")
+        self.assertEqual(missing("DISCONNECTORS", parallel), ["VIA_CONECTADA"])
+        parallel["VIA_CONECTADA"] = "TRACK 2"
+        self.assertEqual(missing("DISCONNECTORS", parallel), [])
+        feeder = self.disconnector(2, DISCONNECTOR_FUNCTION="FS/PP-2")
+        self.assertEqual(missing("DISCONNECTORS", feeder), [])
+        # El KP de un aislador: el escrito o el de sus agujas. Una formula sin agujas no da nada.
+        self.assertEqual(missing("SECTION_INSULATORS", self.insulator(2)), [])
+        bare = self.insulator(2, AGUJA_1=None, KP_AGUJA_1=None, TANGENTE_1=None)
+        self.assertEqual(missing("SECTION_INSULATORS", bare), ["KP"])
+        self.assertEqual(missing("SECTION_INSULATORS", dict(bare, KP=93451)), [])
+        # Una aguja con KP y sin codigo no se carga.
+        self.assertEqual(
+            missing("SECTION_INSULATORS", self.insulator(2, AGUJA_1=None)), ["AGUJA_1"]
+        )
+
+    def test_the_summary_counts_rows_not_handles(self):
+        data = {
+            "DISCONNECTORS": [
+                self.disconnector(2, PROFILE_ID="93-1.05"),
+                self.disconnector(3, REVISAR="SI", ESTADO_DIBUJO="FUTURO", VIA_CONECTADA="TRACK 2"),
+            ],
+            "SECTION_INSULATORS": [
+                self.insulator(2, AGUJA_2="W9", KP_AGUJA_2=None, TANGENTE_2=12),
+                # Añadida a mano: sin HANDLE y sin REVISAR. La formula de antes no la contaba.
+                self.insulator(3, REVISAR=None, HANDLE=None),
+            ],
+            "ESTACION_POR_PREFIJO": [
+                {"PREFIJO": "KAF", "ESTACION_CORRECTA": None, "_row": 2},
+                {"PREFIJO": "TN3", "ESTACION_CORRECTA": "SIN ESTACION", "_row": 3},
+            ],
+            # El inventario: H2 y H3 estan en DISCONNECTORS y H8 en la hoja de fuera; H9 tiene EP
+            # y no esta en ninguna (alguien quito su fila), y H7, sin EP, no tenia que estar.
+            "SECCIONADORES_DXF": [
+                {"HANDLE": "H2", "EP": "EP6", "ESTADO_DIBUJO": bsr.EN_SERVICE},
+                {"HANDLE": "H3", "EP": "EP6", "ESTADO_DIBUJO": "FUTURO"},
+                {"HANDLE": "H8", "EP": "EP6", "ESTADO_DIBUJO": bsr.EN_SERVICE},
+                {"HANDLE": "H9", "EP": "EP6", "ESTADO_DIBUJO": bsr.EN_SERVICE},
+                {"HANDLE": "H7", "EP": None, "ESTADO_DIBUJO": bsr.HAIFA_STATUS},
+            ],
+            "SECCIONADORES_FUERA_MAESTRO": [{"HANDLE": "H8"}],
+        }
+
+        lines = bsr.summary_lines(data)
+        labels = [label for label, _ in lines]
+        d = labels.index("En los EP del maestro (hoja DISCONNECTORS)")
+        i = labels.index("En los EP del maestro (hoja SECTION_INSULATORS)")
+        of = lambda start, label: next(v for k, v in lines[start:] if k.strip() == label)  # noqa: E731
+
+        self.assertEqual(lines[0], ("Seccionadores dibujados (todos)", 5))
+        self.assertEqual(of(0, "con un EP del maestro en el inventario"), 4)
+        self.assertEqual(
+            of(0, "y que no estan en DISCONNECTORS ni en SECCIONADORES_FUERA_MAESTRO"), 1
+        )
+        self.assertEqual(lines[d][1], 2)
+        self.assertEqual(of(d, "dibujados como futuros, deshabilitados o en via no electrificada"), 1)
+        self.assertEqual(of(d, "con poste (PROFILE_ID)"), 1)
+        self.assertEqual(of(d, "sin poste"), 1)
+        self.assertEqual(of(d, "que ponen dos vias en paralelo con su VIA_CONECTADA"), 1)
+        self.assertEqual(of(d, "revisados (REVISAR = NO)"), 1)
+        self.assertEqual(of(d, "sin revisar"), 1)
+        self.assertEqual(of(d, "con ESTACION_CORRECTA escrita"), 1)
+        self.assertEqual(lines[i][1], 2)
+        self.assertEqual(of(i, "salidos del plano (con HANDLE)"), 1)
+        self.assertEqual(of(i, "añadidos a mano (sin HANDLE)"), 1)
+        self.assertEqual(of(i, "revisados (REVISAR = NO)"), 1)
+        self.assertEqual(of(i, "con REVISAR vacio (sin marcar)"), 1)
+        self.assertEqual(of(i, "y ya se cargan (ENABLED = SI)"), 1)
+        self.assertEqual(of(i, "Agujas (en la fila de su aislador)"), 3)
+        self.assertEqual(of(i, "con KP"), 2)
+        self.assertEqual(of(i, "con tangente"), 3)
+        self.assertEqual(of(i, "Filas en la hoja PENDIENTE"), 2)
+        # Cada cantidad es un numero ya contado, no una formula que Excel calcule a su manera.
+        self.assertTrue(all(isinstance(value, int) for _, value in lines))
+
+    def _book(self):
+        try:
+            import openpyxl  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("openpyxl no instalado")
+        import tempfile
+
+        master = {"stations": {"EP6": {"TSA"}}, "tracks": {"EP6": [{"name": "TRACK 1"}]}}
+        choices = {"lists": bsr.review_lists(master, ["Disc/IO"]), "columns": bsr.review_choices()}
+        rows = [
+            {"EP": "EP6", "ESTACION": "TSA", "ENABLED": "SI", "REVISAR": "SI", "HANDLE": "H1"},
+            {"EP": "EP6", "ESTACION": "TSA", "ENABLED": "NO", "REVISAR": "SI", "HANDLE": "H2"},
+            {"EP": "EP6", "ESTACION": "TSA", "ENABLED": "SI", "REVISAR": "NO", "HANDLE": "H3"},
+        ]
+        path = os.path.join(tempfile.mkdtemp(), "review.xlsx")
+        bsr.write_review(path, DropDownTest.sheets(rows), [], choices)
+        return path
+
+    def test_a_generated_workbook_agrees_with_itself(self):
+        import openpyxl
+
+        path = self._book()
+
+        self.assertEqual(bsr.check_review(path), [])
+        wb = openpyxl.load_workbook(path)
+        self.assertEqual(wb.sheetnames[:3], ["LEEME", "PENDIENTE", "RESUMEN"])
+        summary = {r[0].strip(): r[1] for r in wb["RESUMEN"].iter_rows(min_row=2, values_only=True)}
+        self.assertEqual(summary["En los EP del maestro (hoja DISCONNECTORS)"], 3)
+        self.assertEqual(summary["Filas en la hoja PENDIENTE"], 3)
+        pending = wb["PENDIENTE"]
+        head = bsr.PENDING_HEADER_ROW
+        self.assertEqual([c.value for c in pending[head]], bsr.PENDING_COLUMNS)
+        self.assertEqual(
+            [(r[1], r[2], r[7], r[8]) for r in pending.iter_rows(min_row=head + 1, values_only=True)],
+            # La tercera esta revisada y se carga, pero la hoja de este test no trae su nombre.
+            [("DISCONNECTORS", 2, "SI", "SI"), ("DISCONNECTORS", 3, "NO", "SI"),
+             ("DISCONNECTORS", 4, "SI", "NO")],
+        )
+        self.assertIn("NOMBRE", pending.cell(row=head + 3, column=10).value)
+        # FILA lleva a su fila, y el filtro cubre lo escrito.
+        self.assertEqual(pending.cell(row=head + 1, column=3).hyperlink.location, "'DISCONNECTORS'!A2")
+        self.assertEqual(pending.auto_filter.ref, "A%d:K%d" % (head, head + 3))
+
+    def test_an_edited_workbook_fails_until_refreshed_and_keeps_the_rest(self):
+        import zipfile
+
+        import openpyxl
+
+        path = self._book()
+        # Quien revisa cierra una fila: las dos hojas calculadas dejan de casar.
+        wb = openpyxl.load_workbook(path)
+        ws = wb["DISCONNECTORS"]
+        header = [c.value for c in ws[1]]
+        ws.cell(row=2, column=header.index("REVISAR") + 1, value="NO")
+        wb.save(path)
+        self.assertTrue(bsr.check_review(path), "editado y sin refrescar")
+
+        with zipfile.ZipFile(path) as z:
+            before = {name: z.read(name) for name in z.namelist()}
+        bsr.refresh_review(path)
+
+        self.assertEqual(bsr.check_review(path), [])
+        with zipfile.ZipFile(path) as z:
+            after = {name: z.read(name) for name in z.namelist()}
+        self.assertEqual(list(before), list(after))
+        changed = sorted(name for name in before if before[name] != after[name])
+        wb = openpyxl.load_workbook(path)
+        ours = sorted(
+            "xl/worksheets/sheet%d.xml" % (wb.sheetnames.index(name) + 1)
+            for name in (bsr.SUMMARY_SHEET, bsr.PENDING_SHEET)
+        )
+        # Solo las dos hojas, y el rango del filtro de PENDIENTE en el libro: las hojas de datos,
+        # con lo que alguien haya escrito y sus desplegables, byte a byte como estaban.
+        self.assertEqual([n for n in changed if n != "xl/workbook.xml"], ours)
+        self.assertTrue(wb["DISCONNECTORS"].data_validations.dataValidation)
+        self.assertEqual(wb["DISCONNECTORS"].cell(row=2, column=header.index("REVISAR") + 1).value, "NO")
+        # Y refrescar otra vez no cambia nada.
+        bsr.refresh_review(path)
+        with zipfile.ZipFile(path) as z:
+            self.assertEqual({name: z.read(name) for name in z.namelist()}, after)
+
+    def test_the_versioned_workbook_agrees_with_its_data(self):
+        # El guardian: data/sectioning-review.xlsx se edita a mano, y RESUMEN y PENDIENTE no se
+        # recalculan solas. Si esto falla: build_sectioning_review.py --refresh data/sectioning-review.xlsx
+        if not os.path.exists(self.REVIEW_BOOK):
+            raise unittest.SkipTest("data/sectioning-review.xlsx no esta")
+        try:
+            import openpyxl  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("openpyxl no instalado")
+
+        problems = bsr.check_review(self.REVIEW_BOOK)
+        self.assertEqual(
+            problems[:5], [], "%d diferencias: refresca el libro con --refresh" % len(problems)
+        )
+
+
+class PlanTest(unittest.TestCase):
+    """El plano DXF no esta en el repositorio: sin el, el generador lo dice y no escribe nada."""
+
+    def setUp(self):
+        import tempfile
+
+        self.folder = tempfile.mkdtemp()
+
+    def write(self, name, content):
+        path = os.path.join(self.folder, name)
+        with open(path, "wb") as handle:
+            handle.write(content)
+        return path
+
+    def test_a_missing_plan_says_which_file_is_expected(self):
+        for path in (None, "", os.path.join(self.folder, "no-esta.dxf")):
+            problem = bsr.plan_problem(path)
+            self.assertIn(bsr.PLAN_NAME, problem)
+            self.assertIn("no esta en el repositorio", problem)
+            self.assertIn("--refresh", problem, "lo que si se puede hacer sin el")
+        self.assertIn("no-esta.dxf", bsr.plan_problem(os.path.join(self.folder, "no-esta.dxf")))
+
+    def test_what_is_not_a_dxf(self):
+        self.assertIn("DWG", bsr.plan_problem(self.write("plano.dwg", b"AC1032\x00\x00\x00\x00")))
+        self.assertIn("no parece un DXF", bsr.plan_problem(self.write("plano.dxf", b"PK\x03\x04")))
+        self.assertIsNone(bsr.plan_problem(self.write("ok.dxf", b"  0\r\nSECTION\r\n  2\r\nHEADER")))
+        self.assertIsNone(bsr.plan_problem(self.write("bin.dxf", b"AutoCAD Binary DXF\r\n\x1a\x00")))
+
+    def test_the_script_stops_without_writing(self):
+        import contextlib
+        import io
+
+        output = os.path.join(self.folder, "libro.xlsx")
+        for argv in ([], ["-o", output], [os.path.join(self.folder, "no-esta.dxf"), "-o", output]):
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                self.assertEqual(bsr.main(argv), 2)
+            self.assertIn("plano DXF", stderr.getvalue())
+        self.assertFalse(os.path.exists(output))
+
+    def test_the_reviewed_workbook_is_not_overwritten(self):
+        import contextlib
+        import io
+
+        if not os.path.exists(bsr.REVIEWED_BOOK):
+            raise unittest.SkipTest("data/sectioning-review.xlsx no esta")
+        plan = self.write("plano.dxf", b"  0\nSECTION\n  2\nHEADER\n")
+        with open(bsr.REVIEWED_BOOK, "rb") as handle:
+            before = handle.read()
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            # Antes de leer el plano: no hace falta ezdxf para negarse.
+            self.assertEqual(bsr.main([plan, "-o", bsr.REVIEWED_BOOK]), 2)
+        self.assertIn("ya revisado", stderr.getvalue())
+        with open(bsr.REVIEWED_BOOK, "rb") as handle:
+            self.assertEqual(handle.read(), before)
+
+    def test_the_fingerprint_goes_to_the_workbook(self):
+        import hashlib
+
+        content = b"  0\nSECTION\n  2\nHEADER\n  0\nENDSEC\n  0\nEOF\n"
+        fingerprint = bsr.plan_fingerprint(self.write("Operational disconnectors.dxf", content))
+
+        self.assertEqual(fingerprint["name"], "Operational disconnectors.dxf")
+        self.assertEqual(fingerprint["bytes"], len(content))
+        self.assertEqual(fingerprint["sha256"], hashlib.sha256(content).hexdigest())
+        self.assertRegex(fingerprint["modified"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        key, text = bsr.plan_readme(fingerprint)
+        self.assertEqual(key, "PLANO")
+        for part in ("Operational disconnectors.dxf", str(len(content)), fingerprint["sha256"]):
+            self.assertIn(part, text)
+
+
 class DropDownTest(unittest.TestCase):
     """Los desplegables del libro: las opciones de las celdas amarillas y naranjas."""
 
