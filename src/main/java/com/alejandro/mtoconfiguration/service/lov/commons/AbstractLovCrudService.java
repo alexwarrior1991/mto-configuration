@@ -4,13 +4,20 @@ import com.alejandro.mtoconfiguration.configuration.cache.CacheNames;
 import com.alejandro.mtoconfiguration.configuration.cache.LovCacheEvictionEvent;
 import com.alejandro.mtoconfiguration.entity.lov.commons.Lov;
 import com.alejandro.mtoconfiguration.mapper.lov.commons.LovMapper;
+import com.alejandro.mtoconfiguration.model.audit.EntityRevisionDTO;
 import com.alejandro.mtoconfiguration.model.commons.LovDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.lov.commons.LovRepository;
+import com.alejandro.mtoconfiguration.service.audit.AuditService;
 import jakarta.persistence.EntityNotFoundException;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.core.GenericTypeResolver;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.ClassUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +28,7 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
     protected final LovRepository<E> repository;
     protected final LovMapper<D, E> mapper;
     protected final ApplicationEventPublisher applicationEventPublisher;
+    private AuditService auditService;
 
     protected AbstractLovCrudService(
             LovRepository<E> repository,
@@ -261,6 +269,48 @@ public class AbstractLovCrudService<D extends LovDTO, E extends Lov> implements 
 
     protected String getEntityName() {
         return "Lov";
+    }
+
+    /**
+     * Por setter y no por el constructor, que cada catalogo concreto redeclara con sus tres
+     * colaboradores: el historial es una lectura comun a todos y ninguno tiene que saber de ella.
+     */
+    @Autowired
+    public void setAuditService(AuditService auditService) {
+        this.auditService = auditService;
+    }
+
+    /**
+     * El historial de una entrada del catalogo, la revision mas reciente primero. Sin cache: se
+     * consulta poco y cada escritura lo cambia.
+     *
+     * <p>El borrado de un catalogo es fisico, asi que su ultima revision es un {@code DELETED} de
+     * Envers, y esa revision solo guarda el id: la entrada sale en ella sin sus datos, que son los
+     * de la revision anterior. Las tres entradas de {@code profile_status} las sembro {@code V12} con
+     * SQL y no tienen revision de alta: sin historial, 404.
+     */
+    @Override
+    public Page<EntityRevisionDTO<D>> findRevisions(Long id, Pageable pageable) {
+        return auditService.getEntityRevisions(entityClass(), id, pageable, entity -> {
+            D dto = mapper.toDTO(entity);
+            // Envers no guarda el campo del bloqueo optimista: la entidad de una revision trae el
+            // valor con el que nace, no el de entonces.
+            dto.setVersionNumber(null);
+            return dto;
+        });
+    }
+
+    /** La entidad del catalogo: el segundo parametro de tipo con el que lo declara su servicio. */
+    @SuppressWarnings("unchecked")
+    private Class<E> entityClass() {
+        Class<?>[] arguments = GenericTypeResolver.resolveTypeArguments(
+                ClassUtils.getUserClass(this), AbstractLovCrudService.class);
+
+        if (arguments == null || arguments.length < 2) {
+            throw new IllegalStateException(getClass().getSimpleName() + " no declara la entidad de su catalogo");
+        }
+
+        return (Class<E>) arguments[1];
     }
 
     private void publishLovCacheEvictionEvent() {

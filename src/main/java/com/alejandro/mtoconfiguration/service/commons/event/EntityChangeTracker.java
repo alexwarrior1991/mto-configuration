@@ -159,6 +159,19 @@ public final class EntityChangeTracker {
         return state.published.contains(key) || state.drained.contains(key) || state.changes.containsKey(key);
     }
 
+    /**
+     * Todo lo que el flush ha escrito hasta ahora en esta escritura y aun no se ha entregado para
+     * publicar, <b>con la raiz</b>, en el orden en que Hibernate lo escribio, y sin olvidarlo. Es lo
+     * que mira {@code WrittenEntitiesCheck} justo despues del flush, antes de publicar nada: una fila
+     * que el flush no toco no esta aqui, y una regla que solo depende de sus columnas no tiene que
+     * volver a mirarla. Vacio sin ambito.
+     */
+    public static List<Change> written() {
+        State state = CURRENT.get();
+
+        return state == null ? List.of() : List.copyOf(state.changes.values());
+    }
+
     /** La raiz de una escritura, cuyo evento publica el servicio por su cuenta. */
     public static void markPublished(IEntity entity) {
         State state = CURRENT.get();

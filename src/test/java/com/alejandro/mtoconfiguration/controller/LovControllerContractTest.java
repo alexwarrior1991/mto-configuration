@@ -1,5 +1,13 @@
 package com.alejandro.mtoconfiguration.controller;
 
+import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
+import com.alejandro.mtoconfiguration.model.audit.EntityRevisionDTO;
+import com.alejandro.mtoconfiguration.model.audit.RevisionMetadataDTO;
+import com.alejandro.mtoconfiguration.model.audit.RevisionOperation;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import java.time.Instant;
 import com.alejandro.mtoconfiguration.configuration.security.KeycloakJwtAuthenticationConverter;
 import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.controller.synchronous.lov.ProfileStatusController;
@@ -274,5 +282,38 @@ class LovControllerContractTest {
                 .when(service).delete(99L);
 
         mockMvc.perform(delete(LOV + "/99")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("el historial de una entrada es GET /{id}/revisions, paginado y con cada revision como {revision, entity}")
+    void historial() throws Exception {
+        when(service.findRevisions(eq(3L), any(Pageable.class))).thenReturn(new PageImpl<>(
+                List.of(new EntityRevisionDTO<>(
+                        new RevisionMetadataDTO(12L, Instant.parse("2026-07-16T09:50:00Z"), RevisionOperation.UPDATED,
+                                "config.responsable", "HTTP", null, null, "PUT",
+                                "/api/v1/configuration/profile-statuses/3"),
+                        lov(3L, "DEFINITIVE"))),
+                PageRequest.of(0, 20), 1));
+
+        mockMvc.perform(get(LOV + "/3/revisions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page.totalElements").value(1))
+                .andExpect(jsonPath("$.page.size").value(20))
+                .andExpect(jsonPath("$.content[0].revision.revision").value(12))
+                .andExpect(jsonPath("$.content[0].revision.revisionAt").value("2026-07-16T09:50:00Z"))
+                .andExpect(jsonPath("$.content[0].revision.operation").value("UPDATED"))
+                .andExpect(jsonPath("$.content[0].revision.author").value("config.responsable"))
+                .andExpect(jsonPath("$.content[0].entity.code").value("DEFINITIVE"));
+    }
+
+    @Test
+    @DisplayName("una entrada sin historial sale como 404 NOT-001")
+    void historialNoEncontrado() throws Exception {
+        when(service.findRevisions(eq(99L), any(Pageable.class)))
+                .thenThrow(new NotFoundException("ProfileStatus revision history not found with id 99"));
+
+        mockMvc.perform(get(LOV + "/99/revisions"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT-001"));
     }
 }

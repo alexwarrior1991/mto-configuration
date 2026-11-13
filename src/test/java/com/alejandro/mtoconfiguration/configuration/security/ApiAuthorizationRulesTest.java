@@ -9,6 +9,7 @@ import com.alejandro.mtoconfiguration.controller.synchronous.lov.commons.Abstrac
 import com.alejandro.mtoconfiguration.entity.jobs.AsyncJob;
 import com.alejandro.mtoconfiguration.enums.jobs.JobStatus;
 import com.alejandro.mtoconfiguration.enums.jobs.JobType;
+import com.alejandro.mtoconfiguration.model.audit.EntityRevisionDTO;
 import com.alejandro.mtoconfiguration.model.commons.LovDTO;
 import com.alejandro.mtoconfiguration.service.infraestructure.jobs.LovImportJobResponseMapper;
 import com.alejandro.mtoconfiguration.service.infraestructure.jobs.LovImportJobService;
@@ -21,6 +22,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.authority.AuthorityUtils;
@@ -250,6 +253,77 @@ class ApiAuthorizationRulesTest {
                     .andExpect(status().isOk());
             mockMvc.perform(json(post(PROBES + "/filter")).with(con(SecurityRoles.CONFIG_READ)))
                     .andExpect(status().isOk());
+        }
+    }
+
+    /**
+     * El historial de una fila pide {@code config-audit} <b>y</b> {@code config-read}: enseña la
+     * fila en cada revisión, que es leer datos maestros, y además quién la cambió. Su regla va antes
+     * que la general de {@code GET}; sin ella bastaría {@code config-read}, y {@code config-audit}
+     * no serviría para nada.
+     */
+    @Nested
+    @DisplayName("historial de cambios")
+    class Historial {
+
+        private static final String REVISIONS = PROBES + "/1/revisions";
+        private static final String LOV_REVISIONS = LOVS + "/1/revisions";
+
+        @Test
+        @DisplayName("con config-read y config-audit se lee el historial de un maestro y el de un catálogo")
+        void leerYAuditarAbrenElHistorial() throws Exception {
+            mockMvc.perform(get(REVISIONS).with(con(SecurityRoles.CONFIG_READ, SecurityRoles.CONFIG_AUDIT)))
+                    .andExpect(status().isOk());
+            mockMvc.perform(get(LOV_REVISIONS).with(con(SecurityRoles.CONFIG_READ, SecurityRoles.CONFIG_AUDIT)))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("leer datos maestros no da derecho a ver quién los cambió")
+        void leerNoAbreElHistorial() throws Exception {
+            mockMvc.perform(get(REVISIONS).with(con(SecurityRoles.CONFIG_READ)))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get(LOV_REVISIONS).with(con(SecurityRoles.CONFIG_READ)))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("config-audit solo no basta: el historial enseña la fila, y eso es leer")
+        void auditarSinLeerNoAbreElHistorial() throws Exception {
+            mockMvc.perform(get(REVISIONS).with(con(SecurityRoles.CONFIG_AUDIT)))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get(LOV_REVISIONS).with(con(SecurityRoles.CONFIG_AUDIT)))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("config-audit no abre ninguna otra lectura")
+        void auditarNoDaDerechoALeer() throws Exception {
+            mockMvc.perform(get(PROBES + "/1").with(con(SecurityRoles.CONFIG_AUDIT)))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("ni escribir, ni borrar, ni mantener catálogos abren el historial")
+        void losDemasPermisosNoAbrenElHistorial() throws Exception {
+            mockMvc.perform(get(REVISIONS).with(con(SecurityRoles.CONFIG_READ, SecurityRoles.CONFIG_WRITE,
+                            SecurityRoles.CONFIG_DELETE, SecurityRoles.CONFIG_IMPORT, SecurityRoles.LOV_MANAGE)))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("HEAD sobre el historial pide lo mismo que GET")
+        void headPideLoMismo() throws Exception {
+            mockMvc.perform(head(REVISIONS).with(con(SecurityRoles.CONFIG_READ)))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(head(REVISIONS).with(con(SecurityRoles.CONFIG_READ, SecurityRoles.CONFIG_AUDIT)))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("sin token, 401")
+        void sinToken() throws Exception {
+            mockMvc.perform(get(REVISIONS)).andExpect(status().isUnauthorized());
         }
     }
 
@@ -515,6 +589,12 @@ class ApiAuthorizationRulesTest {
         String delete(@PathVariable Long id) {
             return "ok";
         }
+
+        /** Con la constante de la ruta real: es la que hereda cada maestro de {@code CRUDController}. */
+        @GetMapping(ConfigurationApiPaths.REVISIONS)
+        String revisions(@PathVariable Long id) {
+            return "ok";
+        }
     }
 
     @RestController
@@ -608,6 +688,11 @@ class ApiAuthorizationRulesTest {
             @Override
             public List<LovDTO> bulkUpdate(List<LovDTO> dtos) {
                 return dtos;
+            }
+
+            @Override
+            public Page<EntityRevisionDTO<LovDTO>> findRevisions(Long id, Pageable pageable) {
+                return Page.empty(pageable);
             }
         };
 

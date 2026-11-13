@@ -135,7 +135,7 @@ Contiene servicios de aplicación:
 - `service/commons`: servicios base reutilizables, incluyendo operaciones CRUD y variantes asíncronas.
 - `service/infraestructure`: servicios específicos de infraestructura.
 - `service/infraestructure/asynchronous`: servicios asíncronos del dominio.
-- `service/audit`: servicios relacionados con auditoría.
+- `service/audit`: `AuditService`, la lectura de las revisiones de Envers. Lo sirve `GET /{recurso}/{id}/revisions`, el historial de una fila, que pide `config-audit` (README_API.md §6).
 
 ### `utils`
 

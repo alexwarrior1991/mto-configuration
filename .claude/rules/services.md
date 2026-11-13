@@ -23,6 +23,14 @@ paths:
   servicio la envuelve. Los tests con una transacción alrededor no lo ven, porque la sesión sigue
   abierta al mapear: lo fijan `GetByIdOutsideTransactionIT` y `FilterOutsideTransactionIT`, que
   llaman al servicio sin ella.
+- El historial de una fila lo lee `AuditService` (el único que habla con el `AuditReader` de Envers)
+  y lo sirven `BaseService.findRevisions` y `AbstractLovCrudService.findRevisions`: paginado en la
+  consulta, la revisión más reciente primero, y con la entidad de cada revisión mapeada a su DTO
+  **dentro** de la transacción de la lectura (sus relaciones son perezosas). Un maestro sale con la
+  forma de su fila en las listas (`mapToSummaryDTOs`), no con la del detalle. El borrado lógico de
+  un maestro es para Envers una modificación, y se lee como `DELETED` (`RevisionOperation.of`).
+  Envers no audita el `@Version`: el `versionNumber` de una revisión va a `null`. Sin revisiones,
+  `NotFoundException`. Lo fija `EntityRevisionsIT`.
 - Cada escritura de la base publica dos eventos:
   - el de entidad (`publishEntityCreatedEvent`/`Updated`/`Deleted`), que
     `MasterDataEntityChangedEventListener`, un `@EventListener` síncrono, convierte en fila del outbox
@@ -41,6 +49,16 @@ paths:
   `trackingNestedChanges`, y lo que escriba después de `publishNestedChanges` no publica. Un hijo
   devuelto sin cambios no genera `UPDATE` y no publica. Lo fijan `EntityChangeTrackerTest`,
   `EntityListenerTest`, `BaseServiceTest` y `NestedChildEventsIT`.
+- Una regla que depende de **otras filas** y tiene que valer por todos los caminos (el alta, el lote
+  y el hijo que viaja dentro del `PUT` de su padre, que no pasa por el servicio del hijo) no va en un
+  validador, que solo ve un DTO: es un `WrittenEntitiesCheck`, un bean que `BaseService` llama
+  **justo después de cada flush** y antes de publicar nada, con lo que el flush ha escrito de verdad
+  (`EntityChangeTracker.written()`, con la raíz). Si lanza, la transacción se deshace y no sale
+  ningún evento. Hoy hay una: `DisconnectorNaturalKeyGuard`, el nombre del seccionador único en su
+  paquete, con la misma consulta con la que lo busca el importador
+  (`DisconnectorRepository.findByNameInPackage`); lanza un `BaseException` con `BUS-002`, que es un
+  409. Lo que cabe en un índice único va en un índice (ver `persistence.md`), no aquí. Lo fijan
+  `BaseServiceTest`, `EntityChangeTrackerTest`, `DisconnectorNaturalKeyGuardTest` y `NaturalKeyIT`.
 - El validador devuelve `List<Alert>` y nunca lanza; si hay alertas, `BaseService` lanza
   `ValidationException` (400 `VAL-000`, ver `controllers.md`). Los validadores de maestro extienden
   `NormalEntityValidator` y reparten el trabajo en `validateRequiredFields` (siempre),

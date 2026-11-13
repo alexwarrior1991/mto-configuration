@@ -2,6 +2,8 @@ package com.alejandro.mtoconfiguration.controller.synchronous.lov.commons;
 
 import com.alejandro.mtoconfiguration.configuration.security.SecurityRoles;
 import com.alejandro.mtoconfiguration.controller.commons.ApiConstants;
+import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
+import com.alejandro.mtoconfiguration.model.audit.EntityRevisionDTO;
 import com.alejandro.mtoconfiguration.model.commons.LovDTO;
 import com.alejandro.mtoconfiguration.service.lov.commons.LovCrudService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,6 +14,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -82,6 +87,31 @@ public abstract class AbstractLovController<D extends LovDTO> {
             @PathVariable String code
     ) {
         return ResponseEntity.ok(getService().findByCode(code));
+    }
+
+    /**
+     * El historial de una entrada del catálogo, la revisión más reciente primero. El permiso es de
+     * la ruta ({@link ConfigurationApiPaths#REVISIONS_PATTERN}): {@code config-audit} además de
+     * {@code config-read}. No pide {@code lov-manage}: es una lectura.
+     */
+    @GetMapping(ConfigurationApiPaths.REVISIONS)
+    @Operation(
+            summary = "Get the change history of a LOV record",
+            description = "Retrieves a page of the audited revisions of one LOV record, newest first: who changed "
+                    + "it, when, which operation (CREATED, UPDATED, DELETED) and the record as it was left. "
+                    + "Requires config-audit in addition to config-read. A record without revisions is a 404."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200),
+            @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404),
+            @ApiResponse(responseCode = ApiConstants.CODE_500, description = ApiConstants.DESC_500)
+    })
+    public ResponseEntity<Page<EntityRevisionDTO<D>>> revisions(
+            @Parameter(description = "LOV record identifier", required = true, example = "1")
+            @PathVariable Long id,
+            @PageableDefault(size = 20) Pageable pageable
+    ) {
+        return ResponseEntity.ok(getService().findRevisions(id, pageable));
     }
 
     @PostMapping

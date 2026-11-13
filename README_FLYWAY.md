@@ -705,7 +705,8 @@ src/main/resources/db/migration
 ├── V27__disconnector_connected_track.sql      La via que un seccionador pone en paralelo con la suya
 ├── V28__create_track_access_point.sql         track_access_point (+ _aud): el punto de acceso a la via, con su clave natural por via
 ├── V29__disconnector_several_per_profile.sql  Un poste admite varios seccionadores vivos: fuera el indice unico de V24, queda uno normal
-└── V30__steady_arm_cantilever_unique_except_deleted.sql  Una mensula, un brazo vivo: el unique de cantilever_id pasa a indice parcial
+├── V30__steady_arm_cantilever_unique_except_deleted.sql  Una mensula, un brazo vivo: el unique de cantilever_id pasa a indice parcial
+└── V31__section_insulator_natural_key.sql  El nombre de un aislador es unico en su estacion; si la base ya trae repetidos, falla diciendo cuales
 ```
 
 `V1` va **sin prefijo de schema** a proposito: el nombre real es configurable

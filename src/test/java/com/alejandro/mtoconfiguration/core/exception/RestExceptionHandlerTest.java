@@ -177,6 +177,16 @@ class RestExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("un valor repetido que detecta un servicio es el mismo 409 BUS-002 que el de un índice único, con su campo en el detalle")
+    void valorRepetidoDetectadoPorUnServicio() throws Exception {
+        mockMvc.perform(get("/probe/duplicate-name"))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value(ErrorCodes.DUPLICATED_RESOURCE))
+                .andExpect(jsonPath("$.detail").value("El valor del campo 'name' está repetido"));
+    }
+
+    @Test
     @DisplayName("ningún marcador de plantilla llega al cliente")
     void ningunMarcadorLlegaAlCliente() throws Exception {
         for (String path : List.of("/probe/validation", "/probe/business", "/probe/not-found",
@@ -242,6 +252,12 @@ class RestExceptionHandlerTest {
         String business() {
             throw new BaseException(Alert.ofDanger(
                     ErrorCodes.BUSINESS_RULE_VIOLATION, "El paquete ya está cerrado"));
+        }
+
+        /** Lo que lanza {@code DisconnectorNaturalKeyGuard}: la clave natural que no es un índice. */
+        @GetMapping("/probe/duplicate-name")
+        String duplicateName() {
+            throw new BaseException(Alert.ofDanger(ErrorCodes.DUPLICATED_RESOURCE, "name"));
         }
 
         @GetMapping("/probe/plain-base")

@@ -6,6 +6,9 @@ import org.springframework.boot.security.oauth2.server.resource.autoconfigure.OA
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.authorization.AuthorityAuthorizationManager;
+import org.springframework.security.authorization.AuthorizationManager;
+import org.springframework.security.authorization.AuthorizationManagers;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -19,6 +22,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.util.StringUtils;
 
 /**
@@ -77,6 +81,13 @@ public class SecurityConfiguration {
             // config-write, que es justo la distincion que BULK existe para mantener.
             API + "/master-data/republish"
     };
+
+    private static final String REVISIONS = ConfigurationApiPaths.REVISIONS_PATTERN;
+
+    private static final AuthorizationManager<RequestAuthorizationContext> READ_AND_AUDIT =
+            AuthorizationManagers.allOf(
+                    AuthorityAuthorizationManager.hasRole(SecurityRoles.CONFIG_READ),
+                    AuthorityAuthorizationManager.hasRole(SecurityRoles.CONFIG_AUDIT));
 
     private static final String[] API_DOCS = {
             "/v3/api-docs", "/v3/api-docs/**", "/v3/api-docs.yaml",
@@ -138,6 +149,12 @@ public class SecurityConfiguration {
                     // El orden importa: cada petición se resuelve con la primera regla que encaja,
                     // así que lo específico (consultas por POST, cargas masivas) va antes que la
                     // regla general del verbo.
+                    // El historial de una fila dice quien cambio que, y enseña la fila en cada
+                    // revision: pide config-audit ADEMAS de config-read, y por eso va antes que la
+                    // regla general de lectura, que se lo daria a cualquiera que lea. Los dos,
+                    // porque ningun permiso implica otro: config-audit solo no es leer datos.
+                    authorize.requestMatchers(HttpMethod.GET, REVISIONS).access(READ_AND_AUDIT);
+                    authorize.requestMatchers(HttpMethod.HEAD, REVISIONS).access(READ_AND_AUDIT);
                     authorize.requestMatchers(HttpMethod.GET, API + "/**").hasRole(SecurityRoles.CONFIG_READ);
                     // HEAD lo sirve el mismo handler que GET y revela si un recurso existe, así que
                     // no puede quedarse en el 'anyRequest().authenticated()' del final.

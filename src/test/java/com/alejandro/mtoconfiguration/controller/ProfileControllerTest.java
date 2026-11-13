@@ -11,6 +11,9 @@ import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.core.exception.web.ApiErrorConfiguration;
 import com.alejandro.mtoconfiguration.core.exception.web.ErrorCatalog;
 import com.alejandro.mtoconfiguration.core.exception.web.ProblemDetailFactory;
+import com.alejandro.mtoconfiguration.model.audit.EntityRevisionDTO;
+import com.alejandro.mtoconfiguration.model.audit.RevisionMetadataDTO;
+import com.alejandro.mtoconfiguration.model.audit.RevisionOperation;
 import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.ProfileFilter;
@@ -40,6 +43,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -289,6 +293,93 @@ class ProfileControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.content.length()").value(1))
                     .andExpect(jsonPath("$.page.totalElements").value(1));
+        }
+    }
+
+    /**
+     * El historial de una fila, que {@code ProfileController} hereda de {@code CRUDController} como
+     * los demas maestros. Aqui se fija lo que lee un cliente: la ruta, la pagina con la forma DTO y
+     * cada revision como {@code {revision: {...}, entity: {...}}}, que es la forma de
+     * {@code mto-stock} y {@code mto-maintenance} y la que lee el dialogo de historial de las dos
+     * aplicaciones web. El permiso ({@code config-audit}) se prueba en
+     * {@code ApiAuthorizationRulesTest}.
+     */
+    @Nested
+    @DisplayName("Historial de cambios")
+    class Historial {
+
+        private static EntityRevisionDTO<ProfileDTO> revision(long number, RevisionOperation operation, String method) {
+            return new EntityRevisionDTO<>(
+                    new RevisionMetadataDTO(number, Instant.parse("2026-07-16T09:50:00.123Z"), operation,
+                            "config.responsable", method == null ? "SYSTEM" : "HTTP",
+                            method == null ? null : "5f0c2c1e-0000-4000-8000-000000000001",
+                            method == null ? null : "0b9d6a51-0000-4000-8000-000000000002",
+                            method, method == null ? null : "/api/v1/configuration/profiles/7"),
+                    profile(7L));
+        }
+
+        @Test
+        @DisplayName("GET /{id}/revisions responde la pagina {content, page} con cada revision como {revision, entity}")
+        void formaDelHistorial() throws Exception {
+            when(profileService.findRevisions(eq(7L), any(Pageable.class))).thenReturn(new PageImpl<>(
+                    List.of(revision(42L, RevisionOperation.UPDATED, "PUT"),
+                            revision(40L, RevisionOperation.CREATED, null)),
+                    PageRequest.of(0, 20), 2));
+
+            mockMvc.perform(get(PROFILES + "/7/revisions"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.content.length()").value(2))
+                    .andExpect(jsonPath("$.page.size").value(20))
+                    .andExpect(jsonPath("$.page.number").value(0))
+                    .andExpect(jsonPath("$.page.totalElements").value(2))
+                    .andExpect(jsonPath("$.page.totalPages").value(1))
+                    .andExpect(jsonPath("$.content[0].revision.revision").value(42))
+                    .andExpect(jsonPath("$.content[0].revision.revisionAt").value("2026-07-16T09:50:00.123Z"))
+                    .andExpect(jsonPath("$.content[0].revision.operation").value("UPDATED"))
+                    .andExpect(jsonPath("$.content[0].revision.author").value("config.responsable"))
+                    .andExpect(jsonPath("$.content[0].revision.source").value("HTTP"))
+                    .andExpect(jsonPath("$.content[0].revision.correlationId")
+                            .value("5f0c2c1e-0000-4000-8000-000000000001"))
+                    .andExpect(jsonPath("$.content[0].revision.userId")
+                            .value("0b9d6a51-0000-4000-8000-000000000002"))
+                    .andExpect(jsonPath("$.content[0].revision.requestMethod").value("PUT"))
+                    .andExpect(jsonPath("$.content[0].revision.requestUri")
+                            .value("/api/v1/configuration/profiles/7"))
+                    .andExpect(jsonPath("$.content[0].revision.ipAddress").doesNotExist())
+                    .andExpect(jsonPath("$.content[0].revision.userAgent").doesNotExist())
+                    .andExpect(jsonPath("$.content[0].entity.id").value(7))
+                    .andExpect(jsonPath("$.content[0].entity.profileId").value("P-7"))
+                    .andExpect(jsonPath("$.content[1].revision.operation").value("CREATED"))
+                    .andExpect(jsonPath("$.content[1].revision.source").value("SYSTEM"));
+        }
+
+        @Test
+        @DisplayName("sin parametros pide la primera pagina de 20, y page y size llegan al servicio")
+        void paginacion() throws Exception {
+            when(profileService.findRevisions(any(), any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+
+            mockMvc.perform(get(PROFILES + "/7/revisions")).andExpect(status().isOk());
+            mockMvc.perform(get(PROFILES + "/7/revisions").param("page", "3").param("size", "5"))
+                    .andExpect(status().isOk());
+
+            org.mockito.ArgumentCaptor<Pageable> captor = org.mockito.ArgumentCaptor.forClass(Pageable.class);
+            verify(profileService, org.mockito.Mockito.times(2)).findRevisions(eq(7L), captor.capture());
+            assertThat(captor.getAllValues().get(0).getPageSize()).isEqualTo(20);
+            assertThat(captor.getAllValues().get(0).getPageNumber()).isZero();
+            assertThat(captor.getAllValues().get(1).getPageSize()).isEqualTo(5);
+            assertThat(captor.getAllValues().get(1).getPageNumber()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("una fila sin ninguna revision sale como 404 NOT-001, no como una pagina vacia")
+        void sinHistorial() throws Exception {
+            when(profileService.findRevisions(eq(99L), any(Pageable.class)))
+                    .thenThrow(new NotFoundException("Profile revision history not found with id 99"));
+
+            mockMvc.perform(get(PROFILES + "/99/revisions"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                    .andExpect(jsonPath("$.code").value(ErrorCodes.RESOURCE_NOT_FOUND));
         }
     }
 
