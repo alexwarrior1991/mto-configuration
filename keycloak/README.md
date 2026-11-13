@@ -50,6 +50,10 @@ La ventaja de separarlos: cambiar lo que puede hacer un perfil se hace aquí, si
 | `mto-admin` | los de editor + `config-delete`, `lov-manage`, `config-audit` | `notification-inbox`, `notification-activity-read` |
 | `mto-auditor` | `config-read`, `config-audit` | `notification-inbox`, `notification-activity-read`, `notification-access-read` |
 
+`config-audit` abre el historial de cambios de una fila (`GET /{recurso}/{id}/revisions`,
+README_API.md §6), y solo junto con `config-read`: ningún permiso implica otro. Por eso los dos
+perfiles que lo llevan llevan también la lectura.
+
 Los permisos de `mto-notification-api` van dentro de cada perfil porque la bandeja de
 notificaciones es de todo el dominio: quien tiene un perfil de este servicio ve sus avisos
 (`notification-inbox`), los responsables y los auditores leen además el registro de actividad, y

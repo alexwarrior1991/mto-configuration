@@ -30,6 +30,13 @@ paths:
   `DeleteController` responde 200, y cada maestro lo redeclara). Lanzar un trabajo responde **202** con
   `Location`, o **429** con `Retry-After` si no hay hueco. Lo fijan `ProfileControllerTest`,
   `LovControllerContractTest`, `ProfileJobControllerTest` y `LovImportJobControllerTest`.
+- El historial de una fila es `GET /{recurso}/{id}/revisions` (`ConfigurationApiPaths.REVISIONS`),
+  y no se escribe en cada controlador: lo sirven `CRUDController.revisions` y
+  `AbstractLovController.revisions`, y un maestro o un catálogo nuevo lo hereda. Devuelve una página
+  de `EntityRevisionDTO` (`{revision: {revision, revisionAt, operation, author, source,
+  correlationId, …}, entity}`, la forma de `mto-stock` y `mto-maintenance`), la más reciente primero;
+  sin ninguna revisión, 404 `NOT-001`, no una página vacía. Lo fijan `ProfileControllerTest`
+  («Historial de cambios»), `LovControllerContractTest` y, contra PostgreSQL, `EntityRevisionsIT`.
 - Una página sale como `{content, page: {size, number, totalElements, totalPages}}`
   (`spring.data.web.pageable.serialization-mode: via_dto`), la forma que lee el backoffice. Lo fija
   `ProfileControllerTest`.
@@ -62,9 +69,14 @@ paths:
   `CONFIG_IMPORT` (`BULK`); el resto de `POST`, `PUT` y `PATCH`, `CONFIG_WRITE`; `DELETE`,
   `CONFIG_DELETE`. Escribir o borrar un catálogo pide además `LOV_MANAGE`, e importarlo
   (`/lovs/jobs/import`) también: `CONFIG_IMPORT` por la ruta y `LOV_MANAGE` por el
-  `@PreAuthorize` del controlador. Ningún permiso implica otro. Lo fija `ApiAuthorizationRulesTest`,
+  `@PreAuthorize` del controlador. El historial de una fila (`…/{id}/revisions`) pide `CONFIG_AUDIT`
+  **y** `CONFIG_READ`: su regla (`ConfigurationApiPaths.REVISIONS_PATTERN`, `/*/*/revisions`) va antes
+  que la general de `GET`. Ningún permiso implica otro. Lo fija `ApiAuthorizationRulesTest`,
   con controladores sonda en las rutas reales y, para la importación del catálogo, el
   `LovImportJobController` real, porque una sonda llevaría su propia copia de la anotación.
+- La regla del historial cubre un recurso de **un** segmento tras el prefijo (`PathPattern` no admite
+  `/**` en medio): un controlador montado más hondo serviría su historial solo con `CONFIG_READ`. Lo
+  fija `RevisionsRouteGuardTest`, que recorre los controladores reales.
 - Una ruta nueva que consulta por `POST`, o que escribe en masa, va a `QUERY_BY_POST` o a `BULK`; si
   no, cae en la regla general de escritura. Lleva su caso en `ApiAuthorizationRulesTest`.
 - Los permisos son roles del cliente de la API; los roles de realm solo llegan como `ROLE_REALM_*`, de

@@ -34,7 +34,11 @@ public final class SecurityRoles {
     /** Mantenimiento de listas de valores: cambian el vocabulario de todo el dominio. */
     public static final String LOV_MANAGE = "LOV_MANAGE";
 
-    /** Consulta del histórico de revisiones de Envers. */
+    /**
+     * Consulta del histórico de revisiones de Envers: {@code GET /{recurso}/{id}/revisions}. Se pide
+     * <b>junto con</b> {@link #CONFIG_READ}, no en su lugar: el historial enseña la fila en cada
+     * revisión, que es leer, y además quién la cambió, que es lo que este permiso añade.
+     */
     public static final String CONFIG_AUDIT = "CONFIG_AUDIT";
 
     /** Lectura de los endpoints de operación expuestos por Actuator. */

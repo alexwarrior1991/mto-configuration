@@ -23,6 +23,7 @@ Ruta base: `/api/v1/configuration` — en los ejemplos aparece como `$BASE`.
 | `POST $BASE/{recurso}/search` | `200` | página de Spring Data |
 | `POST $BASE/{recurso}/filter` | `200` | página de Spring Data |
 | `GET $BASE/tracks/{id}/schematic` | `200` | el esquema de la vía, cacheado (§6) |
+| `GET $BASE/{recurso}/{id}/revisions` | `200` | el historial de cambios de la fila, paginado (§6); pide además `config-audit` |
 
 Recursos de infraestructura: `cantilevers`, `disconnectors`, `execution-packages`, `profiles`,
 `section-insulators`, `stations`, `steady-arms`, `track-access-points` (§4 quinquies), `tracks`.
@@ -812,6 +813,72 @@ acceso, también por los importadores) y cualquier cambio de catálogo vacían e
 confirmar la transacción, porque el evento de invalidación solo dice qué servicio escribió, no
 qué vía. Es la única lectura de infraestructura que se cachea con sus hijos (`README.md`, Redis).
 
+### El historial de una fila
+
+`GET $BASE/{recurso}/{id}/revisions` devuelve quién cambió una fila, cuándo y cómo quedó: sus
+revisiones de auditoría (Envers), **la más reciente primero**. Lo tienen los nueve recursos de
+infraestructura (§1) y los diecisiete catálogos (§5), con la misma ruta y la misma respuesta.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" "$BASE/disconnectors/1533/revisions?page=0&size=20"
+```
+
+```jsonc
+{
+  "content": [
+    {
+      "revision": {
+        "revision": 4217,                          // número de revisión: crece, y lo comparte todo lo escrito en la misma transacción
+        "revisionAt": "2026-11-13T07:29:37.512Z",  // instante, en UTC
+        "operation": "UPDATED",                    // CREATED, UPDATED o DELETED
+        "author": "config.responsable",            // usuario del token; "system" si no había
+        "source": "HTTP",                          // HTTP: una petición; SYSTEM: un trabajo en segundo plano o una importación
+        "correlationId": "5f0c2c1e-…",             // el X-Correlation-Id de esa petición, si lo traía
+        "userId": "0b9d6a51-…",                    // el sub del token
+        "requestMethod": "PUT",
+        "requestUri": "/api/v1/configuration/disconnectors/1533"
+      },
+      "entity": {                                  // la fila tal como quedó en esa revisión
+        "id": 1533, "name": "S-12", "onLoad": false, "stationId": 12, "profileId": 8841,
+        "profileCode": "110-1D.36", "profileKp": "110176.000",
+        "disconnectorFunction": { "id": 3, "code": "Disc" },
+        "createUser": "config.responsable", "createDate": "2026-11-02T08:01:11.2",
+        "versionUser": "config.responsable", "versionDate": "2026-11-13T07:29:37.5",
+        "versionNumber": null
+      }
+    }
+  ],
+  "page": { "size": 20, "number": 0, "totalElements": 2, "totalPages": 1 }
+}
+```
+
+- **Permiso**: `config-audit` **y** `config-read`, los dos (los perfiles `mto-auditor` y
+  `mto-admin`). Con `config-read` solo, 403: leer el dato no da derecho a ver quién lo cambió. Con
+  `config-audit` solo, también: el historial enseña la fila, y eso es leer.
+- **Paginación**: `page` y `size` (20 por defecto), con la forma de página de siempre. `sort` no se
+  mira: el orden es el del historial. Una página más allá del final va vacía.
+- **Una fila sin ninguna revisión es un `404 NOT-001`**, no una página vacía: el id no ha existido
+  nunca, o la fila se sembró con SQL en una migración (las tres de `profile-statuses`), que la
+  auditoría no ve. Toda fila escrita por la API, por un trabajo o por
+  un importador tiene al menos la revisión de su alta.
+- **`operation`**: el borrado de un maestro es lógico, así que su última revisión es `DELETED` con
+  la fila entera, como estaba al borrarla. El de un catálogo es físico: su revisión `DELETED` solo
+  guarda el `id`, y lo demás de `entity` va a `null` (está en la revisión anterior).
+- **`entity` es la fila de una lista**, no el detalle: en `execution-packages`, `stations` y
+  `tracks` va sin sus colecciones de hijos, como en `/paged` (§1). Cada hijo tiene su propio
+  historial (`profiles`, `cantilevers`, `steady-arms`...). Un perfil sí lleva las ménsulas y un
+  aislador las agujas **que tenía en esa revisión**.
+- **Lo que no es de entonces**: las referencias a otras filas (la estación, la vía, el poste de un
+  seccionador, una entrada de catálogo) guardan en cada revisión **a cuál** apuntaba, pero sus datos
+  (`profileCode`, `profileKp`, el `code` de un catálogo) se leen como están hoy. Y `versionNumber` va
+  siempre a `null`: la auditoría no guarda el contador del bloqueo optimista. La `entity` de una
+  revisión no es un cuerpo para un `PUT`.
+- La IP y el agente de usuario de quien escribió se guardan, pero no salen por la API.
+
+La forma `{revision: {…}, entity: {…}}` y las claves `revision`, `revisionAt`, `operation`, `author`,
+`source` y `correlationId` son las de `GET /{recurso}/{id}/revisions` en `mto-stock` y
+`mto-maintenance`; `userId`, `requestMethod` y `requestUri` son de este servicio.
+
 ---
 
 ## 7. Fachada asíncrona
@@ -915,7 +982,7 @@ validación no, hasta que cambies el cuerpo.
 | HTTP | `code` | Cuándo |
 |---|---|---|
 | `400` | `VAL-000` | validación fallida, o cuerpo mal formado |
-| `401` / `403` | — | sin token, o sin el rol necesario |
+| `401` / `403` | — | sin token, o sin el rol necesario (el historial de una fila pide `config-audit` además de `config-read`, §6) |
 | `404` | `NOT-001` | el recurso no existe: al leerlo, al modificarlo o al borrarlo |
 | `400` | `VAL-000` con `BUS-001` en `errors[]` | una referencia que no existe: una vía, una estación, o una entrada de catálogo informada por `code` o por `id` (§3) |
 | `409` | `CON-001` | conflicto de concurrencia: el `versionNumber` que mandas no es el guardado |

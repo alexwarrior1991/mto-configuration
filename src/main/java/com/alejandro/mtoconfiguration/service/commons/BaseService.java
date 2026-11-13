@@ -10,9 +10,11 @@ import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.commons.IEntity;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
+import com.alejandro.mtoconfiguration.model.audit.EntityRevisionDTO;
 import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
 import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.CriteriaSearchRepository;
+import com.alejandro.mtoconfiguration.service.audit.AuditService;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeApplicationEvent;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeOperation;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeTracker;
@@ -32,6 +34,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -58,6 +61,9 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
 
     @Autowired
     private RedisCacheKeyGenerator cacheKeyGenerator;
+
+    @Autowired
+    private AuditService auditService;
 
     // Abstract methods to be implemented in concrete subclasses
     protected abstract BaseMapper<T, E> getMapper();
@@ -464,6 +470,32 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
                     return dto;
                 })
                 .orElseThrow(() -> new BaseException("El ID proporcionado no puede ser nulo"));
+    }
+
+    /**
+     * El historial de cambios de una fila ({@code GET /{recurso}/{id}/revisions}): una pagina de sus
+     * revisiones de Envers, la mas reciente primero, cada una con quien, cuando, que operacion y la
+     * fila tal como quedo.
+     *
+     * <p>La fila sale con la forma de su fila en las listas ({@code mapToSummaryDTOs}), no con la
+     * del detalle: el historial de una via es el de <b>su</b> fila, y traer con cada revision sus
+     * miles de perfiles de entonces no lo es. Los hijos tienen su propio historial.
+     *
+     * <p>No se cachea: se consulta poco y cada escritura lo cambia. Un id sin historial es un 404
+     * ({@code AuditService.getEntityRevisions}). La fila de una revision va sin {@code versionNumber}:
+     * no es un cuerpo para un {@code PUT}.
+     */
+    @SuppressWarnings("unchecked")
+    public Page<EntityRevisionDTO<T>> findRevisions(Long id, Pageable pageable) throws BaseException {
+        Class<E> entityClass = (Class<E>) getEntity().getClass();
+
+        return auditService.getEntityRevisions(entityClass, id, pageable, entity -> {
+            T dto = getMapper().mapToSummaryDTOs(new PageImpl<>(List.of(entity))).getContent().getFirst();
+            // Envers no guarda el campo del bloqueo optimista, y la entidad de una revision trae
+            // el valor con el que nace (1): mejor ninguno que uno que no es el de entonces.
+            dto.setVersionNumber(null);
+            return dto;
+        });
     }
 
     private void validateBeforeCreate(T dto) {

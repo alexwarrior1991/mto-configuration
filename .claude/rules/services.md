@@ -23,6 +23,14 @@ paths:
   servicio la envuelve. Los tests con una transacción alrededor no lo ven, porque la sesión sigue
   abierta al mapear: lo fijan `GetByIdOutsideTransactionIT` y `FilterOutsideTransactionIT`, que
   llaman al servicio sin ella.
+- El historial de una fila lo lee `AuditService` (el único que habla con el `AuditReader` de Envers)
+  y lo sirven `BaseService.findRevisions` y `AbstractLovCrudService.findRevisions`: paginado en la
+  consulta, la revisión más reciente primero, y con la entidad de cada revisión mapeada a su DTO
+  **dentro** de la transacción de la lectura (sus relaciones son perezosas). Un maestro sale con la
+  forma de su fila en las listas (`mapToSummaryDTOs`), no con la del detalle. El borrado lógico de
+  un maestro es para Envers una modificación, y se lee como `DELETED` (`RevisionOperation.of`).
+  Envers no audita el `@Version`: el `versionNumber` de una revisión va a `null`. Sin revisiones,
+  `NotFoundException`. Lo fija `EntityRevisionsIT`.
 - Cada escritura de la base publica dos eventos:
   - el de entidad (`publishEntityCreatedEvent`/`Updated`/`Deleted`), que
     `MasterDataEntityChangedEventListener`, un `@EventListener` síncrono, convierte en fila del outbox
