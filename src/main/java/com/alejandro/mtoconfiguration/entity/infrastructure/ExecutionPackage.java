@@ -93,7 +93,6 @@ public class ExecutionPackage extends CRUDEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "COMPANY_ID")
-    @Audited(targetAuditMode = NOT_AUDITED)
     public BusinessEntity getCompany() {
         return company;
     }

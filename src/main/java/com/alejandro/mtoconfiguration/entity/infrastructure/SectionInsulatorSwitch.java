@@ -20,7 +20,6 @@ import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureCons
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.KP_INTEGER_DIGITS;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.SWITCH_CODE_MAX_LENGTH;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.TURNOUT_DENOMINATOR_MAX;
-import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
 /**
  * Aguja por la que un aislador de sección conecta con una vía.
@@ -110,14 +109,12 @@ public class SectionInsulatorSwitch extends CRUDEntity {
     /** Vía a la que llega esta conexión del aislador. Anulable: no siempre se conoce. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "TRACK_ID", nullable = true)
-    @Audited(targetAuditMode = NOT_AUDITED)
     public Track getTrack() {
         return track;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "SECTION_INSULATOR_ID", nullable = false)
-    @Audited(targetAuditMode = NOT_AUDITED)
     public SectionInsulator getSectionInsulator() {
         return sectionInsulator;
     }

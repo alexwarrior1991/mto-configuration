@@ -28,7 +28,6 @@ import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureCons
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.NAME_MAX_LENGTH;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.TONNES_FRACTION_DIGITS;
 import static com.alejandro.mtoconfiguration.core.constraints.InfrastructureConstraints.TONNES_INTEGER_DIGITS;
-import static org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED;
 
 /**
  * Punto de acceso a la vía: por donde un vehículo bivial sale de la carretera y se encarrila (V28).
@@ -87,7 +86,6 @@ public class TrackAccessPoint extends CRUDEntity {
     /** La vía a la que da acceso. Obligatoria: un acceso que no lleva a ninguna vía no es un acceso. */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "TRACK_ID", nullable = false)
-    @Audited(targetAuditMode = NOT_AUDITED)
     public Track getTrack() {
         return track;
     }
@@ -95,7 +93,6 @@ public class TrackAccessPoint extends CRUDEntity {
     /** Estación en la que está, si está en una. Opcional: muchos accesos están en plena vía. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "STATION_ID", nullable = true)
-    @Audited(targetAuditMode = NOT_AUDITED)
     public Station getStation() {
         return station;
     }

@@ -132,7 +132,6 @@ public class Cantilever extends CRUDEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "PROFILE_ID", nullable = false)
-    @Audited(targetAuditMode = NOT_AUDITED)
     public Profile getProfile() {
         return profile;
     }

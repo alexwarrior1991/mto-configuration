@@ -12,7 +12,7 @@ import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisStringCommands;
-import org.springframework.data.redis.connection.RedisStringCommands.SetOption;
+import org.springframework.data.redis.connection.SetCondition;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.types.Expiration;
 
@@ -57,7 +57,9 @@ class RedisCacheConfigTest {
 
         cache.put("clave", "valor");
 
-        verify(stringCommands).set(any(byte[].class), any(byte[].class), any(Expiration.class), any(SetOption.class));
+        // Spring Data Redis 4.1 escribe con set(clave, valor, SetCondition, Expiration); la variante
+        // con SetOption quedó como método por defecto que delega en esta.
+        verify(stringCommands).set(any(byte[].class), any(byte[].class), any(SetCondition.class), any(Expiration.class));
         verify(connectionFactory, never()).getReactiveConnection();
     }
 
