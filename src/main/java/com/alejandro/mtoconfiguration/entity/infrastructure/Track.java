@@ -62,7 +62,6 @@ public class Track extends CRUDEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "EXECUTION_PACKAGE_ID")
-    @Audited(targetAuditMode = NOT_AUDITED)
     public ExecutionPackage getExecutionPackage() {
         return executionPackage;
     }

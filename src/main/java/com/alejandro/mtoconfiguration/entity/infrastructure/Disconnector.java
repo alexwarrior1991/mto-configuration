@@ -99,7 +99,6 @@ public class Disconnector extends CRUDEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "STATION_ID", nullable = true) // nullable = true permite que sea opcional
-    @Audited(targetAuditMode = NOT_AUDITED)
     public Station getStation() {
         return station;
     }
@@ -117,7 +116,6 @@ public class Disconnector extends CRUDEntity {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "PROFILE_ID", nullable = true)
-    @Audited(targetAuditMode = NOT_AUDITED)
     public Profile getProfile() {
         return profile;
     }
@@ -144,7 +142,6 @@ public class Disconnector extends CRUDEntity {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "TRACK_ID", nullable = true)
-    @Audited(targetAuditMode = NOT_AUDITED)
     public Track getTrack() {
         return track;
     }
@@ -156,7 +153,6 @@ public class Disconnector extends CRUDEntity {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "CONNECTED_TRACK_ID", nullable = true)
-    @Audited(targetAuditMode = NOT_AUDITED)
     public Track getConnectedTrack() {
         return connectedTrack;
     }

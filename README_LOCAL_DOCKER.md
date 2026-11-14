@@ -166,7 +166,7 @@ Debe usarse en:
 - `mto-configuration` dockerizado.
 - Futuro `mto-gateway`.
 - Futuro `mto-production`.
-- Frontend Angular si obtiene tokens desde Keycloak.
+- `mto-frontend` (SPA en React) y `mto-backoffice` (Vaadin), que obtienen sus tokens de Keycloak.
 
 No conviene mezclar estos valores:
 

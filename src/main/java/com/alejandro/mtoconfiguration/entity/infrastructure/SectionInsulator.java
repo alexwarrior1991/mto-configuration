@@ -72,7 +72,6 @@ public class SectionInsulator extends CRUDEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "STATION_ID", nullable = true) // nullable = true permite que sea opcional
-    @Audited(targetAuditMode = NOT_AUDITED)
     public Station getStation() {
         return station;
     }
@@ -115,7 +114,6 @@ public class SectionInsulator extends CRUDEntity {
     /** Vía principal del aislador. En un {@code IN_TRACK} es la única. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "TRACK_ID", nullable = true)
-    @Audited(targetAuditMode = NOT_AUDITED)
     public Track getTrack() {
         return track;
     }
@@ -123,7 +121,6 @@ public class SectionInsulator extends CRUDEntity {
     /** Vía con la que conecta. Nula en un {@code IN_TRACK}, que no conecta con ninguna. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "CONNECTED_TRACK_ID", nullable = true)
-    @Audited(targetAuditMode = NOT_AUDITED)
     public Track getConnectedTrack() {
         return connectedTrack;
     }

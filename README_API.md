@@ -885,8 +885,9 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/disconnectors/1533/revisions?page=
   historial (`profiles`, `cantilevers`, `steady-arms`...). Un perfil sí lleva las ménsulas y un
   aislador las agujas **que tenía en esa revisión**.
 - **Lo que no es de entonces**: las referencias a otras filas (la estación, la vía, el poste de un
-  seccionador, una entrada de catálogo) guardan en cada revisión **a cuál** apuntaba, pero sus datos
-  (`profileCode`, `profileKp`, el `code` de un catálogo) se leen como están hoy. Y `versionNumber` va
+  seccionador, una entrada de catálogo) guardan en cada revisión **a cuál** apuntaba. Los datos de
+  una entrada de catálogo (su `code`) se leen como están hoy; los de otro maestro (`profileCode`,
+  `profileKp`) se leen de la auditoría de ese maestro, también si después se borró. Y `versionNumber` va
   siempre a `null`: la auditoría no guarda el contador del bloqueo optimista. La `entity` de una
   revisión no es un cuerpo para un `PUT`.
 - La IP y el agente de usuario de quien escribió se guardan, pero no salen por la API.

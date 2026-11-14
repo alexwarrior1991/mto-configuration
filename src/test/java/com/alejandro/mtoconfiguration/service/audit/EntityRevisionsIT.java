@@ -293,7 +293,7 @@ class EntityRevisionsIT {
     }
 
     @Test
-    @DisplayName("un seccionador en un poste sale con su poste y su función, que no están auditados como relación: se leen como están hoy")
+    @DisplayName("un seccionador en un poste sale con su poste, leído de la auditoría del poste, y con su función, que no está auditada como relación: se lee como está hoy")
     void seccionadorConSuPoste() {
         DisconnectorFunctionDTO function = new DisconnectorFunctionDTO();
         function.setCode(FUNCTION_CODE);
@@ -339,7 +339,7 @@ class EntityRevisionsIT {
         assertThat(revisiones.getFirst().entity()).isNotNull();
         assertThat(revisiones.getFirst().entity().getProfileId()).isEqualTo(PROFILE);
         assertThat(revisiones.getFirst().entity().getProfileCode())
-                .as("el poste es una relación sin auditar: se lee como está hoy, también borrado")
+                .as("el poste se lee de su auditoría (profile_aud), que lo conserva también borrado")
                 .isEqualTo("IT-REV-P1");
     }
 

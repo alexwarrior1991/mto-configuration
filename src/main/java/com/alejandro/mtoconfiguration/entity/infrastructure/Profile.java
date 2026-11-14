@@ -348,7 +348,6 @@ public class Profile extends CRUDEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "TRACK_ID")
-    @Audited(targetAuditMode = NOT_AUDITED)
     public Track getTrack() {
         return track;
     }

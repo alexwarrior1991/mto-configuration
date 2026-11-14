@@ -16,7 +16,8 @@ import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilte
 import org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration;
 import org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration;
 import org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration;
-import org.springframework.boot.security.oauth2.server.resource.autoconfigure.servlet.OAuth2ResourceServerAutoConfiguration;
+import org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration;
+import org.springframework.boot.security.oauth2.server.resource.autoconfigure.web.OAuth2ResourceServerWebSecurityAutoConfiguration;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
@@ -46,6 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                 ServletWebSecurityAutoConfiguration.class,
                 SecurityFilterAutoConfiguration.class,
                 OAuth2ResourceServerAutoConfiguration.class,
+                OAuth2ResourceServerWebSecurityAutoConfiguration.class,
                 // El cliente OAuth2 (llamadas salientes a otros servicios) trae su propia cadena de
                 // filtros bajo @ConditionalOnDefaultWebSecurity. En la aplicación cede ante la
                 // nuestra, pero este slice excluye la seguridad a propósito y ahí sí se activaría,

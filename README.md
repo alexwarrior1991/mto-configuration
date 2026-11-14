@@ -18,12 +18,12 @@ Actualmente la aplicación contiene una base funcional para exponer y gestionar 
 - Manejo centralizado de excepciones y respuestas de error.
 - Integración con Redis para caché.
 - Configuración de RabbitMQ para publicar/consumir eventos de datos maestros.
-- Integración con Keycloak/OAuth2 mediante Spring Security, Resource Server y clientes Feign para tokens.
+- Integración con Keycloak/OAuth2 mediante Spring Security y Resource Server; el token de la cuenta de servicio para las llamadas salientes lo pide el cliente OAuth2 de Spring Security (`client_credentials`) y lo pone un interceptor de Feign.
 
 ## Tecnologías principales
 
 - Java 25.
-- Spring Boot 4.0.1.
+- Spring Boot 4.1.1.
 - Spring MVC para API REST.
 - Spring Data JPA con PostgreSQL.
 - Spring Security y OAuth2 Resource Server para validación JWT.
@@ -125,8 +125,7 @@ Agrupa acceso a datos e integraciones externas:
 - `repository/jpa/commons`: repositorios base y búsqueda por criterios.
 - `repository/jpa/infrastructure`: repositorios de infraestructura.
 - `repository/jpa/lov`: repositorios de catálogos.
-- `repository/feign`: clientes Feign y configuración para integraciones HTTP.
-- `repository/feign/token`: clientes y modelos relacionados con obtención de tokens.
+- `repository/feign`: hoy solo `config`, la configuración de OpenFeign para integraciones HTTP (`FeignSecurityConfiguration` y `ServiceAccountTokenInterceptor`, que pone el token de la cuenta de servicio en cada llamada saliente). Todavía no hay ninguna interfaz `@FeignClient`.
 
 ### `service`
 
@@ -242,7 +241,7 @@ La aplicación usa Spring Data JPA y PostgreSQL. En `application.yaml` se define
 
 ### Seguridad
 
-El proyecto incluye Spring Security y OAuth2 Resource Server para validar tokens JWT. También contiene clientes Feign orientados a obtener tokens desde Keycloak.
+El proyecto incluye Spring Security y OAuth2 Resource Server para validar tokens JWT. Para las llamadas salientes, el token de la cuenta de servicio lo obtiene el cliente OAuth2 de Spring Security (`client_credentials`, registro `mto-services`) y `ServiceAccountTokenInterceptor` lo añade a cada petición de Feign; no hay clientes Feign que pidan tokens a Keycloak.
 
 No tiene CORS propio: todo navegador llega por `mto-gateway`, que resuelve el CORS y quita `Origin` antes de llamar a este servicio. Aquí no hay `.cors()` ni `OPTIONS` abierto, así que un *preflight* que llegara directamente pide token como cualquier otra petición (`ApiAuthorizationRulesTest`).
 
@@ -321,7 +320,7 @@ Para ejecutar la aplicación localmente, según la configuración actual, se esp
 - PostgreSQL para persistencia.
 - Redis en `localhost:6379`.
 - RabbitMQ en `localhost:5672` con usuario `guest` y contraseña `guest`.
-- Keycloak u otro proveedor compatible con OAuth2/JWT si se prueban flujos protegidos o clientes Feign de token.
+- Keycloak u otro proveedor compatible con OAuth2/JWT si se prueban flujos protegidos o llamadas salientes con la cuenta de servicio.
 
 ## Notas actuales
 

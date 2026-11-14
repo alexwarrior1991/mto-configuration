@@ -8,7 +8,7 @@
 ⚠️ La infraestructura local (PostgreSQL, Redis, RabbitMQ, Keycloak, colector OTLP) la levanta `mto-platform`, otro repo hermano. `compose.yaml` de aquí trae **solo la aplicación**. Un único broker compartido: mientras cada repo levantaba el suyo, los eventos de datos maestros no llegaban a `mto-stock` y no fallaba nada.
 
 ## Stack
-Java 25, Spring Boot 4.0.1, Maven **single-module** (sin `<modules>` en `pom.xml`). Detalle completo de dependencias en `README.md`.
+Java 25, Spring Boot 4.1.1, Maven **single-module** (sin `<modules>` en `pom.xml`). Detalle completo de dependencias en `README.md`.
 
 ## Estructura de paquetes (`src/main/java/com/alejandro/mtoconfiguration`)
 | Paquete | Subpaquetes |

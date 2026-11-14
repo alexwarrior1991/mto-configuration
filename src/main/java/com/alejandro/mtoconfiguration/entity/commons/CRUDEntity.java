@@ -31,6 +31,15 @@ import java.util.List;
  * manda, y la reconciliacion lo trataria como recien quitado: lo borraria otra vez, con su rama, y
  * publicaria un segundo {@code DELETED} en la siguiente modificacion del padre (ver
  * {@link #deleteCascade()}).
+ *
+ * <p><b>Una relacion a uno hacia otra entidad con borrado logico no lleva
+ * {@code @Audited(targetAuditMode = NOT_AUDITED)}.</b> Con el, Envers (desde Hibernate 7.4, que
+ * empezo a respetarlo al inicializar el proxy de una revision) lee el destino de su tabla viva, por
+ * id y con esta restriccion: el destino borrado no aparece, la fila de la revision no se puede
+ * reconstruir y el historial la devuelve con {@code entity} a {@code null}. Sin el, lo lee de la
+ * tabla {@code _aud} del destino, que conserva tambien al borrado. Las relaciones a catalogos si lo
+ * llevan: su borrado es fisico y solo si nadie los usa. Lo fija
+ * {@code EntityRevisionsIT} («si el poste de entonces se borro despues...»).
  */
 @Setter
 @DynamicUpdate
