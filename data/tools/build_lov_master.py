@@ -59,6 +59,7 @@ from synoptic import (  # noqa: E402
     MULTI_FIELDS,
     SINGLE_LOV_FIELDS,
     describe,
+    declared_tracks,
     is_synoptic,
     lov_columns,
     synoptic_layout,
@@ -477,29 +478,24 @@ def read_track(ws, ep, cfg, cat: Catalogue):
             cat.add(entity, code, source="TRACK", ep=ep, track_uses=uses)
 
 
-def read_synoptic_catalog(ws, ep, declared, cfg, cat: Catalogue):
-    """Cosecha los codigos de una hoja sinoptico (RUBI), ya traducidos al catalogo.
+def read_synoptic_catalog(worksheets, ep, declared, cfg, cat: Catalogue):
+    """Cosecha los codigos de un workbook sinoptico (RUBI), ya traducidos al catalogo.
 
     El sinoptico no trae BOQ ni leyenda: todo lo que aporta llega como ORIGEN=TRACK y
     sale con ENABLED=NO hasta que alguien lo acepte en 'track_accepted', igual que un
     codigo que solo aparece en las hojas HR Track. La descripcion inglesa de los codigos
-    nuevos se declara en 'synoptic.descriptions', que hace aqui de leyenda.
+    nuevos se declara en 'synoptic.descriptions', que hace aqui de leyenda. Las vias y
+    sus apoyos son los de synoptic.declared_tracks, los mismos del maestro de perfiles.
+    Devuelve cuantas vias ha leido.
     """
     counts: dict[tuple[str, str], int] = collections.Counter()
-    blocks = {squash(t.get("block")).upper() for t in declared.get("tracks") or []
-              if not t.get("skip") and t.get("block")
-              and squash(t.get("sheet")) == squash(ws.title)}
-    if not blocks:
-        return 0                               # hoja declarada solo para omitirla
-    layout = synoptic_layout(ws, ep, cfg, cat)
-    if layout is None:
-        return 0
-    for marker in blocks:
-        if marker not in layout.blocks:
-            cat.unrecognised("bloque de via sin marcador en la cabecera", marker, ep,
-                             ws.title, layout.header_index + 1)
-            continue
-        for item in synoptic_records(layout, marker, cfg):
+    tracks = 0
+    for _, sheet, records in declared_tracks(worksheets, declared, ep, cfg, cat):
+        if records is None:
+            continue                           # hoja declarada solo para omitirla
+        tracks += 1
+        sheet = sheet.split(" / ")[0]
+        for item in records:
             if item["kind"] != "profile":
                 continue
             for field in SINGLE_LOV_FIELDS:
@@ -512,7 +508,7 @@ def read_synoptic_catalog(ws, ep, declared, cfg, cat: Catalogue):
                     counts[(FIELD_ENTITY[target], code)] += 1
                 for piece, number in translated.unrouted:
                     cat.unrecognised(f"codigo sin destino en {field}", piece, ep,
-                                     ws.title, number)
+                                     sheet, number)
             for slot in item["cantilever"]:
                 code = translate_single("CANTILEVER_TYPE", slot["CANTILEVER_TYPE"], cfg)
                 if code:
@@ -521,7 +517,7 @@ def read_synoptic_catalog(ws, ep, declared, cfg, cat: Catalogue):
     for (entity, code), uses in counts.items():
         cat.add(entity, code, source="TRACK", ep=ep, track_uses=uses,
                 desc_en=describe(entity, code, cfg))
-    return len(blocks)
+    return tracks
 
 
 # --------------------------------------------------------------------------------
@@ -883,12 +879,10 @@ def main():
         boq_sheets = legend_sheets = track_sheets = 0
         declared = topology.get("execution_packages", {}).get(ep) or {}
         try:
-            for ws in wb.worksheets:
+            if is_synoptic(declared):
+                track_sheets += read_synoptic_catalog(wb.worksheets, ep, declared, cfg, cat)
+            for ws in ([] if is_synoptic(declared) else wb.worksheets):
                 name = ws.title
-                if is_synoptic(declared):
-                    if squash(name) in {squash(t.get("sheet")) for t in declared.get("tracks") or []}:
-                        track_sheets += read_synoptic_catalog(ws, ep, declared, cfg, cat)
-                    continue
                 if name == BOQ_SHEET:
                     read_boq(ws, ep, cfg, cat)
                     boq_sheets += 1

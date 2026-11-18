@@ -61,6 +61,7 @@ from workbook_common import (  # noqa: E402  (necesita el sys.path de arriba)
 from synoptic import (  # noqa: E402
     MULTI_FIELDS,
     SINGLE_LOV_FIELDS,
+    declared_tracks,
     is_synoptic,
     parse_kp,
     synoptic_layout,
@@ -936,25 +937,29 @@ def read_cantilevers(row, multi, cfg, profile, ep, sheet, number, master: Master
     return written
 
 
-def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
-    """Vuelca UN bloque de via de una hoja sinoptico al maestro.
+def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None, records=None,
+                        sheet=None):
+    """Vuelca UNA via de un workbook sinoptico al maestro.
 
     El plano de la hoja y la clasificacion de sus filas los hace synoptic.py; aqui se
     aplica lo mismo que a una hoja HR Track: cada codigo se traduce al catalogo, se
     comprueba que exista habilitado, los numeros se ajustan a su columna y el perfil se
-    cierra con emit_profile. Devuelve (perfiles, mensulas), como read_track.
+    cierra con emit_profile. ``records`` son los apoyos ya leidos (los de una via que sale
+    de dos hojas traen cada uno la suya); sin ellos se leen de ``ws``. Devuelve
+    (perfiles, mensulas), como read_track.
     """
-    if layout is None:
-        layout = synoptic_layout(ws, ep, cfg, master)
+    if records is None:
         if layout is None:
-            return 0, 0
-
-    block_name = squash(decl["block"]).upper()
-    sheet = f"{layout.sheet} / {block_name}"
+            layout = synoptic_layout(ws, ep, cfg, master)
+            if layout is None:
+                return 0, 0
+        block_name = squash(decl["block"]).upper()
+        sheet = f"{layout.sheet} / {block_name}"
+        records = synoptic_records(layout, block_name, cfg)
+    track_sheet = sheet
     track_name = decl["name"]
     seen_keys, position = set(), 0
     profiles = cantilevers = 0
-    records = synoptic_records(layout, block_name, cfg)
 
     # El KP supuesto, como en una hoja HR Track: la media de los dos apoyos contiguos.
     entries, entry_of = [], {}
@@ -962,7 +967,7 @@ def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
         if item["kind"] != "profile":
             continue
         kp_value = item["kp"] if item["kp"] is not None else item["kp_raw"]
-        kp, _ = fit_numeric("KP", kp_value, ep=ep, sheet=sheet, row=item["number"],
+        kp, _ = fit_numeric("KP", kp_value, ep=ep, sheet=track_sheet, row=item["number"],
                             master=Master())
         kp = kp if kp is not None else origin_kp(kp_value, len(entries))
         entry_of[position_in_block] = len(entries)
@@ -971,6 +976,7 @@ def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
 
     for position_in_block, item in enumerate(records):
         number = item["number"]
+        sheet = item.get("sheet") or track_sheet
         if item["kind"] == "landmark":
             master.discard(motivo="hito de trazado, no es un apoyo", ep=ep, hoja=sheet,
                            fila=number, detalle=item["code"])
@@ -986,6 +992,8 @@ def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
 
         code = item["code"]
         review = False
+        for motivo, detalle in item.get("notes") or ():
+            master.discard(motivo=motivo, ep=ep, hoja=sheet, fila=number, detalle=detalle)
         record = {"EP": ep, "VIA": track_name, "PROFILE_ID": code[:50],
                   "HOJA_ORIGEN": sheet, "FILA_ORIGEN": number}
         if len(code) > 50:
@@ -1569,44 +1577,28 @@ def check_declared_stations(ep, declared, master: Master):
 
 
 def read_synoptic_workbook(wb, ep, declared, by_sheet, cfg, master: Master):
-    """Las vias de un workbook sinoptico: una hoja, un plano, un bloque por via."""
-    sheets = profiles = cantilevers = 0
-    for ws in wb.worksheets:
-        declarations = by_sheet.get(squash(ws.title))
-        if not declarations:
-            # Como una hoja HR Track: lo que no se lee se declara con 'skip' y su motivo.
-            master.unrecognised("hoja sinoptico sin declarar", ws.title, ep, ws.title)
+    """Las vias de un workbook sinoptico, en el orden en que las declara topology.yml.
+
+    Que hojas se leen, cual manda y cual completa lo resuelve synoptic.declared_tracks,
+    igual para este generador y para el del catalogo.
+    """
+    sheets, profiles, cantilevers = set(), 0, 0
+    for decl, sheet, records in declared_tracks(wb.worksheets, declared, ep, cfg, master):
+        if records is None:
+            master.discard(motivo=f"hoja omitida: {decl['skip']}", ep=ep, hoja=sheet, fila=1)
             continue
-        for decl in declarations:
-            if decl.get("skip"):
-                master.discard(motivo=f"hoja omitida: {decl['skip']}", ep=ep,
-                               hoja=ws.title, fila=1)
-        declarations = [decl for decl in declarations if not decl.get("skip")]
-        if not declarations:
-            continue
-        layout = synoptic_layout(ws, ep, cfg, master)
-        if layout is None:
-            continue
-        for decl in declarations:
-            block = squash(decl.get("block")).upper()
-            if block not in layout.blocks:
-                master.unrecognised("bloque de via sin marcador en la cabecera", block, ep,
-                                    ws.title, layout.header_index + 1)
-                continue
-            master.tracks.append({
-                "EP": ep, "NOMBRE": decl["name"],
-                "ESTACIONES": " | ".join(track_stations(decl)),
-                "ENABLED": "SI", "HOJA_ORIGEN": f"{ws.title} / {block}",
-                "FILA_INICIO": None, "FILA_FIN": None,
-            })
-            written, arms = read_synoptic_track(ws, ep, decl, cfg, master, layout)
-            profiles += written
-            cantilevers += arms
-        sheets += 1
-    declared_sheets = {squash(t.get("sheet")) for t in declared.get("tracks") or []}
-    for name in declared_sheets - {squash(ws.title) for ws in wb.worksheets}:
-        master.unrecognised("hoja declarada que no existe en el workbook", name, ep, name)
-    return sheets, profiles, cantilevers
+        master.tracks.append({
+            "EP": ep, "NOMBRE": decl["name"],
+            "ESTACIONES": " | ".join(track_stations(decl)),
+            "ENABLED": "SI", "HOJA_ORIGEN": sheet,
+            "FILA_INICIO": None, "FILA_FIN": None,
+        })
+        written, arms = read_synoptic_track(None, ep, decl, cfg, master, records=records,
+                                            sheet=sheet)
+        profiles += written
+        cantilevers += arms
+        sheets.add(squash(decl.get("sheet")))
+    return len(sheets), profiles, cantilevers
 
 
 def load_declared(topology, ep):

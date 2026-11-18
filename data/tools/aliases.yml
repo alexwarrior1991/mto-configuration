@@ -1180,6 +1180,9 @@ synoptic:
   #   - En la hoja de la bretelle la via la dice una SUBCABECERA: la fila de debajo trae
   #     solo 'VIA 1' / 'VIA 2', y la cabecera de arriba vale para sus dos columnas.
   #   - Una columna cuya cabecera es solo la marca ('VIA 1') es relleno y no se lee.
+  #   - Las hojas 'VIA 1' y 'VIA 2' son de una sola via y su cabecera del apoyo no lleva
+  #     marca ('SUPORTE'): la hoja entera es de la via que declara topology.yml, y la marca
+  #     que lleve alguna cabecera ('P.K. Abs.vía 1' en la hoja de la via 2) no reparte nada.
   blocks:
     VIA 1: [' V1', '(via 1)', '(vía 1)', 'via 1', 'vía 1']
     VIA 2: [' V2', '(via 2)', '(vía 2)', 'via 2', 'vía 2']
@@ -1188,8 +1191,8 @@ synoptic:
   # 'Tipologia' y 'Tipología' solo se distinguen por la tilde y son dos cosas: el
   # sistema de catenaria del apoyo (rigida, flexible, mensula) y la funcion del apoyo en
   # el seccionamiento. La SEGUNDA mensula del apoyo tiene sus propias columnas
-  # ('Consolas 2', 'Desalinhamentos2'): se declaran con 'slot: 2'. No hay una segunda
-  # 'Alt. FC': la altura de la segunda mensula llega vacia.
+  # ('Consolas 2', 'Desalinhamentos2'): se declaran con 'slot: 2'. El Sinóptico no tiene
+  # una segunda 'Alt. FC': esa altura solo esta en la gemela de las hojas de via ('twins').
   columns:
     suporte: PROFILE_ID                     # 'SUPORTE V2' esta dos veces (A e Y): la misma
     p.k.: KP
@@ -1206,8 +1209,15 @@ synoptic:
     consolas: CANTILEVER_TYPE
     consolas 2: {field: CANTILEVER_TYPE, slot: 2}
     desalinhamentos (cm): STAGGER
+    desalinhamentos: STAGGER                # la hoja 'VIA 2' lo escribe sin la unidad
     desalinhamentos2 (cm): {field: STAGGER, slot: 2}
     alt. fc (m): CW_HEIGHT
+
+  # Campos con columna GEMELA en las hojas de via: la segunda mensula del apoyo (y el
+  # segundo equipo) no tiene cabecera propia y va en la columna SIN cabecera pegada a la
+  # derecha de la primera. Es la unica columna sin cabecera que se lee como un campo. El
+  # Sinóptico no las usa: alli la segunda tiene su cabecera ('Consolas 2').
+  twins: [CANTILEVER_TYPE, STAGGER, CW_HEIGHT, EQUIPMENT]
 
   # Columnas reales de UNA via sin campo en el dominio: se conservan en NO_MAPEADO.
   unmapped:
@@ -1216,6 +1226,7 @@ synoptic:
     - p.k. abs.                             # kilometracion absoluta de la red
     - curve radius (m)
     - l tubos consola
+    - l tubos consola (m)                   # la hoja 'VIA 2'
     - subida feeder
     - cabos feeder longitudinais
     - canalização
@@ -1348,10 +1359,11 @@ synoptic:
 
   # Anotaciones que no son codigo: se conservan en NO_MAPEADO. 'Cantón 396,4 m' es la
   # longitud del canton, que el dominio no guarda (como 'SEMI TENSION LENGTH' en los
-  # workbooks ferroviarios).
+  # workbooks ferroviarios). Un numero suelto en esa columna (el 0,951 de 3505CCA12 en
+  # la hoja 'VIA 2') tampoco es un codigo.
   noise:
     SECTIONING:
-      regex: '^Cant\w*\s*[\d.,]+\s*m$'
+      regex: '^(Cant\w*\s*[\d.,]+\s*m|[\d.,]+)$'
 
   # DESCRIPCION_EN de los codigos que solo existen en el sinoptico.
   descriptions:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lector del formato SINOPTICO: una tabla con las vias en columnas emparejadas.
+"""Lector del formato SINOPTICO: las vias en columnas emparejadas, o una por hoja.
 
 Los once workbooks de los EPs ferroviarios traen una hoja 'HR Track' por via, con una
 cabecera y las mismas ~36 columnas logicas. El sinoptico de la Linha Rubi (Metro do
@@ -7,7 +7,10 @@ Porto, RUBI.xlsx) no se parece en nada: es UNA tabla con las vias lado a lado, c
 campo en una columna por via. La via de una columna la dice su cabecera ('Maciços V1',
 'P.K. (via 2)'), su posicion cuando la cabecera se repite sin decirla ('Vão (m)' dos
 veces: la primera es de la primera via) o, en la hoja de la bretelle, una fila de
-subcabecera con 'VIA 1' / 'VIA 2' debajo de cada cabecera. Las cabeceras estan en
+subcabecera con 'VIA 1' / 'VIA 2' debajo de cada cabecera. El workbook trae ademas cada via
+general en una hoja propia ('VIA 1', 'VIA 2'), sin marca en las cabeceras y con la segunda
+mensula en columnas sin cabecera: esas hojas MANDAN y el Sinóptico las completa
+(merge_records). Las cabeceras estan en
 portugues y en espanol, y hay dos que solo se distinguen por una tilde ('Tipologia' es
 el sistema de catenaria; 'Tipología' es la funcion del apoyo).
 
@@ -20,9 +23,10 @@ y de 'format: synoptic' en topology.yml.
 
 Reglas de la casa que se conservan:
 
-- Las columnas se resuelven por NOMBRE de cabecera, nunca por indice. La unica lectura
-  por posicion, obligada, es la de una cabecera que se repite una vez por via sin decir
-  de cual es: la n-esima es de la n-esima via declarada.
+- Las columnas se resuelven por NOMBRE de cabecera, nunca por indice. Las dos lecturas
+  por posicion, obligadas, estan acotadas: una cabecera que se repite una vez por via sin
+  decir de cual es (la n-esima es de la n-esima via declarada) y, en las hojas de via, la
+  columna gemela sin cabecera pegada a la derecha de un campo de 'twins'.
 - Nada se descarta en silencio: una cabecera desconocida va a NO_RECONOCIDO, las
   filas que no son un apoyo —hitos de estacion, notas al pie— salen con su motivo, y lo
   que no se lee esta declarado en aliases.yml ('ignored', 'ignored_patterns').
@@ -78,10 +82,12 @@ FIELD_ENTITY = {
 #   multi   campo multivalor -> todas sus columnas
 #   unmapped  [(etiqueta, columna)] de las columnas reales sin campo en el dominio
 #   columns   todas las anteriores: lo que decide si una fila trae algo de esta via
-Block = collections.namedtuple("Block", "marker single second multi unmapped labels columns")
+#   names     los nombres (sin marca de via) de sus columnas sin campo
+Block = collections.namedtuple("Block", "marker single second multi unmapped labels columns names")
 # shared: columnas sin campo que valen para todas las vias ('Activo', 'Terreno').
+# bases: etiqueta de una columna sin campo -> su nombre sin la marca de via.
 SynopticLayout = collections.namedtuple(
-    "SynopticLayout", "sheet rows header_index first_data data_end blocks shared")
+    "SynopticLayout", "sheet rows header_index first_data data_end blocks shared bases")
 
 
 def is_synoptic(declared) -> bool:
@@ -139,11 +145,14 @@ def column_field(value) -> tuple[str, int]:
     return value, 1
 
 
-def synoptic_layout(ws, ep, cfg, report):
+def synoptic_layout(ws, ep, cfg, report, only=None):
     """Plano de la hoja: filas, cabecera, las columnas de cada via y el fin de los datos.
 
     ``report`` es el acumulador del generador que llama (Master o Catalogue): los dos
     tienen ``unrecognised(kind, value, ep, sheet, row)``, que es lo unico que se usa.
+    ``only`` es la via que topology.yml declara para la hoja: si la cabecera del apoyo no
+    dice de que via es ('SUPORTE' a secas, sin subcabecera), la hoja ENTERA es de esa via
+    (las hojas 'VIA 1' y 'VIA 2'), y las marcas que lleve alguna cabecera no reparten nada.
     Devuelve None si la hoja no tiene cabecera o a una via le falta el apoyo o el KP.
     """
     scfg = synoptic_config(cfg)
@@ -157,6 +166,7 @@ def synoptic_layout(ws, ep, cfg, report):
     shared = {norm_header(v) for v in scfg.get("shared", [])}
     ignored = {norm_header(v) for v in scfg.get("ignored", [])}
     patterns = [re.compile(p, re.IGNORECASE) for p in scfg.get("ignored_patterns", [])]
+    twin_fields = set(scfg.get("twins", []))
 
     def is_header(row):
         return any(columns.get(split_tag(norm_header(value), tags)[0], ("",))[0] == "PROFILE_ID"
@@ -177,6 +187,9 @@ def synoptic_layout(ws, ep, cfg, report):
     below_texts = [squash(value).upper() for value in below]
     sub = below_texts if (any(below_texts) and all(t in markers for t in below_texts if t)) else None
     first_data = header_index + (2 if sub else 1)
+    id_marks = {split_tag(norm_header(value), tags)[1] for value in header
+                if columns.get(split_tag(norm_header(value), tags)[0], ("",))[0] == "PROFILE_ID"}
+    whole = squash(only).upper() if only and not sub and id_marks == {None} else None
 
     # Cuantas veces esta cada cabecera que no dice su via: la que esta una vez por via
     # se reparte por posicion, la primera para la primera via declarada.
@@ -191,18 +204,22 @@ def synoptic_layout(ws, ep, cfg, report):
     parts = {marker: {"single": collections.defaultdict(list),
                       "second": collections.defaultdict(list),
                       "multi": collections.defaultdict(list),
-                      "unmapped": [], "labels": {}} for marker in markers}
-    shared_columns, skipped = [], set()
-    previous = None                # (clase, etiqueta, via) de la ultima cabecera leida
+                      "unmapped": [], "labels": {}, "names": set()} for marker in markers}
+    shared_columns, skipped, bases = [], set(), {}
+    # (clase, etiqueta, via, nombre, campo, columna) de la ultima cabecera leida
+    previous = None
     carried = ""                   # con subcabecera, la cabecera vale para sus columnas
 
-    def keep(kind, label, marker, index):
+    def keep(kind, label, marker, index, base):
         if kind == "ignored":
             skipped.add(index)
-        elif kind == "shared":
+            return
+        bases[label] = base
+        if kind == "shared":
             shared_columns.append((label, index))
         else:
             parts[marker]["unmapped"].append((label, index))
+            parts[marker]["names"].add(base)
 
     for index in range(width):
         raw = cell(header, index)
@@ -219,13 +236,21 @@ def synoptic_layout(ws, ep, cfg, report):
             raw, name = carried, split_tag(norm_header(carried), tags)[0]
         elif not name:
             # Una columna sin cabecera es la continuacion de la que tiene a la izquierda
-            # (una celda de cabecera combinada) si esa no tiene campo o no se lee. Nunca se
-            # lee como un campo: detras de uno, lo que traiga se conserva con su letra.
+            # (una celda de cabecera combinada) si esa no tiene campo o no se lee. Detras de
+            # un campo solo se lee como ese campo si es su GEMELA: la columna pegada a la
+            # derecha de un campo de 'twins', que en las hojas de via es la segunda mensula
+            # (o el segundo equipo) del apoyo. Cualquier otra se conserva con su letra.
             letter = get_column_letter(index + 1)
-            if previous is None or previous[0] == "field":
-                shared_columns.append((f"sin cabecera {letter}", index))
+            if previous is not None and previous[0] == "field" and previous[4] in twin_fields \
+                    and previous[5] == index - 1:
+                part, field = parts[previous[2]], previous[4]
+                part["labels"][index] = f"{previous[1]} ({letter})"
+                part["multi" if field in MULTI_FIELDS else "second"][field].append(index)
+                previous = None
+            elif previous is None or previous[0] == "field":
+                keep("shared", f"sin cabecera {letter}", None, index, f"sin cabecera {letter}")
             else:
-                keep(previous[0], f"{previous[1]} ({letter})", previous[2], index)
+                keep(previous[0], f"{previous[1]} ({letter})", previous[2], index, previous[3])
             continue
         else:
             full = name
@@ -234,15 +259,21 @@ def synoptic_layout(ws, ep, cfg, report):
                     or (marker and not name):
                 # Ignorada por declaracion, o un marcador de via suelto ('VIA 1'): relleno.
                 skipped.add(index)
-                previous = ("ignored", squash(raw), None)
+                previous = ("ignored", squash(raw), None, name, None, index)
                 continue
-            if marker is None:
+            if whole:
+                marker = whole
+                if name not in columns and name not in unmapped and full in shared:
+                    keep("unmapped", squash(raw), marker, index, full)
+                    previous = ("unmapped", squash(raw), marker, full, None, index)
+                    continue
+            elif marker is None:
                 if full in shared:
                     label = squash(raw)
                     if untagged[full] > 1:
                         label = f"{label} ({get_column_letter(index + 1)})"
-                    shared_columns.append((label, index))
-                    previous = ("shared", squash(raw), None)
+                    keep("shared", label, None, index, full)
+                    previous = ("shared", squash(raw), None, full, None, index)
                     continue
                 if (full in columns or full in unmapped) and untagged[full] == len(markers):
                     marker = markers[position[full]]
@@ -253,7 +284,7 @@ def synoptic_layout(ws, ep, cfg, report):
                         kind = "cabecera sinoptico que no dice su via"
                     report.unrecognised(kind, full, ep, sheet, header_number)
                     skipped.add(index)
-                    previous = ("ignored", squash(raw), None)
+                    previous = ("ignored", squash(raw), None, name, None, index)
                     continue
 
         label = squash(raw)
@@ -267,14 +298,14 @@ def synoptic_layout(ws, ep, cfg, report):
                 part["second"][field].append(index)
             else:
                 part["single"][field].append(index)
-            previous = ("field", label, marker)
+            previous = ("field", label, marker, name, field if slot == 1 else None, index)
         elif name in unmapped:
-            part["unmapped"].append((label, index))
-            previous = ("unmapped", label, marker)
+            keep("unmapped", label, marker, index, name)
+            previous = ("unmapped", label, marker, name, None, index)
         else:
             report.unrecognised("cabecera sinoptico", name, ep, sheet, header_number)
             skipped.add(index)
-            previous = ("ignored", label, None)
+            previous = ("ignored", label, None, name, None, index)
 
     blocks = {}
     for marker, part in parts.items():
@@ -288,7 +319,8 @@ def synoptic_layout(ws, ep, cfg, report):
                                     header_number)
                 return None
         blocks[marker] = Block(marker, dict(part["single"]), dict(part["second"]),
-                               dict(part["multi"]), part["unmapped"], part["labels"], own)
+                               dict(part["multi"]), part["unmapped"], part["labels"], own,
+                               part["names"])
     if not blocks:
         report.unrecognised("hoja sinoptico sin columnas de via", sheet, ep, sheet, header_number)
         return None
@@ -297,7 +329,7 @@ def synoptic_layout(ws, ep, cfg, report):
     data_end = find_data_end(rows, first_data, blocks.values(),
                              [index for index in range(width) if index not in aside])
     return SynopticLayout(sheet, rows, header_index, first_data, data_end, blocks,
-                          shared_columns)
+                          shared_columns, bases)
 
 
 def block_is_blank(row, block: Block) -> bool:
@@ -429,6 +461,226 @@ def synoptic_records(layout: SynopticLayout, marker, cfg):
         records.append(current)
 
     return records
+
+
+# --------------------------------------------------------------------------------
+# Una via de dos hojas: la suya, que manda, y la que la completa
+# --------------------------------------------------------------------------------
+
+KP_TOLERANCE = Decimal("0.005")
+
+
+def plain(value):
+    """Valor de una celda para compararlo con el de otra hoja: sin huecos ni decimales de coma flotante."""
+    if is_blank(value):
+        return None
+    text = squash(value)
+    try:
+        return format(round(Decimal(text.replace(",", ".")), 3).normalize(), "f")
+    except InvalidOperation:
+        return text
+
+
+def same_kp(one, other) -> bool:
+    if one is None or other is None:
+        return one is None and other is None
+    return abs(one - other) < KP_TOLERANCE
+
+
+def pair_records(primary, secondary):
+    """Casa los apoyos de la hoja que manda con los de la que la completa.
+
+    Devuelve {posicion en primary: (posicion en secondary, como)}. Por orden de fiabilidad:
+    mismo nombre y mismo KP; despues el mismo KP con otro nombre, si en ese KP solo queda
+    un apoyo sin casar en cada hoja (la zona 3713 esta renumerada en una de las dos); y
+    al final el mismo nombre con otro KP, si el nombre no se repite. Casar primero por
+    nombre a secas emparejaria, en la zona renumerada, apoyos distintos.
+    """
+    pairs, taken = {}, set()
+
+    def free(records, used):
+        return [i for i, r in enumerate(records) if r["kind"] == "profile" and i not in used]
+
+    for i in free(primary, pairs):
+        for j in free(secondary, taken):
+            if primary[i]["code"] == secondary[j]["code"] and same_kp(primary[i]["kp"], secondary[j]["kp"]):
+                pairs[i] = (j, "id")
+                taken.add(j)
+                break
+    for how, match in (("kp", lambda a, b: a["kp"] is not None and same_kp(a["kp"], b["kp"])),
+                       ("id-otro-kp", lambda a, b: a["code"] == b["code"])):
+        left, right = free(primary, pairs), free(secondary, taken)
+        for i in left:
+            mine = [j for j in right if j not in taken and match(primary[i], secondary[j])]
+            theirs = [k for k in left if k not in pairs and match(primary[k], secondary[mine[0]])] \
+                if len(mine) == 1 else []
+            if len(mine) == 1 and theirs == [i]:
+                pairs[i] = (mine[0], how)
+                taken.add(mine[0])
+    return pairs
+
+
+def merge_records(primary, block: Block, sheet, secondary, other: SynopticLayout, other_sheet):
+    """Los apoyos de una via que tiene dos hojas: la suya, que manda, y otra que la completa.
+
+    ``primary`` son los registros de la hoja que manda y ``block`` sus columnas; de
+    ``secondary`` solo entra LO QUE LA PRIMERA NO TRAE: los campos y las columnas sin campo
+    que su hoja no tiene (la configuracion de montaje, 'Activo', 'Terreno') y los apoyos
+    que no estan en ella. Una celda de una columna que si tiene manda como este, vacia
+    incluida. Nada se pierde en silencio: cada apoyo lleva en ``notes`` como se caso y lo
+    que la otra hoja dice distinto, y lo que no se caso entra o sale con su motivo.
+    """
+    pairs = pair_records(primary, secondary)
+    matched = {j: i for i, (j, _) in pairs.items()}
+    merged, after = [], collections.defaultdict(list)
+
+    # Un apoyo que solo esta en la segunda hoja entra detras del ultimo apoyo casado que
+    # lo precede alli (o al principio).
+    anchor = None
+    for j, item in enumerate(secondary):
+        if j in matched:
+            anchor = matched[j]
+        elif item["kind"] == "profile":
+            after[anchor].append(dict(item, sheet=other_sheet, notes=[
+                ("apoyo que solo esta en %s: entra de alli" % other.sheet, item["code"])]))
+        elif item["kind"] in ("footnote", "orphan"):
+            after[anchor].append(dict(item, sheet=other_sheet))
+        # Los hitos de la segunda hoja son los mismos de la primera: no se repiten.
+
+    merged.extend(after[None])
+    for i, item in enumerate(primary):
+        if item["kind"] != "profile":
+            merged.append(dict(item, sheet=sheet))
+            merged.extend(after[i])
+            continue
+        record = dict(item, sheet=sheet, notes=[])
+        if i not in pairs:
+            record["notes"].append(("apoyo que no esta en %s: sin lo que solo trae esa hoja"
+                                    % other.sheet, item["code"]))
+            merged.append(record)
+            continue
+        extra = secondary[pairs[i][0]]
+        where = "%s fila %d" % (other.sheet, extra["number"])
+        if pairs[i][1] != "id":
+            record["notes"].append((
+                "apoyo casado con %s por %s" % (other.sheet, {
+                    "kp": "su KP: alli tiene otro nombre",
+                    "id-otro-kp": "su nombre: alli tiene otro KP"}[pairs[i][1]]),
+                "%s = %s (%s), KP %s / %s" % (item["code"], extra["code"], where,
+                                               plain(item["kp_raw"]), plain(extra["kp_raw"]))))
+
+        differences = []
+
+        def take(field, mine, theirs, present):
+            """El valor de la hoja que manda si tiene esa columna; si no, el de la otra."""
+            if not present:
+                return theirs
+            if plain(mine) != plain(theirs) and field is not None:
+                differences.append("%s: %s / %s" % (field, plain(mine), plain(theirs)))
+            return mine
+
+        take("KP", item["kp_raw"], extra["kp_raw"], True)
+        record["span"] = take("SPAN", item["span"], extra["span"], "SPAN" in block.single)
+        record["rail_pole_distance"] = take(
+            "RAIL_POLE_DISTANCE", item["rail_pole_distance"], extra["rail_pole_distance"],
+            "RAIL_POLE_DISTANCE" in block.single)
+        record["single"] = {field: take(field, item["single"][field], extra["single"][field],
+                                        field in block.single) for field in SINGLE_LOV_FIELDS}
+        record["cantilever"] = [
+            {field: take("%s %d" % (field, slot + 1), item["cantilever"][slot][field],
+                         extra["cantilever"][slot][field], field in columns)
+             for field in CANTILEVER_FIELDS}
+            for slot, columns in enumerate((block.single, block.second))]
+        record["multi"] = {}
+        for field in MULTI_FIELDS:
+            if field not in block.multi:
+                record["multi"][field] = extra["multi"][field]
+                continue
+            record["multi"][field] = item["multi"][field]
+            mine = sorted({plain(v[0]) for v in item["multi"][field]} - {None})
+            theirs = sorted({plain(v[0]) for v in extra["multi"][field]} - {None})
+            if mine != theirs:
+                differences.append("%s: %s / %s" % (field, " + ".join(mine) or None,
+                                                    " + ".join(theirs) or None))
+        # Las columnas sin campo de la otra hoja que esta no tiene.
+        record["unmapped"] = list(item["unmapped"]) + [
+            entry for entry in extra["unmapped"] if other.bases.get(entry[0]) not in block.names]
+        for difference in differences:
+            record["notes"].append(("manda la hoja de la via: %s dice otra cosa" % other.sheet,
+                                    "%s %s (%s)" % (item["code"], difference, where)))
+        merged.append(record)
+        merged.extend(after[i])
+    return merged
+
+
+def declared_tracks(worksheets, declared, ep, cfg, report):
+    """Las vias que topology.yml declara para un workbook sinoptico, con sus apoyos.
+
+    Devuelve una lista de (declaracion, hoja de origen, registros). Es lo que usan LOS DOS
+    generadores, para que el catalogo y los perfiles salgan de la misma lectura. Una via
+    puede declarar 'complement: {sheet, block}': su hoja manda y esa otra la completa
+    (merge_records). Una declaracion con 'skip' no se lee: devuelve registros None para que
+    quien llama lo anote. Una hoja del workbook que ninguna declaracion nombra, o una
+    declarada que no esta, va a NO_RECONOCIDO.
+    """
+    by_title = {squash(ws.title): ws for ws in worksheets}
+    tracks = list(declared.get("tracks") or [])
+    named = set()
+    for decl in tracks:
+        named.add(squash(decl.get("sheet")))
+        if decl.get("complement"):
+            named.add(squash(decl["complement"].get("sheet")))
+    for title in by_title:
+        if title not in named:
+            # Como una hoja HR Track: lo que no se lee se declara con 'skip' y su motivo.
+            report.unrecognised("hoja sinoptico sin declarar", title, ep, title)
+    for title in sorted(named - set(by_title)):
+        report.unrecognised("hoja declarada que no existe en el workbook", title, ep, title)
+
+    # Cuantas vias declara cada hoja: la que declara una sola puede ser toda de esa via.
+    uses = collections.Counter(squash(d.get("sheet")) for d in tracks if not d.get("skip"))
+    layouts = {}
+
+    def layout_of(title, only):
+        key = (title, only)
+        if key not in layouts:
+            layouts[key] = synoptic_layout(by_title[title], ep, cfg, report, only=only) \
+                if title in by_title else None
+        return layouts[key]
+
+    def block_of(title, marker, only=None):
+        layout = layout_of(title, only)
+        if layout is None:
+            return None, None
+        if marker not in layout.blocks:
+            report.unrecognised("bloque de via sin marcador en la cabecera", marker, ep,
+                                layout.sheet, layout.header_index + 1)
+            return layout, None
+        return layout, layout.blocks[marker]
+
+    found = []
+    for decl in tracks:
+        title = squash(decl.get("sheet"))
+        if decl.get("skip"):
+            if title in by_title:
+                found.append((decl, by_title[title].title, None))
+            continue
+        marker = squash(decl.get("block")).upper()
+        layout, block = block_of(title, marker, marker if uses[title] == 1 else None)
+        if block is None:
+            continue
+        sheet = f"{layout.sheet} / {marker}"
+        records = [dict(item, sheet=sheet) for item in synoptic_records(layout, marker, cfg)]
+        complement = decl.get("complement")
+        if complement:
+            other_marker = squash(complement.get("block") or marker).upper()
+            other, other_block = block_of(squash(complement.get("sheet")), other_marker)
+            if other_block is not None:
+                records = merge_records(records, block, sheet,
+                                        synoptic_records(other, other_marker, cfg), other,
+                                        f"{other.sheet} / {other_marker}")
+        found.append((decl, sheet, records))
+    return found
 
 
 def attach(current, row, number, block: Block, layout: SynopticLayout):

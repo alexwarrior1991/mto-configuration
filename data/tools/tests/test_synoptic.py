@@ -7,6 +7,7 @@ prueba es justamente que una grafia portuguesa del origen NO llega al maestro.
     python3 -m unittest discover -s data/tools/tests
 """
 
+import collections
 import importlib.util
 import os
 import unittest
@@ -207,6 +208,59 @@ BRETELLE = [
      "C860-B", None, 3.8, 3.8],
 ]
 
+# La hoja de UNA via ('VIA 1'): titulo, cabecera en la fila 4 sin marca de via, los hitos
+# en espanol y la segunda mensula en las columnas SIN cabecera pegadas a la derecha de
+# 'Consolas', 'Alt. FC' y 'Desalinhamentos' (y el segundo equipo, a la de 'Equipamentos').
+# Es la que manda sobre el Sinóptico (ROWS), que la completa.
+VIA_HEADER = ["SUPORTE", "Vão (m)", "P.K.\n(vía 1)", "P.K.\nAbs.vía 1", "Coord. X", "Tipología",
+              "Implantação (m)", "Tipologia", "Tipo de Suporte", "Maciços", "Consolas", None,
+              "L tubos consola (m)", "Alt. FC (m)", None, "Desalinhamentos", None, "Seccionamento",
+              "Equipamentos associados ", None, None]
+VIA_NAMES = [" ".join(str(name).split()) if name is not None else None for name in VIA_HEADER]
+
+
+def via(**cells):
+    """Una fila de la hoja de via. 'x2' es la gemela de la columna 'x'."""
+    keys = {"id": "SUPORTE", "vao": "Vão (m)", "kp": "P.K. (vía 1)", "abs": "P.K. Abs.vía 1",
+            "x": "Coord. X", "fun": "Tipología", "imp": "Implantação (m)", "sys": "Tipologia",
+            "pole": "Tipo de Suporte", "mac": "Maciços", "con": "Consolas", "alt": "Alt. FC (m)",
+            "des": "Desalinhamentos", "sec": "Seccionamento", "eq": "Equipamentos associados"}
+    values = [None] * len(VIA_HEADER)
+    for key, value in cells.items():
+        twin = key.endswith("2")
+        values[VIA_NAMES.index(keys[key.rstrip("2")]) + (1 if twin else 0)] = value
+    return values
+
+
+VIA_ROWS = [
+    ["Linha Rubi"], ["Caderno de Montagem"], ["VIA 1"],
+    VIA_HEADER,
+    via(id="Existente", kp="??"),
+    via(id="1-00.01", kp=-2.84, sys="Rígida", alt=3.8),
+    via(id="Fin Anden Casa Da Música (00+040)", vao=6.2),
+    # Fila 8: otro poste que en el Sinóptico (C860-A), sin el 'Seccionamento' que alli trae
+    # la fila intermedia, y con la altura de la SEGUNDA mensula, que el Sinóptico no tiene.
+    via(id="3504CCA19", kp=1061, abs=33744.6, x=-41642.72, fun="SE", sys="Rígida", pole="C859-A",
+        des=-12, alt=3.8, des2="+20", alt2=3.9),
+    via(vao=10),
+    via(id="3505CCA01A", kp=1120.2, fun="Elev.", sys="Consola", pole="Pendulo 140", mac="Anc. Sot.",
+        imp="1,5", des="+10", alt=3.83, con="B. Fun."),
+    via(vao=10.6, eq="Disp. Transic.", sec="Transição Catenaria"),
+    # Fila 12: dos mensulas y dos equipos, los segundos en las gemelas.
+    via(id="3505CCA07", kp=1146.96, vao=6.3, fun="S/E A/S", sys="Funicular", pole="-",
+        mac="Fixaçao Muro", des="+20", alt=3.8, con="Delta", con2="B.Fun.", des2="+10", alt2=3.84,
+        eq="Ancoraem 2HC", eq2="Caix. Imped."),
+    # Fila 13: el mismo apoyo que 3713CCA09 del Sinóptico (mismo KP), con el nombre de antes
+    # de renumerar la zona.
+    via(id="3713CCA10", kp=6392, fun="A/S", sys="-", pole="HEA 280 G.", mac="Poste parede",
+        eq="Ancoraem coneção Sto Ov."),
+    # Fila 14: el mismo nombre que en el Sinóptico y otro KP.
+    via(id="3711CCA113", kp=6180, fun="Aislad.", sys="Rígida", pole="Marquise", mac="M1",
+        des="+4", alt=3.8),
+    # Fila 15: un apoyo que el Sinóptico no tiene.
+    via(id="3713CCA99", kp=6500, sys="Rígida"),
+]
+
 CATALOG = {
     "Sectioning": {"S/A": "S/A", "A/S": "A/S", "MP": "MP", "A": "A", "P30": "P30", "P50": "P50",
                    "P80": "P80", "OVERLAP": "OVERLAP", "TRANSITION": "TRANSITION"},
@@ -215,7 +269,7 @@ CATALOG = {
                              "TRANSDEV": "TransDev", "SECT-I-1CW": "SECT-I-1CW", "SECT-I-2CW": "SECT-I-2CW"},
     "SupportType": {"OCR SUPPORT": "OCR SUPPORT", "FLEXIBLE": "FLEXIBLE",
                     "SINGLE CANTILEVER": "SINGLE CANTILEVER", "DOUBLE CANTILEVER": "DOUBLE CANTILEVER"},
-    "PoleType": {"C860-A": "C860-A", "C860-B": "C860-B", "PENDULO 140": "Pendulo 140", "HEA 280 G.": "HEA 280 G.",
+    "PoleType": {"C860-A": "C860-A", "C859-A": "C859-A", "C860-B": "C860-B", "PENDULO 140": "Pendulo 140", "HEA 280 G.": "HEA 280 G.",
                  "CANOPY": "CANOPY"},
     "Foundation": {"M1": "M1", "UNDERGROUND ANCHOR": "UNDERGROUND ANCHOR", "WALL FIXING": "WALL FIXING",
                    "WALL POLE": "WALL POLE", "PAVEMENT ANCHOR": "PAVEMENT ANCHOR"},
@@ -607,6 +661,158 @@ class FakeWorkbook:
         self.worksheets = list(sheets)
 
 
+MAIN_TRACK = {"sheet": "VIA 1", "block": "VIA 1", "name": "TRACK 1", "station": "A",
+              "complement": {"sheet": "Sinóptico", "block": "VIA 1"}}
+
+
+def read_workbook(declarations, *sheets):
+    by_sheet = collections.defaultdict(list)
+    for decl in declarations:
+        by_sheet[decl["sheet"]].append(decl)
+    master = bpm.Master()
+    counts = bpm.read_synoptic_workbook(FakeWorkbook(*sheets), "RUBI", {"tracks": declarations},
+                                        by_sheet, CFG, master)
+    return master, counts
+
+
+class LaHojaDeUnaVia(unittest.TestCase):
+    """La hoja 'VIA 1': entera de la via que declara topology.yml, con sus gemelas."""
+
+    def setUp(self):
+        self.master = bpm.Master()
+        self.layout = synoptic.synoptic_layout(FakeSheet("VIA 1", VIA_ROWS), "RUBI", CFG,
+                                               self.master, only="VIA 1")
+        self.block = self.layout.blocks["VIA 1"]
+
+    def test_la_hoja_entera_es_de_la_via_declarada(self):
+        self.assertEqual((self.layout.header_index, list(self.layout.blocks)), (3, ["VIA 1"]))
+        self.assertEqual(self.block.single["PROFILE_ID"], [0])
+        self.assertEqual(self.block.single["KP"], [VIA_NAMES.index("P.K. (vía 1)")])
+        self.assertEqual(self.block.single["STAGGER"], [VIA_NAMES.index("Desalinhamentos")])
+        self.assertEqual(self.master.unknown, {})
+
+    def test_la_marca_de_otra_via_en_una_cabecera_no_reparte_nada(self):
+        # La hoja 'VIA 2' real rotula 'P.K. Abs.vía 1': sigue siendo de la via de la hoja.
+        master = bpm.Master()
+        layout = synoptic.synoptic_layout(FakeSheet("VIA 2", VIA_ROWS), "RUBI", CFG, master,
+                                          only="VIA 2")
+        self.assertEqual(list(layout.blocks), ["VIA 2"])
+        self.assertIn("P.K. Abs.vía 1", dict(layout.blocks["VIA 2"].unmapped))
+        self.assertEqual(master.unknown, {})
+
+    def test_la_gemela_es_la_columna_sin_cabecera_pegada_a_la_derecha(self):
+        self.assertEqual(self.block.second["CANTILEVER_TYPE"], [VIA_NAMES.index("Consolas") + 1])
+        self.assertEqual(self.block.second["CW_HEIGHT"], [VIA_NAMES.index("Alt. FC (m)") + 1])
+        self.assertEqual(self.block.second["STAGGER"], [VIA_NAMES.index("Desalinhamentos") + 1])
+        equipo = VIA_NAMES.index("Equipamentos associados")
+        self.assertEqual(self.block.multi["EQUIPMENT"], [equipo, equipo + 1])
+        # Solo UNA: la siguiente sin cabecera ya no es de ningun campo.
+        self.assertEqual(dict(self.layout.shared), {"sin cabecera U": equipo + 2})
+
+    def test_sin_la_via_declarada_la_hoja_no_se_adivina(self):
+        master = bpm.Master()
+        self.assertIsNone(synoptic.synoptic_layout(FakeSheet("VIA 1", VIA_ROWS), "RUBI", CFG, master))
+        self.assertTrue(master.unknown)
+
+
+class MandaLaHojaDeLaVia(unittest.TestCase):
+    """La via general sale de dos hojas: la suya manda y el Sinóptico pone lo que no trae."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.master, cls.counts = read_workbook(
+            [MAIN_TRACK], FakeSheet("VIA 1", VIA_ROWS), FakeSheet("Sinóptico", ROWS))
+        cls.by_id = {p["PROFILE_ID"]: p for p in cls.master.profiles}
+        cls.notes = [(d["motivo"], d["hoja"], d["fila"], d["detalle"]) for d in cls.master.discarded]
+
+    def arms(self, code):
+        return [(c["SLOT"], c["CANTILEVER_TYPE"], c["STAGGER"], c["CW_HEIGHT"])
+                for c in self.master.cantilevers if c["PROFILE_ID"] == code]
+
+    def test_los_apoyos_son_los_de_la_hoja_de_la_via_mas_los_que_solo_trae_el_sinoptico(self):
+        self.assertEqual([(p["PROFILE_ID"], p["HOJA_ORIGEN"], p["FILA_ORIGEN"])
+                          for p in self.master.profiles],
+                         [("1-00.01", "VIA 1 / VIA 1", 6), ("3504CCA19", "VIA 1 / VIA 1", 8),
+                          ("3505CCA01A", "VIA 1 / VIA 1", 10), ("3505CCA07", "VIA 1 / VIA 1", 12),
+                          ("3713CCA10", "VIA 1 / VIA 1", 13), ("3711CCA113", "VIA 1 / VIA 1", 14),
+                          # Los dos que la hoja de la via no tiene, detras del ultimo casado.
+                          ("3713CCA15", "Sinóptico / VIA 1", 13), ("3713CCA17", "Sinóptico / VIA 1", 14),
+                          ("3713CCA99", "VIA 1 / VIA 1", 15)])
+        self.assertEqual([t["HOJA_ORIGEN"] for t in self.master.tracks], ["VIA 1 / VIA 1"])
+        self.assertEqual(self.master.unknown, {})
+
+    def test_la_celda_de_la_hoja_de_la_via_manda_tambien_vacia(self):
+        perfil = self.by_id["3504CCA19"]
+        self.assertEqual(perfil["POLE_TYPE"], "C859-A")            # el Sinóptico dice C860-A
+        self.assertEqual(perfil["SECTIONING"], "S/A")              # sin el OVERLAP del Sinóptico
+        self.assertEqual(perfil["SPAN"], Decimal("10.000"))
+        detalles = [n[3] for n in self.notes
+                    if n[0] == "manda la hoja de la via: Sinóptico dice otra cosa" and n[2] == 8]
+        self.assertIn("3504CCA19 POLE_TYPE: C859-A / C860-A (Sinóptico fila 6)", detalles)
+        self.assertTrue(any(d.startswith("3504CCA19 SECTIONING: SE / ") for d in detalles), detalles)
+
+    def test_la_segunda_mensula_trae_su_altura_de_la_gemela(self):
+        self.assertEqual(self.arms("3504CCA19"), [(1, "OCR", Decimal("-12"), Decimal("3.800")),
+                                                  (2, "OCR", Decimal("20"), Decimal("3.900"))])
+        self.assertEqual(self.arms("3505CCA07"),
+                         [(1, "DELTA", Decimal("20"), Decimal("3.800")),
+                          (2, "FLEXIBLE ARM", Decimal("10"), Decimal("3.840"))])
+        self.assertEqual(self.by_id["3505CCA07"]["ANCHORAGE"], "An2CW")
+        self.assertEqual(self.by_id["3505CCA07"]["SECTIONING_FEEDING"], "ImpBox")   # el segundo equipo
+
+    def test_lo_que_la_hoja_de_la_via_no_trae_sale_del_sinoptico(self):
+        # 'Configuraciones' solo esta en el Sinóptico; tambien 'Activo' y las demas sin campo.
+        self.assertEqual(self.by_id["3505CCA07"]["ASSEMBLY_CONFIGURATION"], "C.C.2")
+        self.assertEqual(self.by_id["3713CCA10"]["ASSEMBLY_CONFIGURATION"], "C.F.21")
+        anotaciones = {(u["COLUMNA"], u["VALOR"]) for u in self.master.unmapped
+                       if u["PROFILE_ID"] == "3504CCA19"}
+        self.assertLessEqual({("Activo", "3504"), ("Tipología", "TIPO R"),
+                              ("Cabos feeder longitudinais V1", "2 FA")}, anotaciones)
+        # Las que tiene la hoja de la via salen de ella, una vez.
+        self.assertIn(("P.K. Abs.vía 1", "33744.6"), anotaciones)
+        self.assertIn(("Coord. X", "-41642.72"), anotaciones)
+        self.assertNotIn("P.K. Abs.via 1", {columna for columna, _ in anotaciones})
+
+    def test_un_apoyo_renumerado_se_casa_por_su_kp_y_lleva_el_nombre_de_la_hoja_de_la_via(self):
+        self.assertNotIn("3713CCA09", self.by_id)
+        self.assertEqual(self.by_id["3713CCA10"]["ANCHORAGE"], "AnCONN")
+        self.assertEqual(self.by_id["3713CCA10"]["SECTIONING"], "A/S")       # alli era la errata 'Anc'
+        self.assertIn(("apoyo casado con Sinóptico por su KP: alli tiene otro nombre", "VIA 1 / VIA 1",
+                       13, "3713CCA10 = 3713CCA09 (Sinóptico fila 11), KP 6392 / 6392"), self.notes)
+
+    def test_el_mismo_nombre_con_otro_kp_es_el_mismo_apoyo_y_manda_el_kp_de_la_via(self):
+        self.assertEqual(self.by_id["3711CCA113"]["KP"], Decimal("6180.000"))
+        self.assertIn(("apoyo casado con Sinóptico por su nombre: alli tiene otro KP", "VIA 1 / VIA 1",
+                       14, "3711CCA113 = 3711CCA113 (Sinóptico fila 12), KP 6180 / 6179.2"), self.notes)
+
+    def test_lo_que_no_se_casa_se_ve_en_los_dos_sentidos(self):
+        self.assertIn(("apoyo que no esta en Sinóptico: sin lo que solo trae esa hoja",
+                       "VIA 1 / VIA 1", 15, "3713CCA99"), self.notes)
+        self.assertIn(("apoyo que solo esta en Sinóptico: entra de alli", "Sinóptico / VIA 1", 13,
+                       "3713CCA15"), self.notes)
+        self.assertEqual(self.by_id["3713CCA15"]["SECTIONING"], "P30")
+        # 3713CCA17 no trae KP: entra en su sitio y desactivado, como siempre.
+        self.assertEqual(self.by_id["3713CCA17"]["ENABLED"], "NO")
+
+    def test_los_hitos_son_los_de_la_hoja_de_la_via_y_no_se_repiten(self):
+        hitos = [(n[1], n[2]) for n in self.notes if n[0] == "hito de trazado, no es un apoyo"]
+        self.assertEqual(hitos, [("VIA 1 / VIA 1", 5), ("VIA 1 / VIA 1", 7)])
+        self.assertEqual(self.by_id["1-00.01"]["SPAN"], Decimal("6.200"))
+
+    def test_el_catalogo_cosecha_la_misma_lectura(self):
+        cat = blm.Catalogue(ALIASES)
+        leidas = blm.read_synoptic_catalog(
+            [FakeSheet("VIA 1", VIA_ROWS), FakeSheet("Sinóptico", ROWS)], "RUBI",
+            {"tracks": [MAIN_TRACK]}, ALIASES, cat)
+        codigos = {(r["entity"], r["code"]) for r in cat.rows.values()}
+        self.assertEqual(leidas, 1)
+        self.assertIn(("PoleType", "C859-A"), codigos)                  # el de la hoja de la via
+        self.assertNotIn(("PoleType", "C860-A"), codigos)               # el del Sinóptico, no
+        self.assertIn(("AssemblyConfiguration", "C.C.2"), codigos)      # solo lo trae el Sinóptico
+        self.assertNotIn(("Sectioning", "OVERLAP"), codigos)
+        self.assertEqual(cat.unknown, {})
+
+
 class HojasDelWorkbook(unittest.TestCase):
     """Cada hoja de un workbook sinoptico se declara: para leerla o para omitirla."""
 
@@ -617,14 +823,7 @@ class HojasDelWorkbook(unittest.TestCase):
     ]
 
     def read(self, *sheets):
-        import collections
-        by_sheet = collections.defaultdict(list)
-        for decl in self.DECLARED:
-            by_sheet[decl["sheet"]].append(decl)
-        master = bpm.Master()
-        counts = bpm.read_synoptic_workbook(FakeWorkbook(*sheets), "RUBI", {"tracks": self.DECLARED},
-                                            by_sheet, CFG, master)
-        return master, counts
+        return read_workbook(self.DECLARED, *sheets)
 
     def test_las_vias_de_las_dos_hojas_y_la_hoja_omitida_con_su_motivo(self):
         # La hoja 'VIA 1' lleva la cabecera de otro formato: omitida, ni se mira.
@@ -656,7 +855,8 @@ class CosechaDelCatalogo(unittest.TestCase):
             {"sheet": "Sinóptico", "block": "VIA 1"}, {"sheet": "Sinóptico", "block": "VIA 2"},
             {"sheet": "Bret. 6+225", "block": "VIA 1"},
             {"sheet": "VIA 1", "skip": "copia de la via 1 del Sinóptico"}]}
-        blm.read_synoptic_catalog(FakeSheet("Sinóptico", ROWS), "RUBI", declared, ALIASES, cls.cat)
+        blm.read_synoptic_catalog([FakeSheet("Sinóptico", ROWS), FakeSheet("VIA 1", [])], "RUBI",
+                                  declared, ALIASES, cls.cat)
         cls.rows = {(r["entity"], r["code"]): r for r in cls.cat.rows.values()}
 
     def test_los_codigos_llegan_traducidos_y_con_descripcion(self):
@@ -677,7 +877,7 @@ class CosechaDelCatalogo(unittest.TestCase):
     def test_una_hoja_declarada_solo_para_omitirla_no_se_lee(self):
         cat = blm.Catalogue(ALIASES)
         declared = {"format": "synoptic", "tracks": [{"sheet": "VIA 1", "skip": "copia"}]}
-        leidas = blm.read_synoptic_catalog(FakeSheet("VIA 1", ROWS), "RUBI", declared, ALIASES, cat)
+        leidas = blm.read_synoptic_catalog([FakeSheet("VIA 1", ROWS)], "RUBI", declared, ALIASES, cat)
         self.assertEqual((leidas, cat.rows, cat.unknown), (0, {}, {}))
 
     def test_ninguna_grafia_del_origen_entra_al_catalogo(self):
