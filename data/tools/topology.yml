@@ -723,10 +723,12 @@ execution_packages:
         station: LOD_D     # REVISAR: derivado del titulo A1
 
   # Linha Rubi de Metro do Porto (Casa da Musica - Santo Ovidio). NO es un workbook de
-  # hojas 'HR Track': es un SINOPTICO, una sola hoja con las dos vias en espejo, y lo
-  # lee data/tools/synoptic.py con las tablas de la seccion 'synoptic' de aliases.yml.
-  # Cada via se declara con el 'block' que la identifica en la fila de cabecera.
-  # Las dos vias recorren la linea entera, asi que pasan por las ocho estaciones.
+  # hojas 'HR Track': es un SINOPTICO, una tabla con las vias en columnas emparejadas, y
+  # lo lee data/tools/synoptic.py con las tablas de la seccion 'synoptic' de aliases.yml.
+  # Cada via se declara con el 'block' que la identifica (su marca en las cabeceras).
+  # Las dos vias generales recorren la linea entera, asi que pasan por las ocho
+  # estaciones. La bretelle del 6+225 (el escape doble de antes de Santo Ovidio) tiene su
+  # hoja y sus apoyos, que no estan en el Sinóptico: son dos vias mas, una por columna.
   RUBI:
     file: RUBI.xlsx
     format: synoptic
@@ -747,10 +749,24 @@ execution_packages:
       - Santo Ovídio
     tracks:
       - sheet: "Sinóptico"
-        block: "VIA 1"                      # bloque de la derecha de la hoja
+        block: "VIA 1"
         name: "TRACK 1"
         stations: [Casa da Música, Campo Alegre, Arrábida, Candal, Rotunda, Devesas, Soares dos Reis, Santo Ovídio]
       - sheet: "Sinóptico"
-        block: "VIA 2"                      # bloque de la izquierda de la hoja
+        block: "VIA 2"
         name: "TRACK 2"
         stations: [Casa da Música, Campo Alegre, Arrábida, Candal, Rotunda, Devesas, Soares dos Reis, Santo Ovídio]
+      - sheet: "Bret. 6+225"
+        block: "VIA 1"
+        name: "BRETELLE 6+225 TRACK 1"
+        station: Santo Ovídio
+      - sheet: "Bret. 6+225"
+        block: "VIA 2"
+        name: "BRETELLE 6+225 TRACK 2"
+        station: Santo Ovídio
+      # Las hojas 'VIA 1' y 'VIA 2' son la misma via del Sinóptico, una por hoja. Decision
+      # del responsable del dato: se lee solo el Sinóptico.
+      - sheet: "VIA 1"
+        skip: "copia de la via 1 del Sinóptico: se lee solo el Sinóptico"
+      - sheet: "VIA 2"
+        skip: "copia de la via 2 del Sinóptico: se lee solo el Sinóptico"

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Lector del formato SINOPTICO: una hoja con las dos vias en espejo.
+"""Lector del formato SINOPTICO: una tabla con las vias en columnas emparejadas.
 
 Los once workbooks de los EPs ferroviarios traen una hoja 'HR Track' por via, con una
 cabecera y las mismas ~36 columnas logicas. El sinoptico de la Linha Rubi (Metro do
-Porto, RUBI.xlsx) no se parece en nada: es UNA hoja con las dos vias en ESPEJO, la via 2
-a la izquierda (columnas B..AA, leyendo hacia fuera) y la via 1 a la derecha (AP..BM),
-separadas por una banda central de columnas sin cabecera. Las cabeceras estan en
-portugues y en espanol, hay dos columnas que solo se distinguen por una tilde
-('Tipologia' es el sistema de catenaria; 'Tipología' es la funcion del apoyo), y las
-medidas de la segunda mensula van en columnas SIN cabecera pegadas a las de la primera.
+Porto, RUBI.xlsx) no se parece en nada: es UNA tabla con las vias lado a lado, cada
+campo en una columna por via. La via de una columna la dice su cabecera ('Maciços V1',
+'P.K. (via 2)'), su posicion cuando la cabecera se repite sin decirla ('Vão (m)' dos
+veces: la primera es de la primera via) o, en la hoja de la bretelle, una fila de
+subcabecera con 'VIA 1' / 'VIA 2' debajo de cada cabecera. Las cabeceras estan en
+portugues y en espanol, y hay dos que solo se distinguen por una tilde ('Tipologia' es
+el sistema de catenaria; 'Tipología' es la funcion del apoyo).
 
 Este modulo es lo que hace falta para leer esa hoja y no tiene ninguna dependencia de
 los generadores: lo usan LOS DOS —build_lov_master.py cosecha con el los codigos y
@@ -19,12 +20,12 @@ y de 'format: synoptic' en topology.yml.
 
 Reglas de la casa que se conservan:
 
-- Las columnas se resuelven por NOMBRE de cabecera, nunca por indice. La unica
-  excepcion, obligada, son las columnas gemelas sin cabecera de la segunda mensula:
-  se resuelven como la columna sin cabecera ADYACENTE POR EL LADO EXTERIOR (alejandose
-  de la banda central) de su columna con cabecera.
-- Nada se descarta en silencio: una cabecera desconocida va a NO_RECONOCIDO y las
-  filas que no son un apoyo —hitos de estacion, notas al pie— salen con su motivo.
+- Las columnas se resuelven por NOMBRE de cabecera, nunca por indice. La unica lectura
+  por posicion, obligada, es la de una cabecera que se repite una vez por via sin decir
+  de cual es: la n-esima es de la n-esima via declarada.
+- Nada se descarta en silencio: una cabecera desconocida va a NO_RECONOCIDO, las
+  filas que no son un apoyo —hitos de estacion, notas al pie— salen con su motivo, y lo
+  que no se lee esta declarado en aliases.yml ('ignored', 'ignored_patterns').
 - El origen escribe en portugues y en espanol; a la base de datos llega INGLES. La
   tabla 'translations' es la unica que conoce las grafias del origen.
 """
@@ -49,14 +50,9 @@ from workbook_common import (
 
 SYNOPTIC_FORMAT = "synoptic"
 
-# La cabecera esta en las primeras filas, debajo del titulo del caderno y de la fila que
-# anuncia 'VIA 2' / 'VIA 1'. Se localiza por contenido, no por numero de fila.
+# La cabecera esta en las primeras filas (en la 1 en el sinoptico, debajo del titulo del
+# caderno en la hoja de la bretelle). Se localiza por contenido, no por numero de fila.
 HEADER_SEARCH_ROWS = 12
-
-# Un texto en la columna del apoyo que NO es un apoyo: 'Inic. Est. Campo Alegre (00+966)',
-# 'Fin. Ponte (02+059)', 'Cruce Vial', 'Existente'. Son hitos del trazado y se distinguen
-# porque no traen KP; el texto solo confirma que lo son.
-LANDMARK_RE = re.compile(r"^(inic|fin|cruce|existente)", re.IGNORECASE)
 
 # Campos multivalor del sinoptico y la entidad LOV a la que va cada campo. 'EQUIPMENT'
 # no es un campo del perfil: es la columna 'Equipamentos associados', que mezcla anclajes
@@ -76,10 +72,16 @@ FIELD_ENTITY = {
     "CANTILEVER_TYPE": "CantileverType",
 }
 
-Block = collections.namedtuple(
-    "Block", "marker first last outward single multi twins unmapped labels ignored")
+# Un bloque es lo que la hoja dice de UNA via: sus columnas, repartidas por toda la tabla.
+#   single  campo -> columnas (casi siempre una; 'SUPORTE V2' esta dos veces)
+#   second  campo de mensula -> columnas de la SEGUNDA mensula ('Consolas 2 V1')
+#   multi   campo multivalor -> todas sus columnas
+#   unmapped  [(etiqueta, columna)] de las columnas reales sin campo en el dominio
+#   columns   todas las anteriores: lo que decide si una fila trae algo de esta via
+Block = collections.namedtuple("Block", "marker single second multi unmapped labels columns")
+# shared: columnas sin campo que valen para todas las vias ('Activo', 'Terreno').
 SynopticLayout = collections.namedtuple(
-    "SynopticLayout", "sheet rows header_index data_end blocks centre")
+    "SynopticLayout", "sheet rows header_index first_data data_end blocks shared")
 
 
 def is_synoptic(declared) -> bool:
@@ -98,144 +100,231 @@ def cell(row, index):
     return row[index] if index is not None and index < len(row) else None
 
 
+def first_value(row, indexes):
+    """El primer valor con dato de las columnas de un campo, o None."""
+    for index in indexes or ():
+        value = cell(row, index)
+        if not is_blank(value):
+            return value
+    return None
+
+
 # --------------------------------------------------------------------------------
 # Plano de la hoja
 # --------------------------------------------------------------------------------
 
+def block_tags(scfg) -> list[tuple[str, str]]:
+    """(marca, via) de todas las vias, la marca mas larga primero.
+
+    Una marca es lo que la cabecera escribe para decir de que via es la columna:
+    ' V1', '(via 1)'. Lo que queda al quitarla es el nombre de la columna.
+    """
+    tags = [(str(tag).lower(), squash(marker).upper())
+            for marker, values in scfg["blocks"].items() for tag in values]
+    return sorted(tags, key=lambda item: -len(item[0]))
+
+
+def split_tag(name: str, tags) -> tuple[str, str | None]:
+    """Cabecera normalizada -> (nombre sin la marca de via, via o None)."""
+    for tag, marker in tags:
+        if name.endswith(tag):
+            return name[:len(name) - len(tag)].strip(), marker
+    return name, None
+
+
+def column_field(value) -> tuple[str, int]:
+    """Entrada de 'columns' -> (campo, mensula). La mensula es 1 salvo que diga 'slot'."""
+    if isinstance(value, dict):
+        return value["field"], int(value.get("slot", 1))
+    return value, 1
+
+
 def synoptic_layout(ws, ep, cfg, report):
-    """Plano de la hoja: filas, cabecera, los dos bloques y la banda central.
+    """Plano de la hoja: filas, cabecera, las columnas de cada via y el fin de los datos.
 
     ``report`` es el acumulador del generador que llama (Master o Catalogue): los dos
     tienen ``unrecognised(kind, value, ep, sheet, row)``, que es lo unico que se usa.
-    Devuelve None si la hoja no tiene cabecera o no tiene los dos bloques.
+    Devuelve None si la hoja no tiene cabecera o a una via le falta el apoyo o el KP.
     """
     scfg = synoptic_config(cfg)
     sheet = ws.title
     rows = list(ws.iter_rows(min_row=1, max_row=min(ws.max_row, MAX_ROWS_TRACK),
                              max_col=MAX_COLS, values_only=True))
+    tags = block_tags(scfg)
+    markers = [squash(marker).upper() for marker in scfg["blocks"]]
+    columns = {norm_header(k): column_field(v) for k, v in scfg["columns"].items()}
+    unmapped = {norm_header(v) for v in scfg.get("unmapped", [])}
+    shared = {norm_header(v) for v in scfg.get("shared", [])}
+    ignored = {norm_header(v) for v in scfg.get("ignored", [])}
+    patterns = [re.compile(p, re.IGNORECASE) for p in scfg.get("ignored_patterns", [])]
 
-    marker = squash(scfg["header_marker"]).upper()
+    def is_header(row):
+        return any(columns.get(split_tag(norm_header(value), tags)[0], ("",))[0] == "PROFILE_ID"
+                   for value in row)
+
     header_index = next(
-        (index for index, row in enumerate(rows[:HEADER_SEARCH_ROWS])
-         if any(squash(value).upper() == marker for value in row)), None)
+        (index for index, row in enumerate(rows[:HEADER_SEARCH_ROWS]) if is_header(row)), None)
     if header_index is None:
         report.unrecognised("hoja sinoptico sin cabecera", sheet, ep, sheet, 1)
         return None
     header = rows[header_index]
     header_number = header_index + 1
+    width = max(len(row) for row in rows)
 
-    # Los marcadores 'VIA 2' / 'VIA 1' de la propia fila de cabecera parten la hoja: a la
-    # izquierda del primero esta un bloque y a la derecha del segundo el otro. Lo de en
-    # medio es la banda central, sin cabecera.
-    wanted = [squash(m).upper() for m in scfg["block_markers"]]
-    positions = {}
-    for index, value in enumerate(header):
-        text = squash(value).upper()
-        if text in wanted:
-            positions.setdefault(text, index)
-    if len(positions) != 2:
-        report.unrecognised("hoja sinoptico sin los dos bloques de via",
-                            ", ".join(wanted), ep, sheet, header_number)
-        return None
-    (left_marker, left_pos), (right_marker, right_pos) = sorted(
-        positions.items(), key=lambda item: item[1])
+    # La hoja de la bretelle dice la via en una SUBCABECERA: la fila de debajo solo
+    # trae 'VIA 1' / 'VIA 2', una por columna, y la cabecera de arriba vale para las dos.
+    below = rows[header_index + 1] if header_index + 1 < len(rows) else ()
+    below_texts = [squash(value).upper() for value in below]
+    sub = below_texts if (any(below_texts) and all(t in markers for t in below_texts if t)) else None
+    first_data = header_index + (2 if sub else 1)
 
-    blocks = {
-        left_marker: resolve_block(header, left_marker, 0, left_pos - 1, -1,
-                                   scfg, ep, sheet, header_number, report),
-        right_marker: resolve_block(header, right_marker, right_pos + 1, len(header) - 1, +1,
-                                    scfg, ep, sheet, header_number, report),
-    }
-    if any(block is None for block in blocks.values()):
-        return None
+    # Cuantas veces esta cada cabecera que no dice su via: la que esta una vez por via
+    # se reparte por posicion, la primera para la primera via declarada.
+    untagged = collections.Counter()
+    if not sub:
+        for value in header:
+            name = norm_header(value)
+            if name and split_tag(name, tags)[1] is None:
+                untagged[name] += 1
+    position = collections.Counter()
 
-    centre = list(range(left_pos + 1, right_pos))
-    data_end = find_data_end(rows, header_index, blocks.values())
-    return SynopticLayout(sheet, rows, header_index, data_end, blocks, centre)
+    parts = {marker: {"single": collections.defaultdict(list),
+                      "second": collections.defaultdict(list),
+                      "multi": collections.defaultdict(list),
+                      "unmapped": [], "labels": {}} for marker in markers}
+    shared_columns, skipped = [], set()
+    previous = None                # (clase, etiqueta, via) de la ultima cabecera leida
+    carried = ""                   # con subcabecera, la cabecera vale para sus columnas
 
-
-def resolve_block(header, marker, first, last, outward, scfg, ep, sheet, header_number, report):
-    """Cabecera -> indices de UN bloque, por nombre.
-
-    ``outward`` es +1 para el bloque de la derecha y -1 para el de la izquierda: el
-    sentido en el que la hoja se aleja de la banda central, que es donde estan las
-    columnas gemelas de la segunda mensula.
-    """
-    columns = {norm_header(k): v for k, v in scfg["columns"].items()}
-    unmapped_headers = {norm_header(v) for v in scfg.get("unmapped", [])}
-    ignored = {norm_header(v) for v in scfg.get("ignored", [])}
-    twin_fields = set(scfg.get("twins", []))
-
-    seen: dict[str, list[int]] = collections.defaultdict(list)
-    unmapped: dict[str, int] = {}
-    skipped: set[int] = set()
-    for index in range(first, last + 1):
-        name = norm_header(header[index])
-        if not name:
-            continue
-        if name in ignored:
+    def keep(kind, label, marker, index):
+        if kind == "ignored":
             skipped.add(index)
+        elif kind == "shared":
+            shared_columns.append((label, index))
+        else:
+            parts[marker]["unmapped"].append((label, index))
+
+    for index in range(width):
+        raw = cell(header, index)
+        name = norm_header(raw)
+        if sub:
+            if name:
+                carried = raw
+            marker = sub[index] if index < len(sub) else ""
+            if not marker:
+                if name:
+                    report.unrecognised("cabecera sinoptico sin via", name, ep, sheet, header_number)
+                skipped.add(index)
+                continue
+            raw, name = carried, split_tag(norm_header(carried), tags)[0]
+        elif not name:
+            # Una columna sin cabecera es la continuacion de la que tiene a la izquierda
+            # (una celda de cabecera combinada) si esa no tiene campo o no se lee. Nunca se
+            # lee como un campo: detras de uno, lo que traiga se conserva con su letra.
+            letter = get_column_letter(index + 1)
+            if previous is None or previous[0] == "field":
+                shared_columns.append((f"sin cabecera {letter}", index))
+            else:
+                keep(previous[0], f"{previous[1]} ({letter})", previous[2], index)
             continue
+        else:
+            full = name
+            name, marker = split_tag(full, tags)
+            if any(p.search(full) for p in patterns) or full in ignored or name in ignored \
+                    or (marker and not name):
+                # Ignorada por declaracion, o un marcador de via suelto ('VIA 1'): relleno.
+                skipped.add(index)
+                previous = ("ignored", squash(raw), None)
+                continue
+            if marker is None:
+                if full in shared:
+                    label = squash(raw)
+                    if untagged[full] > 1:
+                        label = f"{label} ({get_column_letter(index + 1)})"
+                    shared_columns.append((label, index))
+                    previous = ("shared", squash(raw), None)
+                    continue
+                if (full in columns or full in unmapped) and untagged[full] == len(markers):
+                    marker = markers[position[full]]
+                    position[full] += 1
+                else:
+                    kind = "cabecera sinoptico"
+                    if full in columns or full in unmapped:
+                        kind = "cabecera sinoptico que no dice su via"
+                    report.unrecognised(kind, full, ep, sheet, header_number)
+                    skipped.add(index)
+                    previous = ("ignored", squash(raw), None)
+                    continue
+
+        label = squash(raw)
+        part = parts[marker]
+        part["labels"][index] = label
         if name in columns:
-            seen[columns[name]].append(index)
-        elif name in unmapped_headers:
-            unmapped.setdefault(squash(header[index]), index)
+            field, slot = columns[name]
+            if field in MULTI_FIELDS:
+                part["multi"][field].append(index)
+            elif slot == 2:
+                part["second"][field].append(index)
+            else:
+                part["single"][field].append(index)
+            previous = ("field", label, marker)
+        elif name in unmapped:
+            part["unmapped"].append((label, index))
+            previous = ("unmapped", label, marker)
         else:
             report.unrecognised("cabecera sinoptico", name, ep, sheet, header_number)
+            skipped.add(index)
+            previous = ("ignored", label, None)
 
-    single, multi, twins = {}, {}, {}
-    for field, indexes in seen.items():
-        # Con la cabecera repetida ('Equipamentos associados' dos veces), la principal es
-        # la mas cercana a la banda central y la otra es su gemela.
-        inner = max(indexes) if outward < 0 else min(indexes)
-        single[field] = inner
-        # Sin cabecera repetida, la gemela es la columna SIN cabecera pegada por fuera.
-        candidate = inner + outward
-        twin = None
-        if len(indexes) > 1:
-            twin = min((index for index in indexes if index != inner),
-                       key=lambda index: abs(index - inner))
-        elif field in twin_fields and first <= candidate <= last \
-                and not norm_header(header[candidate]):
-            twin = candidate
-        if field in MULTI_FIELDS:
-            # Un campo multivalor lee TODAS sus columnas: la funcion del apoyo
-            # ('Tipología') y el seccionamiento ('Seccionamento') van los dos a SECTIONING.
-            multi[field] = sorted(set(indexes) | ({twin} if twin is not None else set()))
-        elif field in twin_fields and twin is not None:
-            twins[field] = twin
+    blocks = {}
+    for marker, part in parts.items():
+        own = {index for group in ("single", "second", "multi") for indexes in part[group].values()
+               for index in indexes} | {index for _, index in part["unmapped"]}
+        if not own:
+            continue                           # la hoja no trae esa via
+        for required in ("PROFILE_ID", "KP"):
+            if required not in part["single"]:
+                report.unrecognised(f"bloque sin columna {required}", marker, ep, sheet,
+                                    header_number)
+                return None
+        blocks[marker] = Block(marker, dict(part["single"]), dict(part["second"]),
+                               dict(part["multi"]), part["unmapped"], part["labels"], own)
+    if not blocks:
+        report.unrecognised("hoja sinoptico sin columnas de via", sheet, ep, sheet, header_number)
+        return None
 
-    for required in ("PROFILE_ID", "KP"):
-        if required not in single:
-            report.unrecognised(f"bloque sin columna {required}", marker, ep, sheet, header_number)
-            return None
-    labels = {index: squash(header[index]) for index in range(first, last + 1)}
-    return Block(marker, first, last, outward, single, multi, twins, unmapped, labels, skipped)
+    aside = {index for _, index in shared_columns}
+    data_end = find_data_end(rows, first_data, blocks.values(),
+                             [index for index in range(width) if index not in aside])
+    return SynopticLayout(sheet, rows, header_index, first_data, data_end, blocks,
+                          shared_columns)
 
 
 def block_is_blank(row, block: Block) -> bool:
-    """True si el bloque no trae nada en esta fila (la columna A, que siempre lleva
-    un 1, esta en 'ignored' y no cuenta)."""
-    return all(is_blank(cell(row, index)) for index in range(block.first, block.last + 1)
-               if index not in block.ignored)
+    """True si la fila no trae nada de esta via."""
+    return all(is_blank(cell(row, index)) for index in block.columns)
 
 
-def find_data_end(rows, header_index, blocks) -> int:
-    """Indice de la primera fila en blanco (en los dos bloques) despues del ultimo apoyo.
+def find_data_end(rows, first_data, blocks, columns) -> int:
+    """Indice de la primera fila en blanco despues del primer apoyo.
 
     Debajo de los datos el sinoptico lleva notas al pie, que no son apoyos aunque
-    escriban un codigo. Lo que las separa es una fila en blanco; lo que venga despues
-    sale en DESCARTADOS con su fila, para que no se pierda en silencio.
+    escriban un codigo. Lo que las separa es una fila en blanco, y en blanco quiere decir
+    en TODAS las columnas de via, tambien las que no se leen: los ultimos apoyos de la
+    zona 3713 no traen mas que su codigo, y su fila intermedia solo el relleno 'VIA 1' /
+    'VIA 2'. Las columnas que no son de ninguna via ('shared') no cuentan: una tabla de
+    medicion suelta ocupa justo las filas que separan los apoyos de las notas. Lo que
+    venga despues sale en DESCARTADOS con su fila, para que no se pierda en silencio.
     """
     seen_profile = False
-    for offset in range(header_index + 1, len(rows)):
+    for offset in range(first_data, len(rows)):
         row = rows[offset]
-        if all(block_is_blank(row, block) for block in blocks):
+        if all(is_blank(cell(row, index)) for index in columns):
             if seen_profile:
                 return offset
             continue
         seen_profile = seen_profile or any(
-            not is_blank(cell(row, block.single["PROFILE_ID"])) for block in blocks)
+            not is_blank(first_value(row, block.single["PROFILE_ID"])) for block in blocks)
     return len(rows)
 
 
@@ -268,22 +357,35 @@ def parse_kp(value):
         return None
 
 
-def synoptic_records(layout: SynopticLayout, marker, cfg):
-    """Las filas de un bloque, agrupadas por apoyo.
+def is_landmark(code: str, cfg) -> bool:
+    """True si el texto de la columna del apoyo es un hito del trazado.
 
-    Devuelve una lista de dicts con ``kind`` en {'profile', 'landmark', 'footnote'}.
-    Las filas intermedias —las que no traen apoyo— pertenecen al apoyo ANTERIOR, igual
-    que el vano en las hojas HR Track: es el vano hasta el apoyo siguiente, y el
-    'Seccionamento' o el 'Disp. Transic.' escritos entre dos apoyos son del primero.
+    'Iníc. Est. Campo Alegre (00+966)', 'Fim Ponte (02+059)', 'Cruzamento Rodoviário',
+    'Existente': no traen KP, y el texto —declarado en 'synoptic.landmarks'— confirma
+    que lo son.
+    """
+    pattern = synoptic_config(cfg).get("landmarks")
+    return bool(pattern) and re.match(pattern, squash(code), re.IGNORECASE) is not None
+
+
+def synoptic_records(layout: SynopticLayout, marker, cfg):
+    """Las filas de una via, agrupadas por apoyo.
+
+    Devuelve una lista de dicts con ``kind`` en {'profile', 'landmark', 'footnote',
+    'orphan'}. Las filas intermedias —las que no traen apoyo— pertenecen al apoyo
+    ANTERIOR, igual que el vano en las hojas HR Track: es el vano hasta el apoyo
+    siguiente, y el 'Seccionamento' o el 'Disp. Transic.' escritos entre dos apoyos son
+    del primero. Una fila con KP y sin apoyo ('orphan') no es intermedia: es un apoyo sin
+    identificar, y sale con su motivo en lugar de sumarse al anterior.
     """
     block = layout.blocks[squash(marker).upper()]
-    single, twins = block.single, block.twins
+    single, second = block.single, block.second
     records, current = [], None
 
-    for offset in range(layout.header_index + 1, len(layout.rows)):
+    for offset in range(layout.first_data, len(layout.rows)):
         row = layout.rows[offset]
         number = offset + 1                       # el numero que ensena Excel
-        raw_id = cell(row, single["PROFILE_ID"])
+        raw_id = first_value(row, single["PROFILE_ID"])
         code = squash(raw_id)
 
         if offset >= layout.data_end:
@@ -292,70 +394,71 @@ def synoptic_records(layout: SynopticLayout, marker, cfg):
                                 "detail": code or first_text(row, block)})
             continue
 
+        kp_raw = first_value(row, single["KP"])
+        kp = parse_kp(kp_raw)
         if is_blank(raw_id) or is_noise(code):
-            if current is not None:
-                attach(current, row, number, block, layout, cfg)
+            if kp is not None:
+                records.append({"kind": "orphan", "number": number, "code": code,
+                                "detail": f"KP {squash(kp_raw)}"})
+            elif current is not None:
+                attach(current, row, number, block, layout)
             continue
 
-        kp_raw = cell(row, single["KP"])
-        kp = parse_kp(kp_raw)
-        kind = "landmark" if kp is None and LANDMARK_RE.match(code) else "profile"
+        kind = "landmark" if kp is None and is_landmark(code, cfg) else "profile"
         current = {
             "kind": kind, "number": number, "code": code,
             "kp_raw": kp_raw, "kp": kp,
-            "span": cell(row, single.get("SPAN")),
-            "single": {field: cell(row, single.get(field)) for field in SINGLE_LOV_FIELDS},
-            "rail_pole_distance": cell(row, single.get("RAIL_POLE_DISTANCE")),
+            "span": first_value(row, single.get("SPAN")),
+            "single": {field: first_value(row, single.get(field)) for field in SINGLE_LOV_FIELDS},
+            "rail_pole_distance": first_value(row, single.get("RAIL_POLE_DISTANCE")),
             "multi": {field: [] for field in MULTI_FIELDS},
             "cantilever": [
-                {field: cell(row, single.get(field)) for field in CANTILEVER_FIELDS},
-                {field: cell(row, twins.get(field)) for field in CANTILEVER_FIELDS},
+                {field: first_value(row, single.get(field)) for field in CANTILEVER_FIELDS},
+                {field: first_value(row, second.get(field)) for field in CANTILEVER_FIELDS},
             ],
             "unmapped": [],
         }
-        for field in MULTI_FIELDS:
-            for index in block.multi.get(field, []):
-                value = cell(row, index)
-                if not is_blank(value):
-                    current["multi"][field].append((squash(value), number, block.labels[index]))
+        collect_multi(current, row, number, block)
         collect_unmapped(current, row, number, block, layout)
         records.append(current)
 
     return records
 
 
-def attach(current, row, number, block: Block, layout: SynopticLayout, cfg):
+def attach(current, row, number, block: Block, layout: SynopticLayout):
     """Lo que trae una fila intermedia se apunta al apoyo anterior."""
-    single = block.single
     if is_blank(current.get("span")):
-        current["span"] = cell(row, single.get("SPAN"))
+        current["span"] = first_value(row, block.single.get("SPAN"))
+    collect_multi(current, row, number, block)
+    collect_unmapped(current, row, number, block, layout)
+
+
+def collect_multi(current, row, number, block: Block):
     for field in MULTI_FIELDS:
         for index in block.multi.get(field, []):
             value = cell(row, index)
             if not is_blank(value):
                 current["multi"][field].append((squash(value), number, block.labels[index]))
-    collect_unmapped(current, row, number, block, layout)
 
 
 def collect_unmapped(current, row, number, block: Block, layout: SynopticLayout):
-    for label, index in block.unmapped.items():
-        value = cell(row, index)
-        if not is_blank(value):
-            current["unmapped"].append((label, squash(value), number))
-    # La banda central no tiene cabecera. Sus textos ('CAT D', 'CAT R') se conservan con
-    # la letra de su columna; los marcadores numericos (un 1 o un 0 en cada fila) no
-    # dicen nada y se ignoran.
-    for index in layout.centre:
-        value = cell(row, index)
-        text = squash(value)
-        if text and not is_noise(text):
-            current["unmapped"].append((f"centro {get_column_letter(index + 1)}", text, number))
+    """Las columnas sin campo, las de la via y las que valen para todas.
+
+    Un valor que se repite fila a fila ('Activo', 'Terreno': estan tambien en la fila
+    intermedia) se apunta una vez por apoyo.
+    """
+    seen = {(label, value) for label, value, _ in current["unmapped"]}
+    for label, index in list(block.unmapped) + list(layout.shared):
+        text = squash(cell(row, index))
+        if text and not is_blank(text) and (label, text) not in seen:
+            seen.add((label, text))
+            current["unmapped"].append((label, text, number))
 
 
 def first_text(row, block: Block) -> str:
-    for index in range(block.first, block.last + 1):
+    for index in sorted(block.columns):
         value = cell(row, index)
-        if index not in block.ignored and not is_blank(value):
+        if not is_blank(value):
             return squash(value)
     return ""
 
@@ -490,7 +593,8 @@ def lov_columns(cfg) -> list[tuple[str, str]]:
     """(cabecera del origen, entidad LOV) para la hoja USO_TRACKS del catalogo."""
     scfg = synoptic_config(cfg)
     found = []
-    for header, field in scfg["columns"].items():
+    for header, value in scfg["columns"].items():
+        field, _ = column_field(value)
         if field == "EQUIPMENT":
             found.append((f"sinoptico: {header}", "Anchorage / DisconnectorFunction"))
         elif field in FIELD_ENTITY:

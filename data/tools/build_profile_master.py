@@ -954,7 +954,6 @@ def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
     track_name = decl["name"]
     seen_keys, position = set(), 0
     profiles = cantilevers = 0
-    block = layout.blocks[block_name]
     records = synoptic_records(layout, block_name, cfg)
 
     # El KP supuesto, como en una hoja HR Track: la media de los dos apoyos contiguos.
@@ -979,6 +978,10 @@ def read_synoptic_track(ws, ep, decl, cfg, master: Master, layout=None):
         if item["kind"] == "footnote":
             master.discard(motivo="fila fuera del bloque de datos", ep=ep, hoja=sheet,
                            fila=number, detalle=item["detail"])
+            continue
+        if item["kind"] == "orphan":
+            master.discard(motivo="fila con KP y sin apoyo: no se suma al apoyo anterior",
+                           ep=ep, hoja=sheet, fila=number, detalle=item["detail"])
             continue
 
         code = item["code"]
@@ -1571,15 +1574,20 @@ def read_synoptic_workbook(wb, ep, declared, by_sheet, cfg, master: Master):
     for ws in wb.worksheets:
         declarations = by_sheet.get(squash(ws.title))
         if not declarations:
-            continue
-        layout = synoptic_layout(ws, ep, cfg, master)
-        if layout is None:
+            # Como una hoja HR Track: lo que no se lee se declara con 'skip' y su motivo.
+            master.unrecognised("hoja sinoptico sin declarar", ws.title, ep, ws.title)
             continue
         for decl in declarations:
             if decl.get("skip"):
                 master.discard(motivo=f"hoja omitida: {decl['skip']}", ep=ep,
                                hoja=ws.title, fila=1)
-                continue
+        declarations = [decl for decl in declarations if not decl.get("skip")]
+        if not declarations:
+            continue
+        layout = synoptic_layout(ws, ep, cfg, master)
+        if layout is None:
+            continue
+        for decl in declarations:
             block = squash(decl.get("block")).upper()
             if block not in layout.blocks:
                 master.unrecognised("bloque de via sin marcador en la cabecera", block, ep,

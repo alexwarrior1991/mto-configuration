@@ -962,13 +962,16 @@ track_accepted:
     - C.F.18.B
     - C.F.19.A
     - C.F.19.B
-    - C.F.20.B
+    - C.F.20                # rev. 10 del caderno: antes era C.F.20.B
     - C.F.21
     - C.F.22
     - C.F.23
     - C.F.24
+    - C.F.25                # rev. 10
     - C.F.26
     - C.F.27
+    - C.F.28                # rev. 10
+    - 'C. Cut&cover'        # rev. 10: la configuracion del tunel en cut & cover
     - C.C.1
     - C.C.2
     - C.C.3.A
@@ -1158,11 +1161,10 @@ entities:
 # ================================================================================
 # FORMATO SINOPTICO (RUBI, Linha Rubi de Metro do Porto).
 #
-# Una sola hoja con las dos vias en ESPEJO: la via 2 a la izquierda, leyendo hacia
-# fuera, y la via 1 a la derecha, separadas por una banda central sin cabecera. Lo lee
-# data/tools/synoptic.py para LOS DOS generadores, y se activa con 'format: synoptic'
-# en topology.yml. Todo lo que hay aqui es especifico de ese formato: las tablas
-# globales de arriba no se tocan por el.
+# Una tabla con las vias lado a lado: cada campo en una columna por via, y la cabecera
+# dice de cual ('Maciços V1' / 'Maciços V2'). Lo lee data/tools/synoptic.py para LOS DOS
+# generadores, y se activa con 'format: synoptic' en topology.yml. Todo lo que hay aqui
+# es especifico de ese formato: las tablas globales de arriba no se tocan por el.
 #
 # El origen escribe en portugues y en espanol; a la base de datos llega INGLES. Esta
 # seccion es el unico sitio que conoce las grafias del origen: 'translations' las
@@ -1170,52 +1172,100 @@ entities:
 # aqui no vienen de ninguna leyenda.
 # ================================================================================
 synoptic:
-  # La fila de cabecera es la que trae esta celda; los dos marcadores, en esa misma
-  # fila, parten la hoja en los dos bloques de via.
-  header_marker: SUPORTE
-  block_markers: ['VIA 2', 'VIA 1']
+  # Las vias de la hoja, en su orden, y las MARCAS con las que una cabecera dice de que
+  # via es su columna. Lo que queda al quitar la marca es el nombre de la columna:
+  # 'Maciços V1' es 'maciços' de la VIA 1, 'P.K. (via 2)' es 'p.k.' de la VIA 2.
+  #   - Una cabecera sin marca que esta UNA VEZ POR VIA ('Vão (m)', dos veces) se reparte
+  #     por posicion: la primera es de la primera via de esta lista.
+  #   - En la hoja de la bretelle la via la dice una SUBCABECERA: la fila de debajo trae
+  #     solo 'VIA 1' / 'VIA 2', y la cabecera de arriba vale para sus dos columnas.
+  #   - Una columna cuya cabecera es solo la marca ('VIA 1') es relleno y no se lee.
+  blocks:
+    VIA 1: [' V1', '(via 1)', '(vía 1)', 'via 1', 'vía 1']
+    VIA 2: [' V2', '(via 2)', '(vía 2)', 'via 2', 'vía 2']
 
-  # Cabecera del origen (minusculas, espacios colapsados) -> campo. La cabecera se
-  # escribe IGUAL en los dos bloques, asi que la tabla es una. 'Tipologia' y 'Tipología'
-  # solo se distinguen por la tilde y son dos cosas: el sistema de catenaria del apoyo
-  # (rigida, flexible, mensula) y la funcion del apoyo en el seccionamiento.
+  # Nombre de la columna (minusculas, espacios colapsados, sin la marca de via) -> campo.
+  # 'Tipologia' y 'Tipología' solo se distinguen por la tilde y son dos cosas: el
+  # sistema de catenaria del apoyo (rigida, flexible, mensula) y la funcion del apoyo en
+  # el seccionamiento. La SEGUNDA mensula del apoyo tiene sus propias columnas
+  # ('Consolas 2', 'Desalinhamentos2'): se declaran con 'slot: 2'. No hay una segunda
+  # 'Alt. FC': la altura de la segunda mensula llega vacia.
   columns:
-    suporte: PROFILE_ID
-    p.k. (vía 1): KP
-    p.k. (vía 2): KP
+    suporte: PROFILE_ID                     # 'SUPORTE V2' esta dos veces (A e Y): la misma
+    p.k.: KP
     vão (m): SPAN
     implantação (m): RAIL_POLE_DISTANCE     # metros en el origen; el campo va en mm
     tipologia: SUPPORT_TYPE                 # sin tilde: sistema de catenaria
     tipología: SECTIONING                   # con tilde: funcion del apoyo
     seccionamento: SECTIONING
     equipamentos associados: EQUIPMENT      # anclajes y aparatos mezclados: ver 'routing'
+    equipamentos associados 2: EQUIPMENT
     tipo de suporte: POLE_TYPE
     maciços: FOUNDATION
     configuraciones: ASSEMBLY_CONFIGURATION
     consolas: CANTILEVER_TYPE
+    consolas 2: {field: CANTILEVER_TYPE, slot: 2}
     desalinhamentos (cm): STAGGER
+    desalinhamentos2 (cm): {field: STAGGER, slot: 2}
     alt. fc (m): CW_HEIGHT
 
-  # Campos con columna GEMELA: la segunda mensula del apoyo va en columnas sin
-  # cabecera pegadas por fuera a las de la primera, y 'Equipamentos associados' se
-  # escribe dos veces. La gemela es la columna con la misma cabecera o, si no la hay,
-  # la columna sin cabecera adyacente por el lado exterior.
-  twins: [CANTILEVER_TYPE, STAGGER, CW_HEIGHT, EQUIPMENT]
-
-  # Columnas reales sin campo en el dominio: se conservan en NO_MAPEADO.
+  # Columnas reales de UNA via sin campo en el dominio: se conservan en NO_MAPEADO.
   unmapped:
-    - comentarios
-    - subida feeder v1
-    - subida feeder v2
-    - l tubos consola (m)
-    - l tubos consola
+    - lanço
+    - medição (m)
+    - p.k. abs.                             # kilometracion absoluta de la red
     - curve radius (m)
+    - l tubos consola
+    - subida feeder
+    - cabos feeder longitudinais
+    - canalização
+    - caixa
+    - ocupação
     - coord. x
     - coord. y
-    - p.k. abs.vía 1                        # kilometracion absoluta de la red, solo via 1
 
-  # Cabeceras que no son datos: la columna A lleva un 1 en cada fila.
-  ignored: ['1']
+  # Columnas sin campo que no son de una via sino de la fila: se conservan en NO_MAPEADO
+  # en las dos vias. 'Tipología' sin marca (TIPO R / TIPO D e E) NO es la funcion del
+  # apoyo, que es 'Tipología V1' / 'Tipología V2'. Las columnas con un '1' por cabecera
+  # (C..V) son lo que queda de la banda central del formato anterior: traen 'CAT D' /
+  # 'CAT R' y unas tablas de medicion sueltas.
+  shared:
+    - activo
+    - troço
+    - terreno
+    - troço 2
+    - tipología
+    - atravessamento v1/v2
+    - tipo v1/v2
+    - desenho referencia
+    - '1'
+
+  # Columnas que NO se leen, por nombre: tablas pegadas a la derecha de los apoyos que
+  # no dicen nada de ellos (la verificacion de ocupacion de tubos y la lista de planos
+  # de referencia). Una columna sin cabecera a la derecha de una de estas es su
+  # continuacion (cabecera combinada) y tampoco se lee.
+  ignored:
+    - verificação dimensional canalização trajectoria feeder
+    - referências de projecto
+    - feeders desenho
+    - lot
+    - título
+    - data de modificação
+    - versão acc
+    - ficheiro
+
+  # Columnas que NO se leen, por patron de la cabecera. Decision del responsable del
+  # dato: todo lo que lleva '(traçado Jul.2026)' es la comparacion con el trazado de
+  # julio de 2026, no el caderno, y se ignora entero: ni se importa, ni va a NO_MAPEADO,
+  # ni a NO_RECONOCIDO. ('Tipologia (traçado Jul.2026)' esta ademas mal rotulada: trae
+  # la funcion del apoyo, no el sistema de catenaria.)
+  ignored_patterns:
+    - '\(traçado jul\.2026\)'
+
+  # Un texto sin KP en la columna del apoyo que empieza asi es un hito del trazado
+  # ('Iníc. Est. Campo Alegre (00+966)', 'Fim Ponte', 'Cruzamento Rodoviário',
+  # 'Existente') y no un apoyo: va a DESCARTADOS con su motivo.
+  landmarks: '^(in[ií]c|fim|fin|cruzamento|cruce|existente)'
 
   # Grafia del origen -> codigo INGLES del catalogo, por campo. Un valor vacio dice
   # que esa grafia NO es un codigo: 'S' es la suspension simple, sin seccionamiento.
@@ -1243,6 +1293,8 @@ synoptic:
       PA50: P50
       PA80: P80
       A/S-A/S: A/S                          # el mismo codigo dos veces en una celda
+      S / PA30: P30                         # la bretelle: suspension y aguja en una celda
+      S / PA50: P50
       Seccionamento: OVERLAP
       Transição Catenaria: TRANSITION
     CANTILEVER_TYPE:
@@ -1265,6 +1317,7 @@ synoptic:
       Anc. Pavi.: PAVEMENT ANCHOR
       Poste parede: WALL POLE
       Fixação Muro: WALL FIXING
+      Fixaçao Muro: WALL FIXING             # sin la tilde de la a
     ASSEMBLY_CONFIGURATION:
       C.C,2: C.C.2                          # errata de tecleo
     EQUIPMENT:
@@ -1287,6 +1340,7 @@ synoptic:
   reassignment:
     SECTIONING:
       Aislad.: {to: SECTIONING_FEEDING, code: SECT-I}
+      Isolad.: {to: SECTIONING_FEEDING, code: SECT-I}     # la misma, en portugues
 
   # Erratas del origen: salen vacias y anotadas en DESCARTADOS con su fila.
   rejections:
@@ -1360,6 +1414,7 @@ synoptic:
     AssemblyConfiguration:
       # Generadas por patron: C.F.<n> son las configuraciones de montaje de la catenaria
       # flexible y C.C.<n> las de la catenaria de mensula.
+      C. Cut&cover: Assembly configuration in cut-and-cover tunnel
       pattern:
         '^C\.F\.(.+)$': 'Flexible catenary assembly configuration \1'
         '^C\.C\.(.+)$': 'Cantilever assembly configuration \1'

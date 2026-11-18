@@ -485,13 +485,15 @@ def read_synoptic_catalog(ws, ep, declared, cfg, cat: Catalogue):
     codigo que solo aparece en las hojas HR Track. La descripcion inglesa de los codigos
     nuevos se declara en 'synoptic.descriptions', que hace aqui de leyenda.
     """
+    counts: dict[tuple[str, str], int] = collections.Counter()
+    blocks = {squash(t.get("block")).upper() for t in declared.get("tracks") or []
+              if not t.get("skip") and t.get("block")
+              and squash(t.get("sheet")) == squash(ws.title)}
+    if not blocks:
+        return 0                               # hoja declarada solo para omitirla
     layout = synoptic_layout(ws, ep, cfg, cat)
     if layout is None:
         return 0
-
-    counts: dict[tuple[str, str], int] = collections.Counter()
-    blocks = {squash(t.get("block")).upper() for t in declared.get("tracks") or []
-              if not t.get("skip") and t.get("block")}
     for marker in blocks:
         if marker not in layout.blocks:
             cat.unrecognised("bloque de via sin marcador en la cabecera", marker, ep,
