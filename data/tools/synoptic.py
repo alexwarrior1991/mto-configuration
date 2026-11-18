@@ -372,7 +372,7 @@ def synoptic_records(layout: SynopticLayout, marker, cfg):
     """Las filas de una via, agrupadas por apoyo.
 
     Devuelve una lista de dicts con ``kind`` en {'profile', 'landmark', 'footnote',
-    'orphan'}. Las filas intermedias —las que no traen apoyo— pertenecen al apoyo
+    'orphan'}; solo los 'profile' llevan datos. Las filas intermedias —las que no traen apoyo— pertenecen al apoyo
     ANTERIOR, igual que el vano en las hojas HR Track: es el vano hasta el apoyo
     siguiente, y el 'Seccionamento' o el 'Disp. Transic.' escritos entre dos apoyos son
     del primero. Una fila con KP y sin apoyo ('orphan') no es intermedia: es un apoyo sin
@@ -404,11 +404,17 @@ def synoptic_records(layout: SynopticLayout, marker, cfg):
                 attach(current, row, number, block, layout)
             continue
 
-        kind = "landmark" if kp is None and is_landmark(code, cfg) else "profile"
+        if kp is None and is_landmark(code, cfg):
+            # Un hito se escribe en la fila intermedia, donde iria el hueco del apoyo: lo
+            # demas de esa fila (el vano, un 'PA30') sigue siendo del apoyo anterior.
+            records.append({"kind": "landmark", "number": number, "code": code})
+            if current is not None:
+                attach(current, row, number, block, layout)
+            continue
         current = {
-            "kind": kind, "number": number, "code": code,
+            "kind": "profile", "number": number, "code": code,
             "kp_raw": kp_raw, "kp": kp,
-            "span": first_value(row, single.get("SPAN")),
+            "span": first_value(row, single.get("SPAN")), "span_between": False,
             "single": {field: first_value(row, single.get(field)) for field in SINGLE_LOV_FIELDS},
             "rail_pole_distance": first_value(row, single.get("RAIL_POLE_DISTANCE")),
             "multi": {field: [] for field in MULTI_FIELDS},
@@ -426,9 +432,14 @@ def synoptic_records(layout: SynopticLayout, marker, cfg):
 
 
 def attach(current, row, number, block: Block, layout: SynopticLayout):
-    """Lo que trae una fila intermedia se apunta al apoyo anterior."""
-    if is_blank(current.get("span")):
-        current["span"] = first_value(row, block.single.get("SPAN"))
+    """Lo que trae una fila intermedia se apunta al apoyo anterior.
+
+    El vano se escribe en la fila intermedia, y ese manda: el que algun apoyo trae ademas
+    en su propia fila solo vale si entre el y el siguiente no hay ninguno.
+    """
+    span = first_value(row, block.single.get("SPAN"))
+    if not is_blank(span) and not current["span_between"]:
+        current["span"], current["span_between"] = span, True
     collect_multi(current, row, number, block)
     collect_unmapped(current, row, number, block, layout)
 

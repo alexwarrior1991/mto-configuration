@@ -134,11 +134,13 @@ ROWS = [
     # Fila 4: KP negativo.
     row({"SUPORTE": "1-00.01", "P.K.": -2.84, "Tipologia": "Rígida", "Alt. FC (m)": 3.8},
         {"SUPORTE": "1-00.02", "P.K.": -2.84, "Tipologia": "Rígida", "Alt. FC (m)": 3.8}),
-    row({"Vão (m)": 6.2}, {"Vão (m)": 6.2}),
+    # Fila 5: un hito escrito en la fila intermedia, con el vano del apoyo anterior.
+    row({"SUPORTE": "Fim Cais Casa Da Música (00+040)", "Vão (m)": 6.2},
+        {"SUPORTE": "Fim Cais Casa Da Música (00+040)", "Vão (m)": 6.2}),
     # Fila 6: catenaria rigida con solape y segunda mensula en 'Desalinhamentos2'. Trae
     # ademas lo que no se lee ('traçado Jul.2026', la tabla de la derecha) y lo que no es
     # de ninguna via ('Activo', 'Tipología' sin sufijo, la banda).
-    row(dict(RIGID, SUPORTE="3504CCA19", **{"P.K.": 1061, "P.K. Abs.": 33744.6,
+    row(dict(RIGID, SUPORTE="3504CCA19", **{"P.K.": 1061, "P.K. Abs.": 33744.6, "Vão (m)": 4,
                                              "Cabos feeder longitudinais": "2 FA"}),
         dict(RIGID, SUPORTE="3504CCA20", **{"P.K.": 1059.2}),
         **{"c%d" % JUL_2026: "fuera del plano", "c%d" % (JUL_2026 + 1): 2,
@@ -156,7 +158,7 @@ ROWS = [
         {"Vão (m)": 10.6, "Equipamentos associados": "Disp. Transic.",
          "Seccionamento": "Transição Catenaria"}),
     # Fila 10: catenaria flexible con dos mensulas, funcion doble y equipos repartidos.
-    row(dict(FLEXIBLE, SUPORTE="3505CCA07", **{"P.K.": 1146.96}),
+    row(dict(FLEXIBLE, SUPORTE="3505CCA07", **{"P.K.": 1146.96, "Vão (m)": 6.3}),
         dict(FLEXIBLE, SUPORTE="3505CCA08", **{"P.K.": 1145.16})),
     # Fila 11: la errata 'Anc' y un anclaje de conexion.
     row({"SUPORTE": "3713CCA09", "P.K.": 6392, "Tipología": "Anc", "Tipologia": "-",
@@ -426,6 +428,15 @@ class LecturaDeUnaVia(unittest.TestCase):
     def test_el_hito_se_descarta_con_motivo(self):
         motivos = {(d["motivo"], d["fila"]) for d in self.master.discarded}
         self.assertIn(("hito de trazado, no es un apoyo", 3), motivos)
+        self.assertIn(("hito de trazado, no es un apoyo", 5), motivos)
+
+    def test_el_hito_ocupa_la_fila_intermedia_y_su_vano_es_del_apoyo_anterior(self):
+        self.assertEqual(self.by_id["1-00.01"]["SPAN"], Decimal("6.200"))
+
+    def test_el_vano_de_la_fila_intermedia_manda_sobre_el_de_la_fila_del_apoyo(self):
+        # 3504CCA19 trae un 4 en su fila y un 10 en la intermedia; 3505CCA07 solo el suyo.
+        self.assertEqual(self.by_id["3504CCA19"]["SPAN"], Decimal("10.000"))
+        self.assertEqual(self.by_id["3505CCA07"]["SPAN"], Decimal("6.300"))
 
     def test_los_hitos_en_portugues_tambien_lo_son(self):
         for texto in ("Existente", "Iníc. Est. Campo Alegre (00+966)", "Fim Ponte (02+059)",
