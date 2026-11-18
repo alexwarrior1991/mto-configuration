@@ -913,7 +913,7 @@ Las cifras del maestro, con los 17:
 
 Los 43 desactivados son 24 sin KP, 2 que repiten identificador y KP en su vía (`78-1.17` de EP5
 y `8-1.12` de EP9A) y los 17 del KP supuesto. (Desde la revisión 10 del caderno de RUBI el maestro
-tiene 12.899 perfiles y 61 desactivados: los mismos 43 y los 18 apoyos de su zona 3713 que llegan
+tiene 12.900 perfiles y 61 desactivados: los mismos 43 y los 18 apoyos de su zona 3713 que llegan
 sin KP.) `REVISAR = SI` no cambia en los perfiles porque
 los 17 ya salían señalados; el que queda con `ENABLED = SI` y `REVISAR = SI` es `3713CCA09` de
 RUBI.
@@ -1049,12 +1049,12 @@ están.
 
 `RUBI.xlsx` es el **Caderno de Montagem** de la Linha Rubi de Metro do Porto (Casa da Música –
 Santo Ovídio), hoy en su **revisión 10**: catenaria **rígida** en túnel, **flexible** en viaducto y
-**de ménsula** (tranviaria) en los extremos. No se parece a los workbooks ferroviarios: su hoja
-`Sinóptico` es **una tabla con las dos vías lado a lado**, cada campo en una columna por vía
-(`Maciços V1` / `Maciços V2`), con las cabeceras en portugués y en español y con conceptos propios
-(`Tipologia`, `Consolas`, `Maciços`, `Configuraciones`). Hasta la revisión 9 la hoja traía las dos
-vías en espejo, con una banda central sin cabecera y la segunda ménsula en columnas sin nombre: ese
-formato ya no existe en el repositorio, y el lector tampoco lo lee.
+**de ménsula** (tranviaria) en los extremos. No se parece a los workbooks ferroviarios: trae cada
+vía general en su hoja (`VIA 1`, `VIA 2`) y las dos juntas en la hoja `Sinóptico`, **una tabla con
+las dos vías lado a lado**, cada campo en una columna por vía (`Maciços V1` / `Maciços V2`), con las
+cabeceras en portugués y en español y con conceptos propios (`Tipologia`, `Consolas`, `Maciços`,
+`Configuraciones`). Hasta la revisión 9 el `Sinóptico` traía las dos vías en espejo, con una banda
+central sin cabecera: ese formato ya no existe en el repositorio, y el lector tampoco lo lee.
 
 Lo lee `tools/synoptic.py`, que usan **los dos generadores** —el catálogo se cosecha con él y los
 perfiles se generan con él—, igual que `workbook_common.py`: si el catálogo y las referencias de
@@ -1069,16 +1069,15 @@ los perfiles leyeran la hoja de dos maneras, discreparían sin que nadie lo nota
     name: "EP RUBI Casa da Musica - Santo Ovidio"
     stations: [Casa da Música, Campo Alegre, Arrábida, Candal, Rotunda, Devesas, Soares dos Reis, Santo Ovídio]
     tracks:
-      - sheet: "Sinóptico"
-        block: "VIA 1"           # la vía dentro de la hoja, no la hoja
+      - sheet: "VIA 1"           # la hoja que manda
+        block: "VIA 1"           # la vía dentro de la hoja
+        complement: {sheet: "Sinóptico", block: "VIA 1"}   # la que pone lo que la otra no trae
         name: "TRACK 1"
         stations: [Casa da Música, ..., Santo Ovídio]   # las dos vías recorren la línea entera
       - sheet: "Bret. 6+225"
         block: "VIA 1"
         name: "BRETELLE 6+225 TRACK 1"
         station: Santo Ovídio
-      - sheet: "VIA 1"
-        skip: "copia de la via 1 del Sinóptico: se lee solo el Sinóptico"
 ```
 
 Todo lo específico del formato vive en la sección `synoptic` de `aliases.yml`. Las reglas de la
@@ -1087,14 +1086,14 @@ escribe la grafía del catálogo.
 
 ## Las hojas del workbook
 
-Cada hoja de un workbook sinóptico se declara, para leerla o para omitirla con su motivo; una sin
-declarar va a `NO_RECONOCIDO` (`hoja sinoptico sin declarar`).
+Cada hoja de un workbook sinóptico se declara: como la hoja de una vía, como el `complement` de
+otra, o con `skip` y su motivo. Una sin declarar va a `NO_RECONOCIDO` (`hoja sinoptico sin
+declarar`).
 
-- **`Sinóptico`**: las dos vías generales, `TRACK 1` y `TRACK 2`. Es lo único que se lee de ellas.
-- **`VIA 1` y `VIA 2`**: la misma vía, una por hoja, con el formato anterior. **No se leen**
-  (decisión del responsable del dato: manda el `Sinóptico`), y salen en `DESCARTADOS` como
-  `hoja omitida`. No son iguales al `Sinóptico` —no llevan los cambios de la revisión 10— y traen
-  un dato que el `Sinóptico` ha perdido: la altura del hilo de contacto de la **segunda** ménsula.
+- **`VIA 1` y `VIA 2`**: una vía general por hoja. **Son las que mandan** (decisión del
+  responsable del dato): `TRACK 1` y `TRACK 2` salen de ellas.
+- **`Sinóptico`**: las dos vías generales juntas. **Completa** a las hojas de vía con lo que no
+  traen (ver «Mandan las hojas de vía»); no es una vía por sí mismo.
 - **`Bret. 6+225`**: la bretelle (el escape doble) de antes de Santo Ovídio. Sus apoyos no están
   en el `Sinóptico`, así que entra como **dos vías más del paquete**, `BRETELLE 6+225 TRACK 1` y
   `BRETELLE 6+225 TRACK 2`, una por columna de la hoja, con sus apoyos y su KP (el de la vía general
@@ -1105,10 +1104,39 @@ declarar va a `NO_RECONOCIDO` (`hoja sinoptico sin declarar`).
   bretelle, junto a los apoyos `3711CCA119` —en su mismo KP— y `3711CCA135` de la vía general, y
   no traen ni tipo de poste ni altura).
 
+## Mandan las hojas de vía
+
+Las dos vías generales están dos veces en el workbook, y las dos lecturas no dicen lo mismo. La
+regla es del responsable del dato: **mandan las hojas `VIA 1` y `VIA 2`; lo que no traigan se coge
+del `Sinóptico`** (`complement` en `topology.yml`, `merge_records` en `synoptic.py`).
+
+- **Una columna que la hoja de vía tiene, manda celda a celda, vacía incluida.** El KP, el vano, la
+  función, el poste, el maciço, las ménsulas, el seccionamiento y los equipos salen de la hoja de
+  vía aunque el `Sinóptico` diga otra cosa o diga algo donde ella calla.
+- **Lo que la hoja de vía no trae sale del `Sinóptico`**: `Configuraciones`
+  (`ASSEMBLY_CONFIGURATION`) y las columnas sin campo que solo tiene él (`Activo`, `Troço`,
+  `Terreno`, `Troço 2`, `Tipología`, `Lanço`, `SUBIDA FEEDER`, los feeders y las canalizaciones),
+  que van a `NO_MAPEADO`. Al revés, la altura del hilo de contacto de la **segunda** ménsula solo
+  está en las hojas de vía.
+- **Los apoyos se casan** (`pair_records`) por nombre y KP; después por el KP solo, si en ese KP
+  queda un único apoyo sin casar en cada hoja (la zona 3713 está renumerada en el `Sinóptico`: el
+  nombre que entra es el de la hoja de vía); y al final por el nombre solo, si el KP es otro (el KP
+  que entra es el de la hoja de vía). Casar primero por nombre emparejaría, en la zona renumerada,
+  apoyos distintos.
+- **Un apoyo que solo está en el `Sinóptico` entra de él**, detrás del último apoyo casado que lo
+  precede allí: son los 18 de la zona 3713 que solo traen su código y `3713CCA016` de la vía 2.
+  Uno que solo está en la hoja de vía entra sin lo que solo trae el `Sinóptico` (`3301CCA18`).
+- **Nada de esto es silencioso.** `DESCARTADOS` lleva, con la hoja y la fila del apoyo: `apoyo
+  casado con Sinóptico por su KP` (5) o `por su nombre` (2), `apoyo que no esta en Sinóptico` (1),
+  `apoyo que solo esta en Sinóptico` (19) y, por cada celda en la que las dos hojas discrepan,
+  `manda la hoja de la via: Sinóptico dice otra cosa`, con el campo, los dos valores y la fila del
+  `Sinóptico` (93: 60 son la altura de la segunda ménsula, que él no tiene). Los hitos son los de la
+  hoja de vía; los del `Sinóptico`, que son los mismos, no se repiten.
+
 ## Cómo se lee la hoja
 
 - **La cabecera se localiza por contenido** (la fila que trae la columna del apoyo, `SUPORTE`): es
-  la fila 1 en el `Sinóptico` y la 4 en la bretelle.
+  la fila 1 en el `Sinóptico` y la 4 en las hojas de vía y en la bretelle.
 - **La vía de cada columna la dice su cabecera.** Las marcas de cada vía se declaran en
   `synoptic.blocks` (` V1`, `(via 1)`, `via 1`…), y lo que queda al quitarlas es el nombre de la
   columna, que se busca en `synoptic.columns`: `Maciços V1` es `maciços` de la vía 1 y
@@ -1123,9 +1151,16 @@ declarar va a `NO_RECONOCIDO` (`hoja sinoptico sin declarar`).
     `P.K. (vía 2)` es el KP de las dos.
   - **`SUPORTE V2` está dos veces** (columnas A e Y), con lo mismo: se lee la primera con dato. La
     A lleva además las notas del pie.
-- **La segunda ménsula tiene sus columnas**: `Consolas 2` y `Desalinhamentos2 (cm)` se declaran
-  con `slot: 2`, y `Equipamentos associados 2` es una columna más del mismo campo multivalor. No
-  hay una segunda `Alt. FC (m)`: la altura de la segunda ménsula llega vacía.
+  - **Una hoja de una sola vía** (`VIA 1`, `VIA 2`): su cabecera del apoyo no lleva marca
+    (`SUPORTE` a secas) y no hay subcabecera, así que la hoja entera es de la vía que declara
+    `topology.yml`. La marca que lleve alguna cabecera no reparte nada: la hoja `VIA 2` rotula
+    `P.K. Abs.vía 1`.
+- **La segunda ménsula.** En el `Sinóptico` tiene sus columnas: `Consolas 2` y
+  `Desalinhamentos2 (cm)` se declaran con `slot: 2`, y `Equipamentos associados 2` es una columna
+  más del mismo campo multivalor; no hay una segunda `Alt. FC (m)`. En las hojas de vía no tiene
+  cabecera: va en la **columna gemela**, la columna sin cabecera pegada a la derecha de `Consolas`,
+  `Alt. FC (m)`, `Desalinhamentos` y `Equipamentos associados` (`synoptic.twins`). Es la única
+  columna sin cabecera que se lee como un campo, y solo esa: la siguiente ya no lo es.
 - **Lo que no se lee está declarado**, no escondido en el código:
   - `synoptic.ignored_patterns`: toda cabecera que lleve **`(traçado Jul.2026)`** se ignora entera
     —ni se importa, ni va a `NO_MAPEADO`, ni a `NO_RECONOCIDO`—, por decisión del responsable del
@@ -1136,8 +1171,8 @@ declarar va a `NO_RECONOCIDO` (`hoja sinoptico sin declarar`).
   - Una columna cuya cabecera es solo la marca de vía (`VIA 2`, `VIA 1`: B y W) es relleno.
 - **Una columna sin cabecera** es la continuación de la que tiene a su izquierda (una celda de
   cabecera combinada) cuando esa no tiene campo o no se lee: `Cabos feeder longitudinais V1` ocupa
-  tres columnas. Nunca se lee como un campo: detrás de uno, lo que traiga se conserva en
-  `NO_MAPEADO` con su letra (`sin cabecera AB`).
+  tres columnas. Detrás de un campo, si no es su gemela, lo que traiga se conserva en `NO_MAPEADO`
+  con su letra (`sin cabecera AB`).
 - **Las columnas que no son de una vía** (`synoptic.shared`: `Activo`, `Troço`, `Terreno`,
   `Troço 2`, la `Tipología` sin marca —`TIPO R` / `TIPO D e E`, que **no** es la función del
   apoyo—, y las columnas con un `1` por cabecera, que son lo que queda de la banda central) se
@@ -1154,9 +1189,9 @@ declarar va a `NO_RECONOCIDO` (`hoja sinoptico sin declarar`).
   intermedia**, así que lo demás de su fila —el vano— sigue siendo del apoyo anterior. Las
   estaciones no se deducen de ahí: se declaran en `topology.yml`, como siempre.
 - **Una fila con KP y sin apoyo** no es una fila intermedia: va a `DESCARTADOS` (`fila con KP y sin
-  apoyo: no se suma al apoyo anterior`). Son tres: un `-` donde iría el apoyo de la vía 1 en el
-  6+376,9 y las dos filas de la bretelle que solo tienen apoyo en la vía 1 (`3711CCA125.BIS`,
-  `3711CCA129.BIS`).
+  apoyo: no se suma al apoyo anterior`): un `-` donde iría el apoyo de la vía 1 en el 6+376,9 (en
+  su hoja de vía y en el `Sinóptico`) y las dos filas de la bretelle que solo tienen apoyo en la
+  vía 1 (`3711CCA125.BIS`, `3711CCA129.BIS`).
 - **Los datos acaban en la primera fila sin nada de ninguna vía.** Cuentan todas las columnas de
   vía, también las que no se leen: los últimos apoyos de la zona 3713 solo traen su código. No
   cuentan las columnas que no son de una vía: una tabla de medición suelta ocupa justo esas filas.
@@ -1200,8 +1235,8 @@ Dos cosas que conviene no confundir con el catálogo ferroviario: `M1`, `M2` y `
 subcabeceras de las hojas `HR Track` (y por eso `is_noise` las tira allí), pero aquí son maciços
 de verdad, así que el sinóptico usa su propio marcador de hueco (`is_hole`: vacío, `0`, `-` y
 errores de fórmula). Y los identificadores de apoyo se importan **literales** (`3711CCA121_`,
-`3709CCA181.Bis`, el `1-00.10` repetido en la vía 1, el `3713CCA08` que la vía 2 trae dos veces
-con distinto KP): son identificadores, no códigos de catálogo, y corregirlos es cosa del workbook.
+`3709CCA181.Bis`, el `1-00.10` repetido en la vía 1, el `3301CCA18` de la hoja `VIA 2`): son
+identificadores, no códigos de catálogo, y corregirlos es cosa del workbook.
 
 ## Los aisladores de sección de RUBI
 
@@ -1215,9 +1250,9 @@ PDF que no está en el repositorio):
 
 | Dónde | Filas | Qué dice cada fuente | `ENABLED` |
 |---|---|---|---|
-| Escapes del 1+139, 2+471 y 3+605 | 3, `TRACK_CONNECTION` (`TRACK 1` con `TRACK 2`) | Los dos apoyos del pórtico llevan la tipología `Aislad.` (y `Aislador 1HC` en los dos últimos); en la planta, un rombo rojo en el cruce | `SI` |
-| 2+075 y 3+754, una por vía | 4, `IN_TRACK` | `Aislador 2HC` con caja de seccionamiento en el caderno y el rombo magenta de la leyenda (*isolador de secção*) en la planta. El de `3701CCA02` solo está en la planta | `SI` |
-| 2+201, una por vía, y 3+713 en la vía 2 | 3, `IN_TRACK` | `Aislador 2HC` en el caderno; la planta no dibuja el aislador | `NO` |
+| Escapes del 1+139, 2+471 y 3+605 | 3, `TRACK_CONNECTION` (`TRACK 1` con `TRACK 2`) | Los dos apoyos del pórtico llevan la tipología `Aislad.` en las hojas de vía (y `Aislador 1HC` en los dos últimos); en la planta, un rombo rojo en el cruce | `SI` |
+| 2+075 y 3+754, una por vía | 4, `IN_TRACK` | `Aislador 2HC` con caja de seccionamiento en su hoja de vía y el rombo magenta de la leyenda (*isolador de secção*) en la planta | `SI` |
+| 2+201, una por vía, y 3+713 en la vía 2 | 3, `IN_TRACK` | Solo los anota el `Sinóptico`, que no manda: ni la hoja de vía ni la planta los traen. Parecen los del 2+075 y el 3+754 escritos una fila más abajo | `NO` |
 | 6+430, una por vía | 2, `IN_TRACK` | Solo en la planta, con el símbolo de *isolador de secção diodo*; sin KP rotulado | `NO` |
 
 Lo que queda por confirmar va en el motivo de cada fila: si el escape doble del 2+471 lleva un
@@ -1228,8 +1263,10 @@ libro desde un plano: se vuelven a escribir.
 
 ## Probar
 
-`tools/tests/test_synoptic.py` construye las dos hojas en memoria y prueba cada manera de decir la
-vía (el sufijo, la posición, la subcabecera, la columna repetida), la segunda ménsula, lo ignorado
+`tools/tests/test_synoptic.py` construye las tres hojas en memoria y prueba cada manera de decir la
+vía (el sufijo, la posición, la subcabecera, la columna repetida, la hoja de una sola vía), la
+segunda ménsula con su cabecera y en la columna gemela, la vía que sale de dos hojas (qué manda,
+qué se completa, cómo se casan los apoyos y qué queda anotado), lo ignorado
 por declaración, la fila intermedia, los hitos, las notas al pie y el fin de los datos, el KP con
 signo más, las hojas declaradas del workbook, cada tabla de traducción y que **ningún código
 emitido lleva una grafía del origen**. Los guardianes de recuento de
