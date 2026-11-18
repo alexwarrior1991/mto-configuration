@@ -875,6 +875,8 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
             cls.cantilevers = sheet("CANTILEVERS")
             cls.unknown = sheet("NO_RECONOCIDO")
             cls.discarded = sheet("DESCARTADOS")
+            cls.unmapped = sheet("NO_MAPEADO")
+            cls.insulators = sheet("SECTION_INSULATORS")
         finally:
             wb.close()
 
@@ -899,12 +901,13 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         aparecidos = {(r["TIPO"], r["VALOR"]) for r in self.unknown}
         self.assertEqual(self.HUECOS_CONOCIDOS - aparecidos, set())
 
-    def test_estan_las_178_vias_declaradas(self):
+    def test_estan_las_180_vias_declaradas(self):
         # 179 hojas menos las 3 vacias, que se declaran con 'skip'. Las dos de EP9A que
         # llevan dos tramos concatenados cuentan como UNA via cada una desde V18. Mas las
-        # dos vias del sinoptico de RUBI, que salen de una sola hoja. Las dos de Pleshet
+        # cuatro del sinoptico de RUBI: las dos generales, que salen de una sola hoja, y
+        # las dos de la bretelle del 6+225, de la suya. Las dos de Pleshet
         # (EP14B / HR Track 1 Pleshet y HR Track 2 Pleshet) vienen del libro de EP13.
-        self.assertEqual(len(self.tracks), 178)
+        self.assertEqual(len(self.tracks), 180)
 
     def test_la_hoja_con_dos_tramos_sale_como_UNA_via(self):
         # Era al reves hasta V18: se partia en dos porque el identificador de perfil se
@@ -1021,16 +1024,19 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         self.assertNotIn(("EP11B", "TRACK 1", "T1:27+130"), perfiles, "es una nota, no un poste")
 
     def test_los_perfiles_desactivados_son_los_que_no_tienen_kp_del_origen_o_lo_repiten(self):
-        """Un guardian de recuento: 43 perfiles desactivados, todos por revisar.
+        """Un guardian de recuento: 61 perfiles desactivados, todos por revisar.
 
-        24 sin KP, 2 que repiten identificador y KP dentro de su via y los 17 de KP supuesto
-        (los 16 'Bis' de EP9A y EP11B y 84-T.17 de EP6), que son los unicos desactivados con
-        un KP que no esta repetido: cada uno con su linea 'KP supuesto' en DESCARTADOS.
+        42 sin KP (24 de los workbooks ferroviarios y, desde la rev. 10 del caderno de RUBI,
+        los 18 apoyos de su zona 3713 que solo traen el codigo, nueve por via), 2 que repiten
+        identificador y KP dentro de su via y los 17 de KP supuesto (los 16 'Bis' de EP9A y
+        EP11B y 84-T.17 de EP6), que son los unicos desactivados con un KP que no esta
+        repetido: cada uno con su linea 'KP supuesto' en DESCARTADOS.
         """
         desactivados = [p for p in self.profiles if p["ENABLED"] == "NO"]
-        self.assertEqual(len(desactivados), 43)
+        self.assertEqual(len(desactivados), 61)
         self.assertTrue(all(p["REVISAR"] == "SI" for p in desactivados))
-        self.assertEqual(sum(1 for p in desactivados if p["KP"] is None), 24)
+        self.assertEqual(sum(1 for p in desactivados if p["KP"] is None), 42)
+        self.assertEqual(sum(1 for p in desactivados if p["KP"] is None and p["EP"] == "RUBI"), 18)
         supuestos = {(d["EP"], d["HOJA"], d["FILA"]) for d in self.discarded
                      if str(d["MOTIVO"]).startswith("KP supuesto")}
         self.assertEqual(len(supuestos), 17)
@@ -1072,14 +1078,26 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         self.assertGreaterEqual(len(angulos), 275)
         self.assertTrue(all(-90 <= a <= 90 for a in angulos))
 
-    def test_el_sinoptico_de_rubi_entra_con_sus_dos_vias(self):
-        """Una hoja, dos vias, ocho estaciones y codigos solo en ingles."""
+    def test_el_sinoptico_de_rubi_entra_con_sus_dos_vias_y_las_de_la_bretelle(self):
+        """Dos hojas, cuatro vias, ocho estaciones y codigos solo en ingles."""
         vias = [t for t in self.tracks if t["EP"] == "RUBI"]
-        self.assertEqual([t["NOMBRE"] for t in vias], ["TRACK 1", "TRACK 2"])
-        self.assertTrue(all(t["ESTACIONES"].count("|") == 7 for t in vias))
+        self.assertEqual([(t["NOMBRE"], t["HOJA_ORIGEN"]) for t in vias],
+                         [("TRACK 1", "Sinóptico / VIA 1"), ("TRACK 2", "Sinóptico / VIA 2"),
+                          ("BRETELLE 6+225 TRACK 1", "Bret. 6+225 / VIA 1"),
+                          ("BRETELLE 6+225 TRACK 2", "Bret. 6+225 / VIA 2")])
+        self.assertTrue(all(t["ESTACIONES"].count("|") == 7 for t in vias[:2]))
+        self.assertEqual({t["ESTACIONES"] for t in vias[2:]}, {"Santo Ovídio"})
         perfiles = [p for p in self.profiles if p["EP"] == "RUBI"]
-        self.assertGreater(len(perfiles), 900)
-        self.assertGreater(sum(1 for p in perfiles if p["ENABLED"] == "SI"), 900)
+        # 476 y 475 apoyos en las vias generales (rev. 10 del caderno) y 10 y 8 en la
+        # bretelle. Los 18 que no se cargan son los de la zona 3713 que solo traen su codigo.
+        self.assertEqual(collections.Counter(p["VIA"] for p in perfiles),
+                         {"TRACK 1": 476, "TRACK 2": 475,
+                          "BRETELLE 6+225 TRACK 1": 10, "BRETELLE 6+225 TRACK 2": 8})
+        self.assertEqual(sum(1 for p in perfiles if p["ENABLED"] == "SI"), 951)
+        self.assertEqual({p["KP"] for p in perfiles if p["ENABLED"] != "SI"}, {None})
+        # Nada de las columnas '(traçado Jul.2026)', que se ignoran enteras.
+        self.assertFalse([u for u in self.unmapped if u["EP"] == "RUBI"
+                          and ("Jul.2026" in str(u["COLUMNA"]) or u["VALOR"] == "fuera del plano")])
         soportes = {p["SUPPORT_TYPE"] for p in perfiles if p["SUPPORT_TYPE"]}
         self.assertEqual(soportes, {"OCR SUPPORT", "FLEXIBLE", "SINGLE CANTILEVER", "DOUBLE CANTILEVER"})
         self.assertGreater(sum(1 for p in perfiles if p["ASSEMBLY_CONFIGURATION"]), 250)
@@ -1088,6 +1106,24 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
             for field in ("SECTIONING", "ANCHORAGE", "FOUNDATION", "POLE_TYPE", "SUPPORT_TYPE",
                           "SECTIONING_FEEDING", "ASSEMBLY_CONFIGURATION"):
                 self.assertNotRegex(str(p[field] or ""), r"[ãçõ]|Anc\.|Caix|Ancoraem|Rígida|Funicular")
+
+    def test_los_aisladores_de_rubi_llegan_del_libro_de_revision(self):
+        """RUBI no tiene plano DXF: sus aisladores son filas escritas a mano en el libro."""
+        aisladores = [a for a in self.insulators if a["EP"] == "RUBI"]
+        self.assertEqual(len(aisladores), 12)
+        self.assertEqual(collections.Counter(a["TIPO_INSTALACION"] for a in aisladores),
+                         {"TRACK_CONNECTION": 3, "IN_TRACK": 9})
+        # Los cinco que el caderno y la planta no confirman a la vez no se cargan.
+        self.assertEqual(sum(1 for a in aisladores if a["ENABLED"] == "SI"), 7)
+        estaciones = {s for t in self.tracks if t["EP"] == "RUBI" for s in t["ESTACIONES"].split(" | ")}
+        vias = {t["NOMBRE"] for t in self.tracks if t["EP"] == "RUBI"}
+        for a in aisladores:
+            self.assertIn(a["ESTACION"], estaciones, a["NOMBRE"])
+            self.assertIn(a["VIA"], vias, a["NOMBRE"])
+            if a["TIPO_INSTALACION"] == "TRACK_CONNECTION":
+                self.assertEqual((a["VIA"], a["VIA_CONECTADA"]), ("TRACK 1", "TRACK 2"))
+            if a["ENABLED"] == "SI":
+                self.assertIsNotNone(a["KP"], a["NOMBRE"])
 
     def test_la_configuracion_de_montaje_solo_la_trae_el_sinoptico(self):
         """Las hojas HR Track no tienen esa columna: en los once EPs sale vacia."""

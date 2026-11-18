@@ -544,7 +544,9 @@ class MaestroGenerado(unittest.TestCase):
             self.assertEqual(enabled, "SI", key)
             self.assertTrue(description, key)              # descripcion inglesa declarada
             self.assertEqual(origin, "TRACK", key)
-        self.assertEqual(sum(1 for e, _ in self.rubi if e == "AssemblyConfiguration"), 32)
+        # 35 con la rev. 10 del caderno: C.F.20, C.F.25, C.F.28 y 'C. Cut&cover' son nuevas,
+        # y C.F.20.B ya no se usa.
+        self.assertEqual(sum(1 for e, _ in self.rubi if e == "AssemblyConfiguration"), 35)
         for entity, code in self.rubi:
             self.assertNotRegex(code, r"[ãçõí]|Anc\.|Caix|Ancoraem|Marquise", (entity, code))
 
