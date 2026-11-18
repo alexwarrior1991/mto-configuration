@@ -1001,8 +1001,9 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         fallara ni un test. Si estas cifras cambian, cambialas A PROPOSITO y explica por
         que en el commit: son las que se cargan en base de datos.
         """
-        # 14.653 / 14.643 de los once workbooks ferroviarios, mas las 969 del sinoptico de
-        # RUBI (566 de catenaria rigida deducidas del soporte, como en EP6). 157 de las
+        # 14.653 / 14.643 de los once workbooks ferroviarios, mas las 971 del sinoptico de
+        # RUBI (eran 969 hasta que mandan sus hojas de via, que traen la altura de la
+        # segunda mensula y dos mensulas mas en la zona 3713) (566 de catenaria rigida deducidas del soporte, como en EP6). 157 de las
         # ferroviarias vienen del libro de EP13: el principio de las vias 12 y 22 de EP14B y
         # sus dos vias de Pleshet. Otras 35, de Add_Tracks_EP14_A: el final de las vias 1 y 2
         # de EP14A, hasta la zona neutra de Ashkelon. Cinco cargables mas desde que se lee el
@@ -1010,8 +1011,8 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         # desde que 'T1:27+130' es una nota y no un poste, y dos cargables mas desde que el
         # KP admite signo (las de la cabecera de EP11A). La de 84-T.17 de EP6, cuyo KP es
         # supuesto, esta pero no es cargable: su poste sale desactivado hasta tener su KP.
-        self.assertEqual(len(self.cantilevers), 15621)
-        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15619)
+        self.assertEqual(len(self.cantilevers), 15623)
+        self.assertEqual(sum(1 for c in self.cantilevers if c["ENABLED"] == "SI"), 15621)
 
     def test_los_postes_sin_kp_entre_dos_toman_la_media_y_salen_desactivados(self):
         perfiles = {(p["EP"], p["VIA"], p["PROFILE_ID"]): p for p in self.profiles}
@@ -1079,22 +1080,42 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         self.assertTrue(all(-90 <= a <= 90 for a in angulos))
 
     def test_el_sinoptico_de_rubi_entra_con_sus_dos_vias_y_las_de_la_bretelle(self):
-        """Dos hojas, cuatro vias, ocho estaciones y codigos solo en ingles."""
+        """Cuatro vias, ocho estaciones y codigos solo en ingles.
+
+        Las dos generales salen de su hoja de via, que manda, completada con el Sinóptico.
+        """
         vias = [t for t in self.tracks if t["EP"] == "RUBI"]
         self.assertEqual([(t["NOMBRE"], t["HOJA_ORIGEN"]) for t in vias],
-                         [("TRACK 1", "Sinóptico / VIA 1"), ("TRACK 2", "Sinóptico / VIA 2"),
+                         [("TRACK 1", "VIA 1 / VIA 1"), ("TRACK 2", "VIA 2 / VIA 2"),
                           ("BRETELLE 6+225 TRACK 1", "Bret. 6+225 / VIA 1"),
                           ("BRETELLE 6+225 TRACK 2", "Bret. 6+225 / VIA 2")])
         self.assertTrue(all(t["ESTACIONES"].count("|") == 7 for t in vias[:2]))
         self.assertEqual({t["ESTACIONES"] for t in vias[2:]}, {"Santo Ovídio"})
         perfiles = [p for p in self.profiles if p["EP"] == "RUBI"]
-        # 476 y 475 apoyos en las vias generales (rev. 10 del caderno) y 10 y 8 en la
-        # bretelle. Los 18 que no se cargan son los de la zona 3713 que solo traen su codigo.
+        # 476 apoyos en cada via general (rev. 10 del caderno) y 10 y 8 en la bretelle. De
+        # los de las generales, 467 y 466 son de su hoja de via; los otros 9 y 10 solo estan
+        # en el Sinóptico: los 18 de la zona 3713 que solo traen su codigo, que no se
+        # cargan, y '3713CCA016' de la via 2, que no se casa con ninguno de su hoja.
         self.assertEqual(collections.Counter(p["VIA"] for p in perfiles),
-                         {"TRACK 1": 476, "TRACK 2": 475,
+                         {"TRACK 1": 476, "TRACK 2": 476,
                           "BRETELLE 6+225 TRACK 1": 10, "BRETELLE 6+225 TRACK 2": 8})
-        self.assertEqual(sum(1 for p in perfiles if p["ENABLED"] == "SI"), 951)
+        self.assertEqual(collections.Counter(p["HOJA_ORIGEN"] for p in perfiles),
+                         {"VIA 1 / VIA 1": 467, "VIA 2 / VIA 2": 466,
+                          "Sinóptico / VIA 1": 9, "Sinóptico / VIA 2": 10,
+                          "Bret. 6+225 / VIA 1": 10, "Bret. 6+225 / VIA 2": 8})
+        self.assertEqual(sum(1 for p in perfiles if p["ENABLED"] == "SI"), 952)
         self.assertEqual({p["KP"] for p in perfiles if p["ENABLED"] != "SI"}, {None})
+        # La segunda mensula trae su altura, que solo esta en las hojas de via.
+        segundas = [c for c in self.cantilevers if c["EP"] == "RUBI" and c["SLOT"] == 2]
+        self.assertEqual(sum(1 for c in segundas if c["CW_HEIGHT"] is not None), 43)
+        # Lo que no se caso por nombre y KP esta a la vista.
+        casados = collections.Counter(d["MOTIVO"] for d in self.discarded if d["EP"] == "RUBI"
+                                      and str(d["MOTIVO"]).startswith("apoyo "))
+        self.assertEqual(casados, {
+            "apoyo casado con Sinóptico por su KP: alli tiene otro nombre": 5,
+            "apoyo casado con Sinóptico por su nombre: alli tiene otro KP": 2,
+            "apoyo que no esta en Sinóptico: sin lo que solo trae esa hoja": 1,
+            "apoyo que solo esta en Sinóptico: entra de alli": 19})
         # Nada de las columnas '(traçado Jul.2026)', que se ignoran enteras.
         self.assertFalse([u for u in self.unmapped if u["EP"] == "RUBI"
                           and ("Jul.2026" in str(u["COLUMNA"]) or u["VALOR"] == "fuera del plano")])
