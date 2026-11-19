@@ -1131,20 +1131,28 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
     def test_los_aisladores_de_rubi_llegan_del_libro_de_revision(self):
         """RUBI no tiene plano DXF: sus aisladores son filas escritas a mano en el libro."""
         aisladores = [a for a in self.insulators if a["EP"] == "RUBI"]
-        self.assertEqual(len(aisladores), 12)
+        # Ocho, revisados por el responsable del dato: cuatro en plena via y cuatro de
+        # escape, dos de ellos cruzados en el escape doble del 2+471, uno por diagonal.
+        self.assertEqual(len(aisladores), 8)
         self.assertEqual(collections.Counter(a["TIPO_INSTALACION"] for a in aisladores),
-                         {"TRACK_CONNECTION": 3, "IN_TRACK": 9})
-        # Los cinco que el caderno y la planta no confirman a la vez no se cargan.
-        self.assertEqual(sum(1 for a in aisladores if a["ENABLED"] == "SI"), 7)
+                         {"TRACK_CONNECTION": 4, "IN_TRACK": 4})
+        self.assertEqual(sum(1 for a in aisladores if a["ENABLED"] == "SI"), 8)
+        # El importador los distingue por estacion y nombre.
+        self.assertEqual(len({(a["ESTACION"], a["NOMBRE"]) for a in aisladores}), 8)
+        cruzados = {a["NOMBRE"]: (a["VIA"], a["VIA_CONECTADA"], a["KP"]) for a in aisladores
+                    if a["NOMBRE"] in ("SI 3703CCA29", "SI 3703CCA30")}
+        self.assertEqual(cruzados, {"SI 3703CCA29": ("TRACK 1", "TRACK 2", 2471.46),
+                                    "SI 3703CCA30": ("TRACK 2", "TRACK 1", 2474.86)})
         estaciones = {s for t in self.tracks if t["EP"] == "RUBI" for s in t["ESTACIONES"].split(" | ")}
         vias = {t["NOMBRE"] for t in self.tracks if t["EP"] == "RUBI"}
         for a in aisladores:
             self.assertIn(a["ESTACION"], estaciones, a["NOMBRE"])
             self.assertIn(a["VIA"], vias, a["NOMBRE"])
             if a["TIPO_INSTALACION"] == "TRACK_CONNECTION":
-                self.assertEqual((a["VIA"], a["VIA_CONECTADA"]), ("TRACK 1", "TRACK 2"))
-            if a["ENABLED"] == "SI":
-                self.assertIsNotNone(a["KP"], a["NOMBRE"])
+                self.assertEqual({a["VIA"], a["VIA_CONECTADA"]}, {"TRACK 1", "TRACK 2"})
+            else:
+                self.assertIsNone(a["VIA_CONECTADA"], a["NOMBRE"])
+            self.assertIsNotNone(a["KP"], a["NOMBRE"])
 
     def test_la_configuracion_de_montaje_solo_la_trae_el_sinoptico(self):
         """Las hojas HR Track no tienen esa columna: en los once EPs sale vacia."""
