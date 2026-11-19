@@ -1250,12 +1250,13 @@ responsable del dato las revisó: son **ocho**, todas con `ENABLED = SI`.
 
 | Dónde | Filas | Qué dice cada fuente | `REVISAR` |
 |---|---|---|---|
-| Escape del 1+139 (`3505CCA05`-`06`) | 1, `TRACK_CONNECTION` (`TRACK 1` con `TRACK 2`) | Los dos apoyos del pórtico llevan la tipología `Aislad.` en las hojas de vía; en la planta, un rombo rojo en el cruce | `SI` |
+| Escape del 1+139 (`3505CCA05`-`06`) | 1, `TRACK_CONNECTION` (`TRACK 1` con `TRACK 2`) | Los dos apoyos del pórtico llevan la tipología `Aislad.` en las hojas de vía; en la planta, un rombo rojo en el cruce | `NO` |
 | Escape doble del 2+471 | 2, `TRACK_CONNECTION`: `SI 3703CCA29` (`TRACK 1` con `TRACK 2`, KP 2471,46) y `SI 3703CCA30` (`TRACK 2` con `TRACK 1`, KP 2474,86) | **Dos aisladores cruzados, uno por diagonal**, confirmado por el responsable. Qué KP es de cada diagonal es una asignación nuestra (el de cada apoyo con `Aislad.`) | `SI` |
 | Escape del 3+605 (`3705CCA45`-`46`) | 1, `TRACK_CONNECTION` | Uno solo, confirmado por el responsable | `NO` |
-| 2+075 y 3+754, una por vía | 4, `IN_TRACK` | `Aislador 2HC` con caja de seccionamiento en su hoja de vía y el rombo magenta de la leyenda (*isolador de secção*) en la planta | `SI` |
+| 2+075 y 3+754, una por vía | 4, `IN_TRACK` | `Aislador 2HC` con caja de seccionamiento en su hoja de vía y el rombo magenta de la leyenda (*isolador de secção*) en la planta | `NO` |
 
-Lo que queda por confirmar va en el motivo de cada fila pendiente. Los códigos y las tangentes de
+Las seis con `NO` las ha confirmado el responsable del dato; lo que queda por confirmar de las dos
+del 2+471 va en su motivo. Los códigos y las tangentes de
 las agujas no se leen en la planta y van vacíos en las ocho, y la estación es la más cercana por KP.
 
 Lo que **no** es un aislador, también confirmado por el responsable: el `Aislador 2HC` que solo el
@@ -1546,13 +1547,13 @@ Con este criterio, el libro de hoy (`data/sectioning-review.xlsx`) tiene:
 | Hoja | Filas | Revisadas (`NO`) | Pendientes (`SI`) | Sin marcar (vacía) | Con `ENABLED = SI` |
 |---|---|---|---|---|---|
 | `DISCONNECTORS` | 711 | 198 | 513 | 0 | 711 |
-| `SECTION_INSULATORS` | 284 | 27 | 214 | 43 | 284 |
+| `SECTION_INSULATORS` | 284 | 32 | 209 | 43 | 284 |
 
-Es decir, se cargan 513 seccionadores y 257 aisladores que el libro no da por revisados: son las 770
+Es decir, se cargan 513 seccionadores y 252 aisladores que el libro no da por revisados: son las 765
 filas de su hoja `PENDIENTE` (ver «`RESUMEN` y
 `PENDIENTE`»). Las 43 sin marcar son los aisladores añadidos a mano (no llevan `HANDLE`: no
-salieron del plano); los ocho de RUBI, que tampoco salen de un plano, sí llevan su `REVISAR`: siete
-`SI` y uno `NO` (ver «Los aisladores de sección de RUBI»). Si esas filas
+salieron del plano); los ocho de RUBI, que tampoco salen de un plano, sí llevan su `REVISAR`: seis
+`NO` y dos `SI` (ver «Los aisladores de sección de RUBI»). Si esas filas
 ya se miraron, cerrarlas es escribir `NO` en su `REVISAR`; eso es de quien revisó, no del generador.
 
 ## `RESUMEN` y `PENDIENTE`
