@@ -95,7 +95,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32");
     }
 
     /**
@@ -342,6 +342,26 @@ class FlywayMigrationIT {
         }
 
         return configuration.load();
+    }
+
+    /**
+     * V32: las mensulas de un perfil se leen por {@code profile_id}, y la clave ajena no lleva
+     * indice propio.
+     *
+     * <p>Parcial sobre las vivas, porque toda lectura lleva el {@code deleted = false} de
+     * {@code @SQLRestriction}, y con el {@code id} detras, que es el orden en que se piden. Sin el,
+     * el importador, el evento de cada perfil y cada pagina de perfiles recorrian la tabla entera.
+     */
+    @Test
+    void lasMensulasDeUnPerfilTienenSuIndice() {
+        List<String> indices = jdbc().queryForList("select indexdef from pg_indexes"
+                + " where schemaname = ? and indexname = 'idx_cantilever_profile_id'", String.class, SCHEMA);
+
+        assertThat(indices).singleElement(org.assertj.core.api.InstanceOfAssertFactories.STRING)
+                .doesNotContain("UNIQUE")
+                .contains("cantilever")
+                .contains("(profile_id, id)")
+                .contains("deleted = false");
     }
 
     /**

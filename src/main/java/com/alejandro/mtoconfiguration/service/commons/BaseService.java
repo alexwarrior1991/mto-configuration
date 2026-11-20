@@ -190,7 +190,9 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
     }
 
     /**
-     * La lista entera, que solo sirve {@code GET /async/{recurso}} ({@code BaseAsyncService}).
+     * La lista entera, que solo sirve {@code GET /async/{recurso}} ({@code BaseAsyncService}), y solo en
+     * los maestros pequenos: seccionadores, aisladores y puntos de acceso. Los grandes no declaran
+     * esa ruta (ver {@code ProfileAsyncController}): esto carga la tabla completa con el DTO de detalle.
      *
      * <p>Las cuatro lecturas de esta clase ({@code getById}, esta, {@code findAll(Pageable)} y
      * {@code search}) llevan el {@code @Transactional(readOnly = true)} de Spring: con

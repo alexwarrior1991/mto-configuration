@@ -911,6 +911,15 @@ GET  "$BASE/async/profiles/paged"
 La petición se atiende en un hilo del pool, pero **se responde en la misma conexión**: el cliente
 espera igual. Los errores salen con el mismo cuerpo que en la vía síncrona.
 
+**No hay lista entera de los maestros grandes.** `GET $BASE/async/{recurso}` sin paginar devolvía la
+tabla completa con el cuerpo del detalle, y ya no existe para `profiles`, `cantilevers`,
+`steady-arms`, `tracks`, `execution-packages` y `stations`: responde **405**. Un perfil arrastra sus
+ménsulas, sus brazos y sus catálogos; una vía, todos sus perfiles; un paquete y una estación, sus
+vías. Con decenas de miles de perfiles eso era miles de consultas y decenas de MB en una sola
+respuesta. Se lista paginado, aquí o en la vía síncrona: `GET …/paged`, `POST …/search` o
+`POST …/filter` (§6). Seccionadores, aisladores y puntos de acceso, que son pocos y de fila plana,
+conservan su `GET $BASE/async/{recurso}`; los catálogos tienen su lista entera en `GET $BASE/{catálogo}`.
+
 Si lo que quieres es no esperar, lo que necesitas son los trabajos del apartado siguiente.
 
 ---

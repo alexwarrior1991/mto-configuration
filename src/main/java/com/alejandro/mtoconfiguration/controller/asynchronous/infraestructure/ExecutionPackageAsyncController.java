@@ -52,16 +52,7 @@ public class ExecutionPackageAsyncController {
     }
 
 
-    @GetMapping
-    @Operation(
-            summary = "List all execution packages (async)",
-            description = "Asynchronously retrieves all execution packages."
-    )
-    @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
-    public CompletableFuture<ResponseEntity<Object>> findAllAsync() {
-        return executionPackageAsyncService.findAllAsync()
-                .thenApply(ResponseEntity::ok);
-    }
+    // Sin lista entera (GET sin paginar): ver ProfileAsyncController. La lista es /paged, /search o /filter.
 
     @PostMapping
     @Operation(

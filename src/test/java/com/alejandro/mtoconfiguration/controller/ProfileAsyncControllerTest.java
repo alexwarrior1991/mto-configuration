@@ -1,7 +1,15 @@
 package com.alejandro.mtoconfiguration.controller;
 
 import com.alejandro.mtoconfiguration.configuration.security.KeycloakJwtAuthenticationConverter;
+import com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure.CantileverAsyncController;
+import com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure.DisconnectorAsyncController;
+import com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure.ExecutionPackageAsyncController;
 import com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure.ProfileAsyncController;
+import com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure.SectionInsulatorAsyncController;
+import com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure.StationAsyncController;
+import com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure.SteadyArmAsyncController;
+import com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure.TrackAccessPointAsyncController;
+import com.alejandro.mtoconfiguration.controller.asynchronous.infraestructure.TrackAsyncController;
 import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.RestExceptionHandler;
@@ -27,16 +35,23 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.bind.annotation.GetMapping;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -173,5 +188,62 @@ class ProfileAsyncControllerTest {
         mockMvc.perform(asyncDispatch(started))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1));
+    }
+
+    /**
+     * {@code GET /async/profiles} devolvia todos los perfiles con el DTO de detalle (mensulas, brazos y
+     * catalogos de cada uno, por lotes): con decenas de miles, miles de consultas y decenas de MB en
+     * una respuesta. Nadie la llamaba, y ya no existe: se lista paginado.
+     */
+    @Test
+    @DisplayName("la lista entera sin paginar ya no existe: GET a la raiz responde 405 y no toca el servicio")
+    void laListaEnteraYaNoExiste() throws Exception {
+        mockMvc.perform(get(PROFILES))
+                .andExpect(request().asyncNotStarted())
+                .andExpect(status().isMethodNotAllowed());
+
+        verifyNoInteractions(profileAsyncService);
+    }
+
+    @Test
+    @DisplayName("la lista paginada sigue ahi")
+    void laListaPaginadaSigue() throws Exception {
+        when(profileAsyncService.findAllAsync(any(Pageable.class)))
+                .thenReturn(CompletableFuture.completedFuture(new PageImpl<>(List.of(profile(1L)))));
+
+        MvcResult started = mockMvc.perform(get(PROFILES + "/paged"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(started)).andExpect(status().isOk());
+    }
+
+    /**
+     * Los seis maestros cuyo detalle arrastra hijos (el perfil sus mensulas, la via sus perfiles, el
+     * paquete y la estacion sus vias) o cuya tabla crece con los perfiles (mensulas y brazos) no
+     * declaran un {@code GET} a la raiz de su fachada {@code /async}. Los tres pequenos y de fila plana
+     * la conservan, y los catalogos tienen la suya en la via sincrona ({@code LovControllerContractTest}).
+     */
+    @Test
+    @DisplayName("solo los maestros pequenos conservan la lista entera en /async")
+    void soloLosMaestrosPequenosConservanLaListaEntera() {
+        assertThat(List.of(ProfileAsyncController.class, CantileverAsyncController.class,
+                SteadyArmAsyncController.class, TrackAsyncController.class,
+                ExecutionPackageAsyncController.class, StationAsyncController.class))
+                .allSatisfy(controller -> assertThat(declaresWholeList(controller))
+                        .as("%s no declara GET a su raiz", controller.getSimpleName()).isFalse());
+
+        assertThat(List.of(DisconnectorAsyncController.class, SectionInsulatorAsyncController.class,
+                TrackAccessPointAsyncController.class))
+                .allSatisfy(controller -> assertThat(declaresWholeList(controller))
+                        .as("%s conserva su lista entera", controller.getSimpleName()).isTrue());
+    }
+
+    /** Un {@code @GetMapping} sin ruta: el {@code GET} a la raiz del {@code @RequestMapping} de la clase. */
+    private static boolean declaresWholeList(Class<?> controller) {
+        return Arrays.stream(controller.getDeclaredMethods())
+                .map(method -> method.getAnnotation(GetMapping.class))
+                .filter(Objects::nonNull)
+                .anyMatch(mapping -> mapping.value().length == 0 && mapping.path().length == 0);
     }
 }

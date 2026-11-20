@@ -37,6 +37,12 @@ paths:
   correlationId, …}, entity}`, la forma de `mto-stock` y `mto-maintenance`), la más reciente primero;
   sin ninguna revisión, 404 `NOT-001`, no una página vacía. Lo fijan `ProfileControllerTest`
   («Historial de cambios»), `LovControllerContractTest` y, contra PostgreSQL, `EntityRevisionsIT`.
+- Un maestro grande no tiene lista entera. `GET /async/{recurso}` sin paginar (`BaseAsyncService.findAllAsync()`,
+  que devuelve la tabla completa con el DTO de detalle) no se declara en perfiles, ménsulas, brazos,
+  vías, paquetes ni estaciones: su detalle arrastra hijos, o su tabla crece con los perfiles, y un
+  `GET` a esa raíz responde 405. Solo la conservan seccionadores, aisladores y puntos de acceso (pocos,
+  de fila plana) y, en la vía síncrona, los catálogos. Un maestro nuevo lista paginado (`/paged`,
+  `/search`, `/filter`) y no la añade. Lo fijan `ProfileAsyncControllerTest` y `LovControllerContractTest`.
 - Una página sale como `{content, page: {size, number, totalElements, totalPages}}`
   (`spring.data.web.pageable.serialization-mode: via_dto`), la forma que lee el backoffice. Lo fija
   `ProfileControllerTest`.
