@@ -48,15 +48,7 @@ public class TrackAsyncController {
                 .thenApply(ResponseEntity::ok);
     }
 
-    @GetMapping
-    @Operation(
-            summary = "List all tracks (async)",
-            description = "Asynchronously retrieves all tracks."
-    )
-    public CompletableFuture<ResponseEntity<Object>> findAllAsync() {
-        return trackAsyncService.findAllAsync()
-                .thenApply(ResponseEntity::ok);
-    }
+    // Sin lista entera (GET sin paginar): ver ProfileAsyncController. La lista es /paged, /search o /filter.
 
     @PostMapping
     @Operation(

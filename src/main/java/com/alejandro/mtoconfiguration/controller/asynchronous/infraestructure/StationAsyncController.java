@@ -50,15 +50,7 @@ public class StationAsyncController {
                 .thenApply(ResponseEntity::ok);
     }
 
-    @GetMapping
-    @Operation(
-            summary = "List all stations (async)",
-            description = "Asynchronously retrieves all stations."
-    )
-    public CompletableFuture<ResponseEntity<Object>> findAllAsync() {
-        return stationAsyncService.findAllAsync()
-                .thenApply(ResponseEntity::ok);
-    }
+    // Sin lista entera (GET sin paginar): ver ProfileAsyncController. La lista es /paged, /search o /filter.
 
     @PostMapping
     @Operation(

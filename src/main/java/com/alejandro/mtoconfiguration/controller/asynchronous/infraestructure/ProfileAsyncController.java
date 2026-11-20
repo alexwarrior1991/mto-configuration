@@ -51,15 +51,16 @@ public class ProfileAsyncController {
                 .thenApply(ResponseEntity::ok);
     }
 
-    @GetMapping
-    @Operation(
-            summary = "List all profiles (async)",
-            description = "Asynchronously retrieves all profiles."
-    )
-    public CompletableFuture<ResponseEntity<Object>> findAllAsync() {
-        return profileAsyncService.findAllAsync()
-                .thenApply(ResponseEntity::ok);
-    }
+    /*
+     * Sin lista entera. Hasta ahora GET /async/profiles devolvia todos los perfiles con el DTO de
+     * detalle: sus mensulas, sus brazos y sus catalogos, cargados por lotes de veinte. Con decenas
+     * de miles de perfiles son miles de consultas y decenas de MB en una sola respuesta, por encima
+     * del tiempo que el gateway espera. Lo mismo las mensulas, los brazos, las vias (que arrastran
+     * todos sus perfiles), los paquetes y las estaciones (que arrastran sus vias). Nadie la llamaba:
+     * las dos aplicaciones web listan con /filter. Se lista paginado: /paged, /search o /filter.
+     * Seccionadores, aisladores y puntos de acceso, que son pocos y de fila plana, la conservan.
+     * Un GET a la raiz responde 405, como cualquier metodo que la ruta no declara.
+     */
 
     @PostMapping
     @Operation(

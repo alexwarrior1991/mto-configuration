@@ -50,15 +50,7 @@ public class CantileverAsyncController {
                 .thenApply(ResponseEntity::ok);
     }
 
-    @GetMapping
-    @Operation(
-            summary = "List all cantilevers (async)",
-            description = "Asynchronously retrieves all cantilevers."
-    )
-    public CompletableFuture<ResponseEntity<Object>> findAllAsync() {
-        return cantileverAsyncService.findAllAsync()
-                .thenApply(ResponseEntity::ok);
-    }
+    // Sin lista entera (GET sin paginar): ver ProfileAsyncController. La lista es /paged, /search o /filter.
 
     @PostMapping
     @Operation(

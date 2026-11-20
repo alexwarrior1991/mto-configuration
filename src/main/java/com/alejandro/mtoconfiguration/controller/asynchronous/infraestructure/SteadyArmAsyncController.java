@@ -50,15 +50,7 @@ public class SteadyArmAsyncController {
                 .thenApply(ResponseEntity::ok);
     }
 
-    @GetMapping
-    @Operation(
-            summary = "List all steady arms (async)",
-            description = "Asynchronously retrieves all steady arms."
-    )
-    public CompletableFuture<ResponseEntity<Object>> findAllAsync() {
-        return steadyArmAsyncService.findAllAsync()
-                .thenApply(ResponseEntity::ok);
-    }
+    // Sin lista entera (GET sin paginar): ver ProfileAsyncController. La lista es /paged, /search o /filter.
 
     @PostMapping
     @Operation(
