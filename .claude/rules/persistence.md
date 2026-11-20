@@ -40,6 +40,15 @@ paths:
   `steady_arm.cantilever_id` de `V1` por `ux_steady_arm_cantilever_id`, parcial, para que un brazo
   borrado no deje su ménsula ocupada (`SteadyArmLinkIT`). El `code` de los catálogos es único sin más (`ux_<tabla>_code`). Lo fija
   `FlywayMigrationIT`.
+- PostgreSQL no indexa una clave ajena por su cuenta. La de un hijo que se lee por su padre lleva su
+  índice, parcial sobre los vivos porque toda lectura lleva el `(deleted = false)` literal de
+  `@SQLRestriction`: `idx_cantilever_profile_id` sobre `cantilever (profile_id, id)` (`V32`; el `id`
+  detrás, por el `@OrderBy("id ASC")`), `idx_disconnector_profile_id` (`V29`) y
+  `ux_steady_arm_cantilever_id` (`V30`). Sin él, cada «las ménsulas de este perfil» (el importador por
+  fila, el evento de cada perfil, cada página de `/profiles/filter`) recorría la tabla entera. Una
+  tabla hija nueva nace con el suyo. Un índice se crea dentro de la transacción de Flyway; sobre una
+  tabla que ya sea grande, antes a mano con `CREATE INDEX CONCURRENTLY` y la migración, con su
+  `IF NOT EXISTS`, no hace nada. Lo fija `FlywayMigrationIT`.
 - Un `@EntityGraph` que trae una lista (`Profile.cantilevers`, `Track.profiles`) junto con un conjunto
   repite cada elemento de la lista por cada fila del producto: Hibernate no quita los repetidos de
   una lista sin índice. El mapper que la recorre la pasa por `distinct()` (los de payload del perfil

@@ -1,0 +1,31 @@
+-- Las mensulas de un perfil se leen por profile_id, y esa columna no tenia indice.
+--
+-- cantilever.profile_id es la clave ajena al perfil, y PostgreSQL no indexa una clave
+-- ajena por su cuenta: desde V1 la tabla solo tenia su clave primaria. Todo lo que pide
+-- "las mensulas de este perfil" recorria la tabla entera:
+--
+--   - el importador de perfiles, una vez por fila (findIdsByProfileIdOrderByIdAsc);
+--   - el evento de cada perfil escrito o republicado (el join del grafo de
+--     findByIdForMessaging);
+--   - la carga por lotes de Profile.cantilevers (profile_id = any(...)): cada pagina de
+--     /profiles/filter, el detalle de un perfil y el de una via.
+--
+-- Con 50.000 perfiles y 63.000 mensulas cada una de esas lecturas pasa de 4-6 ms (unas 720
+-- paginas leidas) a 0,05-0,1 ms (menos de diez). Suelta no se nota; una reimportacion las
+-- hace mas de cien mil veces, y el coste crecia con el cuadrado de la tabla.
+--
+-- PARCIAL, como idx_disconnector_profile_id (V29): toda lectura de mensulas lleva el
+-- (deleted = false) literal de @SQLRestriction, en la clase y en la coleccion, asi que el
+-- planificador casa el predicado y lo borrado no ocupa indice. El id va detras porque
+-- esas lecturas piden el orden por id (@OrderBy("id ASC")) y la proyeccion del importador
+-- se resuelve entonces sin tocar la tabla.
+--
+-- ddl-auto: validate no comprueba indices; lo cubre FlywayMigrationIT.
+--
+-- Hoy la tabla tiene unas quince mil filas y el indice se crea en milisegundos, dentro de
+-- la transaccion de Flyway. Si alguna vez se aplica sobre una tabla ya grande, conviene
+-- crearlo antes a mano con CREATE INDEX CONCURRENTLY (que no puede ir dentro de una
+-- transaccion, y Flyway ejecuta cada migracion en una): el IF NOT EXISTS hace que
+-- entonces esta migracion no haga nada.
+CREATE INDEX IF NOT EXISTS idx_cantilever_profile_id
+    ON cantilever (profile_id, id) WHERE deleted = false;
