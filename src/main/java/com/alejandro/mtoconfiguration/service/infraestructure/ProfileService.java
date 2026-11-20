@@ -169,7 +169,18 @@ public class ProfileService extends CRUDService<ProfileDTO, Profile>
         });
     }
 
+    /**
+     * Una ventana de perfiles de una via ({@code GET /profiles/track/{id}/keyset}).
+     *
+     * <p>Transaccional, como las demas lecturas (ver {@code BaseService.findAll()}): mapear un perfil
+     * recorre lo perezoso (sus seccionadores, sus anclajes, sus seccionamientos), y sin transaccion
+     * eso era {@code LazyInitializationException}, un 500 en cuanto la via tenia un perfil. Las
+     * mensulas y el brazo de cada una vienen en el {@code fetch} de la consulta: el brazo es el lado
+     * inverso de un uno a uno y, si no viene con su mensula, cuesta un {@code select} por mensula.
+     * Lo fija {@code ProfileWindowsIT}.
+     */
     @Override
+    @Transactional(readOnly = true)
     public List<ProfileDTO> getProfilesByKeyset(Long trackId, BigDecimal lastKp, Long lastId, int pageSize) {
         log.debug("Petición de ventana de perfiles para vía {} desde KP {}", trackId, lastKp);
 
@@ -190,7 +201,9 @@ public class ProfileService extends CRUDService<ProfileDTO, Profile>
                 .toList();
     }
 
+    /** Un tramo de una via por KP ({@code /range}). Transaccional y con el mismo {@code fetch} que la ventana. */
     @Override
+    @Transactional(readOnly = true)
     public List<ProfileDTO> getProfilesByKpRange(Long trackId, BigDecimal startKp, BigDecimal endKp) {
         log.debug("Obteniendo sector de vía {}: del KP {} al {}", trackId, startKp, endKp);
 

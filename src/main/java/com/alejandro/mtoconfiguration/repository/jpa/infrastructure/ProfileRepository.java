@@ -40,11 +40,15 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
 
     // Método para la primera página (o búsqueda normal)
     // 1. Añade JOIN FETCH a la consulta de la primera página
+    // Con las mensulas va su brazo: es el lado inverso de un @OneToOne, que Hibernate no deja
+    // perezoso, y sin el fetch cada mensula de la ventana costaba un select de steady_arm. El limite
+    // de la pagina se aplica en la base (una subconsulta sobre el perfil), no en memoria.
     @Query("select p from Profile p " +
             "left join fetch p.track " +
             "left join fetch p.foundation " +
             "left join fetch p.poleType " +
-            "left join fetch p.cantilevers " + // <--- Nueva optimización
+            "left join fetch p.cantilevers c " +
+            "left join fetch c.steadyArm " +
             "where p.track.id = :trackId " +
             "order by p.kp, p.id asc")
     List<Profile> findByTrackIdOrderByKpAscIdAsc(@Param("trackId") Long trackId, Pageable pageable);
@@ -54,7 +58,8 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
             "left join fetch p.track " +
             "left join fetch p.foundation " +
             "left join fetch p.poleType " +
-            "left join fetch p.cantilevers " + // <--- Nueva optimización
+            "left join fetch p.cantilevers c " +
+            "left join fetch c.steadyArm " +
             "where p.track.id = :trackId and " +
             "(p.kp > :lastKp or (p.kp = :lastKp and p.id > :lastId)) " +
             "order by p.kp, p.id asc")
@@ -79,7 +84,11 @@ public interface ProfileRepository extends CRUDRepository<Profile>,
                                @Param("lastId") Long lastId,
                                Pageable pageable);
 
-    @Query("SELECT p FROM Profile p WHERE p.track.id = :trackId AND " +
+    @Query("SELECT p FROM Profile p " +
+            "left join fetch p.track " +
+            "left join fetch p.cantilevers c " +
+            "left join fetch c.steadyArm " +
+            "WHERE p.track.id = :trackId AND " +
             "p.kp BETWEEN :startKp AND :endKp " +
             "ORDER BY p.kp ASC, p.id ASC")
     List<Profile> findByKpRange(@Param("trackId") Long trackId,

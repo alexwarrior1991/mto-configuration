@@ -21,8 +21,13 @@ paths:
   de una transacción lanza `LazyInitializationException`, así que un método que lee un grafo es
   transaccional. Con la caché, la carga se hace dentro de `PageCacheService` y la transacción del
   servicio la envuelve. Los tests con una transacción alrededor no lo ven, porque la sesión sigue
-  abierta al mapear: lo fijan `GetByIdOutsideTransactionIT` y `FilterOutsideTransactionIT`, que
-  llaman al servicio sin ella.
+  abierta al mapear: lo fijan `GetByIdOutsideTransactionIT`, `FilterOutsideTransactionIT` y
+  `ProfileWindowsIT` (las ventanas `/profiles/track/{id}/keyset` y `/range`, que respondían 500 con
+  cualquier vía con perfiles), que llaman al servicio sin ella. Una consulta nueva de un servicio que
+  devuelve DTO lleva su `@Transactional(readOnly = true)` y su caso allí. Si trae ménsulas, trae su
+  brazo en el mismo `fetch` (`left join fetch c.steadyArm`): es el lado inverso de un `@OneToOne`,
+  Hibernate no lo deja perezoso y, sin él, cada ménsula cuesta un `select` (`ProfileWindowsIT` cuenta
+  las sentencias).
 - El historial de una fila lo lee `AuditService` (el único que habla con el `AuditReader` de Envers)
   y lo sirven `BaseService.findRevisions` y `AbstractLovCrudService.findRevisions`: paginado en la
   consulta, la revisión más reciente primero, y con la entidad de cada revisión mapeada a su DTO
