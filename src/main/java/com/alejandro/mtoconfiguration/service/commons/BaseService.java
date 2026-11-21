@@ -8,6 +8,7 @@ import com.alejandro.mtoconfiguration.core.exception.BaseException;
 import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
+import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.commons.IEntity;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
 import com.alejandro.mtoconfiguration.model.audit.EntityRevisionDTO;
@@ -520,6 +521,10 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
         Class<E> entityClass = (Class<E>) getEntity().getClass();
 
         return auditService.getEntityRevisions(entityClass, id, pageable, entity -> {
+            // Envers trae los hijos de la gemela _aud, tambien los ya borrados en logico entonces.
+            if (entity instanceof CRUDEntity revision) {
+                revision.forgetDeletedChildren();
+            }
             T dto = getMapper().mapToSummaryDTOs(new PageImpl<>(List.of(entity))).getContent().getFirst();
             // Envers no guarda el campo del bloqueo optimista, y la entidad de una revision trae
             // el valor con el que nace (1): mejor ninguno que uno que no es el de entonces.

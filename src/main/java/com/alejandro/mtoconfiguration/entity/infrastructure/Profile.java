@@ -484,6 +484,15 @@ public class Profile extends CRUDEntity {
                 .compare(this, other);
     }
 
+    /** Para la revision de un perfil: sin las mensulas, los brazos ni los seccionadores ya borrados entonces. */
+    @Override
+    public void forgetDeletedChildren() {
+        List<Cantilever> mensulas = alive(getCantilevers());
+        mensulas.forEach(Cantilever::forgetDeletedChildren);
+        setCantilevers(mensulas);
+        setDisconnectors(new LinkedHashSet<>(alive(getDisconnectors())));
+    }
+
     /** Lo que se borra con el perfil cuando una modificacion de su padre lo quita (ver CRUDEntity). */
     @Override
     protected Collection<? extends CRUDEntity> ownedChildren() {

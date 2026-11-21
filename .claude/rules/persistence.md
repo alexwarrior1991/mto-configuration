@@ -59,6 +59,17 @@ paths:
   dónde lee (solo lo respeta en una relación a uno), así que una colección auditada nueva en una
   entidad que crece necesita el índice de la columna del padre en la gemela del hijo. Las gemelas
   pequeñas (vías, estaciones, seccionadores, catálogos) no lo llevan. Lo fija `FlywayMigrationIT`.
+- Lo que Envers trae en una colección de una revisión no pasa por ningún `@SQLRestriction`: el hijo
+  borrado en lógico (para Envers, una modificación) seguía saliendo en todas las revisiones
+  posteriores. `BaseService.findRevisions` llama a `CRUDEntity.forgetDeletedChildren()` sobre la
+  entidad de la revisión, y la sobrescribe la entidad cuya fila en las listas lleva hijos: el perfil
+  (ménsulas y seccionadores), la ménsula (su brazo) y el aislador (sus agujas). Una entidad nueva
+  cuya fila lleve una colección de hijos la sobrescribe también; nunca se llama sobre una entidad
+  viva. Y como `NOT_AUDITED` no vale en una colección, un conjunto de catálogo (`anchorages`,
+  `sectionings`, `sectioningFeedings`) solo enseña en el historial las entradas con alguna revisión:
+  una migración que siembre uno de esos tres catálogos inserta también su fila `_aud`
+  (`FlywayMigrationIT`). No se añade un `@OneToMany`/`@ManyToMany` con `NOT_AUDITED` esperando que
+  se lea «como está hoy». Lo fija `EntityRevisionsIT`.
 - Un `@EntityGraph` que trae una lista (`Profile.cantilevers`, `Track.profiles`) junto con un conjunto
   repite cada elemento de la lista por cada fila del producto: Hibernate no quita los repetidos de
   una lista sin índice. El mapper que la recorre la pasa por `distinct()` (los de payload del perfil

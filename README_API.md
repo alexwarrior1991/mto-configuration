@@ -882,12 +882,20 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/disconnectors/1533/revisions?page=
   guarda el `id`, y lo demás de `entity` va a `null` (está en la revisión anterior).
 - **`entity` es la fila de una lista**, no el detalle: en `execution-packages`, `stations` y
   `tracks` va sin sus colecciones de hijos, como en `/paged` (§1). Cada hijo tiene su propio
-  historial (`profiles`, `cantilevers`, `steady-arms`...). Un perfil sí lleva las ménsulas y un
-  aislador las agujas **que tenía en esa revisión**.
+  historial (`profiles`, `cantilevers`, `steady-arms`...). Un perfil sí lleva las ménsulas (con su
+  brazo) y sus seccionadores, y un aislador las agujas, **que tenía en esa revisión**: lo que se le
+  quitó o se borró deja de salir desde la revisión en que se quitó, y cada hijo sale con los datos
+  que tenía entonces.
+- **Cambiar solo un hijo no es una revisión del padre.** Quitar una ménsula sin tocar nada más del
+  perfil no añade una revisión al historial del perfil: está en el de la ménsula. La siguiente
+  revisión del perfil ya sale sin ella.
 - **Lo que no es de entonces**: las referencias a otras filas (la estación, la vía, el poste de un
   seccionador, una entrada de catálogo) guardan en cada revisión **a cuál** apuntaba. Los datos de
   una entrada de catálogo (su `code`) se leen como están hoy; los de otro maestro (`profileCode`,
-  `profileKp`) se leen de la auditoría de ese maestro, también si después se borró. Y `versionNumber` va
+  `profileKp`) se leen de la auditoría de ese maestro, también si después se borró. En los tres
+  conjuntos de catálogo de un perfil (`anchorages`, `sectionings`, `sectioningFeedings`) solo sale
+  la entrada que tiene alguna revisión propia: todas las escritas por la API, por un importador o
+  por la siembra del arranque la tienen; una insertada a mano con SQL, no. Y `versionNumber` va
   siempre a `null`: la auditoría no guarda el contador del bloqueo optimista. La `entity` de una
   revisión no es un cuerpo para un `PUT`.
 - La IP y el agente de usuario de quien escribió se guardan, pero no salen por la API.

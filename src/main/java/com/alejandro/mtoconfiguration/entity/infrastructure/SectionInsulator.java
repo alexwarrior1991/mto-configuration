@@ -204,6 +204,12 @@ public class SectionInsulator extends CRUDEntity {
         return SectionInsulator.class.hashCode();
     }
 
+    /** Para la revision de un aislador: sin las agujas ya borradas entonces. */
+    @Override
+    public void forgetDeletedChildren() {
+        setSwitches(alive(getSwitches()));
+    }
+
     /** Lo que se borra con el aislador cuando una modificacion de su padre lo quita (ver CRUDEntity). */
     @Override
     protected Collection<? extends CRUDEntity> ownedChildren() {
