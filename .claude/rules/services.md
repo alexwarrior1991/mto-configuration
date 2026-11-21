@@ -24,10 +24,15 @@ paths:
   abierta al mapear: lo fijan `GetByIdOutsideTransactionIT`, `FilterOutsideTransactionIT` y
   `ProfileWindowsIT` (las ventanas `/profiles/track/{id}/keyset` y `/range`, que respondían 500 con
   cualquier vía con perfiles), que llaman al servicio sin ella. Una consulta nueva de un servicio que
-  devuelve DTO lleva su `@Transactional(readOnly = true)` y su caso allí. Si trae ménsulas, trae su
-  brazo en el mismo `fetch` (`left join fetch c.steadyArm`): es el lado inverso de un `@OneToOne`,
-  Hibernate no lo deja perezoso y, sin él, cada ménsula cuesta un `select` (`ProfileWindowsIT` cuenta
-  las sentencias).
+  devuelve DTO lleva su `@Transactional(readOnly = true)` y su caso allí.
+- El brazo de una ménsula (`Cantilever.steadyArm`) es el lado inverso de un `@OneToOne`: Hibernate no
+  puede dejarlo perezoso, y declarado `LAZY` lo cargaba aparte, con un `select` de `steady_arm` por
+  ménsula. Es `EAGER`: una ménsula cargada por id o por la colección de su perfil (una página de
+  `/profiles/filter`, el detalle de un perfil o de una vía, su modificación) lo trae unido en la
+  misma sentencia. Una **consulta** que devuelve ménsulas (JPQL, QueryDSL, derivada) lo pide ella:
+  `left join fetch c.steadyArm` o `@EntityGraph(attributePaths = "steadyArm")`, como las de
+  `CantileverRepository` y las ventanas de `ProfileRepository`. Lo fijan `SteadyArmFetchIT`, que
+  cuenta esa sentencia, y `ProfileWindowsIT`.
 - El historial de una fila lo lee `AuditService` (el único que habla con el `AuditReader` de Envers)
   y lo sirven `BaseService.findRevisions` y `AbstractLovCrudService.findRevisions`: paginado en la
   consulta, la revisión más reciente primero, y con la entidad de cada revisión mapeada a su DTO
