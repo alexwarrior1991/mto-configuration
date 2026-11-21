@@ -3,6 +3,8 @@ package com.alejandro.mtoconfiguration.repository.jpa.infrastructure;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.CRUDRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.MessagingEntityGraphRepository;
+import com.querydsl.core.types.Predicate;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Query;
@@ -16,8 +18,27 @@ import java.util.Optional;
 public interface CantileverRepository extends CRUDRepository<Cantilever>,
         MessagingEntityGraphRepository<Cantilever> {
 
-    // Optimización: Búsqueda directa por Profile (relación frecuente)
+    /**
+     * Las mensulas de un perfil, con su brazo en la misma sentencia.
+     *
+     * <p>{@code steadyArm} es el lado inverso de un {@code @OneToOne} y Hibernate lo carga siempre
+     * (ver {@code Cantilever.getSteadyArm}). En una carga por id o por la coleccion de su perfil
+     * viene unido; en una consulta, solo si la consulta lo pide, y si no cuesta un
+     * {@code select} de {@code steady_arm} por mensula. Por eso las tres listas de abajo lo piden.
+     * Lo fija {@code SteadyArmFetchIT}.
+     */
+    @EntityGraph(attributePaths = "steadyArm")
     List<Cantilever> findByProfileId(Long profileId);
+
+    /** {@code /cantilevers/filter}: la pagina filtrada, con el brazo de cada mensula. */
+    @Override
+    @EntityGraph(attributePaths = "steadyArm")
+    Page<Cantilever> findAll(Predicate predicate, Pageable pageable);
+
+    /** {@code /cantilevers/paged}: la pagina, con el brazo de cada mensula. */
+    @Override
+    @EntityGraph(attributePaths = "steadyArm")
+    Page<Cantilever> findAll(Pageable pageable);
 
     /**
      * Identificadores de las mensulas de un perfil, y el de su brazo, en el orden estable

@@ -95,7 +95,7 @@ class FlywayMigrationIT {
                         + " where success and type = 'SQL' order by installed_rank",
                 String.class);
 
-        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32");
+        assertThat(versiones).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33");
     }
 
     /**
@@ -362,6 +362,36 @@ class FlywayMigrationIT {
                 .contains("cantilever")
                 .contains("(profile_id, id)")
                 .contains("deleted = false");
+    }
+
+    /**
+     * V33: el historial lee las gemelas {@code _aud} por el {@code id} de la fila y, para los hijos
+     * de cada revision, por la columna del padre; su clave primaria, {@code (rev, id)}, no sirve
+     * para ninguna de las dos cosas. Son las tablas que crecen sin limite.
+     */
+    @Test
+    void lasGemelasDeAuditoriaQueCrecenTienenLosIndicesDelHistorial() {
+        Map<String, String> indices = new java.util.HashMap<>();
+        jdbc().query("select indexname, indexdef from pg_indexes"
+                        + " where schemaname = ? and indexname like 'idx_%_aud_%'", rs -> {
+            indices.put(rs.getString("indexname"), rs.getString("indexdef"));
+        }, SCHEMA);
+
+        Map<String, String> esperados = Map.of(
+                "idx_profile_aud_id_rev", "profile_aud USING btree (id, rev)",
+                "idx_cantilever_aud_id_rev", "cantilever_aud USING btree (id, rev)",
+                "idx_steady_arm_aud_id_rev", "steady_arm_aud USING btree (id, rev)",
+                "idx_cantilever_aud_profile_id", "cantilever_aud USING btree (profile_id)",
+                "idx_steady_arm_aud_cantilever_id", "steady_arm_aud USING btree (cantilever_id)",
+                "idx_profile_sectioning_aud_profile",
+                "profile_sectioning_aud USING btree (profile_id, sectioning_id, rev)",
+                "idx_profile_anchorage_aud_profile",
+                "profile_anchorage_aud USING btree (profile_id, anchorage_id, rev)",
+                "idx_profile_sectioning_feeding_aud_profile",
+                "profile_sectioning_feeding_aud USING btree (profile_id, sectioning_feeding_id, rev)");
+
+        esperados.forEach((nombre, definicion) ->
+                assertThat(indices.get(nombre)).as(nombre).isNotNull().endsWith(definicion));
     }
 
     /**

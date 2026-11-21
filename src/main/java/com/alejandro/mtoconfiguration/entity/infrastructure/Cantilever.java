@@ -144,7 +144,15 @@ public class Cantilever extends CRUDEntity {
     }
 
     // Sin orphanRemoval: el brazo que se quita se borra en logico (ver CRUDEntity.deleteCascade).
-    @OneToOne(mappedBy = "cantilever", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    //
+    // EAGER, y no por gusto: es el lado INVERSO del uno a uno (la clave ajena esta en steady_arm),
+    // asi que Hibernate no puede saber si hay brazo sin ir a mirarlo y no puede dejarlo perezoso.
+    // Declarado LAZY lo cargaba igual, pero aparte: un "select ... from steady_arm where
+    // cantilever_id=?" por cada mensula leida (una pagina de perfiles, el detalle de un perfil o de
+    // una via). Con EAGER viene unido (left join, con su deleted = false) en la misma sentencia que
+    // carga la mensula por id o por la coleccion de su perfil. Una consulta (JPQL, QueryDSL) lo pide
+    // ella con su fetch o su @EntityGraph: ver CantileverRepository. Lo fija SteadyArmFetchIT.
+    @OneToOne(mappedBy = "cantilever", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     @SQLRestriction("deleted = false") // ver CRUDEntity
     public SteadyArm getSteadyArm() {
         return steadyArm;
