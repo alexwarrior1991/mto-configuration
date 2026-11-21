@@ -49,6 +49,16 @@ paths:
   tabla hija nueva nace con el suyo. Un índice se crea dentro de la transacción de Flyway; sobre una
   tabla que ya sea grande, antes a mano con `CREATE INDEX CONCURRENTLY` y la migración, con su
   `IF NOT EXISTS`, no hace nada. Lo fija `FlywayMigrationIT`.
+- El historial (`GET /{recurso}/{id}/revisions`) lee las gemelas `_aud`, cuya clave primaria es
+  `(rev, id)`: no sirve para buscar por `id` ni por la columna del padre. Las que crecen sin límite
+  llevan sus índices (`V33`): `(id, rev)` en `profile_aud`, `cantilever_aud` y `steady_arm_aud` (la
+  página del historial y el «a fecha de» de cada hijo), la columna del padre en
+  `cantilever_aud (profile_id)` y `steady_arm_aud (cantilever_id)`, y `(profile_id, <otro>_id, rev)` en
+  las tres gemelas de unión del perfil. Envers reconstruye la colección de cada revisión desde la
+  gemela del hijo, **aunque la relación diga `NOT_AUDITED`**: en una colección ese modo no cambia de
+  dónde lee (solo lo respeta en una relación a uno), así que una colección auditada nueva en una
+  entidad que crece necesita el índice de la columna del padre en la gemela del hijo. Las gemelas
+  pequeñas (vías, estaciones, seccionadores, catálogos) no lo llevan. Lo fija `FlywayMigrationIT`.
 - Un `@EntityGraph` que trae una lista (`Profile.cantilevers`, `Track.profiles`) junto con un conjunto
   repite cada elemento de la lista por cada fila del producto: Hibernate no quita los repetidos de
   una lista sin índice. El mapper que la recorre la pasa por `distinct()` (los de payload del perfil
