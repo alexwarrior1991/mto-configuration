@@ -395,6 +395,27 @@ class FlywayMigrationIT {
     }
 
     /**
+     * Ninguna migracion siembra los catalogos que un perfil lleva como CONJUNTO (anclajes,
+     * seccionamientos y funciones de alimentacion).
+     *
+     * <p>El historial de un perfil cruza esos conjuntos con la gemela {@code _aud} del catalogo
+     * (Envers no respeta {@code NOT_AUDITED} en una coleccion), asi que una entrada sin ninguna
+     * revision desaparece de el. Una fila insertada con SQL no deja revision. Las de
+     * {@code profile_status} y {@code comercial_entity_type}, que si se siembran, solo se usan en
+     * relaciones a uno, donde se leen de su tabla viva. Si una migracion tiene que sembrar uno de
+     * estos tres, inserta tambien su fila en la gemela, con una revision en {@code audit_revision}.
+     */
+    @Test
+    void losCatalogosQueUnPerfilLlevaComoConjuntoNoSeSiembranSinRevision() {
+        for (String tabla : List.of("anchorage", "sectioning", "disconnector_function")) {
+            Integer sinRevision = jdbc().queryForObject("select count(*) from " + SCHEMA + "." + tabla + " t"
+                    + " where not exists (select 1 from " + SCHEMA + "." + tabla + "_aud a where a.id = t.id)",
+                    Integer.class);
+            assertThat(sinRevision).as("filas de %s sin ninguna revision", tabla).isZero();
+        }
+    }
+
+    /**
      * V29: un poste admite varios seccionadores vivos.
      *
      * <p>V24 cambio el {@code unique} de {@code disconnector.profile_id} de V1, que contaba tambien

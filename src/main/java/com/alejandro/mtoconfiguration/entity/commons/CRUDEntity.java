@@ -7,6 +7,7 @@ import org.hibernate.annotations.*;
 
 import org.hibernate.envers.Audited;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -87,6 +88,42 @@ public abstract class CRUDEntity extends BaseEntity {
      */
     protected Collection<? extends CRUDEntity> ownedChildren() {
         return List.of();
+    }
+
+    /**
+     * Deja fuera los hijos borrados, para una entidad <b>reconstruida por Envers</b> en una revision.
+     *
+     * <p>En una lectura viva los quita el {@code @SQLRestriction("deleted = false")} de cada
+     * coleccion. En el historial no: Envers lee los hijos de una revision de la gemela {@code _aud}
+     * del hijo, donde esa restriccion no se aplica, y el borrado logico es para Envers una
+     * modificacion mas. La mensula quitada de un perfil, el brazo quitado de una mensula, la aguja
+     * quitada de un aislador o el seccionador borrado de un poste seguian saliendo en todas las
+     * revisiones posteriores a su borrado, cuando el historial promete lo que la fila tenia entonces.
+     * El hijo llega con su {@code deleted} de esa revision, asi que basta con mirarlo.
+     *
+     * <p>Solo lo llama {@code BaseService.findRevisions}, sobre la entidad de una revision, que no
+     * esta gestionada: nunca sobre una entidad viva, donde quitar un hijo de la coleccion seria
+     * escribir. La sobrescribe la entidad cuya fila en las listas lleva hijos (el perfil con sus
+     * mensulas y sus seccionadores, la mensula con su brazo, el aislador con sus agujas); las demas
+     * salen sin sus colecciones y no tienen nada que quitar. No es una propiedad: no empieza por
+     * {@code get}.
+     */
+    public void forgetDeletedChildren() {
+        // Sin hijos en su fila: nada que quitar.
+    }
+
+    /** Los vivos de una coleccion de hijos, en su orden. */
+    protected static <C extends CRUDEntity> List<C> alive(Collection<C> children) {
+        if (children == null) {
+            return new ArrayList<>();
+        }
+        List<C> alive = new ArrayList<>();
+        for (C child : children) {
+            if (child != null && !child.isDeleted()) {
+                alive.add(child);
+            }
+        }
+        return alive;
     }
 
     public void restore() {

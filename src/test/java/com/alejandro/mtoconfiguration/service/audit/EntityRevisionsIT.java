@@ -6,14 +6,21 @@ import com.alejandro.mtoconfiguration.enums.infrastructure.TrackAccessPointSide;
 import com.alejandro.mtoconfiguration.model.audit.EntityRevisionDTO;
 import com.alejandro.mtoconfiguration.model.audit.RevisionMetadataDTO;
 import com.alejandro.mtoconfiguration.model.audit.RevisionOperation;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.DisconnectorDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SectionInsulatorSwitchDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.StationDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SteadyArmDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackAccessPointDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.CantileverTypeDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.DisconnectorFunctionDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.ProfileStatusDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.lov.SectioningDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.lov.SteadyArmTypeDTO;
 import com.alejandro.mtoconfiguration.service.infraestructure.DisconnectorService;
+import com.alejandro.mtoconfiguration.service.infraestructure.ProfileService;
 import com.alejandro.mtoconfiguration.service.infraestructure.SectionInsulatorService;
 import com.alejandro.mtoconfiguration.service.infraestructure.StationService;
 import com.alejandro.mtoconfiguration.service.infraestructure.TrackAccessPointService;
@@ -63,6 +70,9 @@ class EntityRevisionsIT {
     private static final long PROFILE = -615L;
     private static final long FUNCTION = -616L;
     private static final String FUNCTION_CODE = "IT-REV-FN";
+    private static final long CANTILEVER_TYPE = -617L;
+    private static final long ARM_TYPE = -618L;
+    private static final String CHILD_LOV_CODE = "IT-REV-CH";
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -82,6 +92,8 @@ class EntityRevisionsIT {
     private StationService stationService;
     @Autowired
     private SectioningService sectioningService;
+    @Autowired
+    private ProfileService profileService;
 
     @BeforeEach
     void inserta() {
@@ -91,6 +103,12 @@ class EntityRevisionsIT {
                         create_user, version_date, version_user, version_number)
                 values (?, ?, 'Historial', true, now(), 'test', now(), 'test', 1)
                 """, FUNCTION, FUNCTION_CODE);
+        for (var lov : java.util.Map.of("cantilever_type", CANTILEVER_TYPE, "steady_arm_type", ARM_TYPE).entrySet()) {
+            jdbcTemplate.update("insert into " + lov.getKey() + " (id, code, description, enabled, create_date,"
+                    + " create_user, version_date, version_user, version_number)"
+                    + " values (?, ?, 'Historial', true, now(), 'test', now(), 'test', 1)",
+                    lov.getValue(), CHILD_LOV_CODE);
+        }
         jdbcTemplate.update("""
                 insert into execution_package (id, name, enabled, deleted, initial_package,
                         length, start_date, end_date, create_date, create_user,
@@ -133,18 +151,38 @@ class EntityRevisionsIT {
         jdbcTemplate.update("delete from section_insulator_switch where code in ('W9901', 'W9902')");
         jdbcTemplate.update("delete from section_insulator_aud where name like 'IT-REV%'");
         jdbcTemplate.update("delete from section_insulator where name like 'IT-REV%'");
+        jdbcTemplate.update("delete from profile_sectioning where sectioning_id in"
+                + " (select id from sectioning where code like 'IT-REV%')");
+        jdbcTemplate.update("delete from profile_sectioning_aud where sectioning_id in"
+                + " (select id from sectioning where code like 'IT-REV%')");
         jdbcTemplate.update("delete from sectioning_aud where code like 'IT-REV%' or id in "
                 + "(select id from sectioning_aud where code like 'IT-REV%')");
         jdbcTemplate.update("delete from sectioning where code like 'IT-REV%'");
+        String perfiles = "(select id from profile_aud where profile_id like 'IT-REV-H%'"
+                + " union select id from profile where profile_id like 'IT-REV-H%')";
+        String mensulas = "(select id from cantilever_aud where profile_id in " + perfiles + ")";
+        jdbcTemplate.update("delete from steady_arm where cantilever_id in " + mensulas);
+        jdbcTemplate.update("delete from steady_arm_aud where cantilever_id in " + mensulas);
+        jdbcTemplate.update("delete from cantilever where profile_id in " + perfiles);
+        jdbcTemplate.update("delete from cantilever_aud where profile_id in " + perfiles);
+        jdbcTemplate.update("delete from profile where profile_id like 'IT-REV-H%'");
+        jdbcTemplate.update("delete from profile_aud where profile_id like 'IT-REV-H%'");
         jdbcTemplate.update("delete from profile_aud where id = ?", PROFILE);
         jdbcTemplate.update("delete from profile where id = ?", PROFILE);
-        jdbcTemplate.update("delete from track_aud where id in (?, ?)", TRACK, OTHER_TRACK);
-        jdbcTemplate.update("delete from track where id in (?, ?)", TRACK, OTHER_TRACK);
+        String vias = "(select id from track_aud where name like 'IT-REV%' union select id from track where name like 'IT-REV%')";
+        jdbcTemplate.update("delete from track_station where track_id in " + vias);
+        jdbcTemplate.update("delete from track_station_aud where track_id in " + vias);
+        jdbcTemplate.update("delete from track_aud where id in " + vias);
+        jdbcTemplate.update("delete from track where name like 'IT-REV%'");
+        jdbcTemplate.update("delete from station_aud where name like 'IT-REV%'");
+        jdbcTemplate.update("delete from station where name like 'IT-REV%'");
         jdbcTemplate.update("delete from station_aud where id = ?", STATION);
         jdbcTemplate.update("delete from station where id = ?", STATION);
         jdbcTemplate.update("delete from execution_package_aud where id = ?", PACKAGE);
         jdbcTemplate.update("delete from execution_package where id = ?", PACKAGE);
         jdbcTemplate.update("delete from disconnector_function where id = ?", FUNCTION);
+        jdbcTemplate.update("delete from cantilever_type where id = ?", CANTILEVER_TYPE);
+        jdbcTemplate.update("delete from steady_arm_type where id = ?", ARM_TYPE);
     }
 
     private static TrackAccessPointDTO acceso(String name) {
@@ -393,5 +431,178 @@ class EntityRevisionsIT {
 
         assertThatThrownBy(() -> sectioningService.findRevisions(-999_999L, PageRequest.of(0, 20)))
                 .isInstanceOf(NotFoundException.class);
+    }
+
+    /**
+     * Envers lee los hijos de una revisión de la gemela {@code _aud} del hijo, donde no se aplica
+     * ningún {@code @SQLRestriction("deleted = false")}: el hijo borrado en lógico (que para Envers
+     * es una modificación) seguía saliendo en todas las revisiones posteriores a su borrado.
+     */
+    @Test
+    @DisplayName("un perfil sale en cada revisión con las ménsulas y el brazo que tenía entonces: lo quitado deja de salir")
+    void perfilConLasMensulasYElBrazoQueTeniaEntonces() {
+        ProfileDTO creado = profileService.create(perfil("IT-REV-H1", mensula("100", true), mensula("200", false)));
+
+        ProfileDTO sinLaSegunda = profileService.getById(creado.getId());
+        sinLaSegunda.getCantilevers().removeIf(each -> each.getSteadyArm() == null);
+        sinLaSegunda.setKp("11.000"); // el perfil cambia tambien: quitar un hijo no es una revision suya
+        profileService.update(sinLaSegunda);
+
+        ProfileDTO sinBrazo = profileService.getById(creado.getId());
+        sinBrazo.getCantilevers().getFirst().setSteadyArm(null);
+        sinBrazo.setKp("12.000");
+        profileService.update(sinBrazo);
+
+        List<EntityRevisionDTO<ProfileDTO>> revisiones =
+                profileService.findRevisions(creado.getId(), PageRequest.of(0, 20)).getContent();
+
+        assertThat(revisiones).hasSize(3);
+        assertThat(mensulas(revisiones.get(2))).as("al crearlo").containsExactly("100+brazo", "200");
+        assertThat(mensulas(revisiones.get(1))).as("quitada la segunda ménsula").containsExactly("100+brazo");
+        assertThat(mensulas(revisiones.get(0))).as("quitado el brazo de la primera").containsExactly("100");
+        assertThat(mensulas(revisiones.get(0)))
+                .as("la última revisión es lo que devuelve hoy el detalle")
+                .isEqualTo(profileService.getById(creado.getId()).getCantilevers().stream()
+                        .map(EntityRevisionsIT::mensula).toList());
+    }
+
+    @Test
+    @DisplayName("un perfil deja de llevar en su historial el seccionador que se borró, desde la revisión en que se borró")
+    void perfilSinElSeccionadorBorrado() {
+        ProfileDTO creado = profileService.create(perfil("IT-REV-H2"));
+        DisconnectorFunctionDTO function = new DisconnectorFunctionDTO();
+        function.setCode(FUNCTION_CODE);
+        DisconnectorDTO seccionador = new DisconnectorDTO();
+        seccionador.setName("IT-REV-D3");
+        seccionador.setOnLoad(false);
+        seccionador.setStationId(STATION);
+        seccionador.setProfileId(creado.getId());
+        seccionador.setDisconnectorFunction(function);
+        seccionador = disconnectorService.create(seccionador);
+
+        ProfileDTO conSeccionador = profileService.getById(creado.getId());
+        conSeccionador.setKp("11.000");
+        profileService.update(conSeccionador);
+
+        disconnectorService.delete(seccionador);
+        ProfileDTO sinSeccionador = profileService.getById(creado.getId());
+        sinSeccionador.setKp("12.000");
+        profileService.update(sinSeccionador);
+
+        List<EntityRevisionDTO<ProfileDTO>> revisiones =
+                profileService.findRevisions(creado.getId(), PageRequest.of(0, 20)).getContent();
+
+        EntityRevisionDTO<ProfileDTO> conEl = revisiones.stream()
+                .filter(each -> "11.000".equals(each.entity().getKp())).findFirst().orElseThrow();
+        EntityRevisionDTO<ProfileDTO> sinEl = revisiones.stream()
+                .filter(each -> "12.000".equals(each.entity().getKp())).findFirst().orElseThrow();
+        assertThat(conEl.entity().getDisconnectors()).extracting(DisconnectorDTO::getName)
+                .containsExactly("IT-REV-D3");
+        assertThat(sinEl.entity().getDisconnectors()).isEmpty();
+        assertThat(sinEl.entity().getDisconnector()).isNull();
+    }
+
+    @Test
+    @DisplayName("un aislador deja de llevar en su historial la aguja que se le quitó")
+    void aisladorSinLaAgujaQuitada() {
+        SectionInsulatorDTO dto = new SectionInsulatorDTO();
+        dto.setName("IT-REV-SI2");
+        dto.setEnabled(true);
+        dto.setStationId(STATION);
+        dto.setTrackId(TRACK);
+        dto.setKp(new BigDecimal("1300.000"));
+        dto.setSwitches(new java.util.ArrayList<>(List.of(aguja("W9901"), aguja("W9902"))));
+        SectionInsulatorDTO creado = sectionInsulatorService.create(dto);
+
+        creado.getSwitches().removeIf(each -> "W9902".equals(each.getCode()));
+        creado.setKp(new BigDecimal("1301.000")); // el aislador cambia tambien: ver el caso del perfil
+        sectionInsulatorService.update(creado);
+
+        List<EntityRevisionDTO<SectionInsulatorDTO>> revisiones =
+                sectionInsulatorService.findRevisions(creado.getId(), PageRequest.of(0, 20)).getContent();
+
+        assertThat(revisiones).hasSize(2);
+        assertThat(revisiones.get(1).entity().getSwitches()).extracting(SectionInsulatorSwitchDTO::getCode)
+                .containsExactlyInAnyOrder("W9901", "W9902");
+        assertThat(revisiones.get(0).entity().getSwitches()).extracting(SectionInsulatorSwitchDTO::getCode)
+                .containsExactly("W9901");
+    }
+
+    /**
+     * El límite que documenta README_API.md §6. Los tres conjuntos de catálogo del perfil están
+     * anotados {@code NOT_AUDITED}, pero Envers solo respeta ese modo en una relación a uno: en una
+     * colección cruza la gemela de unión con la gemela {@code _aud} del catálogo. Una entrada sin
+     * ninguna revisión (sembrada con SQL) no tiene con qué cruzarse y no sale. Toda entrada escrita
+     * por la API, por el importador o por la siembra del arranque tiene la de su alta, y ninguna
+     * migración siembra estos tres catálogos ({@code FlywayMigrationIT}).
+     */
+    @Test
+    @DisplayName("los seccionamientos de un perfil salen en su historial si la entrada de catálogo tiene alguna revisión")
+    void perfilConSusSeccionamientos() {
+        SectioningDTO porLaApi = new SectioningDTO();
+        porLaApi.setCode("IT-REV-SEC-API");
+        porLaApi.setDescription("Por la API");
+        porLaApi.setEnabled(true);
+        sectioningService.create(porLaApi);
+        jdbcTemplate.update("""
+                insert into sectioning (id, code, description, enabled, create_date, create_user,
+                        version_date, version_user, version_number)
+                values (-619, 'IT-REV-SEC-SQL', 'Con SQL', true, now(), 'test', now(), 'test', 1)
+                """);
+        ProfileDTO dto = perfil("IT-REV-H3");
+        SectioningDTO uno = new SectioningDTO();
+        uno.setCode("IT-REV-SEC-API");
+        SectioningDTO otro = new SectioningDTO();
+        otro.setCode("IT-REV-SEC-SQL");
+        dto.setSectionings(new java.util.ArrayList<>(List.of(uno, otro)));
+        ProfileDTO creado = profileService.create(dto);
+
+        assertThat(profileService.getById(creado.getId()).getSectionings()).extracting(SectioningDTO::getCode)
+                .containsExactlyInAnyOrder("IT-REV-SEC-API", "IT-REV-SEC-SQL");
+
+        List<EntityRevisionDTO<ProfileDTO>> revisiones =
+                profileService.findRevisions(creado.getId(), PageRequest.of(0, 20)).getContent();
+
+        assertThat(revisiones).hasSize(1);
+        assertThat(revisiones.getFirst().entity().getSectionings()).extracting(SectioningDTO::getCode)
+                .as("la entrada sembrada con SQL no tiene revisión con la que cruzarse")
+                .containsExactly("IT-REV-SEC-API");
+    }
+
+    private static ProfileDTO perfil(String code, CantileverDTO... mensulas) {
+        ProfileStatusDTO status = new ProfileStatusDTO();
+        status.setCode("PROVISIONAL");
+        ProfileDTO dto = new ProfileDTO();
+        dto.setProfileId(code);
+        dto.setKp("10.000");
+        dto.setTrackId(TRACK);
+        dto.setProfileStatus(status);
+        dto.setCantilevers(new java.util.ArrayList<>(List.of(mensulas)));
+        return dto;
+    }
+
+    private static CantileverDTO mensula(String stagger, boolean conBrazo) {
+        CantileverTypeDTO type = new CantileverTypeDTO();
+        type.setCode(CHILD_LOV_CODE);
+        CantileverDTO dto = new CantileverDTO();
+        dto.setStagger(new BigDecimal(stagger));
+        dto.setCantileverType(type);
+        if (conBrazo) {
+            SteadyArmTypeDTO armType = new SteadyArmTypeDTO();
+            armType.setCode(CHILD_LOV_CODE);
+            SteadyArmDTO arm = new SteadyArmDTO();
+            arm.setLength(1000L);
+            arm.setSteadyArmType(armType);
+            dto.setSteadyArm(arm);
+        }
+        return dto;
+    }
+
+    private static List<String> mensulas(EntityRevisionDTO<ProfileDTO> revision) {
+        return revision.entity().getCantilevers().stream().map(EntityRevisionsIT::mensula).toList();
+    }
+
+    private static String mensula(CantileverDTO cantilever) {
+        return cantilever.getStagger().toBigInteger() + (cantilever.getSteadyArm() == null ? "" : "+brazo");
     }
 }
