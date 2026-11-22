@@ -38,10 +38,11 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 /**
  * Lo que queda apuntando a un maestro borrado.
  *
- * <p>El {@code DELETE} directo de un maestro es logico y no toca lo que cuelga de el (README_API.md
- * §4): borrar una via deja sus perfiles, sus aisladores y sus puntos de acceso apuntando a ella;
- * borrar una estacion, sus seccionadores y el enlace con sus vias; borrar un poste, sus
- * seccionadores; borrar un paquete, sus vias y sus estaciones. La fila borrada deja de existir para
+ * <p>El {@code DELETE} directo de un maestro es logico y, hasta que tener algo colgando lo impidio
+ * (README_API.md §4), no tocaba lo que colgaba de el: borrar una via dejaba sus perfiles, sus
+ * aisladores y sus puntos de acceso apuntando a ella; borrar una estacion, sus seccionadores y el
+ * enlace con sus vias; borrar un poste, sus seccionadores; borrar un paquete, sus vias y sus
+ * estaciones. La fila borrada deja de existir para
  * las consultas ({@code @SQLRestriction("deleted = false")}), pero la clave ajena sigue ahi, y eso
  * rompia cuatro cosas:
  *
@@ -60,7 +61,10 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
  * <p>Ahora se lee (lo que es del maestro borrado va a {@code null}), se borra (su evento lleva esa
  * referencia a {@code null}) y modificarla sin apuntarla a un maestro vivo es el 400
  * {@code BUS-001} sobre su campo que README_API.md §9 da a una referencia que no existe. Los datos
- * van por SQL y lo que se borra, por su servicio, que es el {@code DELETE} de verdad.
+ * van por SQL, tambien el borrado del maestro: desde que borrar un maestro con algo colgando es un
+ * 409 (ver {@code DeleteWithDependentsIT}) estas filas ya no nacen, pero las que dejo el
+ * {@code DELETE} de antes siguen ahi. Lo que apuntaba al maestro se borra por su servicio, que es el
+ * {@code DELETE} de verdad.
  */
 @SpringBootTest
 @DisplayName("Lo que queda apuntando a un maestro borrado")
@@ -152,7 +156,7 @@ class DeletedReferencesIT {
         enlace(e - 3, e - 1);
         enlace(e - 3, e - 2);
 
-        stationService.delete(stationService.getById(e - 2));
+        borradoDeAntes("station", e - 2);
 
         TrackDTO leida = trackService.getById(e - 3);
         assertThat(leida.getStationIds()).containsExactly(e - 1);
@@ -186,7 +190,12 @@ class DeletedReferencesIT {
         via = trackService.create(via);
         long viaId = via.getId();
         try {
+            // Con la via enlazada, hoy el DELETE de la estacion es un 409: se esconde la via un
+            // momento para dejar el enlace colgando como lo dejaba el DELETE de antes, y con el la
+            // revision del borrado de la estacion, que es lo que lee el historial.
+            jdbc.update("update track set deleted = true where id = ?", viaId);
             stationService.delete(stationService.getById(otra.getId()));
+            jdbc.update("update track set deleted = false where id = ?", viaId);
             TrackDTO leida = trackService.getById(viaId);
             leida.setName(nombre("T", e - 3) + "-BIS");
             trackService.update(leida);
@@ -223,7 +232,7 @@ class DeletedReferencesIT {
         seccionador(e - 4, e - 1, e - 3, null, null);
         assertThat(disconnectorService.getById(e - 4).getProfileCode()).isEqualTo(nombre("P", e - 3));
 
-        profileService.delete(profileService.getById(e - 3));
+        borradoDeAntes("profile", e - 3);
 
         DisconnectorDTO leido = disconnectorService.getById(e - 4);
         assertThat(leido.getProfileId()).as("a cual apuntaba, como cualquier otra referencia").isEqualTo(e - 3);
@@ -241,7 +250,7 @@ class DeletedReferencesIT {
         estacion(e - 1, e);
         via(e - 2, e);
         seccionador(e - 4, e - 1, null, e - 2, null);
-        stationService.delete(stationService.getById(e - 1));
+        borradoDeAntes("station", e - 1);
 
         Map<String, Object> payload = transactions.execute(status -> {
             Disconnector entity = disconnectorRepository.findByIdForMessaging(e - 4).orElseThrow();
@@ -311,7 +320,7 @@ class DeletedReferencesIT {
         via(e - 3, e);
         via(e - 4, e);
         seccionador(e - 6, e - 1, null, e - 3, null);
-        trackService.delete(trackService.getById(e - 3));
+        borradoDeAntes("track", e - 3);
 
         DisconnectorDTO seccionador = disconnectorService.getById(e - 6);
         seccionador.setTrackId(e - 4);
@@ -331,7 +340,7 @@ class DeletedReferencesIT {
         long e = block();
         return new Caso("profile", e - 2, "trackId",
                 () -> { paquete(e); via(e - 1, e); perfil(e - 2, e - 1); },
-                () -> trackService.delete(trackService.getById(e - 1)),
+                () -> borradoDeAntes("track", e - 1),
                 () -> profileService.update(profileService.getById(e - 2)),
                 () -> profileService.delete(profileService.getById(e - 2)));
     }
@@ -340,7 +349,7 @@ class DeletedReferencesIT {
         long e = block();
         return new Caso("cantilever", e - 3, "profileId",
                 () -> { paquete(e); via(e - 1, e); perfil(e - 2, e - 1); mensula(e - 3, e - 2); },
-                () -> profileService.delete(profileService.getById(e - 2)),
+                () -> borradoDeAntes("profile", e - 2),
                 () -> cantileverService.update(cantileverService.getById(e - 3)),
                 () -> cantileverService.delete(cantileverService.getById(e - 3)));
     }
@@ -349,7 +358,7 @@ class DeletedReferencesIT {
         long e = block();
         return new Caso("steady_arm", e - 4, "cantileverId",
                 () -> { paquete(e); via(e - 1, e); perfil(e - 2, e - 1); mensula(e - 3, e - 2); brazo(e - 4, e - 3); },
-                () -> cantileverService.delete(cantileverService.getById(e - 3)),
+                () -> borradoDeAntes("cantilever", e - 3),
                 () -> steadyArmService.update(steadyArmService.getById(e - 4)),
                 () -> steadyArmService.delete(steadyArmService.getById(e - 4)));
     }
@@ -368,10 +377,10 @@ class DeletedReferencesIT {
                 },
                 () -> {
                     switch (campo) {
-                        case "stationId" -> stationService.delete(stationService.getById(e - 1));
-                        case "profileId" -> profileService.delete(profileService.getById(e - 3));
-                        case "trackId" -> trackService.delete(trackService.getById(e - 4));
-                        default -> trackService.delete(trackService.getById(e - 5));
+                        case "stationId" -> borradoDeAntes("station", e - 1);
+                        case "profileId" -> borradoDeAntes("profile", e - 3);
+                        case "trackId" -> borradoDeAntes("track", e - 4);
+                        default -> borradoDeAntes("track", e - 5);
                     }
                 },
                 () -> disconnectorService.update(disconnectorService.getById(e - 6)),
@@ -384,9 +393,9 @@ class DeletedReferencesIT {
                 () -> { paquete(e); estacion(e - 1, e); via(e - 2, e); via(e - 3, e); aislador(e - 4, e - 1, e - 2, e - 3); },
                 () -> {
                     switch (campo) {
-                        case "stationId" -> stationService.delete(stationService.getById(e - 1));
-                        case "trackId" -> trackService.delete(trackService.getById(e - 2));
-                        default -> trackService.delete(trackService.getById(e - 3));
+                        case "stationId" -> borradoDeAntes("station", e - 1);
+                        case "trackId" -> borradoDeAntes("track", e - 2);
+                        default -> borradoDeAntes("track", e - 3);
                     }
                 },
                 () -> sectionInsulatorService.update(sectionInsulatorService.getById(e - 4)),
@@ -399,9 +408,9 @@ class DeletedReferencesIT {
                 () -> { paquete(e); estacion(e - 1, e); via(e - 2, e); acceso(e - 3, e - 2, e - 1); },
                 () -> {
                     if (campo.equals("trackId")) {
-                        trackService.delete(trackService.getById(e - 2));
+                        borradoDeAntes("track", e - 2);
                     } else {
-                        stationService.delete(stationService.getById(e - 1));
+                        borradoDeAntes("station", e - 1);
                     }
                 },
                 () -> trackAccessPointService.update(trackAccessPointService.getById(e - 3)),
@@ -412,7 +421,7 @@ class DeletedReferencesIT {
         long e = block();
         return new Caso("track", e - 1, "executionPackageId",
                 () -> { paquete(e); via(e - 1, e); },
-                () -> executionPackageService.delete(sinHijos(e)),
+                () -> borradoDeAntes("execution_package", e),
                 () -> { TrackDTO leida = trackService.getById(e - 1); leida.setProfiles(null); return trackService.update(leida); },
                 () -> trackService.delete(trackService.getById(e - 1)));
     }
@@ -421,15 +430,18 @@ class DeletedReferencesIT {
         long e = block();
         return new Caso("station", e - 1, "executionPackageId",
                 () -> { paquete(e); estacion(e - 1, e); },
-                () -> executionPackageService.delete(sinHijos(e)),
+                () -> borradoDeAntes("execution_package", e),
                 () -> stationService.update(stationService.getById(e - 1)),
                 () -> stationService.delete(stationService.getById(e - 1)));
     }
 
-    private com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO sinHijos(long id) {
-        var dto = new com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO();
-        dto.setId(id);
-        return dto;
+    /**
+     * Un maestro que se borro con cosas colgando <b>antes</b> de que eso fuera un 409: hoy el
+     * {@code DELETE} no lo permite ({@code DeleteWithDependentsIT}), pero las filas que dejo siguen
+     * en las bases que ya existian, y es de ellas de lo que habla esta clase.
+     */
+    private void borradoDeAntes(String tabla, long id) {
+        assertThat(jdbc.update("update " + tabla + " set deleted = true where id = ?", id)).isEqualTo(1);
     }
 
     // --- Datos -----------------------------------------------------------------------------

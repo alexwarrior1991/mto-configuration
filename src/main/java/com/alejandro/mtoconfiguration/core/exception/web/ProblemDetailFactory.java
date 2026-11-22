@@ -39,6 +39,8 @@ public class ProblemDetailFactory {
     public static final String PROPERTY_TIMESTAMP = "timestamp";
     public static final String PROPERTY_RETRYABLE = "retryable";
     public static final String PROPERTY_ERRORS = "errors";
+    /** Lo que cuelga de lo que no se ha podido borrar: {@code [{type, count}]}. */
+    public static final String PROPERTY_DEPENDENTS = "dependents";
 
     private static final String MDC_TRACE_ID = "traceId";
 

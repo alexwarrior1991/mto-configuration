@@ -30,6 +30,10 @@ paths:
   `DeleteController` responde 200, y cada maestro lo redeclara). Lanzar un trabajo responde **202** con
   `Location`, o **429** con `Retry-After` si no hay hueco. Lo fijan `ProfileControllerTest`,
   `LovControllerContractTest`, `ProfileJobControllerTest` y `LovImportJobControllerTest`.
+- `DELETE /tracks/{id}?cascade=true` borra la vía entera (`TrackService.deleteWithEverything`, ver
+  `services.md`); sin el parámetro, o con `false`, es el borrado de siempre. Es el mismo verbo y la
+  misma ruta, así que pide lo mismo: `CONFIG_DELETE`. Solo la vía lo tiene. Lo fija
+  `TrackControllerTest`.
 - El historial de una fila es `GET /{recurso}/{id}/revisions` (`ConfigurationApiPaths.REVISIONS`),
   y no se escribe en cada controlador: lo sirven `CRUDController.revisions` y
   `AbstractLovController.revisions`, y un maestro o un catálogo nuevo lo hereda. Devuelve una página
@@ -65,8 +69,10 @@ paths:
   (`cantilevers[1].cwHeight`; `[0].name` en un lote). Una referencia a catálogo informada que no
   existe sale igual, con `BUS-001` en su campo, pero la lanza el mapper (ver `mappers.md`). Un `IllegalArgumentException` es 400 `VAL-000`,
   y un valor único repetido, 409 `BUS-002`: el de un índice único (`DataIntegrityViolationException`)
-  y el que detecta un servicio (`BaseException` con `BUS-002`, la clave del seccionador). Lo fija
-  `RestExceptionHandlerTest`.
+  y el que detecta un servicio (`BaseException` con `BUS-002`, la clave del seccionador). Borrar un
+  maestro del que cuelga algo vivo es ese mismo 409 `BUS-002` (`EntityInUseException`, con su propio
+  handler), con el `detail` que dice qué cuelga y cuánto y la propiedad `dependents`
+  (`[{type, count}]`): las dos aplicaciones web ya leen el código. Lo fija `RestExceptionHandlerTest`.
 
 ## Seguridad
 

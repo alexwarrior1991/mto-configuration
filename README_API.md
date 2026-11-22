@@ -19,6 +19,7 @@ Ruta base: `/api/v1/configuration` — en los ejemplos aparece como `$BASE`.
 | `PUT $BASE/{recurso}/{id}` | `200` | el DTO actualizado |
 | `PUT $BASE/{recurso}/bulk` | `200` | array de DTO actualizados |
 | `DELETE $BASE/{recurso}/{id}` | **`204`** | vacío |
+| `DELETE $BASE/tracks/{id}?cascade=true` | **`204`** | vacío: la vía con todo lo suyo |
 | `GET $BASE/{recurso}/paged` | `200` | página de Spring Data |
 | `POST $BASE/{recurso}/search` | `200` | página de Spring Data |
 | `POST $BASE/{recurso}/filter` | `200` | página de Spring Data |
@@ -87,10 +88,75 @@ su estación; en otro paquete sí entra, y uno borrado no ocupa su nombre.
 El borrado es **lógico**: marca la fila (`deleted = true`) y deja de aparecer en las consultas. No
 hay endpoint para restaurarla.
 
-**Lo que apuntaba a una fila borrada.** `DELETE $BASE/{recurso}/{id}` no toca lo que cuelga del
-maestro (§4): borrar una vía deja sus perfiles, sus aisladores y sus puntos de acceso apuntando a
-ella; borrar una estación, sus seccionadores; borrar un poste, los suyos; borrar un paquete, sus vías
-y sus estaciones. Esas filas siguen existiendo, y con una referencia que ya no existe:
+### Borrar un maestro del que cuelga algo: 409
+
+`DELETE $BASE/{recurso}/{id}` de un maestro del que cuelga algo **vivo** es un **409 `BUS-002`**, y
+no escribe nada: ni la fila, ni un evento. Antes se borraba y dejaba lo que colgaba apuntando a una
+fila que ya nadie podía leer. Lo que cuelga de cada uno (lo ya borrado no cuenta):
+
+| Maestro | Lo que impide borrarlo |
+|---|---|
+| paquete de ejecución | sus vías y sus estaciones |
+| estación | las vías enlazadas a ella (`stationIds`), sus seccionadores, sus aisladores y sus puntos de acceso |
+| vía | sus perfiles; los seccionadores que están en sus postes, la maniobran (`trackId`) o la conectan (`connectedTrackId`); los aisladores que están en ella o la conectan; las agujas de otros aisladores que dan a ella; sus puntos de acceso |
+| perfil | los seccionadores de su poste |
+
+El `detail` dice qué cuelga y cuánto, y `dependents` lo mismo en claro, para decirlo con tus
+palabras (los `type`: `tracks`, `stations`, `profiles`, `disconnectors`, `sectionInsulators`,
+`sectionInsulatorSwitches`, `trackAccessPoints`):
+
+```json
+{
+  "status": 409,
+  "code": "BUS-002",
+  "detail": "No se puede borrar la vía: tiene 412 perfiles, 3 seccionadores y 1 aislador. Bórralos antes, o borra la vía entera con todo lo suyo: DELETE /tracks/{id}?cascade=true.",
+  "dependents": [
+    { "type": "profiles", "count": 412 },
+    { "type": "disconnectors", "count": 3 },
+    { "type": "sectionInsulators", "count": 1 }
+  ]
+}
+```
+
+Se arregla borrando o moviendo antes lo que cuelga (una vía se desenlaza de una estación quitándola
+de sus `stationIds`). Un alta que llega a la vez que el borrado de su padre no se cuela: o el borrado
+la ve y responde este 409, o el alta responde 400 `BUS-001` en el campo de su padre.
+
+**Lo que no existe sin su padre se va con él**, y no impide nada: las ménsulas de un perfil con sus
+brazos, el brazo de una ménsula y las agujas de un aislador. `DELETE $BASE/profiles/{id}` borra el
+perfil con sus ménsulas y los brazos de ellas, y cada uno publica su `DELETED`
+(README_MESSAGING.md §2.4). Antes se quedaban vivos, apuntando al perfil borrado.
+
+### Borrar una vía entera
+
+```bash
+curl -X DELETE "$BASE/tracks/3?cascade=true" -H "Authorization: Bearer $TOKEN"    # 204
+```
+
+Con `cascade=true` (el mismo permiso, `config-delete`) se borra, en lógico y en una sola transacción,
+la vía **y todo lo suyo**: sus perfiles con sus ménsulas y sus brazos, los seccionadores que están en
+ella (en uno de sus postes, maniobren la vía que maniobren, o sin poste y con ella de `trackId`), sus
+aisladores con sus agujas y sus puntos de acceso. Cada cosa publica su `DELETED`, el de la vía el
+primero. Solo la vía tiene esta forma: un paquete o una estación se borran vacíos.
+
+**No toca nada de otra vía.** Si algo de otra vía la nombra (un seccionador o un aislador que la
+tiene de `connectedTrackId`, un seccionador en el poste de otra vía que la maniobra, la aguja de un
+aislador de otra vía), el borrado es el mismo **409 `BUS-002`** y no se borra nada: ni se vacía esa
+referencia (un aislador `TRACK_CONNECTION` se quedaría sin su segunda vía) ni se borra lo ajeno.
+Cámbialas antes, o bórralos.
+
+Es síncrono, y lo que tarda crece con la vía: son tres escrituras y tres eventos por perfil con su
+ménsula y su brazo. Medido contra un PostgreSQL en la misma máquina: unos 4 s una vía de 500 perfiles,
+5 s una de 1.000 y 10 s una de 3.000 (9.000 eventos). Con la base en otra máquina tarda más, y una
+vía muy grande puede pasar de los 15 s que espera el gateway: la petición devuelve un 504, pero el
+borrado **sigue y termina** (o se deshace entero); un segundo intento responde 404 si terminó.
+
+### Lo que apuntaba a una fila borrada
+
+Hasta que tener algo colgando lo impidió, `DELETE $BASE/{recurso}/{id}` no tocaba lo que colgaba del
+maestro, y quitar una vía del `PUT` de su paquete sigue sin tocar lo que no es hijo suyo (§4): hay
+filas que siguen existiendo con una referencia que ya no existe (el perfil de una vía borrada, el
+seccionador de una estación o de un poste borrados, la vía de un paquete borrado):
 
 - **Se leen.** Su `trackId`, `stationId`, `profileId` o `executionPackageId` sigue diciendo a cuál
   apuntaban; lo que se copiaba del maestro borrado va a `null` (`profileCode` y `profileKp` de un
@@ -224,10 +290,11 @@ decide qué hacer con cada hijo según traiga `id` o no:
 | hijo con un `id` que no es de este padre | se **ignora** |
 
 El borrado es **lógico**, como el de `DELETE $BASE/{recurso}/{id}`: la fila se queda marcada, con su
-`id` y su historial, y deja de salir en las lecturas. A diferencia del `DELETE` directo, que no toca
-lo que cuelga de un maestro, quitar un hijo de su padre se lleva su rama: quitar una vía del `PUT` de
-su paquete borra sus perfiles, las ménsulas de esos perfiles y sus brazos (no sus seccionadores, sus
-aisladores ni sus puntos de acceso, que no son hijos de la vía).
+`id` y su historial, y deja de salir en las lecturas. Quitar un hijo de su padre se lleva su rama:
+quitar una vía del `PUT` de su paquete borra sus perfiles, las ménsulas de esos perfiles y sus brazos.
+**No** se lleva sus seccionadores, sus aisladores ni sus puntos de acceso, que no son hijos de la vía,
+ni lo impide como su `DELETE` (§1): esas filas se quedan apuntando a la vía borrada. Para dar de baja
+una vía con todo lo suyo está `DELETE $BASE/tracks/{id}?cascade=true`.
 
 **Cada hijo publica su propio evento**, en la misma transacción que el del padre
 (README_MESSAGING.md §2.4): `DELETED` el que se quita y cada entidad de su rama, `CREATED` el que
@@ -315,7 +382,7 @@ cuerpo desde cero ni le quites campos.
 **desliga** de esa estación; no se borra. La regla general vale para un hijo que no existe sin su
 padre, y una vía sí existe: `TRACK 1` de EP4 atraviesa ZIC, BIN y HAD a la vez. Si un `PUT` sobre
 ZIC que no la menciona la borrara, se la llevaría por delante también a BIN y a HAD, con sus
-perfiles. Para dar de baja una vía de verdad está `DELETE $BASE/tracks/{id}`.
+perfiles. Para dar de baja una vía de verdad está `DELETE $BASE/tracks/{id}?cascade=true` (§1).
 
 Y **anida**: en un `PUT $BASE/execution-packages/{id}` puedes traer vías, y dentro de cada vía sus
 perfiles, y dentro de cada perfil sus ménsulas. Cada nivel se reconcilia con la misma regla, y cada
@@ -1033,7 +1100,7 @@ validación no, hasta que cambies el cuerpo.
 | `404` | `NOT-001` | el recurso no existe: al leerlo, al modificarlo o al borrarlo |
 | `400` | `VAL-000` con `BUS-001` en `errors[]` | una referencia que no existe: una vía, una estación, o una entrada de catálogo informada por `code` o por `id` (§3) |
 | `409` | `CON-001` | conflicto de concurrencia: el `versionNumber` que mandas no es el guardado |
-| `409` | `BUS-002` | un valor único repetido (el `code` de un catálogo, el nombre de un maestro dentro de su padre: una estación o una vía en su paquete, un punto de acceso en su vía, un aislador en su estación, un seccionador en su paquete), o al borrar, una fila que otro registro usa |
+| `409` | `BUS-002` | un valor único repetido (el `code` de un catálogo, el nombre de un maestro dentro de su padre: una estación o una vía en su paquete, un punto de acceso en su vía, un aislador en su estación, un seccionador en su paquete), o al borrar, una fila que otro registro usa: una entrada de catálogo en uso, o un maestro del que cuelga algo vivo (§1), que trae en `detail` y en `dependents` qué cuelga y cuánto |
 | `429` | — | sin hueco para el trabajo |
 | `500` | `TEC-999` | error inesperado; el `traceId` es lo que hay que dar en la incidencia |
 

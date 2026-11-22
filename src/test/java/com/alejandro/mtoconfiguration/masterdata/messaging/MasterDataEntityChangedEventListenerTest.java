@@ -174,10 +174,22 @@ class MasterDataEntityChangedEventListenerTest {
             MasterDataOperation operacionEsperada
     ) {
         EntidadPublicable entity = entidadPublicable(1L);
-        when(repositoryResolver.resolve(entity)).thenReturn(Optional.empty());
+        if (operacionOrigen != EntityChangeOperation.DELETED) {
+            when(repositoryResolver.resolve(entity)).thenReturn(Optional.empty());
+        }
 
         listener.onEntityChanged(new EntityChangeApplicationEvent<>(entity, operacionOrigen));
 
         verify(masterDataEventPublisher).publish(entity, operacionEsperada);
+    }
+
+    @Test
+    void unBorradoNoSeRelee() {
+        EntidadPublicable entity = entidadPublicable(1L);
+
+        listener.onEntityChanged(new EntityChangeApplicationEvent<>(entity, EntityChangeOperation.DELETED));
+
+        verifyNoInteractions(repositoryResolver);
+        verify(masterDataEventPublisher).publish(entity, MasterDataOperation.DELETED);
     }
 }

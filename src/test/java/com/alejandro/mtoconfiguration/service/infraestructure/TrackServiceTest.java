@@ -4,6 +4,10 @@ import com.alejandro.mtoconfiguration.business.infrastructure.TrackBusiness;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.mapper.infraestructure.TrackMapper;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.TrackFilter;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.DisconnectorRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.ProfileRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.SectionInsulatorRepository;
+import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackAccessPointRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackCriteriaSearchRepository;
 import com.alejandro.mtoconfiguration.repository.jpa.infrastructure.TrackRepository;
 import com.alejandro.mtoconfiguration.service.commons.MasterDataService;
@@ -61,13 +65,24 @@ class TrackServiceTest {
     private MasterDataService masterDataService;
     @Mock
     private InfrastructureUtils infrastructureUtils;
+    @Mock
+    private ProfileRepository profileRepository;
+    @Mock
+    private DisconnectorRepository disconnectorRepository;
+    @Mock
+    private SectionInsulatorRepository sectionInsulatorRepository;
+    @Mock
+    private TrackAccessPointRepository trackAccessPointRepository;
+    @Mock
+    private DeletionGuard deletionGuard;
 
     private TrackService service;
 
     @BeforeEach
     void setUp() {
         service = new TrackService(repository, mapper, validator, business, criteriaSearchRepository,
-                masterDataService, infrastructureUtils);
+                masterDataService, infrastructureUtils, profileRepository, disconnectorRepository,
+                sectionInsulatorRepository, trackAccessPointRepository, deletionGuard);
         when(repository.findAll(any(Predicate.class), any(Pageable.class))).thenReturn(Page.empty());
     }
 

@@ -4,11 +4,34 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ Un maestro ya no se borra con algo colgando, y lo que es suyo se borra con él
+
+Ninguna clave nueva, renombrada ni quitada, y ningún evento nuevo: **cambia cuándo llegan los
+`DELETED`** (§2.4).
+
+- **Un `DELETED` de un paquete, una estación, una vía o un perfil ya no deja atrás nada vivo que
+  apunte a él.** Su `DELETE` con algo colgando es un 409 y no publica nada. Ya no llega el `DELETED`
+  de una vía cuyos perfiles, seccionadores, aisladores o puntos de acceso siguen vivos.
+- **El `DELETED` de un perfil trae detrás el de sus ménsulas y el de los brazos de ellas**, y el de
+  una ménsula, el de su brazo, en la misma transacción. Antes se quedaban vivos y sin evento. Las
+  agujas de un aislador se borran con él y, como siempre, no publican.
+- **Una vía se puede borrar entera** (`DELETE /tracks/{id}?cascade=true`): llega el `DELETED` de la
+  vía y, detrás y en la misma transacción, el de cada perfil suyo, cada ménsula, cada brazo, cada
+  seccionador que está en ella, cada aislador suyo y cada punto de acceso suyo. Son miles de mensajes
+  de golpe en una vía grande (tres por perfil con ménsula y brazo). Quien desactiva todo lo de una
+  vía con su `DELETED` (`mto-maintenance`) recibe después los de cada cosa, que ya no cambian nada.
+- Lo que no cambia: quitar una vía del `PUT` de su paquete sigue borrando solo su rama (perfiles,
+  ménsulas, brazos), sin impedirlo y sin tocar lo demás que la nombra.
+- Ningún consumidor tiene que cambiar: son los `DELETED` de siempre, con la misma forma.
+  `mto-maintenance` desactiva el activo de cada perfil, seccionador y aislador (ya desactivados por el
+  de la vía) e ignora ménsulas y brazos; `mto-resources` desactiva cada punto de acceso;
+  `mto-notification` los registra todos.
+
 ## ⚠️ Un maestro borrado deja de salir en los eventos de lo que apuntaba a él
 
-Ninguna clave nueva, renombrada ni quitada, y ningún evento nuevo. Borrar un maestro no toca lo que
-cuelga de él (§2.4), así que quedan filas que apuntan a una fila borrada, y sus eventos lo decían mal
-o no llegaban:
+Ninguna clave nueva, renombrada ni quitada, y ningún evento nuevo. Borrar un maestro no tocaba lo que
+colgaba de él (hoy es un 409, arriba), así que hay filas que apuntan a una fila borrada, y sus eventos
+lo decían mal o no llegaban:
 
 - **`track.stations` y `profile.track.stationIds` ya no llevan la estación borrada.** La vía la
   seguía listando después del `DELETED` de la estación.
@@ -128,8 +151,9 @@ Sin claves nuevas. El evento copia el nombre de su vía, el paquete de esa vía 
 estación, y `mto-resources` no escucha `track` ni `station`: renombrar una vía, pasarla a otro paquete
 o renombrar una estación no le llegaba hasta que alguien tocase cada acceso o lanzase el republicado.
 Ahora cada `UPDATED` de una vía o de una estación trae detrás un `UPDATED` de cada uno de sus puntos de
-acceso vivos, en la misma transacción (`TrackAccessPointRepublisher`). Borrar una vía o una estación no
-toca sus accesos, como no toca nada de lo que cuelga de un maestro (§2.4).
+acceso vivos, en la misma transacción (`TrackAccessPointRepublisher`). Una vía o una estación con
+accesos vivos no se borra (409); la vía borrada entera se lleva los suyos, cada uno con su `DELETED`
+(§2.4).
 
 ## ⚠️ Nace el evento `track-access-point`, para `mto-resources`
 
@@ -398,6 +422,9 @@ publica **cada entidad que esa escritura cambia**, no solo la que el servicio re
 | Lo que pasa | Evento |
 |---|---|
 | alta, modificación o borrado directos (`POST`, `PUT`, `DELETE` del recurso) | el de la entidad, siempre: un `PUT` que no cambia nada publica igual su `UPDATED` |
+| `DELETE` de un perfil, de una ménsula o de un aislador | además, `DELETED` de lo que no existe sin él y se borra con él: las ménsulas del perfil y sus brazos, el brazo de la ménsula (las agujas del aislador no publican) |
+| `DELETE` de un maestro del que cuelga algo vivo | ninguno: es un 409 y no se escribe nada (README_API.md §1) |
+| `DELETE /tracks/{id}?cascade=true` | `DELETED` de la vía y, detrás, de cada perfil, ménsula, brazo, seccionador, aislador y punto de acceso suyos |
 | un hijo sin `id` dentro del `POST` o el `PUT` de su padre | `CREATED` del hijo |
 | un hijo con `id` dentro del `PUT` de su padre, **si cambia algo de su fila** | `UPDATED` del hijo |
 | un hijo que el `PUT` de su padre deja fuera de la colección (o el brazo a `null`) | `DELETED` del hijo y de cada entidad de su rama |
@@ -419,6 +446,18 @@ deja `deleted = true`, y eso es lo que el listener lee como `DELETED`. Como en u
 fila ya no se puede recargar (`@SQLRestriction`), así que el payload sale de la entidad en memoria,
 dentro de la transacción. Las agujas de un aislador se borran con él, pero no publican: viajan dentro
 del evento de su aislador.
+
+**Borrar una vía entera** (`TrackService.deleteWithEverything`) es una sola transacción con todos sus
+`DELETED`: el de la vía primero, y detrás los de sus brazos, sus ménsulas, sus perfiles, sus
+seccionadores, sus aisladores y sus puntos de acceso, en el orden en que se escriben (por capas, para
+que vayan en lotes). El orden entre ellos no importa a nadie: cada uno es de su propio agregado, y
+el de la vía, que es el que `mto-maintenance` usa para desactivar todos sus activos, va delante. Nada
+de otra vía se escribe ni se publica; si algo de otra vía la nombra, es un 409 sin eventos. El outbox
+guarda cada evento con una lectura y una escritura, así que una vía de 3.000 perfiles con ménsula y
+brazo son 9.000 mensajes y unos 10 s (README_API.md §1).
+
+Un `DELETED` no relee la fila para su payload (`MasterDataEntityChangedEventListener`): ya está
+borrada y `findByIdForMessaging` no la encontraría. Sale de la entidad en memoria, como siempre.
 
 Dos límites, los dos a propósito:
 
@@ -580,9 +619,9 @@ El punto de acceso no viaja anidado en ningún otro evento: ni la vía ni la est
 
 Como copia el nombre de su vía, su paquete y el nombre de su estación, un `UPDATED` de su vía o de su
 estación lo vuelve a publicar: `TrackAccessPointRepublisher` escucha el mismo evento de aplicación que
-el outbox y publica un `UPDATED` por cada acceso vivo, en la misma transacción. Un borrado de la vía o
-de la estación no: el acceso sigue vivo, como todo lo que cuelga de un maestro, y se borra o se
-desactiva aparte. Uno nuevo no se puede colgar de una vía o una estación que no existe o está borrada:
+el outbox y publica un `UPDATED` por cada acceso vivo, en la misma transacción. Una vía o una estación
+con accesos vivos no se puede borrar (409): se borran o se mueven antes, o se borra la vía entera, que
+se lleva los suyos con su `DELETED`. Uno nuevo no se puede colgar de una vía o una estación que no existe o está borrada:
 es un 400 `BUS-001` sobre `trackId` o `stationId` (`TrackAccessPointMapper`).
 
 #### Lo que copia datos de su vía o de su estación se vuelve a publicar con ellas

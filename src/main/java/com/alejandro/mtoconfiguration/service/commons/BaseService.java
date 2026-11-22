@@ -150,7 +150,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
      * mapper crea, modifica o quita dentro de la peticion de su padre (ver
      * {@link EntityChangeTracker}).
      */
-    private <R> R trackingNestedChanges(Supplier<R> write) {
+    protected <R> R trackingNestedChanges(Supplier<R> write) {
         try (EntityChangeTracker.Scope ignored = EntityChangeTracker.open()) {
             return write.get();
         }
@@ -165,7 +165,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
      * <p>Se llama <b>despues del flush</b> y de publicar la raiz: hasta el flush no se sabe que
      * filas cambian de verdad, y lo que se escribiera despues de esta llamada no publicaria.
      */
-    private void publishNestedChanges() {
+    protected void publishNestedChanges() {
         for (EntityChangeTracker.Change change : EntityChangeTracker.drain()) {
             applicationEventPublisher.publishEvent(
                     new EntityChangeApplicationEvent<>(change.entity(), change.operation()));
@@ -178,7 +178,7 @@ public abstract class BaseService<T extends BaseDTO, E extends IEntity> {
      * <b>justo despues del flush</b> y antes de publicar: si una lanza, la transaccion se deshace y
      * ningun evento llega al outbox.
      */
-    private void checkWrittenEntities() {
+    protected void checkWrittenEntities() {
         if (CollectionUtils.isEmpty(writtenEntitiesChecks)) {
             return;
         }

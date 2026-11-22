@@ -37,8 +37,12 @@ public class MasterDataEntityChangedEventListener {
             return;
         }
 
-        IEntity entityForMessaging = findEntityForMessaging(entity)
-                .orElse(entity);
+        // Un borrado no se relee: la fila ya lleva deleted = true y la consulta, que la excluye, no
+        // la encontraria nunca. Era una sentencia perdida por evento, y con ella un auto-flush de
+        // toda la sesion: al borrar una via entera, miles.
+        IEntity entityForMessaging = event.operation() == EntityChangeOperation.DELETED
+                ? entity
+                : findEntityForMessaging(entity).orElse(entity);
 
         MasterDataOperation operation = toMasterDataOperation(event.operation());
 

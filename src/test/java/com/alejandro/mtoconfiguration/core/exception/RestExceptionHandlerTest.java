@@ -189,6 +189,21 @@ class RestExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("borrar algo de lo que cuelgan cosas vivas es un 409 BUS-002 que dice qué cuelga y cuánto, en el detalle y en dependents")
+    void borrarConAlgoColgando() throws Exception {
+        mockMvc.perform(get("/probe/in-use"))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value(ErrorCodes.DUPLICATED_RESOURCE))
+                .andExpect(jsonPath("$.detail").value("No se puede borrar la vía: tiene 412 perfiles y 3 seccionadores."))
+                .andExpect(jsonPath("$.dependents", hasSize(2)))
+                .andExpect(jsonPath("$.dependents[0].type").value("profiles"))
+                .andExpect(jsonPath("$.dependents[0].count").value(412))
+                .andExpect(jsonPath("$.dependents[1].type").value("disconnectors"))
+                .andExpect(jsonPath("$.dependents[1].count").value(3));
+    }
+
+    @Test
     @DisplayName("ningún marcador de plantilla llega al cliente")
     void ningunMarcadorLlegaAlCliente() throws Exception {
         for (String path : List.of("/probe/validation", "/probe/business", "/probe/not-found",
@@ -254,6 +269,14 @@ class RestExceptionHandlerTest {
         String business() {
             throw new BaseException(Alert.ofDanger(
                     ErrorCodes.BUSINESS_RULE_VIOLATION, "El paquete ya está cerrado"));
+        }
+
+        /** Lo que lanza {@code DeletionGuard}: el borrado de un maestro con algo vivo colgando. */
+        @GetMapping("/probe/in-use")
+        String inUse() {
+            throw new EntityInUseException("No se puede borrar la vía: tiene 412 perfiles y 3 seccionadores.",
+                    List.of(new EntityInUseException.Dependent("profiles", 412),
+                            new EntityInUseException.Dependent("disconnectors", 3)));
         }
 
         /** Lo que lanza {@code DisconnectorNaturalKeyGuard}: la clave natural que no es un índice. */
