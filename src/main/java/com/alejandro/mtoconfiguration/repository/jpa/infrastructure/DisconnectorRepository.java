@@ -164,6 +164,23 @@ public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
             + "where p.track.id = :trackId or d.track.id = :trackId order by d.id asc")
     List<Long> findIdsLocatedOnTrack(@Param("trackId") Long trackId);
 
+    /**
+     * Los seccionadores vivos que <b>estan</b> en la via: en uno de sus postes o, sin poste, con
+     * ella de via propia. Son los que se van con la via cuando se borra entera
+     * ({@code TrackService.deleteWithEverything}); el que la maniobra desde el poste de otra via, o
+     * solo la conecta, no esta en ella. El poste cuenta aunque ya este borrado: el seccionador
+     * sigue siendo de esta via.
+     */
+    @Query(value = """
+            select d.id from disconnector d
+            where d.deleted = false
+              and (case when d.profile_id is null then d.track_id = :trackId
+                        else exists (select 1 from profile p
+                                     where p.id = d.profile_id and p.track_id = :trackId) end)
+            order by d.id
+            """, nativeQuery = true)
+    List<Long> findLiveIdsOnTrack(@Param("trackId") Long trackId);
+
     @Query("select d.id from Disconnector d where d.station.id = :stationId order by d.id asc")
     List<Long> findIdsByStationId(@Param("stationId") Long stationId);
 

@@ -8,4 +8,7 @@ import org.springframework.data.domain.Pageable;
 public interface ITrackService {
 
     Page<TrackDTO> getTracks(Pageable pageable, TrackFilter filter);
+
+    /** Borra la via con todo lo que es suyo; si algo de otra via la nombra, 409. */
+    void deleteWithEverything(Long id);
 }

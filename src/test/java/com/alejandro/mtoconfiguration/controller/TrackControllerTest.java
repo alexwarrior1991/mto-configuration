@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.controller;
 import com.alejandro.mtoconfiguration.configuration.security.KeycloakJwtAuthenticationConverter;
 import com.alejandro.mtoconfiguration.controller.commons.ConfigurationApiPaths;
 import com.alejandro.mtoconfiguration.controller.synchronous.infraestructure.TrackController;
+import com.alejandro.mtoconfiguration.core.exception.EntityInUseException;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.RestExceptionHandler;
 import com.alejandro.mtoconfiguration.core.exception.web.ApiErrorConfiguration;
@@ -34,7 +35,13 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -164,5 +171,45 @@ class TrackControllerTest {
         mockMvc.perform(get(TRACKS + "/3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("VIA 1"));
+    }
+
+    @Nested
+    @DisplayName("Borrar una via")
+    class Borrado {
+
+        @Test
+        @DisplayName("a secas borra solo la via, y responde 204")
+        void aSecas() throws Exception {
+            mockMvc.perform(delete(TRACKS + "/3"))
+                    .andExpect(status().isNoContent());
+
+            verify(trackService).delete(argThat(dto -> dto.getId().equals(3L)));
+            verify(trackService, never()).deleteWithEverything(any());
+        }
+
+        @Test
+        @DisplayName("con cascade=true borra la via entera, y responde 204")
+        void entera() throws Exception {
+            mockMvc.perform(delete(TRACKS + "/3").param("cascade", "true"))
+                    .andExpect(status().isNoContent());
+
+            verify(trackService).deleteWithEverything(3L);
+            verify(trackService, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("con algo vivo colgando es un 409 BUS-002 con lo que cuelga")
+        void conAlgoColgando() throws Exception {
+            doThrow(new EntityInUseException("No se puede borrar la vía: tiene 2 perfiles.",
+                    List.of(new EntityInUseException.Dependent("profiles", 2))))
+                    .when(trackService).delete(any());
+
+            mockMvc.perform(delete(TRACKS + "/3"))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("BUS-002"))
+                    .andExpect(jsonPath("$.detail").value("No se puede borrar la vía: tiene 2 perfiles."))
+                    .andExpect(jsonPath("$.dependents[0].type").value("profiles"))
+                    .andExpect(jsonPath("$.dependents[0].count").value(2));
+        }
     }
 }

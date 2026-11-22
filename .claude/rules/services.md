@@ -79,7 +79,9 @@ paths:
   (validadores sin estado y registrados en Spring).
 - Una colección de hijos en un `PUT` es el estado final (README_API.md §4). La reconcilian los
   mappers, no el servicio (ver `mappers.md`). El hijo que no llega se borra en lógico con su rama
-  (`CRUDEntity.deleteCascade`), a diferencia del `DELETE` directo, que no toca lo que cuelga.
+  (`CRUDEntity.deleteCascade`), pero sin mirar qué más lo nombra: quitar una vía del `PUT` de su
+  paquete deja sus seccionadores, aisladores y puntos de acceso apuntando a ella. Solo el `DELETE`
+  directo lo impide (abajo).
 - Bloqueo optimista: `update` y `bulkUpdate` (y los de `AbstractLovCrudService`) comparan el
   `versionNumber` del DTO con el guardado antes de tocar nada (`BaseEntity.validateVersion`), porque
   el `@Version` de JPA no ve el conflicto cuando la entidad se carga en la misma transacción. Si no
@@ -91,8 +93,35 @@ paths:
 - La respuesta de una modificación lleva la versión que se acaba de escribir: se hace `flush` antes de
   mapearla (`saveAndFlush`, o `saveAll` y `flush` en un lote). Con un `save` a secas la versión sube al
   confirmar, después de mapear, y el cliente que reenvía la respuesta recibe un 409.
-- Borrar un maestro es lógico: `CRUDEntity.delete()` marca `deleted = true` y la fila se queda (ver
-  `persistence.md`). Un catálogo no: `AbstractLovCrudService.delete` borra la fila, y si otro
+- Borrar un maestro es lógico: la fila se queda con `deleted = true` (ver `persistence.md`). El
+  `DELETE` directo (`CRUDService.softDelete`) hace tres cosas más:
+  - **si cuelga algo vivo, 409 `BUS-002` y no escribe nada** (`EntityInUseException`, con qué cuelga
+    y cuánto). Lo decide `DeletionGuard`, un `BeforeDeleteCheck` que `CRUDService` llama tras el
+    validador y antes de tocar la entidad, con recuentos nativos, no cargando entidades: de un
+    paquete, sus vías y estaciones; de una estación, sus vías enlazadas, seccionadores, aisladores y
+    puntos de acceso; de una vía, sus perfiles, lo que está en ella o la nombra y sus puntos de
+    acceso; de un perfil, los seccionadores de su poste. Una relación nueva hacia un maestro con
+    borrado lógico añade allí su recuento;
+  - **se lleva los hijos propios** (`deleteCascade()`: las ménsulas de un perfil y sus brazos, el
+    brazo de una ménsula, las agujas de un aislador), dentro de `trackingNestedChanges`, así que cada
+    uno publica su `DELETED` detrás del de la raíz;
+  - **bloquea la fila antes de contar** con un `select … for update` nativo, el único que choca con
+    el `for key share` de la clave ajena de quien da de alta o reapunta un hijo a la vez (el
+    `PESSIMISTIC_WRITE` de Hibernate es `for no key update` en PostgreSQL y no choca). Si el alta va
+    delante, el recuento la espera y es un 409; si va detrás, espera ella y la rechaza
+    `LiveParentGuard`, un `WrittenEntitiesCheck` que tras el flush vuelve a mirar, con una consulta
+    nueva, que el padre de cada fila creada o reapuntada sigue vivo (400 `BUS-001` en su campo). Una
+    referencia nueva a un maestro va también a `LiveParentGuard.referencesOf`.
+
+  Solo la vía se borra entera: `TrackService.deleteWithEverything` (`DELETE /tracks/{id}?cascade=true`)
+  borra la vía y lo suyo (perfiles, ménsulas, brazos, los seccionadores que están en ella, sus
+  aisladores con sus agujas, sus puntos de acceso) en una transacción, bloqueando antes la vía y su
+  rama; lo de otra vía que la nombra no se toca: lo impide, con el mismo 409. Carga la rama por lotes
+  con el grafo de su evento, borra por capas con un flush en cada una (para que Hibernate agrupe los
+  `UPDATE` en lotes JDBC, que solo activa en esa sesión) y al final comprueba que no queda nada vivo
+  apuntando a ella. Lo fijan `DeleteWithDependentsIT` (los 409, la cascada con sus eventos, la
+  carrera con dos transacciones y que las lecturas no crecen con los perfiles), `CRUDServiceTest`
+  y `LiveParentGuardTest`. Un catálogo no: `AbstractLovCrudService.delete` borra la fila, y si otro
   registro la usa, la clave ajena lo impide al confirmar y sale como 409 `BUS-002`; una entrada en uso
   se retira con `enabled = false`. Lo fijan `LovCrudIT` y `LovControllerContractTest`.
 - Lo que no existe se lanza como `NotFoundException` (404), también al modificar y al borrar

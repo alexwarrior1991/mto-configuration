@@ -35,7 +35,11 @@
   quitado dentro del `PUT` de su padre deja su `CREATED`, `UPDATED` o `DELETED` (y el quitado, el de
   cada entidad de su rama), con los mismos `values` que su escritura directa. Lo decide el flush de
   Hibernate, no el mapper, así que lo que no cambia no publica (README_MESSAGING.md §2.4, ver
-  `services.md`). Lo fija `NestedChildEventsIT`.
+  `services.md`). Lo fija `NestedChildEventsIT`. El `DELETE` directo también: publica el `DELETED`
+  de los hijos propios que se van con la entidad, y el de una vía borrada entera
+  (`?cascade=true`), el de todo lo suyo, con el de la vía delante; un `DELETE` rechazado por tener
+  algo colgando (409) no publica nada. Un `DELETED` no relee la fila
+  (`MasterDataEntityChangedEventListener`): ya no se puede cargar. Lo fija `DeleteWithDependentsIT`.
 - Lo que copia datos de su vía o de su estación se vuelve a publicar cuando cambian
   (`CopiedDataRepublisher`, README_MESSAGING.md §2.4): los perfiles de una vía con su nombre,
   `enabled`, sus estaciones o su paquete; los seccionadores y aisladores con el nombre de su vía o

@@ -3,6 +3,7 @@ package com.alejandro.mtoconfiguration.service.commons;
 import com.alejandro.mtoconfiguration.business.commons.CRUDBusiness;
 import com.alejandro.mtoconfiguration.configuration.cache.CacheEvictionEvent;
 import com.alejandro.mtoconfiguration.configuration.cache.RedisCacheKeyGenerator;
+import com.alejandro.mtoconfiguration.core.exception.EntityInUseException;
 import com.alejandro.mtoconfiguration.core.exception.NotFoundException;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.mapper.commons.BaseMapper;
@@ -11,8 +12,10 @@ import com.alejandro.mtoconfiguration.repository.jpa.commons.CriteriaSearchRepos
 import com.alejandro.mtoconfiguration.service.commons.CrudServiceFixtures.TestDTO;
 import com.alejandro.mtoconfiguration.service.commons.CrudServiceFixtures.TestEntity;
 import com.alejandro.mtoconfiguration.service.commons.CrudServiceFixtures.TestService;
+import com.alejandro.mtoconfiguration.service.commons.event.BeforeDeleteCheck;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeApplicationEvent;
 import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeOperation;
+import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeTracker;
 import com.alejandro.mtoconfiguration.validator.commons.CRUDValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -34,7 +37,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -46,7 +51,9 @@ import static org.mockito.Mockito.when;
  * <p>El borrado de este proyecto no es un {@code delete} del repositorio: marca la entidad y la
  * vuelve a guardar, de modo que lo unico que impide que una fila borrada siga apareciendo es que
  * {@code entity.delete()} se haya llamado antes del {@code saveAndFlush}. Eso es lo que se fija
- * aqui, junto con el hecho de que un borrado publique evento de baja y no de modificacion.</p>
+ * aqui, junto con el hecho de que un borrado publique evento de baja y no de modificacion, que lo
+ * que lo impide ({@code BeforeDeleteCheck}) se mire antes de tocar nada y que los hijos que se van
+ * con la entidad publiquen su baja. Contra PostgreSQL, {@code DeleteWithDependentsIT}.</p>
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -183,5 +190,54 @@ class CRUDServiceTest {
         service.delete(dto);
 
         assertThat(entity.isDeleted()).isTrue();
+    }
+
+    @Test
+    @DisplayName("lo que impide el borrado se mira despues del validador y antes de tocar nada: si lanza, ni se marca, ni se guarda, ni se publica")
+    void loQueImpideElBorrado() {
+        TestDTO dto = new TestDTO(1L);
+        TestEntity entity = new TestEntity(1L);
+        BeforeDeleteCheck check = mock(BeforeDeleteCheck.class);
+        ReflectionTestUtils.setField(service, "beforeDeleteChecks", List.of(check));
+        when(repository.findById(1L)).thenReturn(Optional.of(entity));
+        doThrow(new EntityInUseException("tiene 2 perfiles", List.of(new EntityInUseException.Dependent("profiles", 2))))
+                .when(check).beforeDelete(entity);
+
+        assertThatThrownBy(() -> service.delete(dto)).isInstanceOf(EntityInUseException.class);
+
+        InOrder order = inOrder(validator, check);
+        order.verify(validator).validateBeforeDelete(dto);
+        order.verify(check).beforeDelete(entity);
+        verifyNoInteractions(business);
+        verify(repository, never()).saveAndFlush(any());
+        verifyNoInteractions(publisher);
+        assertThat(entity.isDeleted()).isFalse();
+    }
+
+    @Test
+    @DisplayName("lo que el borrado escribe ademas de la raiz (sus hijos propios) publica su DELETED, despues del de la raiz")
+    void elBorradoPublicaLosHijosPropios() {
+        TestDTO dto = new TestDTO(1L);
+        TestEntity entity = new TestEntity(1L);
+        TestEntity hijo = new TestEntity(2L);
+        when(repository.findById(1L)).thenReturn(Optional.of(entity));
+        // El listener JPA apunta cada fila que el flush escribe; aqui lo hace el repositorio simulado.
+        when(repository.saveAndFlush(entity)).thenAnswer(invocation -> {
+            EntityChangeTracker.record(hijo, EntityChangeOperation.DELETED);
+            EntityChangeTracker.record(entity, EntityChangeOperation.DELETED);
+            return entity;
+        });
+
+        service.delete(dto);
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(publisher, org.mockito.Mockito.times(3)).publishEvent(captor.capture());
+        assertThat(captor.getAllValues())
+                .containsExactly(
+                        new EntityChangeApplicationEvent<>(entity, EntityChangeOperation.DELETED),
+                        new EntityChangeApplicationEvent<>(hijo, EntityChangeOperation.DELETED),
+                        new CacheEvictionEvent("TestService"));
+        // Y el ambito se cierra con el borrado.
+        assertThat(EntityChangeTracker.written()).isEmpty();
     }
 }

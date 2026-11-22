@@ -117,14 +117,24 @@ public class TrackController extends CRUDController<TrackDTO, Track> {
     @DeleteMapping("/{id}")
     @Operation(
             summary = "Delete track by ID",
-            description = "Performs logical deletion of a track using the path ID."
+            description = "Performs logical deletion of a track using the path ID. A track with anything "
+                    + "alive hanging from it is a 409, unless cascade=true, which deletes the track with "
+                    + "everything of its own (profiles, cantilevers, steady arms, the disconnectors and "
+                    + "section insulators located on it and its access points)."
     )
     @ApiResponse(responseCode = ApiConstants.CODE_200, description = ApiConstants.DESC_200)
     @ApiResponse(responseCode = ApiConstants.CODE_404, description = ApiConstants.DESC_404)
-    public ResponseEntity<Void> deleteById(@PathVariable Long id) {
-        TrackDTO dto = new TrackDTO();
-        dto.setId(id);
-        getService().delete(dto);
+    @ApiResponse(responseCode = "409", description = "Something alive hangs from the track, or another track references it.")
+    public ResponseEntity<Void> deleteById(@PathVariable Long id,
+                                           @RequestParam(name = "cascade", defaultValue = "false") boolean cascade) {
+        if (cascade) {
+            trackService.deleteWithEverything(id);
+        } else {
+            TrackDTO dto = new TrackDTO();
+            dto.setId(id);
+            getService().delete(dto);
+        }
+
         return ResponseEntity.noContent().build();
     }
 

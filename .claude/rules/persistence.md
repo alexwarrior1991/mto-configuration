@@ -26,8 +26,10 @@ paths:
   solo los vivos. Lo fijan `SoftDeleteIT` y `DisconnectorLinkIT`.
 - El lado **dueño** de un `@ManyToMany` también la repite (`Track.stations`): sin ella, una vía seguía
   listando la estación borrada y devolverla tal como se leyó era un 404. Y una relación **a uno**
-  hacia un maestro borrado no se puede recorrer: el `DELETE` directo de un maestro no toca lo que
-  cuelga de él, la clave ajena se queda y el proxy no se inicializa (`EntityNotFoundException`).
+  hacia un maestro borrado no se puede recorrer: hasta que borrar un maestro con algo colgando fue
+  un 409 (ver `services.md`) su `DELETE` no tocaba lo que colgaba de él, y quitarlo del `PUT` de su
+  padre sigue sin hacerlo; la clave ajena se queda y el proxy no se inicializa
+  (`EntityNotFoundException`).
   Quien lee a través de ella pregunta a `LiveReferences.orNull` (los mappers de payload, y
   `DisconnectorMapper` para el código y el KP del poste): borrada es `null`. Quien escribe la
   rechaza con `BaseMapper.requireNotGone` (ver `mappers.md`). Unir una relación a uno borrada en un

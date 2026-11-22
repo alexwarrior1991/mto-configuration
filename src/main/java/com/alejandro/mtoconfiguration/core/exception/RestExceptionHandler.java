@@ -104,6 +104,19 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Borrar algo de lo que cuelgan cosas vivas: 409 {@code BUS-002}, sin escribir nada. El detalle
+     * dice qué cuelga y cuánto, y {@code dependents} lo mismo en claro ({@code [{type, count}]}),
+     * para que un cliente lo diga con sus palabras.
+     */
+    @ExceptionHandler(EntityInUseException.class)
+    public ResponseEntity<ProblemDetail> handleEntityInUse(EntityInUseException e, HttpServletRequest request) {
+        ProblemDetail problem = problems.fromCode(ErrorCodes.DUPLICATED_RESOURCE, e.getDetail(), uriOf(request));
+        problem.setProperty(ProblemDetailFactory.PROPERTY_DEPENDENTS, e.getDependents());
+
+        return respond(problem);
+    }
+
+    /**
      * Restricción de la base de datos que ninguna validación previa detectó: en la práctica, un
      * código repetido en un catálogo (índice único por {@code code} desde {@code V9}). Es un 409
      * con {@code DUPLICATED_RESOURCE}, lo que el contrato de {@code AbstractLovController} promete,

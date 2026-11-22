@@ -25,8 +25,10 @@ import java.util.Set;
  * el mapper volco sin cambiar nada no genera {@code UPDATE}, y entonces tampoco tiene evento. Por
  * eso los cambios no los apunta el mapper sino {@code core.audit.EntityListener}, el listener JPA
  * de {@code BaseEntity} ({@code @PostPersist} y {@code @PostUpdate}), y solo mientras un servicio
- * tiene abierto un ambito en su hilo. Fuera de un ambito no se apunta nada: el borrado directo, el
- * republicado y lo que escriba cualquier otro camino siguen como estaban.
+ * tiene abierto un ambito en su hilo. Fuera de un ambito no se apunta nada: el republicado y lo que
+ * escriba cualquier otro camino siguen como estaban. El borrado directo si abre el suyo
+ * ({@code CRUDService.softDelete}): se lleva los hijos propios de la entidad, y cada uno publica su
+ * {@code DELETED}.
  *
  * <p>El servicio hace flush, publica el evento de su raiz como siempre y despues el de cada
  * entidad apuntada que no sea una raiz ya publicada ({@link #drain()}). Todo dentro de su

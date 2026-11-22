@@ -369,7 +369,8 @@ class NestedChildEventsIT {
         assertThat(eventos()).noneMatch(evento -> evento.startsWith("disconnector."));
         assertThat(fila("track", TRACK)).containsEntry("deleted", true);
         assertThat(fila("profile", PROFILE_B)).containsEntry("deleted", true);
-        // Lo que no cuelga de la via se queda, como con DELETE /tracks/{id}.
+        // Lo que no es hijo de la via se queda, apuntando a ella: quitarla del PUT de su paquete no
+        // lo impide ni se lo lleva, a diferencia de su DELETE (DeleteWithDependentsIT).
         assertThat(fila("disconnector", DISCONNECTOR)).containsEntry("deleted", false);
         assertThat(fila("station", STATION)).containsEntry("deleted", false);
     }

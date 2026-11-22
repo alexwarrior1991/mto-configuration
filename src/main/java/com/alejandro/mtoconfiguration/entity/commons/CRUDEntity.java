@@ -71,11 +71,16 @@ public abstract class CRUDEntity extends BaseEntity {
      * su {@code DELETE} directo, la fila se queda para la auditoria y cada entidad de la rama
      * publica su evento.
      *
-     * <p>Baja por la rama, a diferencia de {@link #delete()}, que es lo que usa el {@code DELETE}
-     * directo y deja a los hijos donde estaban: aqui la peticion dice que el hijo ya no esta en
-     * su padre, y antes de este cambio su rama desaparecia con el. Por eso las colecciones de
-     * hijos ya no llevan {@code orphanRemoval}: sacar al hijo de la coleccion en memoria no
-     * tiene que borrar la fila.
+     * <p>Baja por la rama, a diferencia de {@link #delete()}, que marca solo esta fila: aqui la
+     * peticion dice que el hijo ya no esta en su padre, y antes de este cambio su rama desaparecia
+     * con el. Por eso las colecciones de hijos ya no llevan {@code orphanRemoval}: sacar al hijo
+     * de la coleccion en memoria no tiene que borrar la fila.
+     *
+     * <p>Tambien es lo que usa el {@code DELETE} directo ({@code CRUDService.softDelete}), despues
+     * de comprobar que no cuelga nada vivo que no sea de la rama ({@code DeletionGuard}, 409): de
+     * la rama solo quedan entonces los hijos que no existen sin su padre (las mensulas de un perfil
+     * con sus brazos, el brazo de una mensula, las agujas de un aislador). Con {@code delete()} a
+     * secas se quedaban vivos, apuntando a un padre borrado.
      */
     public void deleteCascade() {
         delete();
