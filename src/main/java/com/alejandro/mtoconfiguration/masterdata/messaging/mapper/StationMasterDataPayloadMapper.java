@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.masterdata.messaging.mapper;
 
+import com.alejandro.mtoconfiguration.entity.commons.LiveReferences;
 import com.alejandro.mtoconfiguration.entity.infrastructure.*;
 import com.alejandro.mtoconfiguration.masterdata.messaging.MasterDataEntityPayloadMapper;
 import org.springframework.stereotype.Component;
@@ -20,7 +21,7 @@ public class StationMasterDataPayloadMapper implements MasterDataEntityPayloadMa
 
         values.put("id", station.getId());
         values.put("name", station.getName());
-        values.put("executionPackage", toExecutionPackagePayload(station.getExecutionPackage()));
+        values.put("executionPackage", toExecutionPackagePayload(LiveReferences.orNull(station.getExecutionPackage())));
         values.put("tracks", toTrackPayload(station.getTracks()));
         values.put("disconnectors", toDisconnectorPayload(station.getDisconnectors()));
         values.put("sectionInsulators", toSectionInsulatorPayload(station.getSectionInsulators()));

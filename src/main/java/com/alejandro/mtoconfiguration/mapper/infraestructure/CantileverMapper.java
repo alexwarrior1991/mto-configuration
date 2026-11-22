@@ -64,6 +64,12 @@ public abstract class CantileverMapper implements BaseMapper<CantileverDTO, Cant
     @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(CantileverDTO dto, @MappingTarget Cantilever entity);
 
+    /** Lo que referencia tiene que existir y estar vivo: 400 {@code BUS-001} sobre su campo (ver {@code BaseMapper.requireNotGone}). */
+    @AfterMapping
+    protected void requireLiveReferences(CantileverDTO dto, @MappingTarget Cantilever entity) {
+        BaseMapper.requireNotGone(entity.getProfile(), "profileId");
+    }
+
     @AfterMapping
     protected void mapDtoToEntity(CantileverDTO dto, @MappingTarget Cantilever entity) {
 

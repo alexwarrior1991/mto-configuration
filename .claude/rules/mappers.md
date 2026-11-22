@@ -32,6 +32,16 @@ paths:
   referencia con un 200 y el evento salía sin ella. Va en el mapper porque es el único paso común a
   todas las escrituras y el que ya consulta el catálogo. Una referencia nueva usa `resolveLov`, no
   `masterDataService.getXByCode` a secas.
+- Toda referencia a otro maestro (`trackId`, `stationId`, `profileId`, `cantileverId`,
+  `executionPackageId`, `connectedTrackId`) pasa por `BaseMapper.requireNotGone` en un `@AfterMapping`
+  `requireLiveReferences` declarado **antes** de `mapDtoToEntity`: `ReferenceMapper` da un proxy sin
+  mirar la base, y una fila que apunta a un maestro borrado (su `DELETE` no toca lo que cuelga de él)
+  o que no existe sale con 400 `BUS-001` sobre su campo, no con un 500 al publicar su evento. Un
+  maestro nuevo con una referencia a otro la añade. Solo rechaza la que no se puede cargar (ya
+  estaba borrada): la que borra esta misma petición sigue pasando, porque un `PUT` de paquete que
+  quita una vía trae en el mismo cuerpo lo que la nombraba (`NestedChildEventsIT`). El punto de
+  acceso, que no viaja anidado, usa `requireLive`, que rechaza también esa. Lo fija
+  `DeletedReferencesIT`.
 - El campo de un error que lanza un mapper es la ruta desde la raíz del cuerpo, como la del
   validador: `mergeCollection` recibe el nombre de la colección y prefija el error de cada hijo con
   `BaseMapper.atField` (`cantilevers[1].cantileverType`); un hijo que se reconcilia a mano (el brazo,

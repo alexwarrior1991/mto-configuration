@@ -24,6 +24,15 @@ paths:
   `@SQLRestriction("deleted = false")`; si no, lo borrado sigue apareciendo dentro de su padre. En el
   perfil importa doble: un seccionador borrado conserva su perfil, y la restricción es lo que deja
   solo los vivos. Lo fijan `SoftDeleteIT` y `DisconnectorLinkIT`.
+- El lado **dueño** de un `@ManyToMany` también la repite (`Track.stations`): sin ella, una vía seguía
+  listando la estación borrada y devolverla tal como se leyó era un 404. Y una relación **a uno**
+  hacia un maestro borrado no se puede recorrer: el `DELETE` directo de un maestro no toca lo que
+  cuelga de él, la clave ajena se queda y el proxy no se inicializa (`EntityNotFoundException`).
+  Quien lee a través de ella pregunta a `LiveReferences.orNull` (los mappers de payload, y
+  `DisconnectorMapper` para el código y el KP del poste): borrada es `null`. Quien escribe la
+  rechaza con `BaseMapper.requireNotGone` (ver `mappers.md`). Unir una relación a uno borrada en un
+  `@EntityGraph` con su proxy ya en la sesión es un `NullPointerException` de Hibernate, que rellena
+  el proxy con una fila de nulos: por eso no se llega a escribir. Lo fija `DeletedReferencesIT`.
 - Las claves naturales de infraestructura son índices únicos parciales `ux_…` con
   `WHERE deleted = false` (y `upper(...)` en los nombres), para que lo borrado no impida dar de alta
   otra vez el mismo nombre: el de un paquete, el de una estación y el de una vía en su paquete, el

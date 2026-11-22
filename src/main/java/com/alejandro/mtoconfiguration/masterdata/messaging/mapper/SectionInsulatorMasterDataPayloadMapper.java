@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.masterdata.messaging.mapper;
 
+import com.alejandro.mtoconfiguration.entity.commons.LiveReferences;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulator;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SectionInsulatorSwitch;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
@@ -31,9 +32,9 @@ public class SectionInsulatorMasterDataPayloadMapper implements MasterDataEntity
         values.put("installationType", sectionInsulator.getInstallationType() == null
                 ? null
                 : sectionInsulator.getInstallationType().name());
-        values.put("station", toStationPayload(sectionInsulator.getStation()));
-        values.put("track", toTrackPayload(sectionInsulator.getTrack()));
-        values.put("connectedTrack", toTrackPayload(sectionInsulator.getConnectedTrack()));
+        values.put("station", toStationPayload(LiveReferences.orNull(sectionInsulator.getStation())));
+        values.put("track", toTrackPayload(LiveReferences.orNull(sectionInsulator.getTrack())));
+        values.put("connectedTrack", toTrackPayload(LiveReferences.orNull(sectionInsulator.getConnectedTrack())));
         values.put("switches", toSwitchPayload(sectionInsulator.getSwitches()));
 
         return values;

@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.masterdata.messaging.mapper;
 
+import com.alejandro.mtoconfiguration.entity.commons.LiveReferences;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
@@ -35,7 +36,7 @@ public class ProfileMasterDataPayloadMapper implements MasterDataEntityPayloadMa
         values.put("heightCantileverSupport", profile.getHeightCantileverSupport());
         values.put("poleGaugeLocation", profile.getPoleGaugeLocation());
         values.put("railPoleDistance", profile.getRailPoleDistance());
-        values.put("track", toTrackPayload(profile.getTrack()));
+        values.put("track", toTrackPayload(LiveReferences.orNull(profile.getTrack())));
         values.put("anchorages", profile.getAnchorages() == null ? List.of()
                 : profile.getAnchorages().stream().map(this::toLovPayload).toList());
         values.put("anchorageFoundation", toLovPayload(profile.getAnchorageFoundation()));

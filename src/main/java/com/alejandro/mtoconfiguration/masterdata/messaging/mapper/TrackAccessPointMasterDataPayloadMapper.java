@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.masterdata.messaging.mapper;
 
+import com.alejandro.mtoconfiguration.entity.commons.LiveReferences;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.entity.infrastructure.TrackAccessPoint;
@@ -40,8 +41,8 @@ public class TrackAccessPointMasterDataPayloadMapper implements MasterDataEntity
         values.put("maxGrossWeightT", accessPoint.getMaxGrossWeightT());
         values.put("latitude", accessPoint.getLatitude());
         values.put("longitude", accessPoint.getLongitude());
-        values.put("station", toStationPayload(accessPoint.getStation()));
-        values.put("track", toTrackPayload(accessPoint.getTrack()));
+        values.put("station", toStationPayload(LiveReferences.orNull(accessPoint.getStation())));
+        values.put("track", toTrackPayload(LiveReferences.orNull(accessPoint.getTrack())));
 
         return values;
     }

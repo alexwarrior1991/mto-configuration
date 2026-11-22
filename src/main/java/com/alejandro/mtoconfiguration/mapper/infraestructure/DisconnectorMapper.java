@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.mapper.infraestructure;
 
+import com.alejandro.mtoconfiguration.entity.commons.LiveReferences;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
@@ -38,8 +39,8 @@ public abstract class DisconnectorMapper implements BaseMapper<DisconnectorDTO, 
     @Override
     @Mapping(target = "stationId", source = "station.id")
     @Mapping(target = "profileId", source = "profile.id")
-    @Mapping(target = "profileCode", source = "profile.profileId")
-    @Mapping(target = "profileKp", source = "profile.kp")
+    @Mapping(target = "profileCode", ignore = true) // en mapEntityToDto: el poste puede estar borrado
+    @Mapping(target = "profileKp", ignore = true)
     @Mapping(target = "trackId", source = "track.id")
     @Mapping(target = "connectedTrackId", source = "connectedTrack.id")
     @Mapping(target = "disconnectorFunction", ignore = true)
@@ -70,6 +71,15 @@ public abstract class DisconnectorMapper implements BaseMapper<DisconnectorDTO, 
     @Mapping(target = "disconnectorFunction", ignore = true)
     @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(DisconnectorDTO dto, @MappingTarget Disconnector entity);
+
+    /** Lo que referencia tiene que existir y estar vivo: 400 {@code BUS-001} sobre su campo (ver {@code BaseMapper.requireNotGone}). */
+    @AfterMapping
+    protected void requireLiveReferences(DisconnectorDTO dto, @MappingTarget Disconnector entity) {
+        BaseMapper.requireNotGone(entity.getStation(), "stationId");
+        BaseMapper.requireNotGone(entity.getProfile(), "profileId");
+        BaseMapper.requireNotGone(entity.getTrack(), "trackId");
+        BaseMapper.requireNotGone(entity.getConnectedTrack(), "connectedTrackId");
+    }
 
     @AfterMapping
     protected void mapDtoToEntity(DisconnectorDTO dto, @MappingTarget Disconnector entity) {
@@ -143,6 +153,12 @@ public abstract class DisconnectorMapper implements BaseMapper<DisconnectorDTO, 
 
     @AfterMapping
     protected void mapEntityToDto(Disconnector entity, @MappingTarget DisconnectorDTO dto) {
+        // El codigo y el KP son del poste. Si el poste se borro (su DELETE no toca a sus
+        // seccionadores), no hay de donde leerlos: van a null y el seccionador se sigue pudiendo leer.
+        // Antes, un seccionador asi hacia fallar su detalle y la lista entera de seccionadores.
+        Profile pole = LiveReferences.orNull(entity.getProfile());
+        dto.setProfileCode(pole == null ? null : pole.getProfileId());
+        dto.setProfileKp(pole == null || pole.getKp() == null ? null : pole.getKp().toString());
         if (entity.getDisconnectorFunction() != null && entity.getDisconnectorFunction().getId() != null) {
             dto.setDisconnectorFunction(
                     masterDataService.getDisconnectorFunctionByIdAndMapToDTO(entity.getDisconnectorFunction().getId())

@@ -68,22 +68,8 @@ public abstract class TrackAccessPointMapper implements BaseMapper<TrackAccessPo
      */
     @AfterMapping
     protected void requireLiveReferences(TrackAccessPointDTO dto, @MappingTarget TrackAccessPoint entity) {
-        requireLive(entity.getTrack(), FIELD_TRACK_ID);
-        requireLive(entity.getStation(), FIELD_STATION_ID);
+        BaseMapper.requireLive(entity.getTrack(), FIELD_TRACK_ID);
+        BaseMapper.requireLive(entity.getStation(), FIELD_STATION_ID);
     }
 
-    private static void requireLive(CRUDEntity reference, String field) {
-        if (reference == null) {
-            return;
-        }
-        boolean live;
-        try {
-            live = !reference.isDeleted(); // inicializa el proxy
-        } catch (EntityNotFoundException missing) {
-            live = false;
-        }
-        if (!live) {
-            throw new ValidationException(List.of(Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, field)));
-        }
-    }
 }

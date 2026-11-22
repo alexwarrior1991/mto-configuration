@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.entity.infrastructure;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Collection;
 import com.alejandro.mtoconfiguration.entity.commons.BaseEntity;
@@ -83,6 +84,7 @@ public class Track extends CRUDEntity {
     @JoinTable(name = "TRACK_STATION",
             joinColumns = @JoinColumn(name = "TRACK_ID"),
             inverseJoinColumns = @JoinColumn(name = "STATION_ID"))
+    @SQLRestriction("deleted = false") // ver CRUDEntity: la restriccion de clase no filtra colecciones
     @Audited(targetAuditMode = NOT_AUDITED)
     public Set<Station> getStations() {
         return stations;
@@ -184,6 +186,12 @@ public class Track extends CRUDEntity {
         return Comparator.comparing(Track::getExecutionPackage, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(Track::getName, Comparator.nullsLast(Comparator.naturalOrder()))
                 .compare(this, other);
+    }
+
+    /** Para la revision de una via: sin las estaciones ya borradas entonces, como en su lectura viva. */
+    @Override
+    public void forgetDeletedChildren() {
+        setStations(new LinkedHashSet<>(alive(getStations())));
     }
 
     /** Lo que se borra con la via cuando una modificacion de su padre la quita (ver CRUDEntity). */
