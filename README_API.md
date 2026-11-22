@@ -109,7 +109,7 @@ palabras (los `type`: `tracks`, `stations`, `profiles`, `disconnectors`, `sectio
 {
   "status": 409,
   "code": "BUS-002",
-  "detail": "No se puede borrar la vía: tiene 412 perfiles, 3 seccionadores y 1 aislador. Bórralos antes, o borra la vía entera con todo lo suyo: DELETE /tracks/{id}?cascade=true.",
+  "detail": "No se puede borrar la vía: tiene 412 perfiles, 3 seccionadores y 1 aislador. Bórralos antes, o borra la vía entera con todo lo suyo.",
   "dependents": [
     { "type": "profiles", "count": 412 },
     { "type": "disconnectors", "count": 3 },
@@ -117,6 +117,9 @@ palabras (los `type`: `tracks`, `stations`, `profiles`, `disconnectors`, `sectio
   ]
 }
 ```
+
+El `detail` va en lenguaje llano, sin rutas, porque las aplicaciones lo enseñan tal cual; «borrar la
+vía entera» es `DELETE $BASE/tracks/{id}?cascade=true`, abajo.
 
 Se arregla borrando o moviendo antes lo que cuelga (una vía se desenlaza de una estación quitándola
 de sus `stationIds`). Un alta que llega a la vez que el borrado de su padre no se cuela: o el borrado
@@ -153,8 +156,9 @@ borrado **sigue y termina** (o se deshace entero); un segundo intento responde 4
 
 ### Lo que apuntaba a una fila borrada
 
-Hasta que tener algo colgando lo impidió, `DELETE $BASE/{recurso}/{id}` no tocaba lo que colgaba del
-maestro, y quitar una vía del `PUT` de su paquete sigue sin tocar lo que no es hijo suyo (§4): hay
+Hasta que tener algo colgando lo impidió, ni `DELETE $BASE/{recurso}/{id}` ni quitar un hijo del
+`PUT` de su padre (§4) tocaban lo que colgaba del maestro. Hoy los dos son un 409, pero en las bases
+que ya existían hay
 filas que siguen existiendo con una referencia que ya no existe (el perfil de una vía borrada, el
 seccionador de una estación o de un poste borrados, la vía de un paquete borrado):
 
@@ -286,15 +290,46 @@ decide qué hacer con cada hijo según traiga `id` o no:
 |---|---|
 | hijo **con `id`** que ya existe | **UPDATE** de esa fila |
 | hijo **sin `id`** | **INSERT** de fila nueva |
-| hijo que existe y **no mandas** | se **borra**, él y lo que cuelga de él, igual que con su `DELETE` |
+| hijo que existe y **no mandas** | se **borra**, igual que con su `DELETE`: con lo que no existe sin él, y con un **409** si le queda algo vivo colgando |
 | hijo con un `id` que no es de este padre | se **ignora** |
 
 El borrado es **lógico**, como el de `DELETE $BASE/{recurso}/{id}`: la fila se queda marcada, con su
-`id` y su historial, y deja de salir en las lecturas. Quitar un hijo de su padre se lleva su rama:
-quitar una vía del `PUT` de su paquete borra sus perfiles, las ménsulas de esos perfiles y sus brazos.
-**No** se lleva sus seccionadores, sus aisladores ni sus puntos de acceso, que no son hijos de la vía,
-ni lo impide como su `DELETE` (§1): esas filas se quedan apuntando a la vía borrada. Para dar de baja
-una vía con todo lo suyo está `DELETE $BASE/tracks/{id}?cascade=true`.
+`id` y su historial, y deja de salir en las lecturas.
+
+**Quitar un hijo es borrarlo, con la regla de su `DELETE` (§1).** Se va con lo que no existe sin él
+(un perfil, con sus ménsulas y los brazos de ellas; un aislador, con sus agujas), y si le queda algo
+vivo colgando, **el `PUT` entero es un 409 `BUS-002`** y no se escribe nada de él, tampoco los demás
+cambios del cuerpo:
+
+| Lo que quitas | Dentro del `PUT` de | Es un 409 si tiene vivos |
+|---|---|---|
+| una vía (`tracks`) | su paquete | perfiles, seccionadores o aisladores que están en ella o la nombran, puntos de acceso |
+| una estación (`stations`) | su paquete | vías enlazadas, seccionadores, aisladores, puntos de acceso |
+| un perfil (`profiles`) | su vía | seccionadores en su poste |
+| un seccionador, un aislador, una ménsula, un brazo, una aguja | su padre | nada: nunca lo impiden |
+
+Hasta ahora quitar una vía del `PUT` de su paquete borraba sus perfiles con sus ménsulas y sus brazos,
+y dejaba sus seccionadores, aisladores y puntos de acceso apuntando a una vía borrada. Ya no: una vía
+con perfiles no se quita así, igual que no se borra con su `DELETE`. Para dar de baja una vía con todo
+lo suyo está `DELETE $BASE/tracks/{id}?cascade=true`.
+
+La respuesta es la del `DELETE` (`detail` y `dependents`), dice el `id` del hijo quitado, y trae en
+`errors[]` la colección del cuerpo de la que faltaba:
+
+```json
+{
+  "status": 409,
+  "code": "BUS-002",
+  "detail": "No se puede quitar la vía 3: tiene 412 perfiles y 3 seccionadores. Bórralos antes, o borra la vía entera con todo lo suyo.",
+  "dependents": [ { "type": "profiles", "count": 412 }, { "type": "disconnectors", "count": 3 } ],
+  "errors": [ { "field": "tracks", "code": "BUS-002", "message": "No se puede quitar la vía 3: tiene…" } ]
+}
+```
+
+`field` es el nombre de la colección (`tracks`, `stations`, `profiles`), sin la ruta de su padre ni
+índice: el hijo que lo impide no está en el cuerpo. Se cuenta **el estado final** del `PUT`: lo que el
+mismo cuerpo borra en otra parte no cuenta (quitar una vía y, en su estación, el seccionador que la
+nombraba, entra).
 
 **Cada hijo publica su propio evento**, en la misma transacción que el del padre
 (README_MESSAGING.md §2.4): `DELETED` el que se quita y cada entidad de su rama, `CREATED` el que

@@ -59,7 +59,7 @@ public abstract class CRUDService<T extends BaseDTO, E extends CRUDEntity> exten
                         // Con sus hijos propios (las mensulas de un perfil con sus brazos, el brazo de
                         // una mensula, las agujas de un aislador): no existen sin ella, y dejarlos
                         // vivos era dejarlos huerfanos. Lo demas que cuelga ya lo ha impedido el 409.
-                        entity.deleteCascade();
+                        entity.deleteWithOwnChildren();
 
                         E savedEntity = getRepository().saveAndFlush(entity);
 

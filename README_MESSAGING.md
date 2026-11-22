@@ -4,6 +4,19 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ Quitar un hijo del `PUT` de su padre ya no se lleva su rama ni deja nada colgando
+
+Ninguna clave nueva, renombrada ni quitada, y ningún evento nuevo: **dejan de llegar `DELETED`** (§2.4).
+
+- **Quitar una vía del `PUT` de su paquete ya no publica el `DELETED` de sus perfiles, sus ménsulas y
+  sus brazos.** Una vía con perfiles (o con cualquier otra cosa viva colgando) no se puede quitar así:
+  el `PUT` es un 409 y no publica nada, ni el `UPDATED` del paquete. Lo mismo una estación con
+  seccionadores o aisladores, y un perfil con un seccionador en su poste quitado del `PUT` de su vía.
+- Lo que sí se quita publica lo de siempre: su `DELETED` y el de lo que no existe sin él (las
+  ménsulas y brazos de un perfil).
+- El `DELETED` de una vía con toda su rama solo llega ya de `DELETE /tracks/{id}?cascade=true`.
+- Ningún consumidor tiene que cambiar.
+
 ## ⚠️ Un maestro ya no se borra con algo colgando, y lo que es suyo se borra con él
 
 Ninguna clave nueva, renombrada ni quitada, y ningún evento nuevo: **cambia cuándo llegan los
@@ -20,8 +33,7 @@ Ninguna clave nueva, renombrada ni quitada, y ningún evento nuevo: **cambia cu�
   seccionador que está en ella, cada aislador suyo y cada punto de acceso suyo. Son miles de mensajes
   de golpe en una vía grande (tres por perfil con ménsula y brazo). Quien desactiva todo lo de una
   vía con su `DELETED` (`mto-maintenance`) recibe después los de cada cosa, que ya no cambian nada.
-- Lo que no cambia: quitar una vía del `PUT` de su paquete sigue borrando solo su rama (perfiles,
-  ménsulas, brazos), sin impedirlo y sin tocar lo demás que la nombra.
+- Quitar un hijo del `PUT` de su padre sigue desde entonces la misma regla (aviso de arriba).
 - Ningún consumidor tiene que cambiar: son los `DELETED` de siempre, con la misma forma.
   `mto-maintenance` desactiva el activo de cada perfil, seccionador y aislador (ya desactivados por el
   de la vía) e ignora ménsulas y brazos; `mto-resources` desactiva cada punto de acceso;
@@ -441,8 +453,10 @@ después del flush y del evento de su raíz, publica el evento de aplicación de
 entidad tiene `@PublishMasterDataEvent`. Un hijo devuelto tal cual no genera `UPDATE` y no publica:
 un `PUT` de un paquete con sus vías y sus miles de perfiles sigue siendo un evento.
 
-El hijo quitado se borra **en lógico** con su rama (`CRUDEntity.deleteCascade`): es un `UPDATE` que
-deja `deleted = true`, y eso es lo que el listener lee como `DELETED`. Como en un borrado directo, la
+El hijo quitado se borra **en lógico** con lo que no existe sin él
+(`CRUDEntity.deleteWithOwnChildren`, lo mismo que se lleva su `DELETE`): es un `UPDATE` que
+deja `deleted = true`, y eso es lo que el listener lee como `DELETED`. Si después del flush le queda
+algo vivo colgando (`DeletionGuard`), la escritura entera se rechaza con un 409 y no se publica nada. Como en un borrado directo, la
 fila ya no se puede recargar (`@SQLRestriction`), así que el payload sale de la entidad en memoria,
 dentro de la transacción. Las agujas de un aislador se borran con él, pero no publican: viajan dentro
 del evento de su aislador.

@@ -27,8 +27,8 @@ paths:
 - El lado **dueño** de un `@ManyToMany` también la repite (`Track.stations`): sin ella, una vía seguía
   listando la estación borrada y devolverla tal como se leyó era un 404. Y una relación **a uno**
   hacia un maestro borrado no se puede recorrer: hasta que borrar un maestro con algo colgando fue
-  un 409 (ver `services.md`) su `DELETE` no tocaba lo que colgaba de él, y quitarlo del `PUT` de su
-  padre sigue sin hacerlo; la clave ajena se queda y el proxy no se inicializa
+  un 409 (ver `services.md`), ni su `DELETE` ni quitarlo del `PUT` de su padre tocaban lo que
+  colgaba de él; en esas filas la clave ajena se queda y el proxy no se inicializa
   (`EntityNotFoundException`).
   Quien lee a través de ella pregunta a `LiveReferences.orNull` (los mappers de payload, y
   `DisconnectorMapper` para el código y el KP del poste): borrada es `null`. Quien escribe la

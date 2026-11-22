@@ -8,6 +8,8 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.service.commons.event.BeforeDeleteCheck;
+import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeTracker;
+import com.alejandro.mtoconfiguration.service.commons.event.WrittenEntitiesCheck;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Table;
@@ -38,7 +40,7 @@ import java.util.Map;
  *       ella y sus puntos de acceso;</li>
  *   <li>perfil: los seccionadores de su poste.</li>
  * </ul>
- * Lo que <b>no</b> impide nada porque se va con su padre ({@code CRUDEntity.deleteCascade}): las
+ * Lo que <b>no</b> impide nada porque se va con su padre ({@code CRUDEntity.deleteWithOwnChildren}): las
  * mensulas de un perfil con sus brazos, el brazo de una mensula y las agujas de un aislador.
  *
  * <p><b>La carrera.</b> Contar no basta si alguien da de alta un hijo a la vez. Antes de contar se
@@ -50,10 +52,10 @@ import java.util.Map;
  * seguir encuentra a su padre borrado y la rechaza {@code LiveParentGuard}.
  */
 @Component
-public class DeletionGuard implements BeforeDeleteCheck {
+public class DeletionGuard implements BeforeDeleteCheck, WrittenEntitiesCheck {
 
     private static final String TRACK_HINT =
-            " Bórralos antes, o borra la vía entera con todo lo suyo: DELETE /tracks/{id}?cascade=true.";
+            " Bórralos antes, o borra la vía entera con todo lo suyo.";
     private static final String DEFAULT_HINT = " Bórralos o muévelos antes.";
 
     private record Hanging(String type, String one, String many, String countSql) {
@@ -161,6 +163,35 @@ public class DeletionGuard implements BeforeDeleteCheck {
         if (!hanging.isEmpty()) {
             throw new EntityInUseException("No se puede borrar " + rule.name() + ": tiene "
                     + describe(rule.hangings(), hanging) + "." + rule.hint(), hanging);
+        }
+    }
+
+    /**
+     * Lo mismo para el hijo que el {@code PUT} de su padre ha dejado fuera
+     * ({@code EntityChangeTracker.removals()}): quitarlo es borrarlo, con la regla de su
+     * {@code DELETE}. Va <b>despues del flush</b>, asi que cuenta el estado final: el hijo ya esta
+     * borrado con lo que no existe sin el, lo que ese mismo {@code PUT} haya borrado en otra parte
+     * del cuerpo no cuenta, y lo que siga vivo colgando de el rechaza la escritura entera (409, y
+     * la transaccion se deshace). El bloqueo de la fila, que aqui llega con ella ya escrita, sigue
+     * poniendo en fila al alta simultanea de un hijo suyo.
+     */
+    @Override
+    public void afterFlush(List<EntityChangeTracker.Change> written) {
+        for (EntityChangeTracker.Removal removal : EntityChangeTracker.removals()) {
+            Rule rule = RULES.get(Hibernate.getClass(removal.entity()));
+
+            if (rule == null) {
+                continue;
+            }
+
+            Long id = removal.entity().getId();
+            lock(rule.table(), id);
+            List<Dependent> hanging = count(rule.hangings(), id);
+
+            if (!hanging.isEmpty()) {
+                throw new EntityInUseException("No se puede quitar " + rule.name() + " " + id + ": tiene "
+                        + describe(rule.hangings(), hanging) + "." + rule.hint(), hanging, removal.field());
+            }
         }
     }
 

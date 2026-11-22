@@ -340,7 +340,8 @@ class DeleteWithDependentsIT {
             EntityInUseException rechazo = rechazo(() -> trackService.delete(conId(new TrackDTO(), TRACK)));
 
             assertThat(rechazo.getDetail())
-                    .contains("la vía", "2 perfiles, 2 seccionadores, 1 aislador y 1 punto de acceso", "cascade=true");
+                    .contains("la vía", "2 perfiles, 2 seccionadores, 1 aislador y 1 punto de acceso", "borra la vía entera con todo lo suyo.")
+                    .doesNotContain("DELETE", "cascade");
             assertThat(rechazo.getDependents()).containsExactly(
                     new Dependent("profiles", 2), new Dependent("disconnectors", 2),
                     new Dependent("sectionInsulators", 1), new Dependent("trackAccessPoints", 1));

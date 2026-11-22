@@ -35,8 +35,9 @@ paths:
 - Toda referencia a otro maestro (`trackId`, `stationId`, `profileId`, `cantileverId`,
   `executionPackageId`, `connectedTrackId`) pasa por `BaseMapper.requireNotGone` en un `@AfterMapping`
   `requireLiveReferences` declarado **antes** de `mapDtoToEntity`: `ReferenceMapper` da un proxy sin
-  mirar la base, y una fila que apunta a un maestro borrado (las que dejó su `DELETE` antes de que
-  eso fuera un 409, y las que deja quitarlo del `PUT` de su padre) o que no existe sale con 400 `BUS-001` sobre su campo, no con un 500 al publicar su evento. Un
+  mirar la base, y una fila que apunta a un maestro borrado (las que dejaron su `DELETE` y el
+  `PUT` de su padre antes de que eso fuera un 409) o que no existe sale con 400 `BUS-001` sobre su
+  campo, no con un 500 al publicar su evento. Un
   maestro nuevo con una referencia a otro la añade. Solo rechaza la que no se puede cargar (ya
   estaba borrada): la que borra esta misma petición sigue pasando, porque un `PUT` de paquete que
   quita una vía trae en el mismo cuerpo lo que la nombraba (`NestedChildEventsIT`). El punto de
@@ -50,8 +51,12 @@ paths:
   `DisconnectorMapperTest`, `BaseServiceTest` y `CatalogReferenceIT`.
 - Las colecciones de hijos también se ignoran en el `@Mapping` y se reconcilian en `mapDtoToEntity`
   con `BaseMapper.mergeCollection`: con id se actualiza, sin id se crea, lo que no llega se borra y
-  `null` no toca nada (README_API.md §4). Lo que no llega se borra **en lógico**, con su rama
-  (`BaseMapper.removeChild` → `CRUDEntity.deleteCascade`), y sale de la colección en memoria: ninguna
+  `null` no toca nada (README_API.md §4). Lo que no llega se borra **en lógico**, como con su
+  `DELETE`: `BaseMapper.removeChild` lo marca con lo que no existe sin él
+  (`CRUDEntity.deleteWithOwnChildren`: no baja a los perfiles de una vía ni a los seccionadores de
+  una estación) y lo apunta (`EntityChangeTracker.recordRemoval`, con el nombre de su colección) para
+  que `DeletionGuard` rechace la escritura si le queda algo vivo colgando (409, ver `services.md`).
+  Sale de la colección en memoria: ninguna
   colección de hijos lleva `orphanRemoval`, y una entidad con hijos nuevos los declara en
   `ownedChildren()`. Así cada entidad quitada publica su `DELETED` (ver `services.md`). El 1:1 de la ménsula con su brazo se reconcilia igual, a mano
   (`CantileverMapper.mergeSteadyArm`): el brazo nuevo se construye entero antes de colgarlo de una

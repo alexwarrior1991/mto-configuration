@@ -204,6 +204,20 @@ class RestExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("si lo que no se puede borrar se quitó del PUT de su padre, errors[] dice de qué colección")
+    void quitarDelPutConAlgoColgando() throws Exception {
+        mockMvc.perform(get("/probe/in-use-removed"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(ErrorCodes.DUPLICATED_RESOURCE))
+                .andExpect(jsonPath("$.detail").value("No se puede quitar la vía 3: tiene 2 perfiles."))
+                .andExpect(jsonPath("$.dependents[0].type").value("profiles"))
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0].field").value("tracks"))
+                .andExpect(jsonPath("$.errors[0].code").value(ErrorCodes.DUPLICATED_RESOURCE))
+                .andExpect(jsonPath("$.errors[0].message").value("No se puede quitar la vía 3: tiene 2 perfiles."));
+    }
+
+    @Test
     @DisplayName("ningún marcador de plantilla llega al cliente")
     void ningunMarcadorLlegaAlCliente() throws Exception {
         for (String path : List.of("/probe/validation", "/probe/business", "/probe/not-found",
@@ -277,6 +291,13 @@ class RestExceptionHandlerTest {
             throw new EntityInUseException("No se puede borrar la vía: tiene 412 perfiles y 3 seccionadores.",
                     List.of(new EntityInUseException.Dependent("profiles", 412),
                             new EntityInUseException.Dependent("disconnectors", 3)));
+        }
+
+        /** Lo mismo, cuando el hijo se quitó del {@code PUT} de su padre. */
+        @GetMapping("/probe/in-use-removed")
+        String inUseRemoved() {
+            throw new EntityInUseException("No se puede quitar la vía 3: tiene 2 perfiles.",
+                    List.of(new EntityInUseException.Dependent("profiles", 2)), "tracks");
         }
 
         /** Lo que lanza {@code DisconnectorNaturalKeyGuard}: la clave natural que no es un índice. */
