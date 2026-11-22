@@ -216,6 +216,14 @@ public class Cantilever extends CRUDEntity {
         return Cantilever.class.hashCode();
     }
 
+    /** Para la revision de una mensula: sin el brazo ya borrado entonces. */
+    @Override
+    public void forgetDeletedChildren() {
+        if (getSteadyArm() != null && getSteadyArm().isDeleted()) {
+            setSteadyArm(null);
+        }
+    }
+
     /** Lo que se borra con la mensula cuando una modificacion de su padre la quita (ver CRUDEntity). */
     @Override
     protected Collection<? extends CRUDEntity> ownedChildren() {
