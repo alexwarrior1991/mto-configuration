@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.mapper.commons;
 
+import com.alejandro.mtoconfiguration.entity.commons.LiveReferences;
 import com.alejandro.mtoconfiguration.core.exception.ValidationException;
 import com.alejandro.mtoconfiguration.entity.commons.CRUDEntity;
 import com.alejandro.mtoconfiguration.entity.commons.IEntity;
@@ -315,6 +316,42 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
      * {@code cantilevers[1].cantileverType}, igual que lo diria su validador (ver
      * {@code controllers.md}). Cada nivel añade el suyo al subir.
      */
+    /**
+     * Una referencia a otro maestro tiene que existir; si su fila no esta o esta borrada, 400
+     * {@code BUS-001} sobre su campo (README_API.md §9: «una referencia que no existe: una via, una
+     * estacion...»).
+     *
+     * <p>{@code ReferenceMapper} devuelve un proxy sin mirar la base, y el {@code DELETE} directo de
+     * un maestro no toca lo que cuelga de el: el perfil de una via borrada, el seccionador de una
+     * estacion borrada o la via de un paquete borrado siguen apuntando a su fila. Escribirlos asi
+     * acababa en un 500: el grafo de mensajeria une la referencia con su {@code deleted = false}, no
+     * encuentra la fila y Hibernate intenta rellenar el proxy que ya tenia con una fila de nulos. Se
+     * rechaza antes, en el unico paso por el que pasan el alta y la modificacion, sueltas, en lote o
+     * anidadas: quien modifica una fila asi la apunta a un maestro vivo (o quita la referencia, si
+     * es opcional), o la borra. {@code null} no es una referencia: no se mira.
+     *
+     * <p>«Borrada» es la que ya lo estaba al empezar la peticion, que es la que no se puede cargar
+     * ({@link LiveReferences#isLive}). La que borra esta misma peticion (el poste de un seccionador,
+     * cuando el {@code PUT} de un paquete quita su via y el mismo cuerpo trae ese seccionador dentro
+     * de su estacion) esta cargada y se deja pasar, como hasta ahora.
+     */
+    static void requireNotGone(CRUDEntity reference, String field) {
+        if (reference != null && !LiveReferences.isLive(reference)) {
+            throw new ValidationException(List.of(Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, field)));
+        }
+    }
+
+    /**
+     * Como {@link #requireNotGone}, y ademas rechaza la que esta misma peticion ha borrado. Es la
+     * regla del punto de acceso a la via ({@code V28}), que no viaja anidado en nadie.
+     */
+    static void requireLive(CRUDEntity reference, String field) {
+        requireNotGone(reference, field);
+        if (reference != null && reference.isDeleted()) {
+            throw new ValidationException(List.of(Alert.ofDanger(ErrorCodes.BUSINESS_RULE_VIOLATION, field)));
+        }
+    }
+
     static <R> R atField(String field, Supplier<R> mapping) {
         try {
             return mapping.get();

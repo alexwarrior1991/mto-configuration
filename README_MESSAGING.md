@@ -4,6 +4,22 @@ Este documento proporciona una guía detallada sobre la arquitectura de mensajer
 
 ---
 
+## ⚠️ Un maestro borrado deja de salir en los eventos de lo que apuntaba a él
+
+Ninguna clave nueva, renombrada ni quitada, y ningún evento nuevo. Borrar un maestro no toca lo que
+cuelga de él (§2.4), así que quedan filas que apuntan a una fila borrada, y sus eventos lo decían mal
+o no llegaban:
+
+- **`track.stations` y `profile.track.stationIds` ya no llevan la estación borrada.** La vía la
+  seguía listando después del `DELETED` de la estación.
+- **El `DELETED` de una fila que apuntaba a un maestro ya borrado ahora sale**, con esa referencia a
+  `null` (`profile.track`, `disconnector.station` / `profile` / `track` / `connectedTrack`,
+  `section-insulator.station` / `track` / `connectedTrack`, `track-access-point.track` / `station`,
+  `cantilever.profile`, `track.executionPackage`, `station.executionPackage`). Antes ese borrado
+  fallaba y el evento no existía. Un consumidor que lee esas claves en un `DELETED` las tiene que
+  aceptar a `null`; `mto-maintenance` y `mto-resources` solo leen el `id`.
+- No llegan `UPDATED` de una fila así: modificarla sin apuntarla a un maestro vivo se rechaza (400).
+
 ## ⚠️ `profile`, `disconnector` y `section-insulator` también llegan cuando cambia lo que copian de su vía o de su estación
 
 Ninguna clave nueva, renombrada ni quitada, y ningún evento nuevo: **llegan `UPDATED` que faltaban**.

@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.masterdata.messaging.mapper;
 
+import com.alejandro.mtoconfiguration.entity.commons.LiveReferences;
 import com.alejandro.mtoconfiguration.entity.infrastructure.ExecutionPackage;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
@@ -27,7 +28,7 @@ public class TrackMasterDataPayloadMapper implements MasterDataEntityPayloadMapp
         values.put("id", track.getId());
         values.put("name", track.getName());
         values.put("enabled", track.getEnabled());
-        values.put("executionPackage", toExecutionPackagePayload(track.getExecutionPackage()));
+        values.put("executionPackage", toExecutionPackagePayload(LiveReferences.orNull(track.getExecutionPackage())));
         values.put("stations", track.getStations() == null ? List.of()
                 : track.getStations().stream().map(this::toStationPayload).toList());
         values.put("profiles", toProfilePayload(track.getProfiles()));

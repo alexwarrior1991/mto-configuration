@@ -71,6 +71,14 @@ public abstract class SectionInsulatorMapper implements BaseMapper<SectionInsula
     @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(SectionInsulatorDTO dto, @MappingTarget SectionInsulator entity);
 
+    /** Lo que referencia tiene que existir y estar vivo: 400 {@code BUS-001} sobre su campo (ver {@code BaseMapper.requireNotGone}). */
+    @AfterMapping
+    protected void requireLiveReferences(SectionInsulatorDTO dto, @MappingTarget SectionInsulator entity) {
+        BaseMapper.requireNotGone(entity.getStation(), "stationId");
+        BaseMapper.requireNotGone(entity.getTrack(), "trackId");
+        BaseMapper.requireNotGone(entity.getConnectedTrack(), "connectedTrackId");
+    }
+
     @AfterMapping
     protected void mapDtoToEntity(SectionInsulatorDTO dto, @MappingTarget SectionInsulator entity) {
 

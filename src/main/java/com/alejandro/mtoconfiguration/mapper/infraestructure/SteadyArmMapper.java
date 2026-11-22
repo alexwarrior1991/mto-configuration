@@ -51,6 +51,12 @@ public abstract class SteadyArmMapper implements BaseMapper<SteadyArmDTO, Steady
     @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(SteadyArmDTO dto, @MappingTarget SteadyArm entity);
 
+    /** La mensula tiene que existir y estar viva: 400 {@code BUS-001} sobre su campo (ver {@code BaseMapper.requireNotGone}). */
+    @AfterMapping
+    protected void requireLiveReferences(SteadyArmDTO dto, @MappingTarget SteadyArm entity) {
+        BaseMapper.requireNotGone(entity.getCantilever(), "cantileverId");
+    }
+
     @AfterMapping
     protected void mapDtoToEntity(SteadyArmDTO dto, @MappingTarget SteadyArm entity) {
 

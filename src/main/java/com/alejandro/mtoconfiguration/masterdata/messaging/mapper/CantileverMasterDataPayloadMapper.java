@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.masterdata.messaging.mapper;
 
+import com.alejandro.mtoconfiguration.entity.commons.LiveReferences;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Cantilever;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.SteadyArm;
@@ -39,7 +40,7 @@ public class CantileverMasterDataPayloadMapper implements MasterDataEntityPayloa
         values.put("windDeflection", cantilever.getWindDeflection());
         values.put("armAngle", cantilever.getArmAngle());
         values.put("cantileverType", toCantileverTypePayload(cantilever.getCantileverType()));
-        values.put("profile", toProfilePayload(cantilever.getProfile()));
+        values.put("profile", toProfilePayload(LiveReferences.orNull(cantilever.getProfile())));
         values.put("steadyArm", toSteadyArmPayload(cantilever.getSteadyArm()));
 
         return values;

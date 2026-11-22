@@ -87,6 +87,19 @@ su estación; en otro paquete sí entra, y uno borrado no ocupa su nombre.
 El borrado es **lógico**: marca la fila (`deleted = true`) y deja de aparecer en las consultas. No
 hay endpoint para restaurarla.
 
+**Lo que apuntaba a una fila borrada.** `DELETE $BASE/{recurso}/{id}` no toca lo que cuelga del
+maestro (§4): borrar una vía deja sus perfiles, sus aisladores y sus puntos de acceso apuntando a
+ella; borrar una estación, sus seccionadores; borrar un poste, los suyos; borrar un paquete, sus vías
+y sus estaciones. Esas filas siguen existiendo, y con una referencia que ya no existe:
+
+- **Se leen.** Su `trackId`, `stationId`, `profileId` o `executionPackageId` sigue diciendo a cuál
+  apuntaban; lo que se copiaba del maestro borrado va a `null` (`profileCode` y `profileKp` de un
+  seccionador). En una vía, la estación borrada deja de salir en `stationIds`.
+- **Modificarlas es un 400 `BUS-001` sobre ese campo**, como cualquier referencia que no existe
+  (§9), mientras sigan apuntando a la fila borrada. Un seccionador o un aislador se pueden apuntar a
+  otra vía viva (`trackId`, `connectedTrackId`) o quitarle la que es opcional.
+- **Se borran** con su `DELETE`, y su evento `DELETED` lleva esa referencia a `null`.
+
 ---
 
 ## 2. Alta

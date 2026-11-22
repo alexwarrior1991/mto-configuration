@@ -1,5 +1,6 @@
 package com.alejandro.mtoconfiguration.masterdata.messaging.mapper;
 
+import com.alejandro.mtoconfiguration.entity.commons.LiveReferences;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Disconnector;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
@@ -30,16 +31,16 @@ public class DisconnectorMasterDataPayloadMapper implements MasterDataEntityPayl
         values.put("driveType", disconnector.getDriveType() == null
                 ? null
                 : disconnector.getDriveType().name());
-        values.put("station", toStationPayload(disconnector.getStation()));
+        values.put("station", toStationPayload(LiveReferences.orNull(disconnector.getStation())));
         // null en un seccionador que no esta en un poste: el poste es opcional (V25).
-        values.put("profile", toProfilePayload(disconnector.getProfile()));
+        values.put("profile", toProfilePayload(LiveReferences.orNull(disconnector.getProfile())));
         // El KP, solo de un seccionador sin poste (V26); en uno en un poste, null: es el de su perfil.
         values.put("kp", disconnector.getKp());
         // La via: sin poste, la suya (V26); con poste, la que maniobra cuando no es la del poste (en
         // un haz de vias cuelga a veces del poste de una y aisla otra), y si no, null: la de su perfil.
-        values.put("track", toTrackPayload(disconnector.getTrack()));
+        values.put("track", toTrackPayload(LiveReferences.orNull(disconnector.getTrack())));
         // La otra via de uno que pone dos en paralelo (V27), con poste o sin el; null en los demas.
-        values.put("connectedTrack", toTrackPayload(disconnector.getConnectedTrack()));
+        values.put("connectedTrack", toTrackPayload(LiveReferences.orNull(disconnector.getConnectedTrack())));
         values.put("disconnectorFunction", toDisconnectorFunctionPayload(disconnector.getDisconnectorFunction()));
 
         return values;

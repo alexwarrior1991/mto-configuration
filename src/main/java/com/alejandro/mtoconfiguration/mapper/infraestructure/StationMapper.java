@@ -86,6 +86,12 @@ public abstract class StationMapper implements BaseMapper<StationDTO, Station> {
     @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(StationDTO dto, @MappingTarget Station entity);
 
+    /** Lo que referencia tiene que existir y estar vivo: 400 {@code BUS-001} sobre su campo (ver {@code BaseMapper.requireNotGone}). */
+    @AfterMapping
+    protected void requireLiveReferences(StationDTO dto, @MappingTarget Station entity) {
+        BaseMapper.requireNotGone(entity.getExecutionPackage(), "executionPackageId");
+    }
+
     @AfterMapping
     protected void mapDtoToEntity(StationDTO dto, @MappingTarget Station entity) {
         // Las tres colecciones se reconcilian FUSIONANDO POR ID, no añadiendo: un hijo que el

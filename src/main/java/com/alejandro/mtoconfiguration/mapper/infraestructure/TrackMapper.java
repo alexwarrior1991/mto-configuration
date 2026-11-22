@@ -84,6 +84,12 @@ public abstract class TrackMapper implements BaseMapper<TrackDTO, Track> {
     public abstract void updateEntityFromDTO(TrackDTO dto, @MappingTarget Track entity);
 
 
+    /** Lo que referencia tiene que existir y estar vivo: 400 {@code BUS-001} sobre su campo (ver {@code BaseMapper.requireNotGone}). */
+    @AfterMapping
+    protected void requireLiveReferences(TrackDTO dto, @MappingTarget Track entity) {
+        BaseMapper.requireNotGone(entity.getExecutionPackage(), "executionPackageId");
+    }
+
     @AfterMapping
     protected void mapDtoToEntity(TrackDTO dto, @MappingTarget Track entity) {
 

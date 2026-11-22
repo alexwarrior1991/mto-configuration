@@ -128,6 +128,12 @@ public abstract class ProfileMapper implements BaseMapper<ProfileDTO, Profile> {
     @ToEntityIgnoreAudit
     public abstract void updateEntityFromDTO(ProfileDTO dto, @MappingTarget Profile entity);
 
+    /** Lo que referencia tiene que existir y estar vivo: 400 {@code BUS-001} sobre su campo (ver {@code BaseMapper.requireNotGone}). */
+    @AfterMapping
+    protected void requireLiveReferences(ProfileDTO dto, @MappingTarget Profile entity) {
+        BaseMapper.requireNotGone(entity.getTrack(), "trackId");
+    }
+
     @AfterMapping
     protected void mapDtoToEntity(ProfileDTO dto, @MappingTarget Profile entity) {
 
