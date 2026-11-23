@@ -49,6 +49,9 @@ import java.util.Set;
  * <p>El padre que borra <b>esta misma</b> escritura no cuenta (el {@code PUT} de un paquete que
  * quita una via y trae, dentro de una estacion, un seccionador que la nombra): eso se deja pasar,
  * como en {@code requireNotGone}.
+ *
+ * <p>La consulta es nativa y lleva {@code {h-schema}} delante de la tabla, como las de
+ * {@link DeletionGuard}: las tablas no siempre viven en {@code public}.
  */
 @Component
 public class LiveParentGuard implements WrittenEntitiesCheck {
@@ -102,7 +105,7 @@ public class LiveParentGuard implements WrittenEntitiesCheck {
 
         @SuppressWarnings("unchecked")
         List<Number> gone = entityManager
-                .createNativeQuery("select id from " + table + " where id in (:ids) and deleted = true")
+                .createNativeQuery("select id from {h-schema}" + table + " where id in (:ids) and deleted = true")
                 .setParameter("ids", ids)
                 .getResultList();
 
