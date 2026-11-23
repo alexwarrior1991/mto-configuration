@@ -50,7 +50,12 @@ paths:
     `cache.md`).
 
   Lo que se escribe sin pasar por el servicio no publica ninguno de los dos. Por eso importadores y
-  trabajos escriben a través de los servicios.
+  trabajos escriben a través de los servicios. Y por eso les valen las mismas reglas, también la
+  del borrado (abajo): el importador del maestro solo da de alta y modifica, y de las colecciones
+  de hijos manda las ménsulas de un perfil y las agujas de un aislador, que se van con su padre; las
+  demás van a `null`. Una carga que mandase una colección de hijos que impiden el borrado (los
+  perfiles de una vía, las vías de un paquete) podría recibir el 409. Lo fija
+  `ProfileMasterImportIT.reimportarConCambiosYConFilasDeMenos`.
 - El evento de entidad no es solo el de la raíz. Los hijos que una escritura crea, modifica o quita
   dentro de su padre publican el suyo (README_MESSAGING.md §2.4): `EntityListener`, el listener JPA
   de `BaseEntity`, apunta en `EntityChangeTracker` cada fila que el flush escribe de verdad, y

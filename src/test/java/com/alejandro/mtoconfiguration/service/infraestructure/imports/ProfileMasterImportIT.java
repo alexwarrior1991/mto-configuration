@@ -397,6 +397,122 @@ class ProfileMasterImportIT {
     }
 
     /**
+     * Reimportar el libro cuando cambia, con los guardas del borrado delante
+     * ({@code DeletionGuard}, {@code LiveParentGuard}).
+     *
+     * <p>Borrar un maestro con algo vivo colgando, o quitarlo del {@code PUT} de su padre, es un 409.
+     * La importacion escribe por los mismos servicios, asi que la pregunta es si puede chocar con
+     * el. No puede, y esto lo fija con los dos casos que importan:
+     * <ul>
+     *   <li><b>el libro cambia datos</b>: otro tipo de poste, otra mensula, una mensula de menos en
+     *       un poste que ademas lleva un seccionador. La unica coleccion que la importacion manda
+     *       entera es la de mensulas de un perfil (y las agujas de un aislador), que son hijos
+     *       propios: la mensula que ya no viene se borra con su brazo, y nada lo impide;</li>
+     *   <li><b>el libro trae filas de menos</b>: un perfil con un seccionador en su poste, una via
+     *       y varios seccionadores. La importacion solo da de alta y modifica; lo que esta en la
+     *       base y no viene en el libro <b>se queda como estaba</b>. No lo borra, y por eso no hay
+     *       409 ni fila fallida: quien quiera quitarlo lo borra por la API.</li>
+     * </ul>
+     */
+    @Test
+    @DisplayName("reimportar el libro con cambios entra entero, y lo que el libro ya no trae se queda en la base")
+    void reimportarConCambiosYConFilasDeMenos() throws IOException {
+        importLovMaster();
+        Map<String, List<String[]>> hojas = new LinkedHashMap<>(maestroConSeccionadores());
+        hojas.put(ProfileMasterParser.PROFILES_SHEET, new java.util.ArrayList<>(List.of(
+                new String[]{"EP", "VIA", "PROFILE_ID", "KP", "ORDEN", "PROFILE_STATUS", "ENABLED", "POLE_TYPE"},
+                new String[]{"EPIT", "TRACK 1", "1-1.01", "100", "1", "DEFINITIVE", "SI", "2HEB-240"},
+                // El poste del seccionador STA-01.
+                new String[]{"EPIT", "TRACK 1", "1-1.02", "150", "2", "DEFINITIVE", "SI", "2HEB-240"},
+                new String[]{"EPIT", "TRACK 1", "1-1.01", "5000", "3", "DEFINITIVE", "SI", "2HEB-240"})));
+        hojas.put(ProfileMasterParser.CANTILEVERS_SHEET, new java.util.ArrayList<>(List.of(
+                new String[]{"EP", "VIA", "PROFILE_ID", "ORDEN", "SLOT", "CANTILEVER_TYPE", "CW_HEIGHT",
+                        "STEADY_ARM_TYPE", "STEADY_ARM_LENGTH", "ENABLED"},
+                new String[]{"EPIT", "TRACK 1", "1-1.02", "2", "1", "C3-LONG", "5.3", "BC", "1000", "SI"},
+                new String[]{"EPIT", "TRACK 1", "1-1.02", "2", "2", "C3-SHORT", "5.3", "BS", "1200", "SI"})));
+
+        ProfileImportReport first = importer.importFrom(workbook(hojas), false);
+
+        assertThat(first.getFailed()).as("%s", desglose(first)).isZero();
+        assertThat(vivas("cantilever")).isEqualTo(2);
+        assertThat(vivas("steady_arm")).isEqualTo(2);
+        Object poste = seccionador("STA-01").get("poste");
+        assertThat(poste).isEqualTo("1-1.02");
+
+        // --- El libro cambia datos: otro tipo de poste, otra mensula y una mensula de menos. ---
+        hojas.get(ProfileMasterParser.PROFILES_SHEET).get(2)[7] = "2HEB-240 V";
+        hojas.get(ProfileMasterParser.CANTILEVERS_SHEET).get(1)[5] = "DELTA";
+        hojas.get(ProfileMasterParser.CANTILEVERS_SHEET).remove(2);
+        long antesDeCambiar = ultimoEvento();
+
+        ProfileImportReport changed = importer.importFrom(workbook(hojas), false);
+
+        assertThat(changed.getFailed()).as("%s", desglose(changed)).isZero();
+        // Un perfil no tiene «sin cambios»: reimportarlo es siempre una modificacion.
+        assertThat(changed.outcomeOf(ProfileImportReport.PROFILE).getUpdated())
+                .as("%s", desglose(changed))
+                .isEqualTo(3);
+        assertThat(jdbcTemplate.queryForObject("""
+                select pt.code from profile p join pole_type pt on pt.id = p.pole_type_id
+                where p.profile_id = '1-1.02' and p.deleted = false
+                """, String.class)).isEqualTo("2HEB-240 V");
+        assertThat(vivas("cantilever")).as("la mensula que ya no viene se borra").isEqualTo(1);
+        assertThat(vivas("steady_arm")).as("y su brazo con ella").isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("""
+                select ct.code from cantilever c join cantilever_type ct on ct.id = c.cantilever_type_id
+                where c.deleted = false
+                """, String.class)).isEqualTo("DELTA");
+        assertThat(eventosDesde(antesDeCambiar))
+                .contains("profile.updated", "cantilever.deleted", "steady-arm.deleted")
+                .doesNotContain("profile.deleted", "disconnector.deleted");
+        assertThat(seccionador("STA-01").get("poste")).as("el seccionador sigue en su poste").isEqualTo(poste);
+
+        // --- El libro trae filas de menos: el poste del seccionador, una via y tres seccionadores. ---
+        hojas.get(ProfileMasterParser.PROFILES_SHEET).remove(2);
+        hojas.put(ProfileMasterParser.CANTILEVERS_SHEET, List.<String[]>of(
+                new String[]{"EP", "VIA", "PROFILE_ID", "SLOT", "ENABLED"}));
+        hojas.put(ProfileMasterParser.TRACKS_SHEET, List.of(
+                new String[]{"EP", "NOMBRE", "ESTACIONES", "ENABLED"},
+                new String[]{"EPIT", "TRACK 1", "STA IT", "SI"}));
+        List<String[]> seccionadores = hojas.get(ProfileMasterParser.DISCONNECTORS_SHEET);
+        // Queda solo STA-02, que no nombra ni el poste ni la via que el libro ya no trae.
+        hojas.put(ProfileMasterParser.DISCONNECTORS_SHEET, List.of(seccionadores.get(0), seccionadores.get(2)));
+        long antesDeQuitar = ultimoEvento();
+
+        ProfileImportReport smaller = importer.importFrom(workbook(hojas), false);
+
+        assertThat(smaller.getFailed())
+                .as("lo que falta no se borra, asi que nada choca con el 409: %s", desglose(smaller))
+                .isZero();
+        assertThat(smaller.getCreated()).as("%s", desglose(smaller)).isZero();
+        assertThat(vivas("profile")).as("el perfil que ya no viene sigue vivo").isEqualTo(3);
+        assertThat(vivas("track")).as("y la via").isEqualTo(2);
+        assertThat(vivas("disconnector")).as("y los seccionadores").isEqualTo(4);
+        assertThat(vivas("cantilever")).as("y la mensula del perfil que ya no viene").isEqualTo(1);
+        assertThat(vivas("steady_arm")).isEqualTo(1);
+        assertThat(seccionador("STA-01").get("poste")).isEqualTo(poste);
+        assertThat(eventosDesde(antesDeQuitar)).as("ningun borrado").noneMatch(evento -> evento.endsWith(".deleted"));
+    }
+
+    private int vivas(String tabla) {
+        return jdbcTemplate.queryForObject(
+                "select count(*) from " + tabla + " where deleted = false", Integer.class);
+    }
+
+    private long ultimoEvento() {
+        return jdbcTemplate.queryForObject(
+                "select coalesce(max(sequence_number), 0) from outbox_message", Long.class);
+    }
+
+    /** Los eventos escritos despues de esa marca, sin repetir: {@code cantilever.deleted}. */
+    private List<String> eventosDesde(long marca) {
+        return jdbcTemplate.queryForList("""
+                select distinct replace(routing_key, 'mto.master-data.', '')
+                  from outbox_message where sequence_number > ?
+                """, String.class, marca);
+    }
+
+    /**
      * Recuento por entidad en una linea, para que un fallo de idempotencia diga QUE se ha
      * creado y no solo cuanto. Con 11.714 perfiles, "esperaba 0 y fue 831" no permite ni
      * empezar a mirar; "Profile creados=831" apunta al sitio.

@@ -60,6 +60,15 @@ Cada entidad se da de alta o se actualiza **por su clave natural** —`execution
 únicos parciales que añaden `V12` y `V18`. Reimportar el mismo maestro no crea nada: eso es lo que
 hace que la carga se pueda repetir sin miedo.
 
+**La carga solo da de alta y modifica: no borra nada que el libro deje de traer.** Un perfil, una vía,
+una estación, un seccionador o un aislador que están en la base y ya no vienen en el libro se quedan
+como estaban, sin tocar; quien quiera quitarlos los borra por la API (README_API.md §1). Por eso
+reimportar no choca nunca con el 409 de «tiene algo colgando»: ni se queda a medias ni falla una fila
+por eso. Lo único que una reimportación quita es lo que no existe sin su fila y la fila ya no trae: la
+ménsula de un perfil que el libro ya no lista (con su brazo) y la aguja de un aislador, que publican su
+`DELETED`; un seccionador en ese poste no lo impide. Lo fija
+`ProfileMasterImportIT.reimportarConCambiosYConFilasDeMenos`.
+
 El seccionador va por su paquete y no por su estación porque la estación es opcional: uno en plena
 vía, en una zona neutra o en una subestación no es de ninguna, y la hoja lo dice escribiendo
 `SIN ESTACION` (con tilde o sin ella) en `ESTACION`. En blanco no vale: sería un olvido, y la fila sale
