@@ -194,4 +194,10 @@ public class Station extends CRUDEntity {
         children.addAll(getSectionInsulators());
         return children;
     }
+
+    /** Sus hijos impiden borrarla ({@code DeletionGuard}): ninguno se va con ella sin pedirlo. */
+    @Override
+    protected Collection<? extends CRUDEntity> inseparableChildren() {
+        return List.of();
+    }
 }

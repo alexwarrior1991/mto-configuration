@@ -1,6 +1,7 @@
 package com.alejandro.mtoconfiguration.masterdata.messaging;
 
 import com.alejandro.mtoconfiguration.core.exception.ConcurrencyException;
+import com.alejandro.mtoconfiguration.core.exception.EntityInUseException;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ExecutionPackageDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
@@ -44,6 +45,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * republicado no lo arreglaba porque solo recorre lo vivo. Las altas y las modificaciones hechas
  * dentro del padre tampoco publicaban.
  *
+ * <p>Quitar un hijo es borrarlo, con la regla de su {@code DELETE}: si le queda algo vivo colgando
+ * que no se va con el (los perfiles de una via, los seccionadores de una estacion o de un poste), el
+ * {@code PUT} entero es un 409 y no deja nada.
+ *
  * <p>Lo que se comprueba aqui: que cada entidad con {@code @PublishMasterDataEvent} que se crea, se
  * modifica o se quita en anidado deja su propia fila en el outbox, en la misma transaccion; que el
  * hijo quitado se borra en logico, con su rama (la fila se queda); y que lo que no cambia <b>no</b>
@@ -72,6 +77,8 @@ class NestedChildEventsIT {
     private static final long CANTILEVER_TYPE = -512L;
     private static final long ARM_TYPE = -513L;
     private static final long SECTIONING = -514L;
+    private static final long EMPTY_TRACK = -515L;
+    private static final long EXTRA_DISCONNECTOR = -516L;
     private static final String LOV_CODE = "IT-NEST";
 
     @DynamicPropertySource
@@ -352,27 +359,116 @@ class NestedChildEventsIT {
     }
 
     @Test
-    @DisplayName("quitar la via en el PUT de su paquete publica el DELETED de la via y el de toda su rama")
-    void quitarUnaViaEnElPutDelPaquete() {
+    @DisplayName("quitar del PUT de su paquete una via con algo vivo colgando es un 409, como su DELETE, y no queda nada de ese PUT")
+    void quitarUnaViaConAlgoColgandoEnElPutDelPaquete() {
         ExecutionPackageDTO paquete = executionPackageService.getById(PACKAGE);
+        paquete.setName("IT-NEST-BIS");
         paquete.getTracks().clear();
+
+        assertThatThrownBy(() -> executionPackageService.update(paquete))
+                .isInstanceOfSatisfying(EntityInUseException.class, rechazo -> {
+                    // Sus perfiles ya no se van con ella: la rama entera solo con ?cascade=true.
+                    assertThat(rechazo.getDetail())
+                            .contains("la vía " + TRACK, "2 perfiles, 1 seccionador y 1 aislador", "borra la vía entera");
+                    assertThat(rechazo.getField()).isEqualTo("tracks");
+                    assertThat(rechazo.getDependents()).extracting(EntityInUseException.Dependent::type)
+                            .containsExactly("profiles", "disconnectors", "sectionInsulators");
+                });
+
+        assertThat(eventos()).isEmpty();
+        assertThat(fila("track", TRACK)).containsEntry("deleted", false);
+        assertThat(fila("profile", PROFILE_A)).containsEntry("deleted", false);
+        assertThat(fila("execution_package", PACKAGE)).containsEntry("version_number", 1);
+    }
+
+    @Test
+    @DisplayName("quitar del PUT de su paquete una estacion con seccionadores y aisladores es un 409")
+    void quitarUnaEstacionConAlgoColgandoEnElPutDelPaquete() {
+        ExecutionPackageDTO paquete = executionPackageService.getById(PACKAGE);
+        paquete.getStations().clear();
+
+        assertThatThrownBy(() -> executionPackageService.update(paquete))
+                .isInstanceOfSatisfying(EntityInUseException.class, rechazo -> {
+                    assertThat(rechazo.getDetail())
+                            .contains("la estación " + STATION, "1 vía enlazada, 1 seccionador y 1 aislador");
+                    assertThat(rechazo.getField()).isEqualTo("stations");
+                });
+
+        assertThat(eventos()).isEmpty();
+        assertThat(fila("station", STATION)).containsEntry("deleted", false);
+        assertThat(fila("disconnector", DISCONNECTOR)).containsEntry("deleted", false);
+    }
+
+    @Test
+    @DisplayName("quitar del PUT de su via un perfil con un seccionador en su poste es un 409")
+    void quitarUnPerfilConSeccionadorEnElPutDeLaVia() {
+        jdbcTemplate.update("update disconnector set profile_id = ?, kilometric_point = null where id = ?",
+                PROFILE_B, DISCONNECTOR);
+        TrackDTO via = trackService.getById(TRACK);
+        via.getProfiles().removeIf(perfil -> perfil.getId().equals(PROFILE_B));
+
+        assertThatThrownBy(() -> trackService.update(via))
+                .isInstanceOfSatisfying(EntityInUseException.class, rechazo -> {
+                    assertThat(rechazo.getDetail()).contains("el perfil " + PROFILE_B, "1 seccionador");
+                    assertThat(rechazo.getField()).isEqualTo("profiles");
+                });
+
+        assertThat(eventos()).isEmpty();
+        assertThat(fila("profile", PROFILE_B)).containsEntry("deleted", false);
+    }
+
+    @Test
+    @DisplayName("una via sin nada colgando se quita en el PUT de su paquete, y publica su DELETED")
+    void quitarUnaViaVaciaEnElPutDelPaquete() {
+        viaVacia();
+        ExecutionPackageDTO paquete = executionPackageService.getById(PACKAGE);
+        paquete.getTracks().removeIf(via -> via.getId().equals(EMPTY_TRACK));
 
         executionPackageService.update(paquete);
 
-        assertThat(eventos()).contains(
-                "execution-package.updated#" + PACKAGE,
-                "track.deleted#" + TRACK,
-                "profile.deleted#" + PROFILE_A,
-                "profile.deleted#" + PROFILE_B,
-                "cantilever.deleted#" + CANTILEVER,
-                "steady-arm.deleted#" + ARM);
-        assertThat(eventos()).noneMatch(evento -> evento.startsWith("disconnector."));
-        assertThat(fila("track", TRACK)).containsEntry("deleted", true);
-        assertThat(fila("profile", PROFILE_B)).containsEntry("deleted", true);
-        // Lo que no es hijo de la via se queda, apuntando a ella: quitarla del PUT de su paquete no
-        // lo impide ni se lo lleva, a diferencia de su DELETE (DeleteWithDependentsIT).
+        assertThat(eventos()).containsExactly("execution-package.updated#" + PACKAGE, "track.deleted#" + EMPTY_TRACK);
+        assertThat(fila("track", EMPTY_TRACK)).containsEntry("deleted", true);
+        assertThat(fila("track", TRACK)).containsEntry("deleted", false);
+        assertThat(fila("profile", PROFILE_A)).containsEntry("deleted", false);
+    }
+
+    @Test
+    @DisplayName("lo que el mismo PUT borra en otra parte del cuerpo no cuenta: la via se quita junto con el seccionador que la nombraba")
+    void loQueElMismoPutBorraNoCuenta() {
+        viaVacia();
+        jdbcTemplate.update("""
+                insert into disconnector (id, name, onload, station_id, disconnector_function_id,
+                        kilometric_point, track_id, deleted, create_date, create_user, version_date,
+                        version_user, version_number)
+                values (?, 'IT-NEST-DISC-2', true, ?, ?, 2.500, ?, false, now(), 'test', now(), 'test', 1)
+                """, EXTRA_DISCONNECTOR, STATION, FUNCTION, EMPTY_TRACK);
+
+        // Solo quitando la via: el seccionador sigue vivo y la nombra.
+        ExecutionPackageDTO soloLaVia = executionPackageService.getById(PACKAGE);
+        soloLaVia.getTracks().removeIf(via -> via.getId().equals(EMPTY_TRACK));
+        assertThatThrownBy(() -> executionPackageService.update(soloLaVia))
+                .isInstanceOf(EntityInUseException.class).hasMessageContaining("1 seccionador");
+        assertThat(eventos()).isEmpty();
+
+        // Quitando los dos en el mismo cuerpo, entra.
+        ExecutionPackageDTO losDos = executionPackageService.getById(PACKAGE);
+        losDos.getTracks().removeIf(via -> via.getId().equals(EMPTY_TRACK));
+        losDos.getStations().getFirst().getDisconnectors()
+                .removeIf(seccionador -> seccionador.getId().equals(EXTRA_DISCONNECTOR));
+
+        executionPackageService.update(losDos);
+
+        assertThat(eventos()).contains("track.deleted#" + EMPTY_TRACK, "disconnector.deleted#" + EXTRA_DISCONNECTOR);
+        assertThat(fila("track", EMPTY_TRACK)).containsEntry("deleted", true);
         assertThat(fila("disconnector", DISCONNECTOR)).containsEntry("deleted", false);
-        assertThat(fila("station", STATION)).containsEntry("deleted", false);
+    }
+
+    private void viaVacia() {
+        jdbcTemplate.update("""
+                insert into track (id, name, status, deleted, execution_package_id, create_date,
+                        create_user, version_date, version_user, version_number)
+                values (?, 'IT-NEST-EMPTY', true, false, ?, now(), 'test', now(), 'test', 1)
+                """, EMPTY_TRACK, PACKAGE);
     }
 
     @Test

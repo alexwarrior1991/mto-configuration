@@ -182,17 +182,17 @@ class ExecutionPackageChildMergeIT extends AbstractChildMergeIT {
     }
 
     @Test
-    @DisplayName("quitar una via la borra a ella y en cascada a sus perfiles")
-    void borradoEnCascada() {
+    @DisplayName("quitar una via la marca a ella y no a sus perfiles: no existe sin ella lo que se lleva su DELETE, y los perfiles lo impiden")
+    void quitarUnaViaNoSeLlevaSusPerfiles() {
         aplicar(peticion(
                 List.of(viaDto(segundaViaId, "VIA 2")),
                 List.of(estacionDto(estacionId, "ATOCHA"))));
 
-        assertThat(em.find(Track.class, primeraViaId)).isNull();
-        assertThat(contarVivas("profile")).as("el perfil se va con su via").isZero();
-        // En logico, los dos: las filas siguen en la tabla.
         assertThat(estaBorrada("track", primeraViaId)).isTrue();
-        assertThat(contarFilas("profile")).isEqualTo(1);
+        // El mapper ya no baja a los perfiles: siguen vivos, y con ellos colgando el servicio
+        // rechaza la escritura entera con un 409 (DeletionGuard, tras el flush). Aqui no hay
+        // servicio; lo que se ve de punta a punta esta en NestedChildEventsIT.
+        assertThat(contarVivas("profile")).as("el perfil no se va con su via").isEqualTo(1);
     }
 
     @Test

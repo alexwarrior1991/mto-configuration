@@ -113,6 +113,12 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail problem = problems.fromCode(ErrorCodes.DUPLICATED_RESOURCE, e.getDetail(), uriOf(request));
         problem.setProperty(ProblemDetailFactory.PROPERTY_DEPENDENTS, e.getDependents());
 
+        if (e.getField() != null) {
+            // Vino de un PUT: la coleccion de la que se quito el hijo, para que la pantalla lo situe.
+            problem.setProperty(ProblemDetailFactory.PROPERTY_ERRORS, List.of(
+                    new ApiErrorDetail(e.getField(), ErrorCodes.DUPLICATED_RESOURCE, e.getDetail())));
+        }
+
         return respond(problem);
     }
 

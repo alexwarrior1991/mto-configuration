@@ -89,7 +89,7 @@ class LiveParentGuardTest {
                     });
                 });
 
-        verify(entityManager).createNativeQuery(contains("from track where id in (:ids) and deleted = true"));
+        verify(entityManager).createNativeQuery(contains("from {h-schema}track where id in (:ids) and deleted = true"));
         verify(query).setParameter(eq("ids"), eq(Set.of(7L)));
     }
 
@@ -128,7 +128,7 @@ class LiveParentGuardTest {
 
             guard.afterFlush(List.of(cambio(perfil, EntityChangeOperation.UPDATED)));
         }
-        verify(entityManager).createNativeQuery(contains("from track where"));
+        verify(entityManager).createNativeQuery(contains("from {h-schema}track where"));
     }
 
     @Test

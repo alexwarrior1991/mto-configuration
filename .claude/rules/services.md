@@ -78,10 +78,14 @@ paths:
   `*ValidatorTest`, `ChildIdentityTest`, `BulkValidationTest` y `ValidatorBeanContractTest`
   (validadores sin estado y registrados en Spring).
 - Una colección de hijos en un `PUT` es el estado final (README_API.md §4). La reconcilian los
-  mappers, no el servicio (ver `mappers.md`). El hijo que no llega se borra en lógico con su rama
-  (`CRUDEntity.deleteCascade`), pero sin mirar qué más lo nombra: quitar una vía del `PUT` de su
-  paquete deja sus seccionadores, aisladores y puntos de acceso apuntando a ella. Solo el `DELETE`
-  directo lo impide (abajo).
+  mappers, no el servicio (ver `mappers.md`). El hijo que no llega se borra en lógico **con la regla de su
+  `DELETE`** (abajo): se va con lo que no existe sin él, y si le queda algo vivo colgando el `PUT`
+  entero es un 409 `BUS-002` y no escribe nada. Lo comprueba el mismo `DeletionGuard`, como
+  `WrittenEntitiesCheck`, **después del flush** y sobre lo que el mapper apuntó como quitado
+  (`EntityChangeTracker.removals()`): cuenta el estado final, así que lo que el mismo cuerpo borra
+  en otra parte no cuenta. El error lleva en `errors[]` la colección de la que se quitó (`tracks`).
+  Hoy lo pueden dar una vía o una estación quitadas del `PUT` de su paquete y un perfil quitado del
+  de su vía. Lo fijan `NestedChildEventsIT`, `DeleteBranchTest` y `EntityChangeTrackerTest`.
 - Bloqueo optimista: `update` y `bulkUpdate` (y los de `AbstractLovCrudService`) comparan el
   `versionNumber` del DTO con el guardado antes de tocar nada (`BaseEntity.validateVersion`), porque
   el `@Version` de JPA no ve el conflicto cuando la entidad se carga en la misma transacción. Si no
@@ -102,7 +106,8 @@ paths:
     puntos de acceso; de una vía, sus perfiles, lo que está en ella o la nombra y sus puntos de
     acceso; de un perfil, los seccionadores de su poste. Una relación nueva hacia un maestro con
     borrado lógico añade allí su recuento;
-  - **se lleva los hijos propios** (`deleteCascade()`: las ménsulas de un perfil y sus brazos, el
+  - **se lleva los hijos propios** (`deleteWithOwnChildren()`, que no baja a los hijos que impiden
+    el borrado; la rama entera, `deleteCascade()`, es solo de la vía borrada entera: las ménsulas de un perfil y sus brazos, el
     brazo de una ménsula, las agujas de un aislador), dentro de `trackingNestedChanges`, así que cada
     uno publica su `DELETED` detrás del de la raíz;
   - **bloquea la fila antes de contar** con un `select … for update` nativo, el único que choca con

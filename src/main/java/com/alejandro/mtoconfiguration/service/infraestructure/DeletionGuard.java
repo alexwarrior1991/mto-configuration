@@ -8,6 +8,8 @@ import com.alejandro.mtoconfiguration.entity.infrastructure.Profile;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Station;
 import com.alejandro.mtoconfiguration.entity.infrastructure.Track;
 import com.alejandro.mtoconfiguration.service.commons.event.BeforeDeleteCheck;
+import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeTracker;
+import com.alejandro.mtoconfiguration.service.commons.event.WrittenEntitiesCheck;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Table;
@@ -38,7 +40,7 @@ import java.util.Map;
  *       ella y sus puntos de acceso;</li>
  *   <li>perfil: los seccionadores de su poste.</li>
  * </ul>
- * Lo que <b>no</b> impide nada porque se va con su padre ({@code CRUDEntity.deleteCascade}): las
+ * Lo que <b>no</b> impide nada porque se va con su padre ({@code CRUDEntity.deleteWithOwnChildren}): las
  * mensulas de un perfil con sus brazos, el brazo de una mensula y las agujas de un aislador.
  *
  * <p><b>La carrera.</b> Contar no basta si alguien da de alta un hijo a la vez. Antes de contar se
@@ -48,12 +50,18 @@ import java.util.Map;
  * no choca; tampoco el {@code UPDATE} del propio borrado). Asi los dos se ponen en fila: si el alta
  * va delante, este recuento espera a que confirme y la ve (409); si va detras, espera ella, y al
  * seguir encuentra a su padre borrado y la rechaza {@code LiveParentGuard}.
+ *
+ * <p>Todo el SQL de aqui es nativo, y cada tabla lleva {@code {h-schema}} delante: fuera de los
+ * tests las tablas no viven en {@code public} (el perfil {@code docker} las pone en su esquema, que
+ * no esta en el {@code search_path}), y Hibernate solo antepone el esquema al SQL que genera el.
+ * Sin el, cada alta y cada borrado eran un 500 en la plataforma. Lo fija
+ * {@code DeleteWithDependentsInOwnSchemaIT}.
  */
 @Component
-public class DeletionGuard implements BeforeDeleteCheck {
+public class DeletionGuard implements BeforeDeleteCheck, WrittenEntitiesCheck {
 
     private static final String TRACK_HINT =
-            " Bórralos antes, o borra la vía entera con todo lo suyo: DELETE /tracks/{id}?cascade=true.";
+            " Bórralos antes, o borra la vía entera con todo lo suyo.";
     private static final String DEFAULT_HINT = " Bórralos o muévelos antes.";
 
     private record Hanging(String type, String one, String many, String countSql) {
@@ -63,51 +71,51 @@ public class DeletionGuard implements BeforeDeleteCheck {
     }
 
     private static final Hanging TRACK_PROFILES = new Hanging("profiles", "perfil", "perfiles",
-            "select count(*) from profile where track_id = :id and deleted = false");
+            "select count(*) from {h-schema}profile where track_id = :id and deleted = false");
 
     private static final Rule TRACK = new Rule("track", "la vía", TRACK_HINT, List.of(
             TRACK_PROFILES,
             new Hanging("disconnectors", "seccionador", "seccionadores", """
-                    select count(*) from disconnector d
+                    select count(*) from {h-schema}disconnector d
                     where d.deleted = false
                       and (d.track_id = :id or d.connected_track_id = :id
-                           or exists (select 1 from profile p
+                           or exists (select 1 from {h-schema}profile p
                                       where p.id = d.profile_id and p.track_id = :id and p.deleted = false))
                     """),
             new Hanging("sectionInsulators", "aislador", "aisladores", """
-                    select count(*) from section_insulator
+                    select count(*) from {h-schema}section_insulator
                     where deleted = false and (track_id = :id or connected_track_id = :id)
                     """),
             new Hanging("sectionInsulatorSwitches", "aguja de otro aislador", "agujas de otros aisladores", """
-                    select count(*) from section_insulator_switch s
-                    join section_insulator i on i.id = s.section_insulator_id
+                    select count(*) from {h-schema}section_insulator_switch s
+                    join {h-schema}section_insulator i on i.id = s.section_insulator_id
                     where s.deleted = false and i.deleted = false and s.track_id = :id
                       and i.track_id is distinct from :id and i.connected_track_id is distinct from :id
                     """),
             new Hanging("trackAccessPoints", "punto de acceso", "puntos de acceso",
-                    "select count(*) from track_access_point where track_id = :id and deleted = false")));
+                    "select count(*) from {h-schema}track_access_point where track_id = :id and deleted = false")));
 
     private static final Map<Class<?>, Rule> RULES = Map.of(
             ExecutionPackage.class, new Rule("execution_package", "el paquete de ejecución", DEFAULT_HINT, List.of(
                     new Hanging("tracks", "vía", "vías",
-                            "select count(*) from track where execution_package_id = :id and deleted = false"),
+                            "select count(*) from {h-schema}track where execution_package_id = :id and deleted = false"),
                     new Hanging("stations", "estación", "estaciones",
-                            "select count(*) from station where execution_package_id = :id and deleted = false"))),
+                            "select count(*) from {h-schema}station where execution_package_id = :id and deleted = false"))),
             Station.class, new Rule("station", "la estación", DEFAULT_HINT, List.of(
                     new Hanging("tracks", "vía enlazada", "vías enlazadas", """
-                            select count(*) from track_station ts join track t on t.id = ts.track_id
+                            select count(*) from {h-schema}track_station ts join {h-schema}track t on t.id = ts.track_id
                             where ts.station_id = :id and t.deleted = false
                             """),
                     new Hanging("disconnectors", "seccionador", "seccionadores",
-                            "select count(*) from disconnector where station_id = :id and deleted = false"),
+                            "select count(*) from {h-schema}disconnector where station_id = :id and deleted = false"),
                     new Hanging("sectionInsulators", "aislador", "aisladores",
-                            "select count(*) from section_insulator where station_id = :id and deleted = false"),
+                            "select count(*) from {h-schema}section_insulator where station_id = :id and deleted = false"),
                     new Hanging("trackAccessPoints", "punto de acceso", "puntos de acceso",
-                            "select count(*) from track_access_point where station_id = :id and deleted = false"))),
+                            "select count(*) from {h-schema}track_access_point where station_id = :id and deleted = false"))),
             Track.class, TRACK,
             Profile.class, new Rule("profile", "el perfil", DEFAULT_HINT, List.of(
                     new Hanging("disconnectors", "seccionador", "seccionadores",
-                            "select count(*) from disconnector where profile_id = :id and deleted = false"))));
+                            "select count(*) from {h-schema}disconnector where profile_id = :id and deleted = false"))));
 
     /**
      * Lo de <b>otra</b> via que apunta a esta, que es lo unico que impide borrarla entera: el
@@ -118,20 +126,20 @@ public class DeletionGuard implements BeforeDeleteCheck {
      */
     private static final List<Hanging> FROM_OTHER_TRACKS = List.of(
             new Hanging("disconnectors", "seccionador", "seccionadores", """
-                    select count(*) from disconnector d
+                    select count(*) from {h-schema}disconnector d
                     where d.deleted = false
                       and (d.track_id = :id or d.connected_track_id = :id)
                       and not (case when d.profile_id is null then d.track_id is not distinct from :id
-                                    else exists (select 1 from profile p
+                                    else exists (select 1 from {h-schema}profile p
                                                  where p.id = d.profile_id and p.track_id = :id) end)
                     """),
             new Hanging("sectionInsulators", "aislador", "aisladores", """
-                    select count(*) from section_insulator
+                    select count(*) from {h-schema}section_insulator
                     where deleted = false and connected_track_id = :id and track_id is distinct from :id
                     """),
             new Hanging("sectionInsulatorSwitches", "aguja", "agujas", """
-                    select count(*) from section_insulator_switch s
-                    join section_insulator i on i.id = s.section_insulator_id
+                    select count(*) from {h-schema}section_insulator_switch s
+                    join {h-schema}section_insulator i on i.id = s.section_insulator_id
                     where s.deleted = false and i.deleted = false and s.track_id = :id
                       and i.track_id is distinct from :id
                     """));
@@ -165,6 +173,35 @@ public class DeletionGuard implements BeforeDeleteCheck {
     }
 
     /**
+     * Lo mismo para el hijo que el {@code PUT} de su padre ha dejado fuera
+     * ({@code EntityChangeTracker.removals()}): quitarlo es borrarlo, con la regla de su
+     * {@code DELETE}. Va <b>despues del flush</b>, asi que cuenta el estado final: el hijo ya esta
+     * borrado con lo que no existe sin el, lo que ese mismo {@code PUT} haya borrado en otra parte
+     * del cuerpo no cuenta, y lo que siga vivo colgando de el rechaza la escritura entera (409, y
+     * la transaccion se deshace). El bloqueo de la fila, que aqui llega con ella ya escrita, sigue
+     * poniendo en fila al alta simultanea de un hijo suyo.
+     */
+    @Override
+    public void afterFlush(List<EntityChangeTracker.Change> written) {
+        for (EntityChangeTracker.Removal removal : EntityChangeTracker.removals()) {
+            Rule rule = RULES.get(Hibernate.getClass(removal.entity()));
+
+            if (rule == null) {
+                continue;
+            }
+
+            Long id = removal.entity().getId();
+            lock(rule.table(), id);
+            List<Dependent> hanging = count(rule.hangings(), id);
+
+            if (!hanging.isEmpty()) {
+                throw new EntityInUseException("No se puede quitar " + rule.name() + " " + id + ": tiene "
+                        + describe(rule.hangings(), hanging) + "." + rule.hint(), hanging, removal.field());
+            }
+        }
+    }
+
+    /**
      * El principio del borrado en cascada de una via: bloquea la via y todo lo suyo de lo que
      * cuelgan hijos (sus perfiles, sus mensulas y sus aisladores), en ese orden, para que el hijo
      * que alguien este dando de alta a la vez o ya este confirmado cuando se cargue la rama, o
@@ -174,16 +211,16 @@ public class DeletionGuard implements BeforeDeleteCheck {
     public void requireTrackCanGoWhole(Long trackId) {
         lock("track", trackId);
         entityManager.createNativeQuery(
-                        "select id from profile where track_id = :id and deleted = false order by id for update")
+                        "select id from {h-schema}profile where track_id = :id and deleted = false order by id for update")
                 .setParameter("id", trackId).getResultList();
         entityManager.createNativeQuery("""
-                        select c.id from cantilever c join profile p on p.id = c.profile_id
+                        select c.id from {h-schema}cantilever c join {h-schema}profile p on p.id = c.profile_id
                         where p.track_id = :id and p.deleted = false and c.deleted = false
                         order by c.id for update of c
                         """)
                 .setParameter("id", trackId).getResultList();
         entityManager.createNativeQuery(
-                        "select id from section_insulator where track_id = :id and deleted = false order by id for update")
+                        "select id from {h-schema}section_insulator where track_id = :id and deleted = false order by id for update")
                 .setParameter("id", trackId).getResultList();
 
         List<Dependent> foreign = count(FROM_OTHER_TRACKS, trackId);
@@ -210,7 +247,7 @@ public class DeletionGuard implements BeforeDeleteCheck {
 
     private void lock(String table, Long id) {
         if (table != null && id != null) {
-            entityManager.createNativeQuery("select id from " + table + " where id = :id for update")
+            entityManager.createNativeQuery("select id from {h-schema}" + table + " where id = :id for update")
                     .setParameter("id", id)
                     .getResultList();
         }

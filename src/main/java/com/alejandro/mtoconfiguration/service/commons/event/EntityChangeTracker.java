@@ -56,6 +56,30 @@ public final class EntityChangeTracker {
     public record Change(IEntity entity, EntityChangeOperation operation) {
     }
 
+    /** Un hijo que la escritura ha quitado de su padre, y de que coleccion del cuerpo ({@code tracks}). */
+    public record Removal(IEntity entity, String field) {
+    }
+
+    /**
+     * Apunta un hijo que el {@code PUT} de su padre ha dejado fuera ({@code BaseMapper.removeChild}).
+     * Lo lee {@code DeletionGuard} despues del flush: quitarlo es borrarlo, y no puede dejar nada
+     * vivo colgando de el. Sin ambito no hace nada.
+     */
+    public static void recordRemoval(IEntity entity, String field) {
+        State state = CURRENT.get();
+
+        if (state != null && entity != null && entity.getId() != null) {
+            state.removals.add(new Removal(entity, field));
+        }
+    }
+
+    /** Los hijos quitados de su padre en la escritura en curso; vacio sin ambito. */
+    public static List<Removal> removals() {
+        State state = CURRENT.get();
+
+        return state == null ? List.of() : List.copyOf(state.removals);
+    }
+
     /** Abre un ambito en este hilo, o se suma al que ya hubiera. Se cierra siempre, con try-with-resources. */
     public static Scope open() {
         State state = CURRENT.get();
@@ -103,6 +127,8 @@ public final class EntityChangeTracker {
     private static final class State {
         private final Map<Key, Change> changes = new LinkedHashMap<>();
         private final Set<Key> published = new HashSet<>();
+        /** Los hijos quitados de su padre; no se vacia al drenar. */
+        private final List<Removal> removals = new ArrayList<>();
         /** Lo que {@link #drain()} ya entrego para publicar: su evento sale en esta escritura. */
         private final Set<Key> drained = new HashSet<>();
         /** Las propiedades que el flush encontro cambiadas en cada fila; no se vacia al drenar. */

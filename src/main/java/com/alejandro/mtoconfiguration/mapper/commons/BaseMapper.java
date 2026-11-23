@@ -7,6 +7,7 @@ import com.alejandro.mtoconfiguration.entity.commons.IEntity;
 import com.alejandro.mtoconfiguration.model.commons.Alert;
 import com.alejandro.mtoconfiguration.model.commons.BaseDTO;
 import com.alejandro.mtoconfiguration.model.commons.LovDTO;
+import com.alejandro.mtoconfiguration.service.commons.event.EntityChangeTracker;
 import com.alejandro.mtoconfiguration.validator.commons.ErrorCodes;
 import org.mapstruct.MappingTarget;
 import org.springframework.data.domain.Page;
@@ -271,7 +272,7 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
             C entity = each.next();
 
             if (entity.getId() != null && !incomingIds.contains(entity.getId())) {
-                removeChild(entity);
+                removeChild(field, entity);
                 each.remove();
             }
         }
@@ -419,8 +420,13 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
 
 
     /**
-     * Lo que le pasa al hijo que el cliente ha quitado de su padre: se borra en logico, el y lo que
-     * cuelga de el ({@code CRUDEntity.deleteCascade}), igual que con su {@code DELETE} directo.
+     * Lo que le pasa al hijo que el cliente ha quitado de su padre: lo mismo que con su
+     * {@code DELETE} directo. Se borra en logico con lo que no existe sin el
+     * ({@code CRUDEntity.deleteWithOwnChildren}: las mensulas de un perfil y sus brazos, las agujas
+     * de un aislador), y si le queda algo vivo colgando (los perfiles de una via, los seccionadores
+     * de una estacion o de un poste, lo que nombra a una via), la escritura entera se rechaza con
+     * un 409: se apunta aqui y lo comprueba {@code DeletionGuard} despues del flush, con lo que
+     * este mismo {@code PUT} haya borrado ya fuera de la cuenta.
      *
      * <p>Antes lo borraba {@code orphanRemoval}, en fisico y sin evento. Marcado, Hibernate lo
      * escribe como un {@code UPDATE}, el listener de {@code BaseEntity} lo apunta y el servicio
@@ -428,9 +434,10 @@ public interface BaseMapper<T extends BaseDTO, E extends IEntity> {
      * Todos los hijos del modelo son {@code CRUDEntity}; uno que no lo fuera se quedaria en la
      * base, porque ya nada lo borra al salir de la coleccion.
      */
-    default void removeChild(IEntity child) {
+    default void removeChild(String field, IEntity child) {
         if (child instanceof CRUDEntity removed) {
-            removed.deleteCascade();
+            removed.deleteWithOwnChildren();
+            EntityChangeTracker.recordRemoval(removed, field);
         }
     }
 

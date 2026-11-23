@@ -62,29 +62,43 @@ public abstract class CRUDEntity extends BaseEntity {
     }
 
     /**
-     * Borra en logico esta entidad <b>y todo lo que cuelga de ella</b>.
+     * Borra en logico esta entidad <b>y toda su rama</b> ({@link #ownedChildren()}, hasta abajo).
      *
-     * <p>Es lo que le pasa al hijo que una modificacion de su padre deja fuera de la coleccion
-     * ({@code BaseMapper.mergeCollection}). Hasta ahora lo borraba {@code orphanRemoval}, en
-     * fisico y con toda su rama, y sin que nadie se enterase: no habia evento {@code DELETED}, y
-     * el consumidor conservaba el perfil o el seccionador para siempre. Ahora se marca, como en
-     * su {@code DELETE} directo, la fila se queda para la auditoria y cada entidad de la rama
-     * publica su evento.
-     *
-     * <p>Baja por la rama, a diferencia de {@link #delete()}, que marca solo esta fila: aqui la
-     * peticion dice que el hijo ya no esta en su padre, y antes de este cambio su rama desaparecia
-     * con el. Por eso las colecciones de hijos ya no llevan {@code orphanRemoval}: sacar al hijo
-     * de la coleccion en memoria no tiene que borrar la fila.
-     *
-     * <p>Tambien es lo que usa el {@code DELETE} directo ({@code CRUDService.softDelete}), despues
-     * de comprobar que no cuelga nada vivo que no sea de la rama ({@code DeletionGuard}, 409): de
-     * la rama solo quedan entonces los hijos que no existen sin su padre (las mensulas de un perfil
-     * con sus brazos, el brazo de una mensula, las agujas de un aislador). Con {@code delete()} a
-     * secas se quedaban vivos, apuntando a un padre borrado.
+     * <p>Solo lo usa el borrado de una via entera ({@code TrackService.deleteWithEverything}, el
+     * {@code ?cascade=true}). Fue tambien lo que le pasaba al hijo quitado del {@code PUT} de su
+     * padre, cuando sustituyo a {@code orphanRemoval} (que borraba la rama en fisico y sin evento
+     * {@code DELETED}; por eso las colecciones de hijos no lo llevan: sacar al hijo de la coleccion
+     * en memoria no tiene que borrar la fila). Hoy ese hijo y el {@code DELETE} directo usan
+     * {@link #deleteWithOwnChildren()}, que no se lleva lo que impide el borrado.
      */
     public void deleteCascade() {
         delete();
         ownedChildren().forEach(CRUDEntity::deleteCascade);
+    }
+
+    /**
+     * Borra en logico esta entidad y <b>solo lo que no existe sin ella</b>: lo que se lleva su
+     * {@code DELETE} directo y, desde que es la misma regla, tambien quitarla del {@code PUT} de su
+     * padre ({@code BaseMapper.removeChild}).
+     *
+     * <p>No baja a los hijos que impiden borrarla ({@link #inseparableChildren()}): los perfiles de
+     * una via, los seccionadores y aisladores de una estacion, las vias y estaciones de un paquete.
+     * Esos se quedan vivos, y {@code DeletionGuard} los cuenta y rechaza la escritura con un 409.
+     * La rama entera solo se va con {@link #deleteCascade()}, que es el borrado de una via entera
+     * ({@code TrackService.deleteWithEverything}).
+     */
+    public void deleteWithOwnChildren() {
+        delete();
+        inseparableChildren().forEach(CRUDEntity::deleteWithOwnChildren);
+    }
+
+    /**
+     * Los hijos que se borran con esta entidad sin preguntar: los de {@link #ownedChildren()},
+     * salvo en las entidades cuyos hijos impiden borrarlas (via, estacion y paquete), que no tienen
+     * ninguno.
+     */
+    protected Collection<? extends CRUDEntity> inseparableChildren() {
+        return ownedChildren();
     }
 
     /**

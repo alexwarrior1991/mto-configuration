@@ -26,10 +26,25 @@ public class EntityInUseException extends BaseException {
     private final String detail;
     private final transient List<Dependent> dependents;
 
+    private final String field;
+
     public EntityInUseException(String detail, List<Dependent> dependents) {
+        this(detail, dependents, null);
+    }
+
+    /**
+     * @param field la coleccion del cuerpo de la que se quito lo que no se puede borrar
+     *              ({@code tracks}), cuando el borrado viene del {@code PUT} de su padre
+     */
+    public EntityInUseException(String detail, List<Dependent> dependents, String field) {
         super(Alert.ofDanger(ErrorCodes.DUPLICATED_RESOURCE));
         this.detail = detail;
         this.dependents = List.copyOf(dependents);
+        this.field = field;
+    }
+
+    public String getField() {
+        return field;
     }
 
     public String getDetail() {

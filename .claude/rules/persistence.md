@@ -27,8 +27,8 @@ paths:
 - El lado **dueño** de un `@ManyToMany` también la repite (`Track.stations`): sin ella, una vía seguía
   listando la estación borrada y devolverla tal como se leyó era un 404. Y una relación **a uno**
   hacia un maestro borrado no se puede recorrer: hasta que borrar un maestro con algo colgando fue
-  un 409 (ver `services.md`) su `DELETE` no tocaba lo que colgaba de él, y quitarlo del `PUT` de su
-  padre sigue sin hacerlo; la clave ajena se queda y el proxy no se inicializa
+  un 409 (ver `services.md`), ni su `DELETE` ni quitarlo del `PUT` de su padre tocaban lo que
+  colgaba de él; en esas filas la clave ajena se queda y el proxy no se inicializa
   (`EntityNotFoundException`).
   Quien lee a través de ella pregunta a `LiveReferences.orNull` (los mappers de payload, y
   `DisconnectorMapper` para el código y el KP del poste): borrada es `null`. Quien escribe la
@@ -89,6 +89,17 @@ paths:
 - Los perfiles de una vía van en orden físico: `@OrderBy("orderInTrack ASC, kp ASC, id ASC")` en
   `Track.profiles`. `/profiles/track/{id}/keyset` y `/range` paginan por `kp`, y en una vía de dos
   tramos ese orden no es el físico (README_API.md §4).
+- El SQL nativo (`createNativeQuery`, `@Query(nativeQuery = true)`) lleva `{h-schema}` delante de
+  **cada** tabla que nombra, también en un `join` o un `exists`: `select … from {h-schema}track`.
+  Hibernate antepone el esquema (`hibernate.default_schema`) al SQL que genera él, no al escrito a
+  mano, y con el perfil `docker` las tablas viven en `mto_configuration`, que no está en el
+  `search_path`. Todos los IT corren en `public`, donde una tabla sin esquema funciona: por eso los
+  recuentos y bloqueos de `DeletionGuard` y `LiveParentGuard` pasaron la suite y en la plataforma
+  cada alta de estación o de vía y cada borrado eran un 500 (`relation "…" does not exist`). Lo
+  llevan `OutboxMessageRepository`, `DeletionGuard`, `LiveParentGuard` y
+  `DisconnectorRepository.findLiveIdsOnTrack`. Lo fija `DeleteWithDependentsInOwnSchemaIT`, que
+  corre los casos de `DeleteWithDependentsIT` con las tablas en otro esquema; un SQL nativo nuevo
+  que no pase por un alta, un borrado o la cascada de una vía añade allí su caso.
 - El repositorio de una entidad que publica eventos tiene `findByIdForMessaging`, cuyo `@EntityGraph`
   carga todo lo que lee el mapper del payload (ver `messaging.md`).
 - Tests de integración (`*IT`, en `./mvnw verify`):

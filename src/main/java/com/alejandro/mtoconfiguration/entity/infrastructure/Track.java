@@ -199,4 +199,10 @@ public class Track extends CRUDEntity {
     protected Collection<? extends CRUDEntity> ownedChildren() {
         return getProfiles() == null ? List.of() : List.copyOf(getProfiles());
     }
+
+    /** Sus hijos impiden borrarla ({@code DeletionGuard}): ninguno se va con ella sin pedirlo. */
+    @Override
+    protected Collection<? extends CRUDEntity> inseparableChildren() {
+        return List.of();
+    }
 }

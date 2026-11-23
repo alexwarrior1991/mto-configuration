@@ -172,10 +172,10 @@ public interface DisconnectorRepository extends CRUDRepository<Disconnector>,
      * sigue siendo de esta via.
      */
     @Query(value = """
-            select d.id from disconnector d
+            select d.id from {h-schema}disconnector d
             where d.deleted = false
               and (case when d.profile_id is null then d.track_id = :trackId
-                        else exists (select 1 from profile p
+                        else exists (select 1 from {h-schema}profile p
                                      where p.id = d.profile_id and p.track_id = :trackId) end)
             order by d.id
             """, nativeQuery = true)

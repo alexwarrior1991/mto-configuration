@@ -206,4 +206,24 @@ class EntityChangeTrackerTest {
             assertThat(EntityChangeTracker.publishesItsOwnEvent(OtherRow.class, 2L)).isFalse();
         }
     }
+
+    @Test
+    @DisplayName("apunta los hijos quitados de su padre con su coleccion, mientras hay ambito; drenar no los olvida")
+    void hijosQuitados() {
+        EntityChangeTracker.recordRemoval(new Row(1L), "tracks");
+        assertThat(EntityChangeTracker.removals()).isEmpty();
+
+        try (EntityChangeTracker.Scope ignored = EntityChangeTracker.open()) {
+            Row quitado = new Row(2L);
+            EntityChangeTracker.recordRemoval(quitado, "tracks");
+            // Sin id no hay fila que borrar: es un hijo que nunca se guardo.
+            EntityChangeTracker.recordRemoval(new Row(null), "tracks");
+            EntityChangeTracker.drain();
+
+            assertThat(EntityChangeTracker.removals())
+                    .containsExactly(new EntityChangeTracker.Removal(quitado, "tracks"));
+        }
+
+        assertThat(EntityChangeTracker.removals()).isEmpty();
+    }
 }

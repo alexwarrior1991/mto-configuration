@@ -175,9 +175,9 @@ class SoftDeleteIT extends AbstractCriteriaSearchIT {
     @Test
     @DisplayName("borrar el padre no borra a los hijos: hay que hacerlo explicitamente")
     void borrarElPadreNoBorraLosHijos() {
-        // Queda escrito porque es una asimetria facil de suponer al reves: el hijo que una
-        // modificacion saca de la coleccion de su padre se borra con su rama (deleteCascade), pero
-        // marcar el padre como borrado, que es lo que hace su DELETE, no propaga nada.
+        // Marcar una via como borrada no propaga nada a sus perfiles: ni su DELETE ni quitarla del
+        // PUT de su paquete se los llevan (con ellos vivos, el servicio responde 409). Solo la
+        // rama entera, deleteCascade, que es el borrado de una via con ?cascade=true.
         Track via = em.find(Track.class, viaVivaId);
         Profile perfil = new Profile();
         perfil.setProfileId("P-001");
