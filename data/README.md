@@ -799,7 +799,7 @@ entonces `VIA_CONECTADA` va vacía). Vacío también vale: el dominio no lo exig
 
 `SECTION_INSULATOR_SWITCHES` lleva una fila por aguja, colgada de su aislador repitiendo esos
 tres valores en `AISLADOR`. En el libro de revisión no se escribe aparte: las agujas van en la fila
-de su aislador y el generador saca de ahí estas filas. El `CODIGO` es el del plano —`W` y un número: `W31`, `W110`— y no
+de su aislador y el generador saca de ahí estas filas. El `CODIGO` es el del plano —`W` y un número: `W31`, `W110`; las cuatro de RUBI llevan uno inventado, del bloque `W9001` en adelante (ver «Los aisladores de sección de RUBI»)— y no
 puede repetirse dentro del mismo aislador, que es por donde se reconoce la aguja al reimportar:
 así conserva su id y su histórico de auditoría aunque cambie de orden o aparezca una nueva en
 medio.
@@ -1251,21 +1251,31 @@ responsable del dato las revisó: son **ocho**, todas con `ENABLED = SI`.
 | Dónde | Filas | Qué dice cada fuente | `REVISAR` |
 |---|---|---|---|
 | Escape del 1+139 (`3505CCA05`-`06`) | 1, `TRACK_CONNECTION` (`TRACK 1` con `TRACK 2`) | Los dos apoyos del pórtico llevan la tipología `Aislad.` en las hojas de vía; en la planta, un rombo rojo en el cruce | `NO` |
-| Escape doble del 2+471 | 2, `TRACK_CONNECTION`: `SI 3703CCA29` (`TRACK 1` con `TRACK 2`) y `SI 3703CCA30` (`TRACK 2` con `TRACK 1`), los dos con KP 2473 | **Dos aisladores cruzados, uno por diagonal**, confirmado por el responsable, que dio los KP de sus agujas: de la vía 1 a la 2, 2+463 y 2+482,9; de la 2 a la 1, 2+466,8 y 2+479,5. Las agujas no se cargan: no tienen código | `NO` |
+| Escape doble del 2+471 | 2, `TRACK_CONNECTION`: `SI 3703CCA29` (`TRACK 1` con `TRACK 2`) y `SI 3703CCA30` (`TRACK 2` con `TRACK 1`), los dos con KP 2473 | **Dos aisladores cruzados, uno por diagonal**, confirmado por el responsable, que dio los KP de sus agujas: de la vía 1 a la 2, 2+463 y 2+482,9; de la 2 a la 1, 2+466,8 y 2+479,5. Sus códigos, `W9001` a `W9004`, son inventados | `NO` |
 | Escape del 3+605 (`3705CCA45`-`46`) | 1, `TRACK_CONNECTION` | Uno solo, confirmado por el responsable | `NO` |
 | 2+075 y 3+754, una por vía | 4, `IN_TRACK` | `Aislador 2HC` con caja de seccionamiento en su hoja de vía y el rombo magenta de la leyenda (*isolador de secção*) en la planta | `NO` |
 
 Las ocho las ha confirmado el responsable del dato. La estación es la más cercana por KP. Solo de los
-dos del 2+471 hay dato de sus agujas, y es solo el KP: no tienen código ni tangente en ningún dato.
-Una aguja se identifica en su aislador por su código, y el servicio solo admite el del plano (`W` y
-hasta cuatro cifras): sin él no se carga, y aquí no se inventa uno. Sus KP quedan anotados en la
-fila de su aislador del libro de revisión (`KP_AGUJA_1`, en la vía de la que sale la diagonal, y
-`KP_AGUJA_2`, en la vía a la que llega), el generador las apunta en `DESCARTADOS` (`aguja sin
-codigo`) y las dos filas siguen en `PENDIENTE` como revisadas a las que les falta un dato: el día que
-haya código, basta escribirlo. El KP de cada uno de los dos sí sale de ellas: es el punto medio de
-sus agujas (2473 en los dos: las diagonales se cruzan). Su nombre, el del apoyo con `Aislad.` de la
+dos del 2+471 hay dato de sus agujas, y es solo el KP: la tangente va vacía, y **sus códigos son
+inventados**, por decisión del responsable del dato, porque el plano de la Linha Rubi no trae código
+de aguja y el servicio no admite una aguja sin él (`W` y hasta cuatro cifras):
+
+| Código | Aislador | Aguja | KP | Vía |
+|---|---|---|---|---|
+| `W9001` | `SI 3703CCA29` (de la vía 1 a la 2) | 1ª | 2463 | `TRACK 1` |
+| `W9002` | `SI 3703CCA29` | 2ª | 2482,9 | `TRACK 2` |
+| `W9003` | `SI 3703CCA30` (de la vía 2 a la 1) | 1ª | 2466,8 | `TRACK 2` |
+| `W9004` | `SI 3703CCA30` | 2ª | 2479,5 | `TRACK 1` |
+
+El criterio: el bloque `W9001`–`W9999` queda reservado a las agujas cuyo plano no trae código. Los
+del plano llegan hoy a `W157`, así que un `W9xxx` se reconoce a la vista como asignado aquí. Se
+numeran seguidos, sin reutilizar ninguno y sin repetir entre aisladores (aunque el servicio solo
+exige que no se repita dentro del mismo aislador): la siguiente aguja sin código, de RUBI o de otra
+línea, es `W9005`. Si un día el plano trae el código real, se sustituye en la fila del libro de
+revisión. El KP de cada uno de los dos sale de sus agujas: es el punto medio
+(2473 en los dos: las diagonales se cruzan). Su nombre, el del apoyo con `Aislad.` de la
 vía de la que sale su diagonal, es solo una etiqueta: no hay dato de qué apoyo sostiene el aislador
-de cada diagonal, y el modelo no lo guarda. Los ocho se cargan sin agujas.
+de cada diagonal, y el modelo no lo guarda. Los otros seis se cargan sin agujas.
 
 Lo que **no** es un aislador, también confirmado por el responsable: el `Aislador 2HC` que solo el
 `Sinóptico` anota en `3703CCA01`, `3703CCA02` y `3706CCA06` (ni la hoja de vía ni la planta lo
@@ -1557,9 +1567,8 @@ Con este criterio, el libro de hoy (`data/sectioning-review.xlsx`) tiene:
 | `DISCONNECTORS` | 711 | 198 | 513 | 0 | 711 |
 | `SECTION_INSULATORS` | 284 | 34 | 207 | 43 | 284 |
 
-Es decir, se cargan 513 seccionadores y 250 aisladores que el libro no da por revisados: son 763 de las 765
-filas de su hoja `PENDIENTE`, que lleva además los dos aisladores del 2+471 de RUBI, revisados y sin
-el código de sus agujas (ver «`RESUMEN` y
+Es decir, se cargan 513 seccionadores y 250 aisladores que el libro no da por revisados: son las 763
+filas de su hoja `PENDIENTE` (ver «`RESUMEN` y
 `PENDIENTE`»). Las 43 sin marcar son los aisladores añadidos a mano (no llevan `HANDLE`: no
 salieron del plano); los ocho de RUBI, que tampoco salen de un plano, sí llevan su `REVISAR`: los ocho
 `NO` (ver «Los aisladores de sección de RUBI»). Si esas filas
@@ -1586,7 +1595,7 @@ ya no tiene ninguno que no esté en servicio) y 17 aisladores, todos en servicio
 **No llevan fórmulas.** Las llevaba `RESUMEN`, y por eso dejó de casar con los datos: contaba los
 `HANDLE` y no las filas (233 aisladores, cuando la hoja tenía 276: los 43 añadidos a mano no vienen
 del plano), contaba las agujas en la hoja `SECTION_INSULATOR_SWITCHES`, que desde que van en la fila
-de su aislador está vacía (420 guardadas, 0 al recalcular; son 453), y lo que enseñaba era el valor
+de su aislador está vacía (420 guardadas, 0 al recalcular; son 457), y lo que enseñaba era el valor
 de la última vez que alguien abrió el libro en Excel. `PENDIENTE` se escribió una vez, a mano, antes
 de la revisión: decía 165 seccionadores y 203 aisladores con `ENABLED = NO` cuando ya no queda
 ninguno. Ahora las dos se calculan con la misma regla al generar el libro y al refrescarlo.

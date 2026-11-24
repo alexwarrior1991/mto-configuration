@@ -1145,13 +1145,22 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         # El KP de cada uno es el punto medio de sus dos agujas, al metro.
         self.assertEqual(cruzados, {"SI 3703CCA29": ("TRACK 1", "TRACK 2", 2473),
                                     "SI 3703CCA30": ("TRACK 2", "TRACK 1", 2473)})
-        # De sus agujas solo hay el KP: sin codigo del plano (W y un numero) el servicio no las
-        # admite, asi que no se cargan ni se les inventa uno. Quedan en DESCARTADOS.
-        self.assertEqual([a for a in self.switches if a["EP"] == "RUBI"], [])
-        self.assertEqual(len(self.switches), 453)
-        sin_codigo = [d for d in self.discarded
-                      if d["EP"] == "RUBI" and d["MOTIVO"] == "aguja sin codigo"]
-        self.assertEqual(len(sin_codigo), 4)
+        # Las agujas de cada diagonal, con el KP que dio el responsable: la 1a en la via de la que
+        # sale y la 2a en la via a la que llega. El plano de la Linha Rubi no trae codigo de aguja:
+        # W9001-W9004 son inventados, del bloque W9001 en adelante. Sin tangente.
+        agujas = [(a["AISLADOR"], a["CODIGO"], a["KP"], a["TANGENTE"], a["VIA"], a["ENABLED"])
+                  for a in self.switches if a["EP"] == "RUBI"]
+        self.assertEqual(agujas, [
+            ("SI 3703CCA29", "W9001", 2463, None, "TRACK 1", "SI"),
+            ("SI 3703CCA29", "W9002", 2482.9, None, "TRACK 2", "SI"),
+            ("SI 3703CCA30", "W9003", 2466.8, None, "TRACK 2", "SI"),
+            ("SI 3703CCA30", "W9004", 2479.5, None, "TRACK 1", "SI")])
+        self.assertEqual(len(self.switches), 457)
+        # El bloque W9xxx es solo de los inventados: ninguno del plano cae en el.
+        self.assertEqual([a["CODIGO"] for a in self.switches
+                          if a["EP"] != "RUBI" and int(a["CODIGO"][1:]) >= 9001], [])
+        self.assertEqual([d for d in self.discarded
+                          if d["EP"] == "RUBI" and d["MOTIVO"] == "aguja sin codigo"], [])
         estaciones = {s for t in self.tracks if t["EP"] == "RUBI" for s in t["ESTACIONES"].split(" | ")}
         vias = {t["NOMBRE"] for t in self.tracks if t["EP"] == "RUBI"}
         for a in aisladores:
