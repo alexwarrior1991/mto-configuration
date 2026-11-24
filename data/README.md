@@ -1251,13 +1251,21 @@ responsable del dato las revisó: son **ocho**, todas con `ENABLED = SI`.
 | Dónde | Filas | Qué dice cada fuente | `REVISAR` |
 |---|---|---|---|
 | Escape del 1+139 (`3505CCA05`-`06`) | 1, `TRACK_CONNECTION` (`TRACK 1` con `TRACK 2`) | Los dos apoyos del pórtico llevan la tipología `Aislad.` en las hojas de vía; en la planta, un rombo rojo en el cruce | `NO` |
-| Escape doble del 2+471 | 2, `TRACK_CONNECTION`: `SI 3703CCA29` (`TRACK 1` con `TRACK 2`, KP 2471,46) y `SI 3703CCA30` (`TRACK 2` con `TRACK 1`, KP 2474,86) | **Dos aisladores cruzados, uno por diagonal**, confirmado por el responsable. Qué KP es de cada diagonal es una asignación nuestra (el de cada apoyo con `Aislad.`) | `SI` |
+| Escape doble del 2+471 | 2, `TRACK_CONNECTION`: `SI 3703CCA29` (`TRACK 1` con `TRACK 2`) y `SI 3703CCA30` (`TRACK 2` con `TRACK 1`), los dos con KP 2473 | **Dos aisladores cruzados, uno por diagonal**, confirmado por el responsable, que dio los KP de sus agujas: de la vía 1 a la 2, 2+463 y 2+482,9; de la 2 a la 1, 2+466,8 y 2+479,5. Las agujas no se cargan: no tienen código | `NO` |
 | Escape del 3+605 (`3705CCA45`-`46`) | 1, `TRACK_CONNECTION` | Uno solo, confirmado por el responsable | `NO` |
 | 2+075 y 3+754, una por vía | 4, `IN_TRACK` | `Aislador 2HC` con caja de seccionamiento en su hoja de vía y el rombo magenta de la leyenda (*isolador de secção*) en la planta | `NO` |
 
-Las seis con `NO` las ha confirmado el responsable del dato; lo que queda por confirmar de las dos
-del 2+471 va en su motivo. Los códigos y las tangentes de
-las agujas no se leen en la planta y van vacíos en las ocho, y la estación es la más cercana por KP.
+Las ocho las ha confirmado el responsable del dato. La estación es la más cercana por KP. Solo de los
+dos del 2+471 hay dato de sus agujas, y es solo el KP: no tienen código ni tangente en ningún dato.
+Una aguja se identifica en su aislador por su código, y el servicio solo admite el del plano (`W` y
+hasta cuatro cifras): sin él no se carga, y aquí no se inventa uno. Sus KP quedan anotados en la
+fila de su aislador del libro de revisión (`KP_AGUJA_1`, en la vía de la que sale la diagonal, y
+`KP_AGUJA_2`, en la vía a la que llega), el generador las apunta en `DESCARTADOS` (`aguja sin
+codigo`) y las dos filas siguen en `PENDIENTE` como revisadas a las que les falta un dato: el día que
+haya código, basta escribirlo. El KP de cada uno de los dos sí sale de ellas: es el punto medio de
+sus agujas (2473 en los dos: las diagonales se cruzan). Su nombre, el del apoyo con `Aislad.` de la
+vía de la que sale su diagonal, es solo una etiqueta: no hay dato de qué apoyo sostiene el aislador
+de cada diagonal, y el modelo no lo guarda. Los ocho se cargan sin agujas.
 
 Lo que **no** es un aislador, también confirmado por el responsable: el `Aislador 2HC` que solo el
 `Sinóptico` anota en `3703CCA01`, `3703CCA02` y `3706CCA06` (ni la hoja de vía ni la planta lo
@@ -1547,13 +1555,14 @@ Con este criterio, el libro de hoy (`data/sectioning-review.xlsx`) tiene:
 | Hoja | Filas | Revisadas (`NO`) | Pendientes (`SI`) | Sin marcar (vacía) | Con `ENABLED = SI` |
 |---|---|---|---|---|---|
 | `DISCONNECTORS` | 711 | 198 | 513 | 0 | 711 |
-| `SECTION_INSULATORS` | 284 | 32 | 209 | 43 | 284 |
+| `SECTION_INSULATORS` | 284 | 34 | 207 | 43 | 284 |
 
-Es decir, se cargan 513 seccionadores y 252 aisladores que el libro no da por revisados: son las 765
-filas de su hoja `PENDIENTE` (ver «`RESUMEN` y
+Es decir, se cargan 513 seccionadores y 250 aisladores que el libro no da por revisados: son 763 de las 765
+filas de su hoja `PENDIENTE`, que lleva además los dos aisladores del 2+471 de RUBI, revisados y sin
+el código de sus agujas (ver «`RESUMEN` y
 `PENDIENTE`»). Las 43 sin marcar son los aisladores añadidos a mano (no llevan `HANDLE`: no
-salieron del plano); los ocho de RUBI, que tampoco salen de un plano, sí llevan su `REVISAR`: seis
-`NO` y dos `SI` (ver «Los aisladores de sección de RUBI»). Si esas filas
+salieron del plano); los ocho de RUBI, que tampoco salen de un plano, sí llevan su `REVISAR`: los ocho
+`NO` (ver «Los aisladores de sección de RUBI»). Si esas filas
 ya se miraron, cerrarlas es escribir `NO` en su `REVISAR`; eso es de quien revisó, no del generador.
 
 ## `RESUMEN` y `PENDIENTE`

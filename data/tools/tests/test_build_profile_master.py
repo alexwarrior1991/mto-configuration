@@ -877,6 +877,7 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
             cls.discarded = sheet("DESCARTADOS")
             cls.unmapped = sheet("NO_MAPEADO")
             cls.insulators = sheet("SECTION_INSULATORS")
+            cls.switches = sheet("SECTION_INSULATOR_SWITCHES")
         finally:
             wb.close()
 
@@ -1141,8 +1142,16 @@ class MaestroDePerfilesGenerado(unittest.TestCase):
         self.assertEqual(len({(a["ESTACION"], a["NOMBRE"]) for a in aisladores}), 8)
         cruzados = {a["NOMBRE"]: (a["VIA"], a["VIA_CONECTADA"], a["KP"]) for a in aisladores
                     if a["NOMBRE"] in ("SI 3703CCA29", "SI 3703CCA30")}
-        self.assertEqual(cruzados, {"SI 3703CCA29": ("TRACK 1", "TRACK 2", 2471.46),
-                                    "SI 3703CCA30": ("TRACK 2", "TRACK 1", 2474.86)})
+        # El KP de cada uno es el punto medio de sus dos agujas, al metro.
+        self.assertEqual(cruzados, {"SI 3703CCA29": ("TRACK 1", "TRACK 2", 2473),
+                                    "SI 3703CCA30": ("TRACK 2", "TRACK 1", 2473)})
+        # De sus agujas solo hay el KP: sin codigo del plano (W y un numero) el servicio no las
+        # admite, asi que no se cargan ni se les inventa uno. Quedan en DESCARTADOS.
+        self.assertEqual([a for a in self.switches if a["EP"] == "RUBI"], [])
+        self.assertEqual(len(self.switches), 453)
+        sin_codigo = [d for d in self.discarded
+                      if d["EP"] == "RUBI" and d["MOTIVO"] == "aguja sin codigo"]
+        self.assertEqual(len(sin_codigo), 4)
         estaciones = {s for t in self.tracks if t["EP"] == "RUBI" for s in t["ESTACIONES"].split(" | ")}
         vias = {t["NOMBRE"] for t in self.tracks if t["EP"] == "RUBI"}
         for a in aisladores:
