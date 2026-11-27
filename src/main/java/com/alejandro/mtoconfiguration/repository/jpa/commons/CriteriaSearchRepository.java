@@ -154,7 +154,14 @@ public interface CriteriaSearchRepository<E extends IEntity> {
         Root<E> countRoot = countQuery.from(entityClass);
         Predicate countPredicate = this.buildPredicate(criteriaBuilder, countRoot, searchRequestDTO.getFilters(), params);
 
-        countQuery.select(criteriaBuilder.countDistinct(countRoot));
+        // DISTINCT solo si hace falta: lo unico que repite una fila es unirla con una coleccion
+        // (las estaciones de una via, los seccionamientos de un perfil). Sin filtros, o filtrando
+        // por relaciones a uno, cada fila sale una vez, y contar sin DISTINCT deja a PostgreSQL
+        // recorrer la tabla en paralelo en vez de ordenar los ids: con un millon de perfiles, 50 ms
+        // en lugar de mas de 200.
+        countQuery.select(joinsACollection(countRoot)
+                ? criteriaBuilder.countDistinct(countRoot)
+                : criteriaBuilder.count(countRoot));
 
         if (countPredicate != null) {
             countQuery.where(countPredicate);
@@ -175,6 +182,7 @@ public interface CriteriaSearchRepository<E extends IEntity> {
         // de Long lo rechaza Hibernate: "Cannot compare left expression of type
         // 'Cantilever' with right expression of type 'java.lang.Long'".
         entityQuery.select(entityRoot).where(entityRoot.get(PoleType_.ID).in(entityIds)).distinct(true);
+        fetchForPage(entityRoot);
         TypedQuery<E> typedQuery = entityManager.createQuery(entityQuery);
 
         List<E> results = typedQuery.getResultList();
@@ -219,6 +227,25 @@ public interface CriteriaSearchRepository<E extends IEntity> {
                                 (p1, p2) -> p2
                         ))
                 .orElseGet(() -> root.get(property));
+    }
+
+    /** Si el predicado ha unido la raiz, directamente o a traves de otra relacion, con una coleccion. */
+    private static boolean joinsACollection(From<?, ?> from) {
+        return from.getJoins().stream()
+                .anyMatch(join -> join.getAttribute().isCollection() || joinsACollection(join));
+    }
+
+    /**
+     * Lo que la consulta que trae las filas de la pagina tiene que traer unido a cada una.
+     *
+     * <p>Por defecto, nada: lo perezoso lo carga despues Hibernate por lotes
+     * ({@code default_batch_fetch_size}). Lo sobrescribe quien tiene una relacion que Hibernate no
+     * puede dejar perezosa ni cargar por lotes, y que sin unir cuesta una sentencia por fila: el
+     * lado inverso de un {@code @OneToOne} ({@code Cantilever.steadyArm}). Solo relaciones a uno:
+     * una coleccion unida aqui repetiria filas.
+     */
+    default void fetchForPage(Root<E> root) {
+        // nada que unir
     }
 
     default String getDefaultSortBy() {

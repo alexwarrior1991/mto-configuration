@@ -31,8 +31,21 @@ paths:
   `/profiles/filter`, el detalle de un perfil o de una vía, su modificación) lo trae unido en la
   misma sentencia. Una **consulta** que devuelve ménsulas (JPQL, QueryDSL, derivada) lo pide ella:
   `left join fetch c.steadyArm` o `@EntityGraph(attributePaths = "steadyArm")`, como las de
-  `CantileverRepository` y las ventanas de `ProfileRepository`. Lo fijan `SteadyArmFetchIT`, que
-  cuenta esa sentencia, y `ProfileWindowsIT`.
+  `CantileverRepository` y las ventanas de `ProfileRepository`. `/cantilevers/search` monta su consulta
+  con Criteria y lo une en `CantileverCriteriaSearchRepository.fetchForPage`, el gancho de
+  `CriteriaSearchRepository` para lo que la página tiene que traer unido (solo relaciones a uno).
+  Lo fijan `SteadyArmFetchIT`, que cuenta esa sentencia, y `ProfileWindowsIT`.
+- Una lista sin transacción alrededor también cuesta una consulta por fila aunque no falle: el
+  mapper resuelve cada referencia a catálogo por su cuenta (el tipo de una ménsula, el de un brazo)
+  y, sin sesión, cada una es una consulta suelta, cien en una página de cincuenta ménsulas. Dentro
+  de la transacción de la lectura van por lote. `getCantilevers` y `getSteadyArms`
+  (`/cantilevers/filter`, `/steady-arms/filter`) no la llevaban. Lo fija `SteadyArmFetchIT`.
+- El recuento de `/search` (`CriteriaSearchRepository.criteriaSearchWithChildren`) solo lleva
+  `DISTINCT` cuando el filtro une la raíz con una colección (las estaciones de una vía, los
+  seccionamientos de un perfil), que es lo único que repite filas; si no, es un `count` a secas,
+  que PostgreSQL resuelve recorriendo la tabla en paralelo en vez de ordenar los ids (con un millón
+  de perfiles, 50 ms en lugar de más de 200). Los de `/paged` y `/filter` ya eran un `count` sobre
+  la tabla con los `join` del filtro y nada más. Lo fija `SteadyArmFetchIT`.
 - El historial de una fila lo lee `AuditService` (el único que habla con el `AuditReader` de Envers)
   y lo sirven `BaseService.findRevisions` y `AbstractLovCrudService.findRevisions`: paginado en la
   consulta, la revisión más reciente primero, y con la entidad de cada revisión mapeada a su DTO
