@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
@@ -83,7 +84,12 @@ public class SteadyArmService extends CRUDService<SteadyArmDTO, SteadyArm> imple
         return business;
     }
 
+    /**
+     * Transaccional, como toda lectura que devuelve DTO: sin una sesion alrededor, el tipo de cada
+     * brazo era una consulta suelta por fila en vez de una por lote.
+     */
     @Override
+    @Transactional(readOnly = true)
     public Page<SteadyArmDTO> getSteadyArms(Pageable pageable, SteadyArmFilter filter) {
         QSteadyArm qSteadyArm = QSteadyArm.steadyArm;
         BooleanBuilder builder = new BooleanBuilder();

@@ -89,6 +89,10 @@ paths:
 - Los perfiles de una vía van en orden físico: `@OrderBy("orderInTrack ASC, kp ASC, id ASC")` en
   `Track.profiles`. `/profiles/track/{id}/keyset` y `/range` paginan por `kp`, y en una vía de dos
   tramos ese orden no es el físico (README_API.md §4).
+- Lo perezoso de una página se carga por lotes de 100 (`hibernate.default_batch_fetch_size`, como en
+  `mto-stock` y `mto-maintenance`): una sentencia por cada colección y cada catálogo de la página
+  entera. Con lotes de 20, una página de 50 perfiles eran tres por cada uno (32 sentencias; hoy 13).
+  Lo fija `SteadyArmFetchIT` (las ménsulas de 40 perfiles, en una sentencia).
 - El SQL nativo (`createNativeQuery`, `@Query(nativeQuery = true)`) lleva `{h-schema}` delante de
   **cada** tabla que nombra, también en un `join` o un `exists`: `select … from {h-schema}track`.
   Hibernate antepone el esquema (`hibernate.default_schema`) al SQL que genera él, no al escrito a

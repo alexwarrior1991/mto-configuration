@@ -8,6 +8,7 @@ import com.alejandro.mtoconfiguration.repository.jpa.commons.PredicateBuilder;
 import com.alejandro.mtoconfiguration.repository.jpa.commons.SortPaths;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -50,6 +51,17 @@ public interface CantileverCriteriaSearchRepository extends
         return SortPaths.resolve(entityRoot, sortBy, Set.of(
                 "cwHeight", "stagger", "catenaryHeight", "cwElevation", "windDeflection", "armAngle",
                 "createDate", "versionDate", "profile.profileId", "cantileverType.code"));
+    }
+
+    /**
+     * {@code /cantilevers/search}: la pagina, con el brazo de cada mensula en la misma sentencia,
+     * como {@code /paged} y {@code /filter} ({@code CantileverRepository}). Sin unirlo, Hibernate lo
+     * cargaba aparte, con un {@code select} de {@code steady_arm} por mensula. Lo fija
+     * {@code SteadyArmFetchIT}.
+     */
+    @Override
+    default void fetchForPage(Root<Cantilever> root) {
+        root.fetch("steadyArm", JoinType.LEFT);
     }
 
     @Override

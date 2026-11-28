@@ -1,10 +1,14 @@
 package com.alejandro.mtoconfiguration.service.infraestructure;
 
+import com.alejandro.mtoconfiguration.model.commons.PageableDTO;
+import com.alejandro.mtoconfiguration.model.commons.SearchRequestDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.CantileverDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.ProfileDTO;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.SteadyArmDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.TrackDTO;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.CantileverFilter;
 import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.ProfileFilter;
+import com.alejandro.mtoconfiguration.model.synchronous.infrastructure.filter.SteadyArmFilter;
 import com.alejandro.mtoconfiguration.support.PostgresTestDatabase;
 import com.alejandro.mtoconfiguration.support.SqlStatementRecorder;
 import org.junit.jupiter.api.AfterEach;
@@ -13,13 +17,17 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,6 +59,15 @@ class SteadyArmFetchIT {
             "from\\s+\\S*steady_arm\\s+\\w+\\s+where\\s+\\w+\\.cantilever_id\\s*=\\s*\\?",
             Pattern.CASE_INSENSITIVE);
 
+    /** La carga, por lote, de las mensulas de los perfiles de una pagina. */
+    private static final Pattern CANTILEVERS_BY_PROFILE = Pattern.compile(
+            "from\\s+\\S*cantilever\\s+\\w+.*where\\s+\\w+\\.profile_id\\s*=\\s*any",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /** La carga suelta de un tipo de brazo: una por lote, no una por fila. */
+    private static final Pattern ARM_TYPE_ALONE = Pattern.compile(
+            "from\\s+\\S*steady_arm_type\\s+\\w+\\s+where", Pattern.CASE_INSENSITIVE);
+
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         PostgresTestDatabase.registerProperties(registry);
@@ -67,6 +84,8 @@ class SteadyArmFetchIT {
     private TrackService trackService;
     @Autowired
     private CantileverService cantileverService;
+    @Autowired
+    private SteadyArmService steadyArmService;
 
     @BeforeEach
     void inserta() {
@@ -139,6 +158,10 @@ class SteadyArmFetchIT {
         assertThat(page).hasSize(PROFILES);
         assertArms(page.stream().flatMap(profile -> profile.getCantilevers().stream()).toList(), 2 * PROFILES);
         assertNoSelectPerCantilever();
+        // Y las mensulas de toda la pagina, en un lote: con lotes de 20 (default_batch_fetch_size) una
+        // pagina de 50 perfiles eran tres sentencias por cada coleccion y cada catalogo.
+        assertThat(SqlStatementRecorder.count(sql -> CANTILEVERS_BY_PROFILE.matcher(sql).find()))
+                .as("sentencias que cargan las mensulas de los %s perfiles de la pagina", PROFILES).isEqualTo(1);
     }
 
     @Test
@@ -170,6 +193,78 @@ class SteadyArmFetchIT {
         assertArms(deUnPerfil, 2);
         assertArms(List.of(una), 1);
         assertNoSelectPerCantilever();
+    }
+
+    @Test
+    @DisplayName("una pagina de /cantilevers/search trae los brazos en la sentencia de la pagina, no uno por mensula")
+    void laBusquedaDeMensulas() {
+        SqlStatementRecorder.clear();
+
+        Page<CantileverDTO> page = cantileverService.search(busqueda(Map.of("profileCode", "ARM-")));
+
+        assertThat(page.getTotalElements()).isEqualTo(2L * PROFILES);
+        assertArms(page.getContent(), 50);
+        assertNoSelectPerCantilever();
+    }
+
+    @Test
+    @DisplayName("una pagina de /cantilevers/filter y de /steady-arms/filter resuelve los tipos por lote, no con una consulta por fila")
+    void losTiposDeUnaPaginaVanPorLote() {
+        SqlStatementRecorder.clear();
+
+        // Las dos mensulas del primer perfil, las dos con brazo y del mismo tipo.
+        List<CantileverDTO> mensulas = cantileverService.getCantilevers(PageRequest.of(0, 50, Sort.by("id")),
+                new CantileverFilter(-9210001L, null, null, null, null, null, null, null)).getContent();
+
+        assertArms(mensulas, 2);
+        // Sin una sesion alrededor era una consulta del tipo por brazo, aunque fuera el mismo.
+        assertThat(SqlStatementRecorder.count(sql -> ARM_TYPE_ALONE.matcher(sql).find()))
+                .as("consultas del tipo de brazo en una pagina de mensulas").isEqualTo(1);
+
+        SqlStatementRecorder.clear();
+
+        List<SteadyArmDTO> brazos = steadyArmService.getSteadyArms(PageRequest.of(0, 50, Sort.by("id")),
+                new SteadyArmFilter(null, "IT-ARM-FETCH-SAT", null, null, null)).getContent();
+
+        assertThat(brazos).hasSize(50)
+                .allSatisfy(brazo -> assertThat(brazo.getSteadyArmType().getCode()).isEqualTo("IT-ARM-FETCH-SAT"));
+        assertThat(SqlStatementRecorder.count(sql -> ARM_TYPE_ALONE.matcher(sql).find()))
+                .as("consultas del tipo de brazo en una pagina de brazos").isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("el recuento de una busqueda solo lleva DISTINCT cuando el filtro une una coleccion")
+    void elRecuentoDeUnaBusqueda() {
+        SqlStatementRecorder.clear();
+        long mensulas = cantileverService.search(busqueda(Map.of("profileCode", "ARM-"))).getTotalElements();
+
+        assertThat(mensulas).isEqualTo(2L * PROFILES);
+        assertThat(recuentos()).singleElement().asString()
+                .as("unir el perfil, que es una relacion a uno, no repite mensulas")
+                .doesNotContain("distinct");
+
+        SqlStatementRecorder.clear();
+        trackService.search(busqueda(Map.of("stationName", "IT-ARM-FETCH")));
+
+        assertThat(recuentos()).singleElement().asString()
+                .as("una via esta en varias estaciones: unirlas la repite, y hay que contarla una vez")
+                .contains("count(distinct");
+    }
+
+    private static List<String> recuentos() {
+        return SqlStatementRecorder.statements().stream().filter(sql -> sql.contains("count(")).toList();
+    }
+
+    private static SearchRequestDTO busqueda(Map<String, Object> filtros) {
+        PageableDTO pageable = new PageableDTO();
+        pageable.setPage(0);
+        pageable.setSize(50);
+        pageable.setSortBy(new ArrayList<>());
+        pageable.setSortDirection(new ArrayList<>());
+        SearchRequestDTO request = new SearchRequestDTO();
+        request.setFilters(new HashMap<>(filtros));
+        request.setPageable(pageable);
+        return request;
     }
 
     /** Cada mensula sale con su brazo vivo, o sin brazo si no lo tiene o esta borrado. */

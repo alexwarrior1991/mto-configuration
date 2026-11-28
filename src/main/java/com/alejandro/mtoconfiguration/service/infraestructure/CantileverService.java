@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
@@ -83,7 +84,13 @@ public class CantileverService extends CRUDService<CantileverDTO, Cantilever> im
         return business;
     }
 
+    /**
+     * Transaccional, como toda lectura que devuelve DTO: mapear cada mensula resuelve su tipo y el
+     * de su brazo, y sin una sesion alrededor cada uno era una consulta suelta por fila (cien en una
+     * pagina de cincuenta) en vez de una por lote.
+     */
     @Override
+    @Transactional(readOnly = true)
     public Page<CantileverDTO> getCantilevers(Pageable pageable, CantileverFilter filter) {
         QCantilever qCantilever = QCantilever.cantilever;
         BooleanBuilder builder = new BooleanBuilder();

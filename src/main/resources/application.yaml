@@ -102,8 +102,9 @@ spring:
   jpa:
     properties:
       hibernate:
-        # Number of entities to fetch in a single batch - improves performance by reducing queries
-        default_batch_fetch_size: 20
+        # Lo perezoso de una pagina se carga por lotes de este tamano: una sentencia por coleccion o
+        # catalogo para una pagina de hasta 100 filas. Con 20, una pagina de 50 eran tres por cada uno.
+        default_batch_fetch_size: 100
         default_schema: ${MTO_CONFIGURATION_DB_SCHEMA:mto_configuration}
         format_sql: true
     open-in-view: false
